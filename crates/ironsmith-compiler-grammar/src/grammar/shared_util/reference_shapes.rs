@@ -364,6 +364,14 @@ pub fn parse_subject_words(words: &[&str]) -> SubjectAst {
     {
         return SubjectAst::Player(PlayerAst::ItsController);
     }
+    // "This artifact's owner draws a card": the source itself, which a
+    // preceding instruction's object must not capture as "its".
+    if permission_shapes::prefix_words(slice, &["this"])
+        && permission_shapes::suffix_words(slice, &["owner"])
+        && !suffix_one_of(slice, &[&["its", "owner"], &["their", "owner"]])
+    {
+        return SubjectAst::Player(PlayerAst::SourceOwner);
+    }
     // Named possessives are normalized into parser words such as
     // `hold for ransoms controller`. In a clause subject, the terminal
     // controller/owner relation is the semantic fact; the authored name is
@@ -376,8 +384,6 @@ pub fn parse_subject_words(words: &[&str]) -> SubjectAst {
         });
     }
     if prefix_one_of(slice, &[&["its", "owner"], &["their", "owner"]])
-        || (permission_shapes::prefix_words(slice, &["this"])
-            && permission_shapes::suffix_words(slice, &["owner"]))
         || suffix_one_of(slice, &[&["its", "owner"], &["their", "owner"]])
     {
         return SubjectAst::Player(PlayerAst::ItsOwner);

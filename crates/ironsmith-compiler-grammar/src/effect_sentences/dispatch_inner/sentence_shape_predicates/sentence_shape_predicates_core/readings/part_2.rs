@@ -119,8 +119,18 @@ pub(super) fn read_leading_result_prefix(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
     if let Some(prefix) = split_leading_result_prefix_lexed(tokens) {
-        let mut trailing_effects =
-            super::super::super::super::parse_effect_chain_inner_lexed(prefix.trailing_tokens)?;
+        // The consequence owns its terminal where-X definition ("When you
+        // do, return up to X target cards ..., where X is ..."): bind it into
+        // the consequence's values and target counts.
+        let mut trailing_effects = if sentence_shapes::parse_where_x_sentence_tokens(
+            prefix.trailing_tokens,
+        )
+        .is_some()
+        {
+            parse_effect_sentence_with_where_x_lexed(prefix.trailing_tokens)?
+        } else {
+            super::super::super::super::parse_effect_chain_inner_lexed(prefix.trailing_tokens)?
+        };
         if matches!(
             &prefix.predicate,
             crate::cards::builders::IfResultPredicate::Value(_)

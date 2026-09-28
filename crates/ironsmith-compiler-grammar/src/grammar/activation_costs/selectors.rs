@@ -50,6 +50,16 @@ pub fn parse_activation_exile_filter_tokens(
     } else {
         filters::parse_object_filter_with_grammar_entrypoint_lexed(tokens, false)?
     };
+    // "exile one or more artifacts with total mana value X": the comparison
+    // bounds the chosen set, not each card.
+    if filter.target_set_aggregate_constraint.is_none() {
+        filter.target_set_aggregate_constraint =
+            crate::grammar::shared_util::aggregate_constraints::lift_total_mana_value_choice_constraint(
+                tokens,
+                &mut filter,
+            )
+            .map(Box::new);
+    }
     if primitives::TokenWordView::new(tokens)
         .word_refs()
         .iter()

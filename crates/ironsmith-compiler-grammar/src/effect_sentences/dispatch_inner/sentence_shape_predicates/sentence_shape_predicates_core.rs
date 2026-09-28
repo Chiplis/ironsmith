@@ -254,7 +254,7 @@ fn normalize_search_followup_shuffles(effects: &mut [EffectAst]) {
 // The trigger parser recursively dispatches only the smaller payload, so
 // this route cannot claim an ordinary leading-duration continuous effect.
 
-pub(super) fn parse_effect_sentence_with_where_x_lexed(
+pub(crate) fn parse_effect_sentence_with_where_x_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
     let view = crate::rule_engine::LexClauseView::from_tokens(tokens);
@@ -371,6 +371,14 @@ pub(super) fn parse_effect_sentence_with_where_x_lexed(
 
     fn bind_dynamic_target_counts(effect: &mut EffectAst, replacement: &Value) {
         let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect else {
+            // A where-X clause also binds the targets of nested instructions
+            // ("Roll a die. When you do, ... up to X target creatures, where
+            // X is the result.").
+            crate::effect_ast_traversal::for_each_nested_effects_mut(effect, true, |nested| {
+                for nested_effect in nested {
+                    bind_dynamic_target_counts(nested_effect, replacement);
+                }
+            });
             return;
         };
         match action {

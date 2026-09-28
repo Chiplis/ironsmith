@@ -2014,6 +2014,10 @@ pub struct ObjectFilter {
     /// executable complement of `with_attached_object` for selectors such as
     /// "creatures that aren't enchanted."
     pub without_attached_object: Option<Box<ObjectFilter>>,
+    /// The object's controller must control a battlefield permanent matching
+    /// the inner filter ("creature whose controller controls an Island").
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub controller_controls: Option<Box<ObjectFilter>>,
     pub nonattacking: bool,
     pub enlist_eligible: bool,
     pub blocking: bool,
@@ -5511,6 +5515,12 @@ impl ObjectFilter {
                 ensure_indefinite_article(inner)
             };
             parts.push(format!("with {surfaced} attached to it"));
+        }
+        if let Some(controlled) = &self.controller_controls {
+            parts.push(format!(
+                "whose controller controls {}",
+                ensure_indefinite_article(controlled.description())
+            ));
         }
         if let Some(without_attached) = &self.without_attached_object {
             let is_aura = without_attached.zone == Some(Zone::Battlefield)

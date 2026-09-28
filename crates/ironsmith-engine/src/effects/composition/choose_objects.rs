@@ -66,13 +66,33 @@ pub(crate) fn top_only_selection_limit(
 }
 
 pub(crate) fn search_zones(effect: &ChooseObjectsEffect) -> Result<Vec<Zone>, ExecutionError> {
-    let Some(primary_zone) = effect.filter.zone.or(effect.zone) else {
-        return Err(ExecutionError::UnresolvableValue(
-            "ChooseObjectsEffect requires an explicit search zone".to_string(),
-        ));
-    };
-
-    let mut zones = vec![primary_zone];
+    let mut zones = Vec::new();
+    if let Some(primary_zone) = effect.filter.zone.or(effect.zone) {
+        zones.push(primary_zone);
+    } else {
+        // A union filter ("a creature or a creature card in your graveyard")
+        // carries its zones on the branches; search every branch zone.
+        let mut branch_zones = Vec::new();
+        let mut zone_less_branch = false;
+        for branch in &effect.filter.any_of {
+            match branch.zone {
+                Some(zone) if !branch_zones.contains(&zone) => branch_zones.push(zone),
+                Some(_) => {}
+                None => zone_less_branch = true,
+            }
+        }
+        // CR 109.2: an object description that names no zone means a
+        // permanent on the battlefield (sacrifice is always a permanent, CR
+        // 701.21a). Zone-less union branches fall under the same rule.
+        if branch_zones.is_empty() || zone_less_branch {
+            zones.push(Zone::Battlefield);
+        }
+        for zone in branch_zones {
+            if !zones.contains(&zone) {
+                zones.push(zone);
+            }
+        }
+    }
     for zone in &effect.additional_zones {
         if !zones.contains(zone) {
             zones.push(*zone);
@@ -81,12 +101,57 @@ pub(crate) fn search_zones(effect: &ChooseObjectsEffect) -> Result<Vec<Zone>, Ex
     Ok(zones)
 }
 
+fn comparison_references_unbound_x(comparison: &Option<Comparison>) -> bool {
+    matches!(
+        comparison,
+        Some(
+            Comparison::EqualExpr(value)
+                | Comparison::NotEqualExpr(value)
+                | Comparison::LessThanExpr(value)
+                | Comparison::LessThanOrEqualExpr(value)
+                | Comparison::GreaterThanExpr(value)
+                | Comparison::GreaterThanOrEqualExpr(value)
+        ) if matches!(value.unhinted(), crate::effect::Value::X)
+    )
+}
+
+fn relax_unbound_x_comparisons(filter: &mut crate::filter::ObjectFilter) -> bool {
+    let mut changed = false;
+    for comparison in [
+        &mut filter.mana_value,
+        &mut filter.power,
+        &mut filter.toughness,
+    ] {
+        if comparison_references_unbound_x(comparison) {
+            *comparison = None;
+            changed = true;
+        }
+    }
+    for branch in &mut filter.any_of {
+        changed |= relax_unbound_x_comparisons(branch);
+    }
+    changed
+}
+
+/// A cost choice such as "exile a red card with mana value X" or "sacrifice
+/// a creature with mana value X" is checked for payability before X is
+/// announced (CR 601.2b/601.2f). Legality only needs *some* announceable X, so
+/// an X-relative characteristic cannot be the reason a choice is unpayable
+/// while X is unbound; the real X constrains the selection at payment time.
+pub(crate) fn with_unbound_x_relaxed(effect: &ChooseObjectsEffect) -> Option<ChooseObjectsEffect> {
+    let mut relaxed = effect.clone();
+    relax_unbound_x_comparisons(&mut relaxed.filter).then_some(relaxed)
+}
+
 fn cost_candidate_count(
     effect: &ChooseObjectsEffect,
     game: &GameState,
     source: crate::ids::ObjectId,
     controller: crate::ids::PlayerId,
 ) -> Result<usize, CostValidationError> {
+    if let Some(relaxed) = with_unbound_x_relaxed(effect) {
+        return cost_candidate_count(&relaxed, game, source, controller);
+    }
     let mut dm = crate::decision::SelectFirstDecisionMaker;
     let ctx = ExecutionContext::new(source, controller, &mut dm);
     let filter_ctx = ctx.filter_context(game);
@@ -498,6 +563,9 @@ fn aggregate_cost_capacity(
     source: crate::ids::ObjectId,
     controller: crate::ids::PlayerId,
 ) -> Result<i32, CostValidationError> {
+    if let Some(relaxed) = with_unbound_x_relaxed(effect) {
+        return aggregate_cost_capacity(&relaxed, game, source, controller);
+    }
     let constraint = effect
         .aggregate_constraint
         .as_ref()

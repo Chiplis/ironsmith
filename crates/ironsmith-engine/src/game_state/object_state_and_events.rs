@@ -2142,8 +2142,17 @@ impl GameState {
             flags.foretold_cards.remove(&id);
             flags.adventure_exiled.remove(&id);
         }
+        // A prepare spell copy only leaves exile by being cast (or ceasing to
+        // exist); either way its permanent stops being prepared. The zone move
+        // gives the copy a new ID, so this is the last point where the old
+        // copy ID still resolves to its source; unlinking here without
+        // dropping the designation would leave the source stuck prepared.
         if let Some(source) = self.prepared_spell_source(id) {
             self.unlink_prepared_spell_copy(source);
+            if self.battlefield_flags.prepared.contains(&source) {
+                self.battlefield_flags_mut().prepared.remove(&source);
+                self.mark_object_characteristics_dirty(source);
+            }
         }
         {
             let tracking = self.exile_tracking_mut();

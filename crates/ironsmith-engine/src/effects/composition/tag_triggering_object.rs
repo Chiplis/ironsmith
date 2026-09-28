@@ -154,9 +154,14 @@ impl EffectExecutor for TagTriggeringObjectEffect {
             return Ok(EffectOutcome::count(count));
         }
 
-        let object_id = event.object_id().ok_or_else(|| {
-            ExecutionError::UnresolvableValue("triggering event missing object".to_string())
-        })?;
+        // A player event ("whenever you gain life") or the non-object half of
+        // a combined trigger ("when this enters or at the beginning of your
+        // end step") has no triggering object: the prelude tags nothing, and
+        // any reference to that object refers to nothing (CR 608.2c).
+        let Some(object_id) = event.object_id() else {
+            set_triggering_object_tags(ctx, self.tag.as_str(), Vec::new());
+            return Ok(EffectOutcome::count(0));
+        };
 
         if let Some(obj) = game.object(object_id) {
             set_triggering_object_tags(
@@ -170,14 +175,15 @@ impl EffectExecutor for TagTriggeringObjectEffect {
         }
 
         if let Some(snapshot) = event.snapshot() {
-            // For zone-change triggers (e.g., dies), retarget to the immediate
-            // post-change object ID when it exists so delayed effects can
-            // reference that exact object instance later.
-            let mut tagged = snapshot.clone();
-            if let Some(current_id) = game.find_object_by_stable_id(snapshot.stable_id) {
-                tagged.object_id = current_id;
-            }
-            set_triggering_object_tags(ctx, self.tag.as_str(), vec![tagged]);
+            // Zone-change events are handled above. For any other event (an
+            // attack, a block, a tap, a discard) the event's object has left
+            // since; keep its recorded identity and last known information
+            // rather than rewriting it to the card's new incarnation, which is
+            // a new object (CR 400.7). Combat relationships and other LKI
+            // readers key off the recorded object, and a resolution that may
+            // follow the card to its new zone does so through
+            // `resolve_tagged_object_id`.
+            set_triggering_object_tags(ctx, self.tag.as_str(), vec![snapshot.clone()]);
             return Ok(EffectOutcome::count(1));
         }
 

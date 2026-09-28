@@ -1074,6 +1074,48 @@ fn rewrite_personal_pronouns_line(text: &str) -> String {
 /// teamwork, counter that spell ... instead.") is the shape the statement
 /// grammar reads as a self replacement of the preceding sentence, so move the
 /// condition to the front of that sentence.
+/// "if this land would enter, instead sacrifice each other permanent named
+/// sheltered valley you control, then put this land onto the battlefield."
+/// (Sheltered Valley) is a self entry replacement whose program runs before
+/// the permanent enters (CR 614.1c, 614.12) — exactly the "as this land
+/// enters, <program>." form. Rewrite it to that form; the returned flag keeps
+/// the authored "instead" surface for rendering. Also accepts
+/// "..., <program> instead, then put ...".
+fn rewrite_entry_instead_then_put_line(text: &str) -> (String, bool) {
+    let unchanged = || (text.to_string(), false);
+    let Some(rest) = text.strip_prefix("if this ") else {
+        return unchanged();
+    };
+    let Some(would_idx) = rest.find(" would enter") else {
+        return unchanged();
+    };
+    let subject = &rest[..would_idx];
+    if subject.is_empty() || subject.contains([',', '.']) {
+        return unchanged();
+    }
+    let after = &rest[would_idx + " would enter".len()..];
+    let after = after.strip_prefix(" the battlefield").unwrap_or(after);
+    let Some(after) = after.strip_prefix(", ") else {
+        return unchanged();
+    };
+    let body = after.trim_end().trim_end_matches('.');
+    let tail = format!(", then put this {subject} onto the battlefield");
+    let Some(program) = body.strip_suffix(tail.as_str()) else {
+        return unchanged();
+    };
+    let program = if let Some(program) = program.strip_prefix("instead ") {
+        program
+    } else if let Some(program) = program.strip_suffix(" instead") {
+        program
+    } else {
+        return unchanged();
+    };
+    if program.is_empty() || program.contains('.') {
+        return unchanged();
+    }
+    (format!("as this {subject} enters, {program}."), true)
+}
+
 fn rewrite_trailing_instead_if_spell_label_line(text: &str) -> String {
     const MARKER: &str = " instead if this spell ";
     let Some(marker_idx) = text.find(MARKER) else {
@@ -1400,7 +1442,9 @@ pub fn preprocess_document_with_provenance(
             )));
         };
 
-        let expanded_normalized = expand_borrow_ability_line(normalized.normalized.as_str());
+        let (entry_rewritten, entry_instead_surface) =
+            rewrite_entry_instead_then_put_line(normalized.normalized.as_str());
+        let expanded_normalized = expand_borrow_ability_line(entry_rewritten.as_str());
         let expanded_normalized = expand_recruit_keyword_line(expanded_normalized.as_str());
         let expanded_normalized = rewrite_any_type_cast_rider_line(expanded_normalized.as_str());
         let expanded_normalized = rewrite_personal_pronouns_line(expanded_normalized.as_str());
@@ -1446,6 +1490,11 @@ pub fn preprocess_document_with_provenance(
             }
         }
         let mut semantic_facts = line_semantic_facts::parse_line_semantic_facts_tokens(&tokens);
+        if entry_instead_surface
+            && let Some(as_enters) = semantic_facts.statement.as_enters_effect_program.as_mut()
+        {
+            as_enters.entry_instead_surface = true;
+        }
         semantic_facts.supported_sneak_form = supported_sneak_reminder(raw_line.trim(), line_index);
         semantic_facts.station_creature_threshold =
             station_reminder_threshold(raw_line.trim(), line_index);

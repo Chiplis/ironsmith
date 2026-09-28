@@ -243,7 +243,7 @@ pub(super) fn compile_create_token_with_mods_action(
         ctx.auto_tag_object_targets || attached_to.is_some() || resolved_dynamic_pt.is_some();
     let mut created_tag: Option<TagKey> = None;
     if needs_created_tag {
-        let tag = ctx.next_tag("created");
+        let tag = super::reserved_or_fresh_result_tag(ctx, "created");
         effect = effect.tag(tag.clone());
         ctx.last_object_tag = Some(tag.clone());
         created_tag = Some(tag);
@@ -380,6 +380,73 @@ pub(super) fn compile_target_only_action(
     Ok((vec![effect], choices))
 }
 
+fn spec_is_it_tag(spec: &ChooseSpec) -> bool {
+    matches!(
+        spec.base(),
+        ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+    ) || (matches!(spec.base(), ChooseSpec::Source)
+        && matches!(
+            spec.source_reference_surface(),
+            Some(crate::target::SourceReferenceSurface::ThisPermanentType(text))
+                if text.eq_ignore_ascii_case("it")
+        ))
+}
+
+/// Whether a value reads a characteristic of the pronoun `it` ("its power").
+fn value_names_it_characteristic(value: &Value) -> bool {
+    match value {
+        Value::PowerOf(spec) | Value::ToughnessOf(spec) | Value::ManaValueOf(spec) => {
+            spec_is_it_tag(spec)
+        }
+        Value::SurfaceHinted { value, .. }
+        | Value::Scaled(value, _)
+        | Value::DividedRoundedDown(value, _)
+        | Value::HalfRoundedDown(value) => value_names_it_characteristic(value),
+        Value::Add(left, right) | Value::Min(left, right) => {
+            value_names_it_characteristic(left) || value_names_it_characteristic(right)
+        }
+        _ => false,
+    }
+}
+
+fn bind_it_characteristic_to_spec(value: &Value, target: &ChooseSpec) -> Value {
+    let bind = |spec: &ChooseSpec| {
+        if spec_is_it_tag(spec) {
+            Box::new(target.clone())
+        } else {
+            Box::new(spec.clone())
+        }
+    };
+    match value {
+        Value::PowerOf(spec) => Value::PowerOf(bind(spec)),
+        Value::ToughnessOf(spec) => Value::ToughnessOf(bind(spec)),
+        Value::ManaValueOf(spec) => Value::ManaValueOf(bind(spec)),
+        Value::SurfaceHinted { value, hints } => Value::SurfaceHinted {
+            value: Box::new(bind_it_characteristic_to_spec(value, target)),
+            hints: hints.clone(),
+        },
+        Value::Scaled(value, factor) => {
+            Value::Scaled(Box::new(bind_it_characteristic_to_spec(value, target)), *factor)
+        }
+        Value::DividedRoundedDown(value, divisor) => Value::DividedRoundedDown(
+            Box::new(bind_it_characteristic_to_spec(value, target)),
+            *divisor,
+        ),
+        Value::HalfRoundedDown(value) => {
+            Value::HalfRoundedDown(Box::new(bind_it_characteristic_to_spec(value, target)))
+        }
+        Value::Add(left, right) => Value::Add(
+            Box::new(bind_it_characteristic_to_spec(left, target)),
+            Box::new(bind_it_characteristic_to_spec(right, target)),
+        ),
+        Value::Min(left, right) => Value::Min(
+            Box::new(bind_it_characteristic_to_spec(left, target)),
+            Box::new(bind_it_characteristic_to_spec(right, target)),
+        ),
+        other => other.clone(),
+    }
+}
+
 pub(super) fn compile_pump_action(
     subject_verb: &SubjectVerbEffectAst,
     ctx: &mut EffectLoweringContext,
@@ -395,6 +462,15 @@ pub(super) fn compile_pump_action(
     else {
         unreachable!("typed pump route requires a Pump action")
     };
+    // "Target creature gets +X/+0 until end of turn, where X is its power":
+    // the pronoun names the creature being pumped, which this very clause
+    // introduces, not an earlier antecedent or the ability's source.
+    let target_is_pronoun = matches!(
+        target,
+        TargetAst::Tagged(tag, _) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+    ) || matches!(target, TargetAst::Source(..));
+    let bind_it_to_target = !target_is_pronoun
+        && (value_names_it_characteristic(power) || value_names_it_characteristic(toughness));
     let resolved_power = resolve_value_it_tag(power, &current_reference_env(ctx))?;
     let resolved_toughness = resolve_value_it_tag(toughness, &current_reference_env(ctx))?;
     // The condition is bound before the closure, which cannot carry an error.
@@ -404,11 +480,19 @@ pub(super) fn compile_pump_action(
         .transpose()?;
     compile_tagged_effect_for_target(target, ctx, "pumped", |spec| {
         let source_reference_surface = spec.source_reference_surface().cloned();
+        let (power, toughness) = if bind_it_to_target {
+            (
+                bind_it_characteristic_to_spec(power, &spec),
+                bind_it_characteristic_to_spec(toughness, &spec),
+            )
+        } else {
+            (resolved_power.clone(), resolved_toughness.clone())
+        };
         let mut apply = crate::effects::ApplyContinuousEffect::with_spec_runtime(
             spec,
             crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
-                power: resolved_power,
-                toughness: resolved_toughness,
+                power,
+                toughness,
             },
             duration.clone(),
         )
@@ -637,6 +721,14 @@ pub(super) fn compile_become_base_pt_creature_action(
         .cloned()
         .map(crate::lowering_support::lower_compiler_static_ability_core)
         .collect::<Result<Vec<_>, _>>()?;
+    // "Roll a d6. ... becomes an X/X ... where X is the result": bind prior
+    // results (and other contextual references) in the P/T values like every
+    // other value-bearing instruction; an unresolvable reference keeps its
+    // authored form.
+    let power = &resolve_value_it_tag(power, &current_reference_env(ctx))
+        .unwrap_or_else(|_| power.clone());
+    let toughness = &resolve_value_it_tag(toughness, &current_reference_env(ctx))
+        .unwrap_or_else(|_| toughness.clone());
     compile_tagged_effect_for_target(target, ctx, "animated_creature", |spec| {
         let resolved_power = bind_iterated_value_to_choose_spec(power, &spec);
         let resolved_toughness = bind_iterated_value_to_choose_spec(toughness, &spec);
@@ -2800,7 +2892,10 @@ pub(super) fn compile_subject_verb_middle(
             };
             let player_filter = subject.clone_player_filter();
             let count = *count;
-            let filter = subject.bind_library_filter(filter, ctx)?;
+            let mut filter = subject.bind_library_filter(filter, ctx)?;
+            // "any number of creature cards with total mana value 6 or less"
+            // (Protean Hulk) bounds the found set, not each card.
+            let search_aggregate_constraint = filter.target_set_aggregate_constraint.take();
             let mut choices = subject.into_choices();
             for choice in chooser_choices {
                 push_choice(&mut choices, choice);
@@ -2812,6 +2907,7 @@ pub(super) fn compile_subject_verb_middle(
                     .unwrap_or_else(|| player_filter.clone()),
             );
             let use_search_effect = *shuffle
+                && search_aggregate_constraint.is_none()
                 && matches!(search_zones.as_slice(), [Zone::Library])
                 && count.max == Some(1)
                 && count_value.is_none()
@@ -2865,6 +2961,11 @@ pub(super) fn compile_subject_verb_middle(
                 .with_search_result_reference_surface(*result_reference_surface)
                 .with_search_reveal_reference_surface(*reveal_reference_surface)
                 .with_search_top_in_any_order_surface(*search_top_in_any_order_surface);
+                let choose = if let Some(constraint) = search_aggregate_constraint {
+                    choose.with_aggregate_constraint(*constraint)
+                } else {
+                    choose
+                };
                 let choose = match search_mode {
                     crate::effect::SearchSelectionMode::Exact => choose.as_search(),
                     crate::effect::SearchSelectionMode::Optional => choose.as_optional_search(),
@@ -3020,7 +3121,7 @@ pub(super) fn compile_subject_verb_middle(
                 || resolved_dynamic_pt.is_some();
             let mut created_tag: Option<TagKey> = None;
             if needs_created_tag {
-                let tag = ctx.next_tag("created");
+                let tag = super::reserved_or_fresh_result_tag(ctx, "created");
                 effect = effect.tag(tag.clone());
                 ctx.last_object_tag = Some(tag.clone());
                 created_tag = Some(tag);
@@ -3207,7 +3308,7 @@ pub(super) fn compile_subject_verb_middle(
             }
             let mut effect = Effect::new(effect);
             if ctx.auto_tag_object_targets {
-                let tag = ctx.next_tag("created");
+                let tag = super::reserved_or_fresh_result_tag(ctx, "created");
                 ctx.last_object_tag = Some(tag.clone());
                 effect = effect.tag(tag);
             }
@@ -3371,7 +3472,7 @@ pub(super) fn compile_subject_verb_middle(
 
             let mut effect = Effect::new(effect);
             if ctx.auto_tag_object_targets {
-                let tag = ctx.next_tag("created");
+                let tag = super::reserved_or_fresh_result_tag(ctx, "created");
                 ctx.last_object_tag = Some(tag.clone());
                 effect = effect.tag(tag);
             }

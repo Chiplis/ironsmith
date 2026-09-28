@@ -39,6 +39,9 @@ pub(super) struct HandSelection {
     filter_uses_and_or: bool,
     reveal_chosen: bool,
     tag: TagKey,
+    /// Where the chosen cards go: the hand, or ("reveal ... and put it onto
+    /// the battlefield") the battlefield, tapped or not.
+    to_battlefield: Option<bool>,
 }
 
 /// "[You may] put [up to two] <filter> cards from among them onto the
@@ -90,8 +93,16 @@ fn hand_selection(
     };
     let reveal_chosen = action.verb == "reveal";
     let action_tokens = crate::lexer::trim_lexed_commas(action.tail_tokens);
-    let Some(shape) = triple_grammar::parse_looked_hand_action_shape(action_tokens, reveal_chosen)
-    else {
+    let (shape, to_battlefield) = if let Some(shape) =
+        triple_grammar::parse_looked_hand_action_shape(action_tokens, reveal_chosen)
+    {
+        (shape, None)
+    } else if reveal_chosen
+        && let Some((shape, tapped)) =
+            triple_grammar::parse_looked_reveal_to_battlefield_action_shape(action_tokens)
+    {
+        (shape, Some(tapped))
+    } else {
         return Ok(None);
     };
     let mut count = shape.count;
@@ -119,6 +130,7 @@ fn hand_selection(
             if reveal_chosen { "revealed" } else { "chosen" },
         ))
         .into(),
+        to_battlefield,
     }))
 }
 
@@ -460,6 +472,7 @@ fn spell_hand_selection(group: &mut ViewedGroup, selection: HandSelection) {
         filter_uses_and_or,
         reveal_chosen,
         tag: chosen_tag,
+        to_battlefield,
     } = selection;
     let looked_tag = group.tag.clone();
     if count == ChoiceCount::up_to(1)
@@ -516,10 +529,14 @@ fn spell_hand_selection(group: &mut ViewedGroup, selection: HandSelection) {
             tag: crate::tag::TagRef::of(chosen_tag),
             effects: vec![EffectAst::subject_verb_move_to_zone(
                 it(),
-                Zone::Hand,
+                if to_battlefield.is_some() {
+                    Zone::Battlefield
+                } else {
+                    Zone::Hand
+                },
                 false,
                 ReturnControllerAst::Preserve,
-                false,
+                to_battlefield.unwrap_or(false),
                 None,
             )],
         }));
@@ -533,6 +550,7 @@ fn spell_hand_selection_into_graveyard(group: &mut ViewedGroup, selection: HandS
         filter_uses_and_or,
         reveal_chosen,
         tag: chosen_tag,
+        to_battlefield: _,
     } = selection;
     let looked_tag = group.tag.clone();
     if count == ChoiceCount::up_to(1)

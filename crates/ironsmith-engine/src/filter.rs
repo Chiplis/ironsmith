@@ -2177,6 +2177,14 @@ fn object_is_in_combat_with_source_lki(
         crate::combat_state::get_blockers(combat, source_id).contains(&object_id)
             || crate::combat_state::get_blocked_attacker(combat, source_id)
                 .is_some_and(|attacker| attacker == object_id)
+            // A source that left the battlefield was removed from combat
+            // (CR 506.4), but its ability still refers to the creatures it
+            // was in combat with through last known information (CR 608.2h).
+            || (game
+                .object(source_id)
+                .is_none_or(|source| source.zone != crate::zone::Zone::Battlefield)
+                && (game.creature_was_blocked_by_this_turn(source_id, object_id)
+                    || game.creature_was_blocked_by_this_turn(object_id, source_id)))
     })
 }
 
@@ -3090,6 +3098,13 @@ impl ObjectFilterExt for ObjectFilter {
             if !has_matching_attachment {
                 return false;
             }
+        }
+
+        if let Some(controlled) = &self.controller_controls
+            && controlled_matching_object_count(game, subject.subject_controller(), controlled, ctx)
+                == 0
+        {
+            return false;
         }
 
         if let Some(without_attached_filter) = &self.without_attached_object {
@@ -4195,6 +4210,15 @@ impl ObjectFilterExt for ObjectFilter {
                     };
                 post_noun_qualifiers.push(format!("with {article} {inner} attached to it"));
             }
+        }
+        if let Some(controlled) = &self.controller_controls {
+            let inner = controlled.description();
+            let article = if inner.starts_with(['a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U']) {
+                "an"
+            } else {
+                "a"
+            };
+            post_noun_qualifiers.push(format!("whose controller controls {article} {inner}"));
         }
         if let Some(without_attached) = &self.without_attached_object {
             let is_aura = without_attached.zone == Some(Zone::Battlefield)

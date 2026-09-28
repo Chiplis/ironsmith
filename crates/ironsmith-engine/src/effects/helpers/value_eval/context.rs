@@ -545,29 +545,27 @@ impl EvaluationContext<'_, '_> {
         let Some(ctx) = self.execution() else {
             return Ok(self.layer().object_number(spec, property));
         };
-        let id = resolve_primary_object_from_value_spec(self.game, spec, ctx)?;
-        let tagged = if let ChooseSpec::Tagged(tag) = spec.base() {
-            ctx.get_tagged(tag)
-        } else {
-            None
-        };
         let missing = |tense| {
             ExecutionError::UnresolvableValue(format!("Target {tense} no {}", property.label()))
         };
         if matches!(spec.base(), ChooseSpec::Source)
             && let Some(snapshot) = source_lki_for_moved_current_object(self.game, ctx)
         {
-            property.snapshot(snapshot).ok_or_else(|| missing("had"))
-        } else if let Some(snapshot) = tagged
-            && self
-                .game
-                .object(snapshot.object_id)
-                .is_none_or(|object| object.zone != snapshot.zone)
-        {
-            property
-                .snapshot(latest_tagged_lki_snapshot(self.game, snapshot).unwrap_or(snapshot))
-                .ok_or_else(|| missing("had"))
-        } else if let Some(object) = self.game.object(id) {
+            return property.snapshot(snapshot).ok_or_else(|| missing("had"));
+        }
+        // A tagged object that left its zone is read from its last known
+        // information before any live lookup, which can no longer find it
+        // (CR 608.2h).
+        if let Some(snapshot) = tagged_lki_when_object_left(self.game, ctx, spec) {
+            return property.snapshot(snapshot).ok_or_else(|| missing("had"));
+        }
+        let tagged = if let ChooseSpec::Tagged(tag) = spec.base() {
+            ctx.get_tagged(tag)
+        } else {
+            None
+        };
+        let id = resolve_primary_object_from_value_spec(self.game, spec, ctx)?;
+        if let Some(object) = self.game.object(id) {
             property
                 .live(self.game, object)
                 .ok_or_else(|| missing("has"))

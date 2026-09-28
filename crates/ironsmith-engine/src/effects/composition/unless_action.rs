@@ -221,8 +221,43 @@ impl EffectExecutor for UnlessActionEffect {
         } else {
             vec![resolve_player_filter(game, &self.player, ctx)?]
         };
-        let mut attempted_alternative_events = Vec::new();
+        // "Target opponent loses 2 life unless they sacrifice ...": outside a
+        // player loop, "they"/"that player" in either branch is the single
+        // deciding player.
+        let bound_player = match deciding_players.as_slice() {
+            [player] if ctx.iteration.iterated_player.is_none() => Some(*player),
+            _ => ctx.iteration.iterated_player,
+        };
+        ctx.with_temp_iterated_player(bound_player, |ctx| {
+            self.execute_for_deciding_players(game, ctx, deciding_players)
+        })
+    }
 
+    fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> {
+        super::target_metadata::first_target_spec(&[&self.effects])
+    }
+
+    fn decision_related_object_specs(&self) -> Vec<crate::target::ChooseSpec> {
+        super::target_metadata::related_object_specs(&[&self.effects])
+    }
+
+    fn target_description(&self) -> &'static str {
+        super::target_metadata::first_target_description(&[&self.effects], "target")
+    }
+
+    fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
+        super::target_metadata::first_target_count(&[&self.effects])
+    }
+}
+
+impl UnlessActionEffect {
+    fn execute_for_deciding_players(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        deciding_players: Vec<PlayerId>,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let mut attempted_alternative_events = Vec::new();
         for deciding_player in deciding_players {
             if self.alternative_is_infeasible(game, ctx, deciding_player) {
                 continue;
@@ -262,22 +297,6 @@ impl EffectExecutor for UnlessActionEffect {
             .events
             .append(&mut attempted_alternative_events);
         Ok(main_outcome)
-    }
-
-    fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> {
-        super::target_metadata::first_target_spec(&[&self.effects])
-    }
-
-    fn decision_related_object_specs(&self) -> Vec<crate::target::ChooseSpec> {
-        super::target_metadata::related_object_specs(&[&self.effects])
-    }
-
-    fn target_description(&self) -> &'static str {
-        super::target_metadata::first_target_description(&[&self.effects], "target")
-    }
-
-    fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
-        super::target_metadata::first_target_count(&[&self.effects])
     }
 }
 

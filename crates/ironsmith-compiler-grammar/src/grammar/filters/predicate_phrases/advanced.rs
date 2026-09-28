@@ -715,6 +715,9 @@ pub(super) fn player_filter_for_turn_value(player: PlayerAst) -> Option<PlayerFi
                 crate::tag::CompilerReferenceTag::TriggeringSource.bind(),
             ),
         )),
+        PlayerAst::SourceOwner => Some(PlayerFilter::OwnerOf(
+            crate::filter::ObjectRef::tagged(ironsmith_core::SOURCE_OBJECT_TAG),
+        )),
         PlayerAst::ItsController | PlayerAst::ItsOwner | PlayerAst::Enchanted => None,
     }
 }
@@ -1671,9 +1674,14 @@ pub(super) fn parse_value_reference_comparison_predicate(
         // can use that value directly; past power/toughness must instead go
         // through the dedicated last-known-characteristics predicate reader.
         let mut comparison_tokens = &tokens[comparison_start..];
+        // "If that spell's mana value was 2 or less" (Sound the Trumpets):
+        // mana value is read from the spell as it last existed, so the past
+        // tense compares the same value.
         if matches!(
             left,
-            Value::ManaSpentToCast(_) | Value::ManaSpentToCastTriggeringObject
+            Value::ManaSpentToCast(_)
+                | Value::ManaSpentToCastTriggeringObject
+                | Value::ManaValueOf(_)
         ) && comparison_tokens
             .first()
             .is_some_and(|token| token.is_word("was"))
@@ -3776,6 +3784,29 @@ pub(super) fn parse_implicit_object_present_state_shape(
     if subject_is_bare_pronoun && !object_filter_has_state(&filter) {
         return None;
     }
+    // "it isn't attacking or blocking" (Intrepid Ace): either combat role,
+    // never both at once.
+    if filter.attacking
+        && filter.blocking
+        && filter.any_of.is_empty()
+        && descriptor_clause.tokens().iter().any(|token| token.is_word("or"))
+    {
+        filter.attacking = false;
+        filter.blocking = false;
+        if negative {
+            // Neither attacking nor blocking.
+            filter.nonattacking = true;
+            filter.nonblocking = true;
+            return implicit_object_state_predicate_from_filter(filter, false);
+        }
+        let mut attacking = filter.clone();
+        attacking.attacking = true;
+        let mut blocking = filter;
+        blocking.blocking = true;
+        let attacking = implicit_object_state_predicate_from_filter(attacking, false)?;
+        let blocking = implicit_object_state_predicate_from_filter(blocking, false)?;
+        return Some(PredicateAst::Or(Box::new(attacking), Box::new(blocking)));
+    }
     implicit_object_state_predicate_from_filter(filter, negative)
 }
 
@@ -4911,6 +4942,11 @@ pub(super) fn parse_card_in_your_graveyard_predicate(
     if parse_card_types_in_graveyard_predicate(tokens).is_some() {
         return None;
     }
+    // "four or more permanent types among cards in your graveyard" counts
+    // types, not one card.
+    if tokens.iter().any(|token| token.is_word("among")) {
+        return None;
+    }
     let clause = LexedClause::new(tokens);
     let atoms = [
         WinnowSequence::subject("existential", WinnowCaptureKind::WordCount(2)),
@@ -4932,6 +4968,11 @@ pub(super) fn parse_card_in_your_graveyard_predicate(
     let descriptor = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     if descriptor.tokens().is_empty() {
         return None;
+    }
+    // "there are fewer than six creature cards in your graveyard" (Shadowborn
+    // Demon): a stated count, not "a creature card".
+    if let Some(predicate) = parse_counted_cards_in_your_graveyard(descriptor.tokens()) {
+        return Some(predicate);
     }
     let mut filter =
         crate::grammar::primitives::probe_shape(parse_object_filter(descriptor.tokens(), false))
@@ -4958,6 +4999,56 @@ pub(super) fn parse_card_in_your_graveyard_predicate(
         player: PlayerAst::You,
         filter,
     }))
+}
+
+/// A quantified graveyard descriptor ("fewer than six creature cards",
+/// "three or fewer cards") as a count comparison over your graveyard.
+fn parse_counted_cards_in_your_graveyard(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    if tokens
+        .first()
+        .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+    {
+        return None;
+    }
+    let (comparison, used) = predicate_quantity_prefix_tokens(tokens)?;
+    let rest = tokens.get(used..).filter(|rest| !rest.is_empty())?;
+    let (operator, count) = match comparison {
+        crate::effect::Comparison::LessThan(count) => (ValueComparisonOperator::LessThan, count),
+        crate::effect::Comparison::LessThanOrEqual(count) => {
+            (ValueComparisonOperator::LessThanOrEqual, count)
+        }
+        crate::effect::Comparison::Equal(count)
+            if tokens.iter().any(|token| token.is_word("exactly")) =>
+        {
+            (ValueComparisonOperator::Equal, count)
+        }
+        _ => return None,
+    };
+    let bare_cards = rest.len() == 1
+        && rest[0]
+            .as_word()
+            .is_some_and(|word| word_is_any(word, CARD_OR_CARDS_WORDS));
+    let mut filter = bare_cards
+        .then(ObjectFilter::default)
+        .or_else(|| crate::grammar::primitives::probe_shape(parse_object_filter(rest, false)))
+        .or_else(|| {
+            rest.last()
+                .and_then(OwnedLexToken::as_word)
+                .filter(|word| word_is_any(word, CARD_OR_CARDS_WORDS))
+                .and_then(|_| {
+                    crate::grammar::primitives::probe_shape(parse_object_filter(
+                        &rest[..rest.len() - 1],
+                        false,
+                    ))
+                })
+        })?;
+    filter.zone = Some(Zone::Graveyard);
+    filter.owner = Some(PlayerFilter::You);
+    Some(PredicateAst::ValueComparison {
+        left: Value::Count(filter),
+        operator,
+        right: Value::Fixed(count),
+    })
 }
 
 pub(super) fn parse_object_on_battlefield_predicate(

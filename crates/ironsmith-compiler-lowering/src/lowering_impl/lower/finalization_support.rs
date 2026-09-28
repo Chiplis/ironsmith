@@ -825,6 +825,11 @@ pub(super) fn finalize_lowered_card(
         correlate_additional_cost_damage_replacement(spell_effect);
         correlate_additional_cost_chosen_type_search_destination(spell_effect);
         strip_terminal_unconsumed_damage_aggregate_id(spell_effect);
+        merge_whole_spell_instead_replacement(spell_effect);
+        bind_unattach_to_attached_object(spell_effect);
+        hoist_optional_target_declaration(spell_effect);
+        distribute_unless_over_tagged_controllers(spell_effect);
+        finalize_program_references(spell_effect);
     }
     for ability in &mut builder.abilities {
         bind_graveyard_cast_trigger_to_triggering_permanent_entry(ability);
@@ -833,17 +838,867 @@ pub(super) fn finalize_lowered_card(
                 preserve_looked_collection_self_replacement_preludes(&mut triggered.effects);
                 bind_quantified_player_damage_values(&mut triggered.effects);
                 bind_selected_exile_card_play_permission(&mut triggered.effects);
+                bind_unattach_to_attached_object(&mut triggered.effects);
+                hoist_optional_target_declaration(&mut triggered.effects);
+                finalize_program_references(&mut triggered.effects);
             }
             AbilityKind::Activated(activated) => {
                 preserve_looked_collection_self_replacement_preludes(&mut activated.effects);
                 bind_quantified_player_damage_values(&mut activated.effects);
                 bind_selected_exile_card_play_permission(&mut activated.effects);
+                bind_unattach_to_attached_object(&mut activated.effects);
+                hoist_optional_target_declaration(&mut activated.effects);
+                finalize_program_references(&mut activated.effects);
             }
             _ => {}
         }
     }
     link_alternative_cast_condition_references(&mut builder);
     builder
+}
+
+const REST_TAG: &str = "rest";
+
+fn debug_mentions_rest_tag(effect: &crate::effect::Effect) -> (bool, bool) {
+    let text = format!("{effect:?}");
+    let needle = "TagKey(\"rest\")";
+    let mut produces = false;
+    let mut consumes = false;
+    let mut offset = 0;
+    while let Some(found) = text[offset..].find(needle) {
+        let start = offset + found;
+        if text[..start].ends_with("tag: ")
+            && !text[..start].ends_with("TaggedObjectConstraint { tag: ")
+        {
+            produces = true;
+        } else {
+            consumes = true;
+        }
+        offset = start + needle.len();
+    }
+    (produces, consumes)
+}
+
+/// The set "the rest" is taken from, found by walking back from its
+/// consumer: an inspected library/exile collection (the rest are its cards
+/// still in that zone), or an ordinary choice among matching objects (the
+/// rest are the matching objects not chosen).
+fn rest_complement_producer(earlier: &[crate::effect::Effect]) -> Option<crate::effect::Effect> {
+    use crate::filter::{TaggedObjectConstraint, TaggedOpbjectRelation};
+    let tagged_collection = |tag: &TagKey, zone: Zone| {
+        let mut filter = ObjectFilter::default();
+        filter.zone = Some(zone);
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: tag.clone(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        crate::effect::Effect::new(
+            crate::effects::TagMatchingObjectsEffect::new(filter, REST_TAG).in_zone(zone),
+        )
+    };
+    let zone_of_collection = |tag: &TagKey| -> Option<Zone> {
+        earlier.iter().rev().find_map(|effect| {
+            let text = format!("{effect:?}");
+            let named = text.contains(&format!("TagKey({:?})", tag.as_str()));
+            if !named {
+                return None;
+            }
+            if let Some(look) = effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+                && look.tag == *tag
+            {
+                return Some(Zone::Library);
+            }
+            if text.contains("ExileTopOfLibraryEffect") || text.contains("ExileEffect") {
+                return Some(Zone::Exile);
+            }
+            None
+        })
+    };
+    // The collection may have been built inside an earlier branch body
+    // ("If you do, exile the top four cards ... Put the rest into your
+    // hand"); walk every earlier instruction in execution order.
+    fn flatten(effect: &crate::effect::Effect, out: &mut Vec<crate::effect::Effect>) {
+        out.push(effect.clone());
+        effect.visit_child_effects(&mut |child| flatten(child, out));
+    }
+    let mut ordered = Vec::new();
+    for effect in earlier {
+        flatten(effect, &mut ordered);
+    }
+    for inner in ordered.iter().rev() {
+        if let Some(exile_top) = inner.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()
+            && let Some(tag) = exile_top.moved_tags.first()
+        {
+            return Some(tagged_collection(tag, Zone::Exile));
+        }
+        if let Some(look) = inner.downcast_ref::<crate::effects::LookAtTopCardsEffect>() {
+            return Some(tagged_collection(&look.tag, Zone::Library));
+        }
+        // "Return two cards exiled with this Saga ... and put the rest ...":
+        // a counted pick straight out of a tagged set.
+        if let Some(ChooseSpec::WithCount(picked, _) | ChooseSpec::WithCountValue(picked, _, _)) =
+            inner.target_spec()
+            && let ChooseSpec::Tagged(tag) = picked.base()
+        {
+            let zone = if tag.as_str() == ironsmith_core::SOURCE_EXILED_TAG {
+                Some(Zone::Exile)
+            } else {
+                zone_of_collection(tag)
+            };
+            if let Some(zone) = zone {
+                return Some(tagged_collection(tag, zone));
+            }
+        }
+        if let Some(choose) = inner.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
+            if let Some(member) = choose.filter.tagged_constraints.iter().find(|constraint| {
+                constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            }) {
+                let zone = choose
+                    .filter
+                    .zone
+                    .or_else(|| zone_of_collection(&member.tag))
+                    .or(choose.zone)?;
+                return Some(tagged_collection(&member.tag, zone));
+            }
+            let mut filter = choose.filter.clone();
+            if filter.zone.is_none() {
+                filter.zone = choose.zone;
+            }
+            filter.tagged_constraints.push(TaggedObjectConstraint {
+                tag: choose.tag.clone(),
+                relation: TaggedOpbjectRelation::IsNotTaggedObject,
+            });
+            let zone = filter.zone.unwrap_or(Zone::Battlefield);
+            return Some(crate::effect::Effect::new(
+                crate::effects::TagMatchingObjectsEffect::new(filter, REST_TAG).in_zone(zone),
+            ));
+        }
+    }
+    None
+}
+
+/// "Sacrifice the rest" names every remaining object, not one of them.
+fn rest_consumer_for_each(effect: &crate::effect::Effect) -> Option<crate::effect::Effect> {
+    let sacrifice = effect.downcast_ref::<crate::effects::SacrificeTargetEffect>()?;
+    let ChooseSpec::Object(filter) = sacrifice.target.base() else {
+        return None;
+    };
+    if !filter
+        .tagged_constraints
+        .iter()
+        .any(|constraint| constraint.tag.as_str() == REST_TAG)
+    {
+        return None;
+    }
+    let mut per_object = sacrifice.clone();
+    per_object.target = ChooseSpec::Iterated;
+    Some(crate::effect::Effect::for_each_tagged(
+        REST_TAG,
+        vec![crate::effect::Effect::new(per_object)],
+    ))
+}
+
+/// Returns `None` when nothing was bound, `Some(None)` when the producer
+/// went into a nested body, and `Some(Some(index))` when it was inserted
+/// into this list at `index`. `outer_earlier` holds the instructions that
+/// run before this list starts.
+fn bind_rest_complement_in_list(
+    effects: &mut Vec<crate::effect::Effect>,
+    outer_earlier: &[crate::effect::Effect],
+) -> Option<Option<usize>> {
+    let consumer_index = effects
+        .iter()
+        .position(|effect| debug_mentions_rest_tag(effect).1)?;
+    // A modal spell's modes are separate instruction lists.
+    if let Some(modal) = effects[consumer_index].downcast_ref::<crate::effects::ChooseModeEffect>() {
+        let mut modal = modal.clone();
+        let mut earlier = outer_earlier.to_vec();
+        earlier.extend(effects[..consumer_index].iter().cloned());
+        let mut bound = false;
+        for mode in &mut modal.modes {
+            if !mode.effects.iter().any(|effect| debug_mentions_rest_tag(effect).1)
+                || mode.effects.iter().any(|effect| debug_mentions_rest_tag(effect).0)
+            {
+                continue;
+            }
+            bound |= bind_rest_complement_in_list(&mut mode.effects, &earlier).is_some();
+        }
+        if !bound {
+            return None;
+        }
+        effects[consumer_index] = crate::effect::Effect::new(modal);
+        return Some(None);
+    }
+    if let Some(sequence) =
+        effects[consumer_index].downcast_ref::<crate::effects::SequenceEffect>()
+    {
+        let mut sequence = sequence.clone();
+        let mut earlier = outer_earlier.to_vec();
+        earlier.extend(effects[..consumer_index].iter().cloned());
+        if bind_rest_complement_in_list(&mut sequence.effects, &earlier).is_some() {
+            effects[consumer_index] = crate::effect::Effect::new(sequence);
+            return Some(None);
+        }
+        return None;
+    }
+    let mut earlier = outer_earlier.to_vec();
+    earlier.extend(effects[..consumer_index].iter().cloned());
+    let mut producer = rest_complement_producer(&earlier)?;
+    exclude_kept_pick_from_rest(&mut effects[..consumer_index], &mut producer);
+    if let Some(for_each) = rest_consumer_for_each(&effects[consumer_index]) {
+        effects[consumer_index] = for_each;
+    }
+    effects.insert(consumer_index, producer);
+    Some(Some(consumer_index))
+}
+
+const REST_KEPT_TAG: &str = "__rest_kept";
+
+/// "Put one of those cards back on top of your library. Exile the rest.": the
+/// picked card stays in the collection's zone, so "the rest" must also leave
+/// out what the pick moved. Tag that pick and exclude it.
+fn exclude_kept_pick_from_rest(
+    earlier: &mut [crate::effect::Effect],
+    producer: &mut crate::effect::Effect,
+) {
+    use crate::filter::{TaggedObjectConstraint, TaggedOpbjectRelation};
+    let Some(tag_matching) = producer.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()
+    else {
+        return;
+    };
+    let Some(zone) = tag_matching.zone else {
+        return;
+    };
+    let Some(collection) = tag_matching
+        .filter
+        .tagged_constraints
+        .iter()
+        .find(|constraint| constraint.relation == TaggedOpbjectRelation::IsTaggedObject)
+        .map(|constraint| constraint.tag.clone())
+    else {
+        return;
+    };
+    let is_kept_pick = |effect: &crate::effect::Effect| {
+        effect
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            .is_some_and(|mv| {
+                mv.zone == zone
+                    && matches!(
+                        mv.target.base(),
+                        ChooseSpec::Tagged(tag) if *tag == collection
+                    )
+            })
+    };
+    let tag_pick = |effect: &crate::effect::Effect| -> Option<crate::effect::Effect> {
+        if is_kept_pick(effect) {
+            return Some(effect.clone().tag(REST_KEPT_TAG));
+        }
+        let may = effect.downcast_ref::<crate::effects::MayEffect<crate::effect::Effect>>()?;
+        let index = may.effects.iter().position(|inner| is_kept_pick(inner))?;
+        let mut may = may.clone();
+        may.effects[index] = may.effects[index].clone().tag(REST_KEPT_TAG);
+        Some(crate::effect::Effect::new(may))
+    };
+    let Some((index, tagged)) = earlier
+        .iter()
+        .enumerate()
+        .rev()
+        .find_map(|(index, effect)| tag_pick(effect).map(|tagged| (index, tagged)))
+    else {
+        return;
+    };
+    earlier[index] = tagged;
+    let mut tag_matching = tag_matching.clone();
+    tag_matching.filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: REST_KEPT_TAG.into(),
+        relation: TaggedOpbjectRelation::IsNotTaggedObject,
+    });
+    *producer = crate::effect::Effect::new(tag_matching);
+}
+
+/// Run a whole-program lowering pass over the programs of delayed triggers
+/// an instruction list schedules ("at the beginning of the next end step,
+/// ... the rest"), which are separate resolutions.
+fn for_each_scheduled_delayed_program(
+    effects: &mut [crate::effect::Effect],
+    pass: &mut dyn FnMut(&mut crate::resolution::ResolutionProgram),
+) {
+    for effect in effects.iter_mut() {
+        if let Some(schedule) =
+            effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+        {
+            let mut schedule = schedule.clone();
+            let mut program = crate::resolution::ResolutionProgram::from_effects(std::mem::take(
+                &mut schedule.effects,
+            ));
+            pass(&mut program);
+            schedule.effects = program
+                .segments
+                .into_iter()
+                .flat_map(|segment| segment.default_effects)
+                .collect();
+            *effect = crate::effect::Effect::new(schedule);
+        } else if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+            let mut sequence = sequence.clone();
+            for_each_scheduled_delayed_program(&mut sequence.effects, pass);
+            *effect = crate::effect::Effect::new(sequence);
+        }
+    }
+}
+
+/// "Return target card ... Put up to one other target card ... Exile this.
+/// Adamant — If ..., instead return those cards to your hand and exile this":
+/// a replacement that restates the spell's final instruction replaces the
+/// whole instruction list, not just that last instruction, and "those cards"
+/// are the spell's object targets (CR 614.1a, 608.2c).
+fn merge_whole_spell_instead_replacement(program: &mut crate::resolution::ResolutionProgram) {
+    let segment_count = program.segments.len();
+    if segment_count < 2 {
+        return;
+    }
+    let (earlier, last) = program.segments.split_at_mut(segment_count - 1);
+    let last = &mut last[0];
+    if last.self_replacements.len() != 1
+        || earlier
+            .iter()
+            .any(|segment| !segment.self_replacements.is_empty())
+    {
+        return;
+    }
+    let Some(final_default) = last.default_effects.last() else {
+        return;
+    };
+    let final_debug = format!("{final_default:?}");
+    fn flatten(effect: &crate::effect::Effect, out: &mut Vec<crate::effect::Effect>) {
+        out.push(effect.clone());
+        effect.visit_child_effects(&mut |child| flatten(child, out));
+    }
+    let mut replacement_nodes = Vec::new();
+    for effect in &last.self_replacements[0].replacement_effects {
+        flatten(effect, &mut replacement_nodes);
+    }
+    if !replacement_nodes
+        .iter()
+        .any(|effect| format!("{effect:?}") == final_debug)
+    {
+        return;
+    }
+    // The spell's own object targets, in order.
+    let mut target_specs: Vec<ChooseSpec> = Vec::new();
+    for effect in earlier.iter().flat_map(|segment| segment.default_effects.iter()) {
+        let inner = effect
+            .downcast_ref::<crate::effects::TaggedEffect>()
+            .map(|tagged| tagged.effect.as_ref())
+            .unwrap_or(effect);
+        let spec = if let Some(ret) =
+            inner.downcast_ref::<crate::effects::ReturnFromGraveyardToHandEffect>()
+        {
+            Some(ret.target.clone())
+        } else {
+            inner
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
+                .map(|mv| mv.target.clone())
+        };
+        if let Some(spec) = spec
+            && spec.is_target()
+        {
+            target_specs.push(spec);
+        }
+    }
+    if target_specs.is_empty() {
+        return;
+    }
+    fn names_those_targets(spec: &ChooseSpec) -> bool {
+        matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == ironsmith_core::SOURCE_EXILED_TAG)
+            && matches!(
+                spec.source_reference_surface(),
+                Some(crate::target::SourceReferenceSurface::ThisPermanentType(text))
+                    if text == "those cards"
+            )
+    }
+    fn rebind(effect: &crate::effect::Effect, targets: &[ChooseSpec]) -> Vec<crate::effect::Effect> {
+        if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+            let mut sequence = sequence.clone();
+            sequence.effects = sequence
+                .effects
+                .iter()
+                .flat_map(|child| rebind(child, targets))
+                .collect();
+            return vec![crate::effect::Effect::new(sequence)];
+        }
+        let inner = effect
+            .downcast_ref::<crate::effects::TaggedEffect>()
+            .map(|tagged| tagged.effect.as_ref())
+            .unwrap_or(effect);
+        if let Some(ret) = inner.downcast_ref::<crate::effects::ReturnToHandEffect>()
+            && names_those_targets(&ret.spec)
+        {
+            return targets
+                .iter()
+                .map(|target| {
+                    crate::effect::Effect::new(
+                        crate::effects::ReturnFromGraveyardToHandEffect::new(target.clone(), false),
+                    )
+                })
+                .collect();
+        }
+        vec![effect.clone()]
+    }
+    let branch = &mut last.self_replacements[0];
+    branch.replacement_effects = branch
+        .replacement_effects
+        .iter()
+        .flat_map(|effect| rebind(effect, &target_specs))
+        .collect();
+    let mut merged: Vec<crate::effect::Effect> = earlier
+        .iter_mut()
+        .flat_map(|segment| std::mem::take(&mut segment.default_effects))
+        .collect();
+    merged.append(&mut last.default_effects);
+    last.default_effects = merged;
+    let last = program.segments.pop().expect("last segment");
+    program.segments = vec![last];
+}
+
+/// Rebuild an effect tree bottom-up through the common instruction
+/// containers, letting `f` replace any node.
+fn map_effect_tree(
+    effect: &crate::effect::Effect,
+    f: &mut dyn FnMut(&crate::effect::Effect) -> Option<crate::effect::Effect>,
+) -> crate::effect::Effect {
+    macro_rules! remap {
+        ($type:ty, $($field:ident),+) => {
+            if let Some(container) = effect.downcast_ref::<$type>() {
+                let mut container = container.clone();
+                $(container.$field = container.$field.iter().map(|child| map_effect_tree(child, f)).collect();)+
+                let rebuilt = crate::effect::Effect::new(container);
+                return f(&rebuilt).unwrap_or(rebuilt);
+            }
+        };
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        let mut tagged = tagged.clone();
+        tagged.effect = Box::new(map_effect_tree(&tagged.effect, f));
+        let rebuilt = crate::effect::Effect::new(tagged);
+        return f(&rebuilt).unwrap_or(rebuilt);
+    }
+    if let Some(with_id) = effect.as_with_id() {
+        let rebuilt = crate::effect::Effect::with_id(with_id.id.0, map_effect_tree(&with_id.effect, f));
+        return f(&rebuilt).unwrap_or(rebuilt);
+    }
+    remap!(crate::effects::SequenceEffect, effects);
+    remap!(crate::effects::MayEffect<crate::effect::Effect>, effects);
+    remap!(crate::effects::IfEffect, then, else_);
+    remap!(crate::effects::ConditionalEffect, if_true, if_false);
+    remap!(crate::effects::ScheduleDelayedTriggerEffect, effects);
+    remap!(crate::effects::ReflexiveTriggerEffect, effects);
+    f(effect).unwrap_or_else(|| effect.clone())
+}
+
+const ATTACHED_BY_THIS_TAG: &str = "__attached_by_this_effect";
+
+/// "You may attach an Equipment you control to that creature. If you do,
+/// unattach it at the beginning of the next end step": "it" is the Equipment
+/// just attached, not the creature it was attached to. Record the attached
+/// object with an explicit choice and point the unattach at it.
+fn bind_unattach_to_attached_object(program: &mut crate::resolution::ResolutionProgram) {
+    fn host_tag(spec: &ChooseSpec) -> Option<TagKey> {
+        match spec.base() {
+            ChooseSpec::Tagged(tag) => Some(tag.clone()),
+            _ => None,
+        }
+    }
+    // Find an attach whose objects are an untagged choice and whose
+    // destination is a tagged object, and an unattach of that tagged object.
+    let mut attach_host: Option<TagKey> = None;
+    let mut unattach_hosts: Vec<TagKey> = Vec::new();
+    fn scan(effect: &crate::effect::Effect, attach: &mut Option<TagKey>, unattach: &mut Vec<TagKey>) {
+        if let Some(attach_effect) = effect.downcast_ref::<crate::effects::AttachObjectsEffect>()
+            && matches!(attach_effect.objects.base(), ChooseSpec::Object(filter) if filter.tagged_constraints.is_empty())
+            && let Some(tag) = host_tag(&attach_effect.target)
+        {
+            attach.get_or_insert(tag);
+        }
+        if let Some(unattach_effect) = effect.downcast_ref::<crate::effects::UnattachObjectsEffect>()
+            && let Some(tag) = host_tag(&unattach_effect.objects)
+        {
+            unattach.push(tag);
+        }
+        effect.visit_child_effects(&mut |child| scan(child, attach, unattach));
+    }
+    for segment in &program.segments {
+        for effect in &segment.default_effects {
+            scan(effect, &mut attach_host, &mut unattach_hosts);
+        }
+    }
+    let Some(host) = attach_host else {
+        return;
+    };
+    if !unattach_hosts.contains(&host) {
+        return;
+    }
+    let mut rewrite = |effect: &crate::effect::Effect| -> Option<crate::effect::Effect> {
+        if let Some(attach_effect) = effect.downcast_ref::<crate::effects::AttachObjectsEffect>()
+            && host_tag(&attach_effect.target).as_ref() == Some(&host)
+            && let ChooseSpec::Object(filter) = attach_effect.objects.base()
+        {
+            let choose = crate::effects::ChooseObjectsEffect::new(
+                filter.clone(),
+                attach_effect.objects.count(),
+                crate::target::PlayerFilter::You,
+                ATTACHED_BY_THIS_TAG,
+            );
+            let mut attach_effect = attach_effect.clone();
+            attach_effect.objects = ChooseSpec::Tagged(ATTACHED_BY_THIS_TAG.into())
+                .with_surface_hints([crate::target::ChooseSpecSurfaceHint::SourceReference(
+                    crate::target::SourceReferenceSurface::ThisPermanentType(
+                        "the chosen object".to_string(),
+                    ),
+                )]);
+            return Some(crate::effect::Effect::new(crate::effects::SequenceEffect::new(vec![
+                crate::effect::Effect::new(choose),
+                crate::effect::Effect::new(attach_effect),
+            ])));
+        }
+        if let Some(unattach_effect) = effect.downcast_ref::<crate::effects::UnattachObjectsEffect>()
+            && host_tag(&unattach_effect.objects).as_ref() == Some(&host)
+        {
+            return Some(crate::effect::Effect::new(crate::effects::UnattachObjectsEffect::new(
+                ChooseSpec::Tagged(ATTACHED_BY_THIS_TAG.into()).with_surface_hints([
+                    crate::target::ChooseSpecSurfaceHint::SourceReference(
+                        crate::target::SourceReferenceSurface::ThisPermanentType("it".to_string()),
+                    ),
+                ]),
+            )));
+        }
+        None
+    };
+    for segment in &mut program.segments {
+        segment.default_effects = segment
+            .default_effects
+            .iter()
+            .map(|effect| map_effect_tree(effect, &mut rewrite))
+            .collect();
+    }
+}
+
+/// "You may tap or untap target creature. Then that creature's controller
+/// may pay ...": the target is announced whether or not the optional action
+/// is taken, so a later "that creature" must not depend on the optional
+/// action having tagged it. Hoist the May's leading target declaration out of
+/// the May, tagged with the name the later reference uses.
+fn hoist_optional_target_declaration(program: &mut crate::resolution::ResolutionProgram) {
+    for segment_index in 0..program.segments.len() {
+        let mut index = 0;
+        while index < program.segments[segment_index].default_effects.len() {
+            let effect = program.segments[segment_index].default_effects[index].clone();
+            // "Target enchantment deals damage ... to its controller unless that
+            // player sacrifices it": the payer and the payment name the target,
+            // which the wrapped instructions would only tag after the payment
+            // decision. Declare the tagged target before the unless-wrapper.
+            if let Some(unless) =
+                effect.downcast_ref::<crate::effects::UnlessPaysEffect<crate::effect::Effect>>()
+                && let Some(first) = unless.effects.first()
+                && let Some(tagged) = first.downcast_ref::<crate::effects::TaggedEffect>()
+                && tagged
+                    .effect
+                    .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                    .is_some()
+            {
+                let needle = format!("TagKey({:?})", tagged.tag.as_str());
+                let payment_names_tag = format!("{:?}", unless.player).contains(&needle)
+                    || format!("{:?}", unless.cost).contains(&needle);
+                if payment_names_tag {
+                    let declaration = first.clone();
+                    let mut unless = unless.clone();
+                    unless.effects.remove(0);
+                    let segment = &mut program.segments[segment_index];
+                    segment.default_effects[index] = crate::effect::Effect::new(unless);
+                    segment.default_effects.insert(index, declaration);
+                    index += 2;
+                    continue;
+                }
+            }
+            let Some(may) = effect.downcast_ref::<crate::effects::MayEffect<crate::effect::Effect>>()
+            else {
+                index += 1;
+                continue;
+            };
+            let Some(target_only) = may
+                .effects
+                .first()
+                .and_then(|first| first.downcast_ref::<crate::effects::TargetOnlyEffect>())
+            else {
+                index += 1;
+                continue;
+            };
+            let Some(tag) = may.effects.iter().skip(1).find_map(|inner| {
+                let tagged = inner.downcast_ref::<crate::effects::TaggedEffect>()?;
+                Some(tagged.tag.clone())
+            }) else {
+                index += 1;
+                continue;
+            };
+            // Referenced by an instruction after the May?
+            let needle = format!("TagKey({:?})", tag.as_str());
+            let referenced_later = program
+                .segments
+                .iter()
+                .enumerate()
+                .flat_map(|(seg, segment)| {
+                    segment
+                        .default_effects
+                        .iter()
+                        .enumerate()
+                        .filter(move |(position, _)| {
+                            seg > segment_index || (seg == segment_index && *position > index)
+                        })
+                        .map(|(_, effect)| effect)
+                })
+                .any(|later| format!("{later:?}").contains(&needle));
+            if !referenced_later {
+                index += 1;
+                continue;
+            }
+            let declaration = crate::effect::Effect::new(target_only.clone()).tag(tag);
+            let mut may = may.clone();
+            may.effects.remove(0);
+            let segment = &mut program.segments[segment_index];
+            segment.default_effects[index] = crate::effect::Effect::new(may);
+            segment.default_effects.insert(index, declaration);
+            index += 2;
+        }
+    }
+}
+
+/// "Destroy all Plains. For each land destroyed this way, this deals 1 damage
+/// to that land's controller unless that player pays {2}": one payment
+/// decision per destroyed land, each made by that land's controller, rather
+/// than a single payment by one representative controller. Rewrite
+/// `unless(controller of tagged) { repeat N { damage controller of tagged } }`
+/// into a per-controller loop that repeats the per-object unless for each of
+/// that controller's tagged objects.
+fn distribute_unless_over_tagged_controllers(program: &mut crate::resolution::ResolutionProgram) {
+    use crate::target::PlayerFilter;
+    fn controller_tag(player: &PlayerFilter) -> Option<TagKey> {
+        match player {
+            PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(tag))
+            | PlayerFilter::AliasedControllerOf(crate::filter::ObjectRef::Tagged(tag)) => {
+                Some(tag.clone())
+            }
+            _ => None,
+        }
+    }
+    for segment in &mut program.segments {
+        for effect in segment.default_effects.iter_mut() {
+            let Some(unless) =
+                effect.downcast_ref::<crate::effects::UnlessPaysEffect<crate::effect::Effect>>()
+            else {
+                continue;
+            };
+            let Some(tag) = controller_tag(&unless.player) else {
+                continue;
+            };
+            let [repeat] = unless.effects.as_slice() else {
+                continue;
+            };
+            let Some(repeat) = repeat.downcast_ref::<crate::effects::RepeatEffectsEffect>() else {
+                continue;
+            };
+            let Some(per_object) = repeat
+                .effects
+                .iter()
+                .map(|inner| {
+                    let damage = inner.downcast_ref::<crate::effects::DealDamageEffect>()?;
+                    let ChooseSpec::Player(player) = damage.target.base() else {
+                        return None;
+                    };
+                    (controller_tag(player).as_ref() == Some(&tag)).then(|| {
+                        let mut damage = damage.clone();
+                        damage.target = ChooseSpec::Player(PlayerFilter::IteratedPlayer);
+                        crate::effect::Effect::new(damage)
+                    })
+                })
+                .collect::<Option<Vec<_>>>()
+            else {
+                continue;
+            };
+            let mut per_object_unless = unless.clone();
+            per_object_unless.player = PlayerFilter::IteratedPlayer;
+            per_object_unless.effects = per_object;
+            *effect = crate::effect::Effect::new(crate::effects::ForEachControllerOfTaggedEffect {
+                tag: tag.clone(),
+                effects: vec![crate::effect::Effect::repeat_effects(
+                    crate::effect::Value::TaggedCount,
+                    vec![crate::effect::Effect::new(per_object_unless)],
+                )],
+            });
+        }
+    }
+}
+
+/// "Look at the top five cards of your library. For each card, put that card
+/// into your graveyard unless ...": an unqualified per-card loop right after a
+/// look iterates the looked-at cards, not every object.
+fn bind_bare_for_each_to_looked_cards(effects: &mut [crate::effect::Effect]) {
+    use crate::filter::{TaggedObjectConstraint, TaggedOpbjectRelation};
+    for index in 1..effects.len() {
+        let Some(look) = effects[index - 1].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+        else {
+            continue;
+        };
+        let tag = look.tag.clone();
+        let Some(for_each) = effects[index].downcast_ref::<crate::effects::ForEachObject>() else {
+            continue;
+        };
+        if for_each.filter.zone.is_some() || !for_each.filter.tagged_constraints.is_empty() {
+            continue;
+        }
+        let mut probe = for_each.filter.clone();
+        probe.union_surface = ObjectFilter::default().union_surface;
+        probe.power_reference = ObjectFilter::default().power_reference;
+        probe.toughness_reference = ObjectFilter::default().toughness_reference;
+        if probe != ObjectFilter::default() && !for_each.filter.card_types.is_empty() {
+            continue;
+        }
+        let mut for_each = for_each.clone();
+        for_each.filter.zone = Some(Zone::Library);
+        for_each.filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag,
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        effects[index] = crate::effect::Effect::new(for_each);
+    }
+}
+
+/// "Choose two target creatures ... Their controller chooses one of them":
+/// a choice among targeted permanents looks only on the battlefield, not in
+/// hidden zones (which would route it through hidden-hand choice handling).
+fn restrict_choice_among_targets_to_battlefield(effects: &mut [crate::effect::Effect]) {
+    use crate::filter::TaggedOpbjectRelation;
+    let mut battlefield_target_tags: Vec<TagKey> = Vec::new();
+    for index in 0..effects.len() {
+        if let Some(tagged) = effects[index].downcast_ref::<crate::effects::TaggedEffect>()
+            && let Some(target_only) = tagged
+                .effect
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+            && let ChooseSpec::Object(filter) = target_only.target.base()
+            && filter.zone == Some(Zone::Battlefield)
+        {
+            battlefield_target_tags.push(tagged.tag.clone());
+            continue;
+        }
+        let Some(choose) = effects[index].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        else {
+            continue;
+        };
+        if choose.additional_zones.is_empty()
+            || !choose.filter.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                    && battlefield_target_tags.contains(&constraint.tag)
+            })
+        {
+            continue;
+        }
+        let mut choose = choose.clone();
+        choose.zone = Some(Zone::Battlefield);
+        choose.additional_zones.clear();
+        effects[index] = crate::effect::Effect::new(choose);
+    }
+}
+
+/// Card-level dataflow repairs applied to every resolution program.
+fn finalize_program_references(program: &mut crate::resolution::ResolutionProgram) {
+    let mut pass = |program: &mut crate::resolution::ResolutionProgram| {
+        // Consecutive segments resolve as one instruction list.
+        let mut flat: Vec<crate::effect::Effect> = Vec::new();
+        let mut lengths = Vec::new();
+        for segment in &mut program.segments {
+            lengths.push(segment.default_effects.len());
+            flat.append(&mut segment.default_effects);
+        }
+        bind_bare_for_each_to_looked_cards(&mut flat);
+        restrict_choice_among_targets_to_battlefield(&mut flat);
+        let mut rest = flat.into_iter();
+        for (segment, length) in program.segments.iter_mut().zip(lengths) {
+            segment.default_effects = rest.by_ref().take(length).collect();
+        }
+        crate::compile_support::link_unproduced_result_references_in_program(program);
+        bind_unproduced_rest_complement(program);
+    };
+    for segment in &mut program.segments {
+        for_each_scheduled_delayed_program(&mut segment.default_effects, &mut pass);
+    }
+    pass(program);
+}
+
+/// The same repairs for a bare instruction list (an opening-hand action's
+/// scheduled consequence).
+pub(crate) fn finalize_effect_list_references(effects: Vec<crate::effect::Effect>) -> Vec<crate::effect::Effect> {
+    let mut program = crate::resolution::ResolutionProgram::from_effects(effects);
+    finalize_program_references(&mut program);
+    program
+        .segments
+        .into_iter()
+        .flat_map(|segment| segment.default_effects)
+        .collect()
+}
+
+/// "Put the rest ...", "destroy the rest", "exile the rest": a consumer of the
+/// complement tag with no producer anywhere in the program would silently act
+/// on nothing. Tag the complement of the collection it was carved from
+/// immediately before it.
+fn bind_unproduced_rest_complement(program: &mut crate::resolution::ResolutionProgram) {
+    let mut produces = false;
+    let mut consumes = false;
+    for segment in &program.segments {
+        for effect in segment.default_effects.iter().chain(
+            segment
+                .self_replacements
+                .iter()
+                .flat_map(|branch| branch.replacement_effects.iter()),
+        ) {
+            let (produced, consumed) = debug_mentions_rest_tag(effect);
+            produces |= produced;
+            consumes |= consumed;
+        }
+    }
+    if produces || !consumes {
+        return;
+    }
+    let mut flat: Vec<crate::effect::Effect> = Vec::new();
+    let mut lengths = Vec::new();
+    for segment in &mut program.segments {
+        lengths.push(segment.default_effects.len());
+        flat.append(&mut segment.default_effects);
+    }
+    let bound = bind_rest_complement_in_list(&mut flat, &[]);
+    // The producer sits right before its consumer, inside the consumer's
+    // segment.
+    if let Some(Some(index)) = bound {
+        let mut start = 0;
+        for length in lengths.iter_mut() {
+            if index < start + *length {
+                *length += 1;
+                break;
+            }
+            start += *length;
+        }
+    }
+    let mut rest = flat.into_iter();
+    for (segment, length) in program.segments.iter_mut().zip(lengths) {
+        segment.default_effects = rest.by_ref().take(length).collect();
+    }
+    if bound.is_some() {
+        return;
+    }
+    for segment in &mut program.segments {
+        for branch in &mut segment.self_replacements {
+            if bind_rest_complement_in_list(&mut branch.replacement_effects, &[]).is_some() {
+                return;
+            }
+        }
+    }
 }
 
 fn is_runtime_damage_aggregate_member(effect: &crate::effect::Effect) -> bool {

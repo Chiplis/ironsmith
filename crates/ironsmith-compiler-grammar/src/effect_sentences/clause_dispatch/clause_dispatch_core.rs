@@ -7,6 +7,78 @@ use crate::recognition::ParseOutcome;
 #[path = "clause_dispatch_core/clause_readings.rs"]
 mod clause_readings;
 
+/// "Each player with exactly 13 life loses the game" (Triskaidekaphobia): the
+/// life qualifier gates the action for each iterated player.
+fn parse_each_player_with_life_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let word_positions: Vec<usize> = tokens
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.as_word().is_some())
+        .map(|(index, _)| index)
+        .collect();
+    let words: Vec<&str> = word_positions
+        .iter()
+        .map(|&index| tokens[index].parser_text())
+        .collect();
+    // The each-player fanout has already restated the subject as "that
+    // player" when it reaches a clause.
+    let (iterates, qualifier) = match words.as_slice() {
+        ["each", "player", "with", qualifier @ ..] => (true, qualifier),
+        ["that", "player", "with", qualifier @ ..] => (false, qualifier),
+        _ => return Ok(None),
+    };
+    let (operator, amount, used) = match qualifier {
+        ["exactly", amount, "life", ..] => {
+            (crate::effect::ValueComparisonOperator::Equal, *amount, 3)
+        }
+        [amount, "or", "less" | "fewer", "life", ..] => {
+            (crate::effect::ValueComparisonOperator::LessThanOrEqual, *amount, 4)
+        }
+        [amount, "or", "more", "life", ..] => {
+            (crate::effect::ValueComparisonOperator::GreaterThanOrEqual, *amount, 4)
+        }
+        _ => return Ok(None),
+    };
+    let Some(amount) = crate::util::parse_number_word_u32(amount)
+        .or_else(|| crate::util::decimal_count(amount))
+    else {
+        return Ok(None);
+    };
+    let rest_word = 3 + used;
+    let Some(&rest_start) = word_positions.get(rest_word) else {
+        return Ok(None);
+    };
+    // Each iterated player is "that player" of the gated action.
+    let mut rebuilt = vec![
+        OwnedLexToken::synthetic_word("that"),
+        OwnedLexToken::synthetic_word("player"),
+    ];
+    rebuilt.extend_from_slice(&tokens[rest_start..]);
+    let parsed = parse_effect_clause_unstacked(&rebuilt)?;
+    let predicate = crate::cards::builders::PredicateAst::ValueComparison {
+        left: crate::effect::Value::LifeTotal(crate::target::PlayerFilter::IteratedPlayer),
+        operator,
+        right: crate::effect::Value::Fixed(amount as i32),
+    };
+    let gate = |effects: Vec<EffectAst>| {
+        vec![EffectAst::Conditionals(
+            crate::cards::builders::ConditionalEffectAst::Conditional {
+                predicate: predicate.clone(),
+                if_true: effects,
+                if_false: Vec::new(),
+            },
+        )]
+    };
+    let gated = gate(vec![parsed]);
+    Ok(Some(if iterates {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects: gated })
+    } else {
+        gated.into_iter().next().expect("one gated effect")
+    }))
+}
+
 pub(super) fn parse_effect_clause_unstacked(
     tokens: &[OwnedLexToken],
 ) -> Result<EffectAst, CardTextError> {
@@ -26,6 +98,9 @@ pub(super) fn parse_effect_clause_unstacked(
             super::super::search_library::parse_shuffle_object_into_library_sentence(tokens)?
     {
         return Ok(EffectAst::Sequence { effects });
+    }
+    if let Some(effect) = parse_each_player_with_life_clause(tokens)? {
+        return Ok(effect);
     }
     let input = clause_readings::Clause {
         tokens,

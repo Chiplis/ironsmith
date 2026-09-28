@@ -426,7 +426,23 @@ fn parse_generic_mana_transaction(tokens: &[OwnedLexToken]) -> Option<ManaUsageR
         return None;
     }
 
+    // "When you spend this mana to cast a spell or activate an ability, copy
+    // that spell or ability" (Sunken Palace): any spell, or any ability.
+    let mut purpose = ManaPaymentPredicate::Purpose(ManaPaymentPurpose::CastSpell);
     let (filter, additional_predicate) = if crate::word_primitives::sequence_occurs(
+        &words,
+        &["to", "cast", "a", "spell", "or", "activate", "an", "ability"],
+    ) {
+        purpose = ManaPaymentPredicate::AnyOf(vec![
+            ManaPaymentPredicate::Purpose(ManaPaymentPurpose::CastSpell),
+            ManaPaymentPredicate::Purpose(ManaPaymentPurpose::ActivateAbility),
+        ]);
+        (ObjectFilter::default(), None)
+    } else if crate::word_primitives::sequence_occurs(&words, &["to", "cast", "a", "spell", ","])
+        || crate::word_primitives::sequence_occurs(&words, &["to", "cast", "a", "spell", "copy"])
+    {
+        (ObjectFilter::default(), None)
+    } else if crate::word_primitives::sequence_occurs(
         &words,
         &[
             "creature", "spell", "that", "shares", "a", "creature", "type", "with",
@@ -457,10 +473,10 @@ fn parse_generic_mana_transaction(tokens: &[OwnedLexToken]) -> Option<ManaUsageR
         return None;
     };
 
-    let mut predicates = vec![
-        ManaPaymentPredicate::Purpose(ManaPaymentPurpose::CastSpell),
-        ManaPaymentPredicate::SourceMatches(filter),
-    ];
+    let mut predicates = vec![purpose];
+    if filter != ObjectFilter::default() {
+        predicates.push(ManaPaymentPredicate::SourceMatches(filter));
+    }
     predicates.extend(additional_predicate);
     let effect = if crate::word_primitives::sequence_occurs(&words, &["scry", "1"]) {
         EffectAst::subject_verb(
@@ -479,6 +495,8 @@ fn parse_generic_mana_transaction(tokens: &[OwnedLexToken]) -> Option<ManaUsageR
             }),
         )
     } else if crate::word_primitives::sequence_occurs(&words, &["copy", "that", "spell"]) {
+        let may_choose_new_targets =
+            crate::word_primitives::sequence_occurs(&words, &["choose", "new", "targets"]);
         EffectAst::subject_verb_copy_spell(
             TargetAst::Tagged(
                 crate::tag::CompilerReferenceTag::ManaPaidObject.bind(),
@@ -486,7 +504,7 @@ fn parse_generic_mana_transaction(tokens: &[OwnedLexToken]) -> Option<ManaUsageR
             ),
             Value::Fixed(1),
             PlayerAst::You,
-            false,
+            may_choose_new_targets,
             false,
             Vec::new(),
         )

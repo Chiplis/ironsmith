@@ -85,10 +85,7 @@ fn exile_object(
                             game.grant_face_down_exile_source_controller_view(new_id, ctx.source);
                         }
                         if let Some(object) = game.object(new_id) {
-                            ctx.tag_object(
-                                crate::tag::SOURCE_EXILED_TAG,
-                                ObjectSnapshot::from_object(object, game),
-                            );
+                            ctx.tag_source_exiled_result(ObjectSnapshot::from_object(object, game));
                         }
                     }
                 }
@@ -380,10 +377,7 @@ impl EffectExecutor for ExileEffect {
                                             game.grant_face_down_exile_source_controller_view(new_id, ctx.source);
                                         }
                                         if let Some(object) = game.object(new_id) {
-                                            ctx.tag_object(
-                                                crate::tag::SOURCE_EXILED_TAG,
-                                                ObjectSnapshot::from_object(object, game),
-                                            );
+                                            ctx.tag_source_exiled_result(ObjectSnapshot::from_object(object, game));
                                         }
                                     }
                                 }

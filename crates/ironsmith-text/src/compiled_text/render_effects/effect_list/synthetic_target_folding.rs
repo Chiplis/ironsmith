@@ -185,6 +185,8 @@ fn value_references_identity(value: &Value, identity: &SyntheticTargetIdentity<'
         }
         Value::CountPlayers(player)
         | Value::CountPlayersWithCardsInHandAtLeast(player, _)
+        | Value::CountPlayersWithCardsInGraveyardAtLeast(player, _)
+        | Value::CountPlayersWithPoisonCountersAtLeast(player, _)
         | Value::PartySize(player)
         | Value::LifeTotal(player)
         | Value::LifeTotalAsTurnBegan(player)

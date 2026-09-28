@@ -625,6 +625,15 @@ impl GameState {
             return self.turn.turn_number.saturating_add(1);
         }
 
+        // With every player already out of the game (a simultaneous loss),
+        // no future turn exists and the rotation below would never find one.
+        if !self.turn_store.turn_order.iter().any(|candidate| {
+            self.player(*candidate)
+                .is_some_and(|candidate| candidate.is_in_game())
+        }) {
+            return self.turn.turn_number.saturating_add(1);
+        }
+
         // CR 500.7: extra turns don't move the normal rotation.
         let mut simulated_anchor = self.normal_turn_order_anchor();
         let mut simulated_turn_number = self.turn.turn_number;

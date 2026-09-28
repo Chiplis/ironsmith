@@ -6,7 +6,7 @@ use crate::effect::{ChoiceCount, EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::damage::deal_damage::apply_processed_damage_outcome;
 use crate::effects::helpers::{
-    resolve_objects_from_spec, resolve_players_from_spec, resolve_single_object_for_effect,
+    resolve_effect_source_with_lki, resolve_objects_from_spec, resolve_players_from_spec,
     resolve_value,
 };
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -67,15 +67,12 @@ impl DealDistributedDamageEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let damage_source = match resolve_single_object_for_effect(game, ctx, &self.source) {
-            Ok(source) => source,
-            Err(_) => return Ok(EffectOutcome::target_invalid()),
+        let Some((damage_source, tagged_snapshot)) =
+            resolve_effect_source_with_lki(game, ctx, &self.source)
+        else {
+            return Ok(EffectOutcome::target_invalid());
         };
-        let source_snapshot = match self.source.base() {
-            ChooseSpec::Tagged(tag) => ctx.get_tagged(tag).cloned(),
-            _ => None,
-        }
-        .or_else(|| {
+        let source_snapshot = tagged_snapshot.or_else(|| {
             game.object(damage_source)
                 .map(|object| ObjectSnapshot::from_object(object, game))
         });

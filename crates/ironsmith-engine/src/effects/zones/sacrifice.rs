@@ -988,6 +988,21 @@ impl EffectExecutor for SacrificeTargetEffect {
         Ok(outcome)
     }
 
+    // "Target creature's controller sacrifices it": the targeted object is
+    // announced as the spell's target (CR 601.2c) like any other targeted
+    // instruction, so the tag bound by the sacrifice exists at resolution.
+    fn get_target_spec(&self) -> Option<&ChooseSpec> {
+        self.target.is_target().then_some(&self.target)
+    }
+
+    fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
+        self.target.is_target().then(|| self.target.count())
+    }
+
+    fn target_description(&self) -> &'static str {
+        "permanent to sacrifice"
+    }
+
     fn is_sacrifice_source_cost(&self) -> bool {
         matches!(self.target.unhinted(), ChooseSpec::Source)
     }

@@ -61,7 +61,45 @@ pub fn try_parse_document_program(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<DocumentProgramMatch>, CardTextError> {
-    super::procedures::recognize(sentences, sentence_idx)
+    let Some(mut matched) = super::procedures::recognize(sentences, sentence_idx)? else {
+        return Ok(None);
+    };
+    // A "where X is ..." clause in any consumed sentence binds X for the
+    // whole procedure ("look at the top X cards ..., where X is that spell's
+    // mana value. You may cast a spell with mana value less than X from among
+    // them"). Every entry point that reads a procedure gets the same binding.
+    let consumed = sentences
+        .get(sentence_idx..sentence_idx.saturating_add(matched.consumed_sentences))
+        .unwrap_or_default();
+    if let Some(mut where_value) = consumed
+        .iter()
+        .find_map(|sentence| super::dispatch_entry::where_x_value_from_tokens(sentence.lowered()))
+    {
+        // "that spell's mana value" names the antecedent current where the
+        // binding is written. A later statement of the procedure (after the
+        // looked-at cards became "it") must still read that object, so pin it
+        // with a snapshot alias taken before the procedure's first statement.
+        let alias = crate::util::helper_tag_for_tokens(
+            consumed.first().map(|sentence| sentence.lowered()).unwrap_or_default(),
+            "where_x_antecedent",
+        );
+        if rebind_it_reference_in_value(&mut where_value, &alias.key) {
+            matched
+                .effects
+                .insert(0, EffectAst::SnapshotLastObjectTag { into: alias });
+        }
+        let clause = consumed
+            .iter()
+            .flat_map(|sentence| crate::lexer::token_word_refs(sentence.lowered()))
+            .collect::<Vec<_>>()
+            .join(" ");
+        super::dispatch_entry::replace_unbound_x_in_effects_anywhere(
+            &mut matched.effects,
+            &where_value,
+            &clause,
+        )?;
+    }
+    Ok(Some(matched))
 }
 
 #[cfg(test)]
@@ -275,5 +313,42 @@ mod tests {
                 effects: per_player,
             })] if matches!(per_player.as_slice(), [EffectAst::Permissions(PermissionEffectAst::May { .. })])
         ));
+    }
+}
+
+/// Point a value's `it` object references (`that spell's mana value`) at
+/// `alias`. Returns whether anything was rebound.
+fn rebind_it_reference_in_value(value: &mut crate::effect::Value, alias: &crate::tag::TagKey) -> bool {
+    use crate::effect::Value;
+    use crate::target::ChooseSpec;
+    fn rebind_spec(spec: &mut ChooseSpec, alias: &crate::tag::TagKey) -> bool {
+        match spec {
+            ChooseSpec::SurfaceHinted { spec, .. }
+            | ChooseSpec::Target(spec)
+            | ChooseSpec::WithCount(spec, _)
+            | ChooseSpec::WithCountValue(spec, _, _) => rebind_spec(spec, alias),
+            ChooseSpec::Tagged(tag)
+                if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() =>
+            {
+                *tag = alias.clone();
+                true
+            }
+            _ => false,
+        }
+    }
+    match value {
+        Value::SurfaceHinted { value, .. }
+        | Value::Scaled(value, _)
+        | Value::DividedRoundedDown(value, _)
+        | Value::HalfRoundedDown(value) => rebind_it_reference_in_value(value, alias),
+        Value::Add(left, right) | Value::Min(left, right) => {
+            let left = rebind_it_reference_in_value(left, alias);
+            rebind_it_reference_in_value(right, alias) | left
+        }
+        Value::PowerOf(spec)
+        | Value::ToughnessOf(spec)
+        | Value::ManaValueOf(spec)
+        | Value::CountersOn(spec, _) => rebind_spec(spec, alias),
+        _ => false,
     }
 }

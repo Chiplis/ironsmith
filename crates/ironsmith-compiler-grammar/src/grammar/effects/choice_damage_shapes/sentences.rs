@@ -16,6 +16,8 @@ pub struct RevealSelectedHandShape<'a> {
     pub descriptor_tokens: &'a [OwnedLexToken],
     pub your_hand: bool,
     pub random: bool,
+    /// "... from your hand or the top of your library" (Eladamri, Korvecdal).
+    pub or_top_of_library: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -130,8 +132,17 @@ pub fn parse_reveal_selected_hand_tail_shape(
     body: &[OwnedLexToken],
 ) -> Option<RevealSelectedHandShape<'_>> {
     let (suffix_offset, your_hand, rest) = primitives::find_prefix(body, || hand_suffix)?;
-    if !crate::util::trim_edge_punctuation_tokens(rest).is_empty() {
-        return None;
+    let rest = crate::util::trim_edge_punctuation_tokens(rest);
+    let mut or_top_of_library = false;
+    if !rest.is_empty() {
+        let (_, remaining) = primitives::parse_prefix(
+            rest,
+            primitives::phrase(&["or", "the", "top", "of", "your", "library"]),
+        )?;
+        if !your_hand || !crate::util::trim_edge_punctuation_tokens(remaining).is_empty() {
+            return None;
+        }
+        or_top_of_library = true;
     }
     let mut descriptor_tokens = trim_lexed_commas(body.get(..suffix_offset)?);
     let mut random = false;
@@ -148,6 +159,7 @@ pub fn parse_reveal_selected_hand_tail_shape(
         descriptor_tokens,
         your_hand,
         random,
+        or_top_of_library,
     })
 }
 

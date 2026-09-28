@@ -222,13 +222,106 @@ pub fn execute_effect(
     let effect_identity =
         effect.0.as_ref() as *const dyn crate::effects::EffectExecutor as *const () as usize;
     ctx.executing_effect = Some(effect_identity);
-    let execution = effect.0.execute(game, ctx);
+    let mut execution = effect.0.execute(game, ctx);
+    // A singular untargeted "an opponent" with several opponents is chosen
+    // by the controller when the instruction is performed. The innermost
+    // instruction that needed the player reports it before acting; ask once,
+    // bind the answer for the rest of this resolution, and perform it again.
+    if matches!(
+        &execution,
+        Err(ExecutionError::UnresolvableValue(message))
+            if message == crate::effects::helpers::AN_OPPONENT_CHOICE_REQUIRED
+    ) {
+        let candidates = crate::effects::helpers::an_opponent_choice_candidates(game, ctx);
+        let options = candidates
+            .iter()
+            .filter_map(|player_id| {
+                game.player(*player_id)
+                    .map(|player| (player.name.to_string(), *player_id))
+            })
+            .collect::<Vec<_>>();
+        if !options.is_empty() {
+            let chosen = crate::decisions::ask_choose_one(
+                game,
+                &mut ctx.decision_maker,
+                ctx.controller,
+                ctx.source,
+                &options,
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                ctx.executing_effect = previous_effect;
+                return Ok(EffectOutcome::count(0));
+            }
+            if let Some(chosen) = chosen {
+                ctx.set_tagged_players(
+                    crate::tag::TagKey::from(crate::effects::helpers::AN_OPPONENT_CHOICE_TAG),
+                    vec![chosen],
+                );
+                execution = effect.0.execute(game, ctx);
+            }
+        }
+        if let Err(ExecutionError::UnresolvableValue(message)) = &mut execution
+            && message == crate::effects::helpers::AN_OPPONENT_CHOICE_REQUIRED
+        {
+            *message = "Opponent filter requires a targeted player".to_string();
+        }
+    }
+    // "A player of your choice adds {C}" (Victory Chimes): a ChosenPlayer
+    // reference with no earlier choice is chosen by the controller now.
+    if matches!(
+        &execution,
+        Err(ExecutionError::UnresolvableValue(message))
+            if message == "ChosenPlayer requires a previously chosen player"
+    ) && ctx.combat.chosen_player.is_none()
+    {
+        let options = game
+            .players
+            .iter()
+            .filter(|player| player.is_in_game())
+            .map(|player| (player.name.to_string(), player.id))
+            .collect::<Vec<_>>();
+        if !options.is_empty() {
+            let chosen = crate::decisions::ask_choose_one(
+                game,
+                &mut ctx.decision_maker,
+                ctx.controller,
+                ctx.source,
+                &options,
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                ctx.executing_effect = previous_effect;
+                return Ok(EffectOutcome::count(0));
+            }
+            if let Some(chosen) = chosen {
+                ctx.combat.chosen_player = Some(chosen);
+                execution = effect.0.execute(game, ctx);
+            }
+        }
+    }
     ctx.executing_effect = previous_effect;
     let mut outcome = match execution {
         Ok(outcome) => outcome,
+        // A "that player" reference whose choice was made with no player
+        // available (explicitly bound empty) refers to nothing, so the
+        // instruction does nothing (CR 608.2c/609.3).
+        Err(ExecutionError::UnresolvableValue(message))
+            if message
+                .strip_prefix("TaggedPlayer requires a tagged player for '")
+                .and_then(|rest| rest.strip_suffix('\''))
+                .is_some_and(|tag| ctx.get_tagged_players(tag).is_some_and(Vec::is_empty)) =>
+        {
+            EffectOutcome::count(0)
+        }
         // CR 801.10: only the out-of-range portion does nothing. Treat that
         // instruction as resolved so later instructions still happen.
         Err(ExecutionError::OutOfRange) => EffectOutcome::resolved(),
+        // An instruction that refers to an object an earlier instruction
+        // would have produced ("its controller", "that card", "the exiled
+        // card") when that earlier instruction affected nothing — zero
+        // optional targets chosen, a mass destroy that found nothing, nothing
+        // exiled with the source — refers to a nonexistent object and does
+        // nothing (CR 608.2c, 609.3); later instructions still happen.
+        Err(ExecutionError::TagNotFound(_)) => EffectOutcome::target_invalid(),
         Err(error) => return Err(error),
     };
 

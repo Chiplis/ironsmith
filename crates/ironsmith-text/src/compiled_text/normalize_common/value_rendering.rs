@@ -5299,6 +5299,29 @@ fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
                 describe_player_filter(player)
             ),
         },
+        TurnHistoryCount::KeywordActionsPerformed { player, actions } => {
+            let actions = actions
+                .iter()
+                .map(|action| action.infinitive())
+                .collect::<Vec<_>>()
+                .join(" or ");
+            format!(
+                "the number of times {} chose to {actions} this turn",
+                describe_player_filter(player)
+            )
+        }
+        TurnHistoryCount::CountersRemovedFrom {
+            counter_type,
+            filter,
+        } => {
+            let counter = counter_type
+                .map(|kind| format!("{} counters", kind.description()))
+                .unwrap_or_else(|| "counters".to_string());
+            format!(
+                "the number of {counter} removed from {} this turn",
+                describe_for_each_filter(filter)
+            )
+        }
         TurnHistoryCount::Cycled(player) => match player {
             PlayerFilter::You => "the number of cards you've cycled this turn".to_string(),
             _ => format!(
@@ -5917,6 +5940,30 @@ pub(crate) fn describe_value(value: &Value) -> String {
             PlayerFilter::You => "the number of you".to_string(),
             _ => format!("the number of {}", describe_player_filter(filter)),
         },
+        Value::CountPlayersWithCardsInGraveyardAtLeast(filter, minimum) => {
+            let minimum = ironsmith_core::cardinal_word(*minimum)
+                .unwrap_or_else(|| minimum.to_string());
+            match filter {
+                PlayerFilter::Any => {
+                    format!("the number of graveyards with {minimum} or more cards in them")
+                }
+                other => format!(
+                    "the number of graveyards of {} with {minimum} or more cards in them",
+                    describe_player_set_filter(other)
+                ),
+            }
+        }
+        Value::CountPlayersWithPoisonCountersAtLeast(filter, minimum) => {
+            let players = match filter {
+                PlayerFilter::Opponent => "opponents".to_string(),
+                PlayerFilter::Any => "players".to_string(),
+                PlayerFilter::NotYou => "players other than you".to_string(),
+                other => describe_player_set_filter(other),
+            };
+            let minimum = ironsmith_core::cardinal_word(*minimum)
+                .unwrap_or_else(|| minimum.to_string());
+            format!("the number of {players} who have {minimum} or more poison counters")
+        }
         Value::CountPlayersWithCardsInHandAtLeast(filter, minimum) => {
             let players = match filter {
                 PlayerFilter::Opponent => "your opponents".to_string(),

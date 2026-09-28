@@ -1625,6 +1625,39 @@ pub(crate) fn resolve_turn_history_count(
             .filter(|event| player.matches_player(event.player, filter_ctx))
             .map(CardsDrawnEvent::amount)
             .sum::<u32>() as i32,
+        TurnHistoryCount::KeywordActionsPerformed { player, actions } => history
+            .projected_records()
+            .filter_map(|record| record.event.downcast::<KeywordActionEvent>())
+            .filter(|event| {
+                actions.contains(&event.action) && player.matches_player(event.player, filter_ctx)
+            })
+            .count() as i32,
+        TurnHistoryCount::CountersRemovedFrom {
+            counter_type,
+            filter,
+        } => {
+            let mut historical_filter = filter.clone();
+            historical_filter.zone = None;
+            history
+                .projected_records()
+                .filter_map(|record| {
+                    let event = record
+                        .event
+                        .downcast::<crate::events::MarkersChangedEvent>()?;
+                    let counter = event.marker.as_counter()?;
+                    if !event.is_removed()
+                        || event.object().is_none()
+                        || counter_type.is_some_and(|kind| kind != counter)
+                    {
+                        return None;
+                    }
+                    let snapshot = record.object_snapshot.as_ref()?;
+                    historical_filter
+                        .matches_snapshot(snapshot, filter_ctx, game)
+                        .then_some(event.amount)
+                })
+                .sum::<u32>() as i32
+        }
         TurnHistoryCount::Cycled(player) => {
             let mut seen = HashSet::new();
             for record in history.projected_records() {

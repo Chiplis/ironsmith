@@ -5152,6 +5152,12 @@ pub fn parse_if_you_would_draw_instead_effects_line(
 pub fn parse_draw_extra_cards_replacement_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    // The exact "If you would draw a card, draw two cards instead." line has
+    // its own static (Thought Reflection); claiming it here too makes the
+    // registry reject the line as ambiguous.
+    if is_draw_replacement_double_line_lexed(tokens) {
+        return Ok(None);
+    }
     let Some(fact) = late_static_facts::parse_draw_extra_cards_replacement_tokens(tokens) else {
         return Ok(None);
     };

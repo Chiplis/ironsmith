@@ -44,8 +44,13 @@ fn parse_activate_only_sentence_details_lexed(
         return None;
     }
 
-    let timing = parse_activate_only_timing_lexed(tokens).unwrap_or(*current_timing);
-    let condition = parse_activation_condition_lexed(tokens)
+    // The restriction-fact reading splits "only if X and only as a sorcery"
+    // into every stated restriction (CR 602.5b).
+    let parsed =
+        crate::grammar::restriction_facts::parse_activation_restriction_surface_tokens(tokens);
+    let timing = parsed.timing.unwrap_or(*current_timing);
+    let condition = parsed
+        .condition
         .and_then(|condition| strip_once_per_turn_condition_redundancy(condition, &timing));
     let normalized_restriction = normalize_activate_only_restriction(tokens, &timing);
     let once_per_turn_after_other_restrictions = timing == ActivationTiming::OncePerTurn
@@ -123,6 +128,20 @@ fn parse_activated_sentence_modifier_lexed(
     }
 
     if is_any_player_may_activate_sentence_lexed(tokens) {
+        // "Any player may activate this ability but only during any upkeep
+        // step": the permission stays authored text, the window is typed.
+        let parsed =
+            crate::grammar::restriction_facts::parse_activation_restriction_surface_tokens(tokens);
+        if parsed.timing.is_some() || parsed.condition.is_some() {
+            return Some(ActivatedSentenceModifier::ActivateOnly(
+                ActivateOnlySentenceDetails {
+                    timing: parsed.timing.unwrap_or(*current_timing),
+                    condition: parsed.condition,
+                    normalized_restriction: Some(joined_activation_clause_text(tokens)),
+                    once_per_turn_after_other_restrictions: false,
+                },
+            ));
+        }
         return Some(ActivatedSentenceModifier::AdditionalRestriction(
             joined_activation_clause_text(tokens),
         ));

@@ -389,6 +389,15 @@ pub fn parse_get_modifier_values_with_tail(
     power: Value,
     toughness: Value,
 ) -> Result<(Value, Value, Until, Option<PredicateAst>), CardTextError> {
+    parse_get_modifier_values_with_tail_for_subject(modifier_tokens, power, toughness, false)
+}
+
+pub fn parse_get_modifier_values_with_tail_for_subject(
+    modifier_tokens: &[OwnedLexToken],
+    power: Value,
+    toughness: Value,
+    subject_is_target: bool,
+) -> Result<(Value, Value, Until, Option<PredicateAst>), CardTextError> {
     let clause = LexedClause::new(modifier_tokens).text();
     let mut out_power = power;
     let mut out_toughness = toughness;
@@ -440,7 +449,7 @@ pub fn parse_get_modifier_values_with_tail(
     let x_value =
         crate::grammar::effects::sentence_predicate_shapes::parse_where_x_value_shape_tokens(
             binding_tokens,
-            false,
+            subject_is_target,
         )
         .and_then(super::dispatch_inner::lower_where_x_shape)
         .map(|(_, value)| value)

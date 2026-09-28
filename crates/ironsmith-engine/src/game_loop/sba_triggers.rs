@@ -2122,8 +2122,26 @@ pub(super) fn triggered_to_stack_entry_with_effects(
     if let Some(snapshot) = source_snapshot {
         entry = entry.with_source_snapshot(snapshot);
     }
+    // A spell-cast trigger's X is the triggering spell's announced X
+    // ("whenever you cast a spell with {X} in its mana cost, ... X ...").
+    let triggering_spell_x = trigger
+        .triggering_event
+        .downcast::<crate::events::spells::SpellCastEvent>()
+        .and_then(|cast| {
+            game.object(cast.spell)
+                .and_then(|spell| spell.x_value)
+                .or_else(|| {
+                    game.stack
+                        .iter()
+                        .find(|stack_entry| stack_entry.object_id == cast.spell)
+                        .and_then(|stack_entry| stack_entry.x_value)
+                })
+                .or_else(|| cast.snapshot.as_ref().and_then(|snapshot| snapshot.x_value))
+        });
     // If the source was cast with X, propagate that value to the triggered ability.
     if let Some(x) = trigger.x_value {
+        entry = entry.with_x(x);
+    } else if let Some(x) = triggering_spell_x {
         entry = entry.with_x(x);
     } else if let Some(obj) = game.object(trigger.source)
         && let Some(x) = obj.x_value
@@ -2133,6 +2151,21 @@ pub(super) fn triggered_to_stack_entry_with_effects(
         && let Some(x) = snapshot.x_value
     {
         entry = entry.with_x(x);
+    } else if game
+        .object(trigger.source)
+        .and_then(|obj| obj.mana_cost.as_ref().map(|cost| cost.has_x()))
+        .or_else(|| {
+            entry
+                .source_snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.mana_cost.as_ref().map(|cost| cost.has_x()))
+        })
+        .unwrap_or(false)
+    {
+        // CR 107.3m: an object that has X in its mana cost but entered
+        // without being cast had no value chosen for X, so its abilities
+        // that refer to that X use 0.
+        entry = entry.with_x(0);
     }
     // Propagate keyword payment contributions from the source permanent's cast,
     // so triggered abilities can reference "each creature that convoked it", etc.

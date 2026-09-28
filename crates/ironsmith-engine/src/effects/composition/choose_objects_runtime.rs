@@ -159,6 +159,8 @@ fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
         crate::effect::Value::CreaturesDiedThisTurnControlledBy(player)
         | crate::effect::Value::CountPlayers(player)
         | crate::effect::Value::CountPlayersWithCardsInHandAtLeast(player, _)
+        | crate::effect::Value::CountPlayersWithCardsInGraveyardAtLeast(player, _)
+        | crate::effect::Value::CountPlayersWithPoisonCountersAtLeast(player, _)
         | crate::effect::Value::PartySize(player)
         | crate::effect::Value::LifeTotal(player)
         | crate::effect::Value::LifeTotalDifference(player)
@@ -1492,7 +1494,18 @@ pub(crate) fn run_choose_objects(
         }
         // Symmetric across peers; see `game_state::hidden_hand_choices`.
         let hidden_hand_choice = hidden_hand_choice(effect, game, ctx, chooser_id)?;
+        // CR 107.3f: an X that appears
+        // only in the text and isn't defined is chosen by the controller as
+        // the ability resolves. For "reveal X cards" that choice is the
+        // number of objects chosen, so the choice itself binds X.
+        let binds_undefined_x = effect.count.dynamic_x
+            && effect.count_value.is_none()
+            && ctx.x_value.is_none()
+            && !effect.is_search;
         if candidates.is_empty() && !hidden_hand_choice {
+            if binds_undefined_x {
+                ctx.x_value = Some(0);
+            }
             if effect.replace_tagged_objects || is_implicit_object_tag(effect.tag.as_str()) {
                 ctx.clear_object_tag(effect.tag.as_str());
             }
@@ -1507,7 +1520,9 @@ pub(crate) fn run_choose_objects(
         // `rules_min` is the rules' requirement before clamping to the local
         // candidate count, which differs between peers holding placeholders
         // and the owner (see `record_hidden_shortfall_obligations`).
-        let (base_min, max, rules_min) = if effect.count.dynamic_x || effect.count_value.is_some() {
+        let (base_min, max, rules_min) = if binds_undefined_x {
+            (0, candidates.len(), 0)
+        } else if effect.count.dynamic_x || effect.count_value.is_some() {
             let x = if let Some(count_value) = effect.count_value.as_ref() {
                 let previous_iterated_player = ctx.iteration.iterated_player;
                 if previous_iterated_player.is_none()
@@ -1538,6 +1553,9 @@ pub(crate) fn run_choose_objects(
             (min, max, effect.count.min)
         };
         if max == 0 && !hidden_hand_choice {
+            if binds_undefined_x {
+                ctx.x_value = Some(0);
+            }
             let outcome = EffectOutcome::count(0);
             return Ok(if let Some(search_event) = search_event.clone() {
                 outcome.with_event(search_event)
@@ -1705,6 +1723,9 @@ pub(crate) fn run_choose_objects(
         let fill_to_min = !allow_hidden_partial && !hidden_hand_choice;
         let chosen =
             normalize_chosen_objects(chosen, &candidates, min, max, fill_to_min, preserve_order);
+        if binds_undefined_x {
+            ctx.x_value = Some(chosen.len() as u32);
+        }
         if hidden_hand_choice && chosen.iter().any(|id| !candidates.contains(id)) {
             // A known card outside the candidates failed the filter (for a
             // peer, after the chosen card was opened): reject the choice.

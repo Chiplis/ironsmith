@@ -153,6 +153,9 @@ pub fn resolve_non_target_player_filter(
                 Ok(PlayerFilter::ControllerOf(ObjectRef::Target))
             }
         }
+        PlayerAst::SourceOwner => Ok(PlayerFilter::OwnerOf(ObjectRef::tagged(
+            ironsmith_core::SOURCE_OBJECT_TAG,
+        ))),
         PlayerAst::ItsOwner => {
             if let Some(tag) = refs.known_last_object_tag() {
                 Ok(PlayerFilter::OwnerOf(ObjectRef::tagged(tag.clone())))
@@ -1519,6 +1522,19 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
                 TurnHistoryCount::Cycled(player) => {
                     TurnHistoryCount::Cycled(resolve_contextual_player_filter(player, refs)?)
                 }
+                TurnHistoryCount::KeywordActionsPerformed { player, actions } => {
+                    TurnHistoryCount::KeywordActionsPerformed {
+                        player: resolve_contextual_player_filter(player, refs)?,
+                        actions: actions.clone(),
+                    }
+                }
+                TurnHistoryCount::CountersRemovedFrom {
+                    counter_type,
+                    filter,
+                } => TurnHistoryCount::CountersRemovedFrom {
+                    counter_type: *counter_type,
+                    filter: resolve_it_tag(filter, refs)?,
+                },
                 TurnHistoryCount::PlayersLostLife(player) => TurnHistoryCount::PlayersLostLife(
                     resolve_contextual_player_filter(player, refs)?,
                 ),
@@ -1866,7 +1882,13 @@ pub fn resolve_target_spec_with_choices(
     } else {
         Vec::new()
     };
-    match target {
+    // "Exile X target cards from target player's graveyard": the embedded
+    // player target is declared whatever the object count.
+    let mut object_target = target;
+    while let TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, ..) = object_target {
+        object_target = inner;
+    }
+    match object_target {
         TargetAst::Object(filter, _, _) | TargetAst::ObjectOrPlayer(filter, _, _) => {
             append_object_filter_target_player_choices(filter, &mut choices);
         }

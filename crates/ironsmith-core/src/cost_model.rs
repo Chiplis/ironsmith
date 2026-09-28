@@ -1341,6 +1341,11 @@ pub struct OptionalCostsPaid {
     /// could normally cast a sorcery (their main phase, with an empty stack).
     /// This is a timing fact, not an optional cost.
     pub cast_at_sorcery_timing: bool,
+    /// For a one-of optional cost (Waterbend: pay {N}, or tap artifacts and
+    /// creatures to help), the branch the caster announced, by optional-cost
+    /// index. Unlisted one-of costs pay their first branch.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub branch_choices: Vec<(usize, usize)>,
 }
 
 impl OptionalCostsPaid {
@@ -1348,6 +1353,7 @@ impl OptionalCostsPaid {
         Self {
             costs: vec![(OptionalCostRef::from(""), 0); num_optional_costs],
             cast_at_sorcery_timing: false,
+            branch_choices: Vec::new(),
         }
     }
 
@@ -1355,7 +1361,22 @@ impl OptionalCostsPaid {
         Self {
             costs: costs.iter().map(|c| (c.cost_ref(), 0)).collect(),
             cast_at_sorcery_timing: false,
+            branch_choices: Vec::new(),
         }
+    }
+
+    /// The announced branch of the one-of optional cost at `index`.
+    pub fn branch_choice(&self, index: usize) -> Option<usize> {
+        self.branch_choices
+            .iter()
+            .find(|(cost, _)| *cost == index)
+            .map(|(_, branch)| *branch)
+    }
+
+    /// Record the announced branch of the one-of optional cost at `index`.
+    pub fn set_branch_choice(&mut self, index: usize, branch: usize) {
+        self.branch_choices.retain(|(cost, _)| *cost != index);
+        self.branch_choices.push((index, branch));
     }
 
     pub fn any_paid(&self) -> bool {

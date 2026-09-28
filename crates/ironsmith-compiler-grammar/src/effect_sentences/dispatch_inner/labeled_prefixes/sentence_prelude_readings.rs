@@ -409,6 +409,12 @@ fn read_leading_result_prefix(
         let trailing_effects =
             if let Some(copy_effect) = parse_copy_spell_clause(prefix.trailing_tokens)? {
                 vec![copy_effect]
+            } else if sentence_shapes::parse_where_x_sentence_tokens(prefix.trailing_tokens)
+                .is_some()
+            {
+                // The consequence owns its terminal where-X definition; bind
+                // it into the consequence's values and target counts.
+                super::parse_effect_sentence_with_where_x_lexed(prefix.trailing_tokens)?
             } else {
                 super::super::parse_effect_chain_inner_lexed(prefix.trailing_tokens)?
             };

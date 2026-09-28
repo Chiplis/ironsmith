@@ -450,6 +450,29 @@ fn parse_draw_for_each_object_filter_value(
     let Some(filter_tokens) = zone_move_grammar::strip_draw_for_each_prefix(tokens) else {
         return Ok(None);
     };
+    // "draw a card for each graveyard with seven or more cards in it" (The
+    // Master of Lake-town) counts graveyards, not the cards in them.
+    let mut counted_words = vec!["for", "each"];
+    counted_words.extend(crate::lexer::token_word_refs(filter_tokens));
+    if let Some((value, used)) = crate::util::parse_for_each_count_value_words(&counted_words)
+        && used == counted_words.len()
+    {
+        match value {
+            Value::CountPlayersWithCardsInGraveyardAtLeast(..) => {
+                return Ok(Some(
+                    value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+                ));
+            }
+            // "draw a card for each of that spell's colors" (Moonveil Regent).
+            Value::SurfaceHinted {
+                value: ref inner, ..
+            } if matches!(inner.as_ref(), Value::ColorsOf(_)) =>
+            {
+                return Ok(Some(value));
+            }
+            _ => {}
+        }
+    }
     let input = draw_for_each_readings::CountedFilter {
         tokens: filter_tokens,
         read_by_cache: Default::default(),

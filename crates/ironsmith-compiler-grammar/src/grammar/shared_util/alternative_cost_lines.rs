@@ -149,6 +149,11 @@ pub fn parse_if_conditional_alternative_cost(
     let Some((condition_tokens, tail_tokens)) = split_condition_and_cost_tail(tokens) else {
         return Ok(None);
     };
+    // "If you control a Forest, rather than pay this spell's mana cost, you
+    // may have an opponent gain 3 life." (Invigorate): the same alternative
+    // cost with the "rather than" clause leading.
+    let reordered_tail = leading_rather_than_tail(tail_tokens);
+    let tail_tokens = reordered_tail.as_deref().unwrap_or(tail_tokens);
     // "If this spell is ..., you may cast it without paying its mana cost":
     // `it` repeats the condition's own subject, this spell.
     let condition_names_this_spell = permission_shapes::prefix_words(
@@ -204,6 +209,29 @@ pub fn parse_if_conditional_alternative_cost(
     Ok(Some(normalize_trap_method(
         method.with_cast_condition(condition),
     )))
+}
+
+/// Reorder "rather than pay this spell's mana cost, you may <cost>" into
+/// "you may <cost> rather than pay this spell's mana cost".
+fn leading_rather_than_tail(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
+    if !tokens.first().is_some_and(|token| token.is_word("rather")) {
+        return None;
+    }
+    let comma = first_comma(tokens)?;
+    let rather_clause = trim_commas(&tokens[..comma]);
+    if !is_rather_than_spell_cost_tail(
+        &TokenWordView::new(tokens.get(1..comma).unwrap_or_default()).word_refs(),
+    ) {
+        return None;
+    }
+    let permission = trim_edge_punctuation(trim_commas(tokens.get(comma + 1..)?));
+    if !permission_shapes::prefix_words(&TokenWordView::new(&permission).word_refs(), &["you", "may"])
+    {
+        return None;
+    }
+    let mut reordered = permission.to_vec();
+    reordered.extend(rather_clause.iter().cloned());
+    Some(reordered)
 }
 
 fn split_condition_and_cost_tail(

@@ -861,6 +861,38 @@ pub fn apply_priority_response_with_dm(
                     }
                 }
 
+                // CR 602.2b / 601.2f: an {X} in a mana ability's activation
+                // cost (Wizard's Rockets) is announced before the cost is
+                // paid; the ability's effect then refers to that X.
+                let mut announced_x: Option<u32> = None;
+                if let Some(mc) = mana_cost.as_ref()
+                    && mc.has_x()
+                {
+                    let policy = game.mana_spend_policy(player, Some(*source));
+                    let allow_black_life = crate::decision::mana_cost_has_black_symbol(mc)
+                        && game.player_can_pay_black_with_life_for_reason(
+                            player,
+                            Some(*source),
+                            crate::costs::PaymentReason::ActivateManaAbility,
+                        );
+                    let max_x = crate::decision::compute_potential_mana(game, player)
+                        .max_x_for_cost_with_mana_spend_policy_and_black_life(
+                            mc,
+                            &policy,
+                            allow_black_life,
+                        );
+                    let x_ctx =
+                        crate::decisions::context::NumberContext::x_value(player, *source, max_x);
+                    let x = decision_maker.decide_number(game, &x_ctx).min(max_x);
+                    if decision_maker.awaiting_choice() {
+                        return Ok(GameProgress::Continue);
+                    }
+                    announced_x = Some(x);
+                    let locked =
+                        crate::decision::mana_cost_with_locked_x_and_generic_reduction(mc, x, 0);
+                    mana_cost = (!locked.pips().is_empty()).then_some(locked);
+                }
+
                 let mana_ability_provenance =
                     game.provenance_graph_mut()
                         .alloc_root(ProvenanceNodeKind::EffectExecution {
@@ -891,6 +923,7 @@ pub fn apply_priority_response_with_dm(
                     let mut cost_ctx = CostContext::new(*source, player, &mut *decision_maker)
                         .with_reason(crate::costs::PaymentReason::ActivateManaAbility)
                         .with_provenance(mana_ability_provenance);
+                    cost_ctx.x_value = announced_x;
                     let cost_summary =
                         crate::special_actions::pay_total_cost_without_preflight_with_choice(
                             game,
@@ -901,6 +934,9 @@ pub fn apply_priority_response_with_dm(
                             GameLoopError::InvalidState(format!("Failed to pay cost: {e}"))
                         })?;
                     let x_value_from_costs = cost_summary.x_value;
+                    // The effects may refer to objects the costs chose
+                    // ("the exiled creature's mana value", Food Chain).
+                    let cost_tagged_objects = cost_ctx.tagged_objects.clone();
                     drop(cost_ctx);
 
                     drain_pending_trigger_events(game, trigger_queue);
@@ -964,12 +1000,16 @@ pub fn apply_priority_response_with_dm(
                         if let Some(x) = x_value_from_costs {
                             ctx = ctx.with_x(x);
                         }
+                        ctx = ctx.with_tagged_objects(cost_tagged_objects);
                         let mut emitted_events = Vec::new();
 
                         for effect in &effects_to_run {
-                            if let Ok(outcome) = execute_effect(game, effect, &mut ctx) {
-                                emitted_events.extend(outcome.events);
-                            }
+                            let outcome = execute_effect(game, effect, &mut ctx).map_err(|e| {
+                                GameLoopError::InvalidState(format!(
+                                    "mana ability effect failed: {e:?}"
+                                ))
+                            })?;
+                            emitted_events.extend(outcome.events);
                         }
                         queue_triggers_for_events(game, trigger_queue, emitted_events);
                         drain_pending_trigger_events(game, trigger_queue);
@@ -1017,6 +1057,7 @@ pub fn apply_priority_response_with_dm(
                             *ability_index,
                         ),
                         pending_mana_payment: None,
+                        x_value: announced_x,
                     };
                     return prompt_pending_mana_ability_payment(game, state, pending, context);
                 }

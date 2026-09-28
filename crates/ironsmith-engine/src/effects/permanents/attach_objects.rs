@@ -11,7 +11,7 @@ use crate::effects::helpers::{
 };
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use crate::object::AttachmentTarget;
+use crate::object::{AttachmentTarget, AuraAttachmentFilterRuntimeExt as _};
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
 pub use ironsmith_core::AttachObjectsEffect;
@@ -59,6 +59,87 @@ fn resolve_attachment_target(
     match resolved {
         crate::effects::ResolvedTarget::Object(id) => Ok(AttachmentTarget::Object(id)),
         crate::effects::ResolvedTarget::Player(id) => Ok(AttachmentTarget::Player(id)),
+    }
+}
+
+fn choose_spec_names_tag(spec: &ChooseSpec, tag: &crate::tag::TagKey) -> bool {
+    match spec.base() {
+        ChooseSpec::Tagged(spec_tag) => spec_tag == tag,
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag == *tag
+                    && matches!(
+                        constraint.relation,
+                        crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                            | crate::filter::TaggedOpbjectRelation::SameObjectId
+                    )
+            })
+        }
+        _ => false,
+    }
+}
+
+/// The attachment destination for "put/return ... onto the battlefield
+/// attached to X": a tagged battlefield move immediately followed by an
+/// instruction attaching exactly those moved objects to one destination.
+pub(crate) fn entry_attachment_for_move(
+    effect: &crate::effect::Effect,
+    next: Option<&crate::effect::Effect>,
+) -> Option<ChooseSpec> {
+    let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let moves_to_battlefield = tagged
+        .effect
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+        .is_some_and(|move_effect| move_effect.zone == Zone::Battlefield);
+    if !moves_to_battlefield {
+        return None;
+    }
+    let attach = next?.downcast_ref::<AttachObjectsEffect>()?;
+    if attach.individual_targets || !choose_spec_names_tag(&attach.objects, &tagged.tag) {
+        return None;
+    }
+    Some(attach.target.clone())
+}
+
+/// Resolve the destination named by [`entry_attachment_for_move`] before the
+/// objects move. `None` when it no longer exists.
+pub(crate) fn resolve_entry_attachment_target(
+    game: &GameState,
+    spec: &ChooseSpec,
+    ctx: &ExecutionContext,
+) -> Option<AttachmentTarget> {
+    resolve_attachment_target(game, spec, ctx)
+        .ok()
+        .filter(|target| game.attachment_target_exists(*target))
+}
+
+/// Whether an Aura outside the battlefield could enter attached to `target`
+/// (CR 303.4f): its enchant ability allows the destination and protection
+/// doesn't forbid it. When this fails the Aura stays where it is (CR 303.4i).
+pub(crate) fn aura_can_enter_attached_to(
+    game: &GameState,
+    aura_id: crate::ids::ObjectId,
+    controller: crate::ids::PlayerId,
+    target: AttachmentTarget,
+) -> bool {
+    let Some(aura) = game.object(aura_id) else {
+        return false;
+    };
+    let Some(filter) = aura.aura_attach_filter_owned() else {
+        return false;
+    };
+    let filter_ctx = game.filter_context_for(controller, Some(aura_id));
+    if !filter.matches_target(target, &filter_ctx, game) {
+        return false;
+    }
+    match target {
+        AttachmentTarget::Object(target_id) => {
+            target_id != aura_id
+                && !crate::targeting::has_protection_from_source(game, target_id, aura_id)
+        }
+        AttachmentTarget::Player(player) => {
+            !super::player_has_protection_from_object(game, player, aura)
+        }
     }
 }
 

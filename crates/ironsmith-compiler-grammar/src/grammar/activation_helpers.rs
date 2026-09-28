@@ -215,7 +215,53 @@ pub fn parse_any_color_among_span(tokens: &[OwnedLexToken]) -> Option<AnyColorAm
     (!filter_tokens.is_empty()).then_some(AnyColorAmongSpan { filter_tokens })
 }
 
+/// "{U}{U}, {U}{R}, or {R}{R}" / "{B}{B} or {G}{G}": alternatives of one or
+/// more fixed mana symbols each, separated by commas and "or". Returns the
+/// alternatives only when at least one names more than one mana; single-mana
+/// lists stay with [`parse_or_mana_color_choices`].
+pub fn parse_or_mana_symbol_groups(tokens: &[OwnedLexToken]) -> Option<Vec<Vec<ManaSymbol>>> {
+    let mut has_or = false;
+    let mut groups: Vec<Vec<ManaSymbol>> = Vec::new();
+    let mut current: Vec<ManaSymbol> = Vec::new();
+    for token in tokens {
+        if token.is_word("or") || token.is_comma() {
+            has_or |= token.is_word("or");
+            if !current.is_empty() {
+                groups.push(std::mem::take(&mut current));
+            }
+            continue;
+        }
+        if let Some(pip) = leaf::parse_leaf_surface_mana_pip_token(token) {
+            let symbols = pip.into_pip();
+            let [symbol] = symbols.as_slice() else {
+                return None;
+            };
+            if mana_symbol_color(*symbol).is_none() && *symbol != ManaSymbol::Colorless {
+                return None;
+            }
+            current.push(*symbol);
+            continue;
+        }
+        if token.as_word().is_none() {
+            continue;
+        }
+        if token_matches_any_word(token, MANA_CHOICE_TAIL_WORDS) {
+            continue;
+        }
+        return None;
+    }
+    if !current.is_empty() {
+        groups.push(current);
+    }
+    (has_or && groups.len() >= 2 && groups.iter().any(|group| group.len() > 1)).then_some(groups)
+}
+
 pub fn parse_or_mana_color_choices(tokens: &[OwnedLexToken]) -> Option<Vec<Color>> {
+    // Multi-mana alternatives are not a single color choice; collapsing
+    // "{U}{U}, {U}{R}, or {R}{R}" into "{U} or {R}" loses mana.
+    if parse_or_mana_symbol_groups(tokens).is_some() {
+        return None;
+    }
     let mut has_or = false;
     let mut colors = Vec::new();
     for token in tokens {

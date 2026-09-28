@@ -289,6 +289,15 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     } else {
         ObjectFilter::default()
     };
+    // "with total mana value 6 or less" bounds the found set (CR 118.3).
+    if filter.target_set_aggregate_constraint.is_none() {
+        filter.target_set_aggregate_constraint =
+            crate::grammar::shared_util::aggregate_constraints::lift_total_mana_value_choice_constraint(
+                &filter_tokens,
+                &mut filter,
+            )
+            .map(Box::new);
+    }
     filter.distinct_names = distinct_names;
     if let Some(same_name_tag) = same_name_reference
         .as_ref()

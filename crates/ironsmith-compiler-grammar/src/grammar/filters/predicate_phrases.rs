@@ -1663,11 +1663,13 @@ fn parse_triggering_object_had_counter_predicate(tokens: &[OwnedLexToken]) -> Op
             right: Value::Fixed(1),
         });
     }
-    let counter_type = parse_terminal_counter_phrase(counter_clause.tokens())??;
+    // "If it had seven or more verse counters on it": keep the threshold.
+    let parsed = parse_terminal_counter_phrase_shape(counter_clause.tokens())?;
+    let counter_type = parsed.counter_type?;
     Some(PredicateAst::Triggering(
         TriggeringPredicateAst::TriggeringObjectHadCounterAtLeast {
             counter_type,
-            count: 1,
+            count: parsed.count.max(1),
         },
     ))
 }
@@ -2453,6 +2455,16 @@ fn parse_you_control_conjoined_predicate(
     ];
     let relation = parse_control_relation_clauses(tokens, false)?;
     let tail_clause = relation.tail_clause;
+    // "seven or more lands and/or Treefolk" (Tend the Sprigs) is one counted
+    // union, not two control conditions.
+    if tail_clause.tokens().iter().any(|token| token.is_word("and/or"))
+        || tail_clause
+            .tokens()
+            .windows(2)
+            .any(|window| window[0].is_word("and") && window[1].is_word("or"))
+    {
+        return None;
+    }
     let matched = WinnowSequence::new(&atoms).parse_full(tail_clause)?;
     if !is_you_clause(relation.subject_clause) {
         return None;
@@ -2738,6 +2750,36 @@ fn predicate_from_control_condition(
 ) -> PredicateAst {
     if let Some(predicate) = predicate_for_each_global_greatest_power(&control_condition) {
         return predicate;
+    }
+    // "if you control four or fewer lands" (Edge of Autumn, Sheltered
+    // Valley): an upper bound on the count, not "you control a land".
+    let upper_bound = match control_condition.comparison {
+        crate::effect::Comparison::LessThan(count) => {
+            Some((crate::effect::ValueComparisonOperator::LessThan, count))
+        }
+        crate::effect::Comparison::LessThanOrEqual(count) => {
+            Some((crate::effect::ValueComparisonOperator::LessThanOrEqual, count))
+        }
+        _ => None,
+    };
+    if let Some((operator, count)) = upper_bound {
+        let mut filter = control_condition.filter.clone();
+        let controller = filter.controller.clone().or(match control_condition.player {
+            PlayerAst::You => Some(PlayerFilter::You),
+            PlayerAst::Opponent => Some(PlayerFilter::Opponent),
+            _ => control_condition.player_filter.clone(),
+        });
+        if let Some(controller) = controller {
+            filter.controller = Some(controller);
+            if filter.zone.is_none() {
+                filter.zone = Some(Zone::Battlefield);
+            }
+            return PredicateAst::ValueComparison {
+                left: Value::Count(filter),
+                operator,
+                right: Value::Fixed(count),
+            };
+        }
     }
     if let Some(count) = control_condition.exact_count() {
         return PredicateAst::Player(PlayerPredicateAst::PlayerControlsExactly {

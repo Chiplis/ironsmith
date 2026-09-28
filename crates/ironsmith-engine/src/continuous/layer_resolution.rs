@@ -1256,13 +1256,8 @@ pub(super) fn count_filter_matches(
             .effects
             .calculate_characteristics(obj.id, ctx.objects, ctx.battlefield, ctx.game)
             .is_some_and(|chars| {
-                filter_matches_with_characteristics(
-                    filter,
-                    obj,
-                    &chars,
-                    ctx.game,
-                    filter_ctx.you.unwrap_or(obj.owner),
-                    filter_ctx.source.unwrap_or(ctx.current_object),
+                filter_matches_with_characteristics_in_context(
+                    filter, obj, &chars, ctx.game, filter_ctx,
                 )
             });
         if matches {

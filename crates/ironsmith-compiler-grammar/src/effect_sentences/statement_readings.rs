@@ -1027,6 +1027,35 @@ fn read_leading_result_prefix(
             },
         })]));
     }
+    // A terminal where-X definition ("... up to X target cards ..., where X
+    // is ...") belongs to the consequence. The single-verb shortcut below
+    // would parse the clause without it and leave X unbound, so route the
+    // consequence through the where-X sentence owner.
+    if crate::grammar::effects::sentence_predicate_shapes::parse_where_x_sentence_tokens(
+        prefix.trailing_tokens,
+    )
+        .is_some()
+        && crate::grammar::structure::split_leading_numeric_result_prefix_lexed(input.sentence)
+            .is_none()
+        && !prefix
+            .trailing_tokens
+            .first()
+            .is_some_and(|token| token.is_any_word(&["if", "unless"]))
+        && let Ok(effects) =
+            super::dispatch_inner::parse_effect_sentence_with_where_x_lexed(prefix.trailing_tokens)
+        && !effects.is_empty()
+    {
+        return Ok(Some(vec![EffectAst::Conditionals(match prefix.kind {
+            LeadingResultPrefixKind::If => ConditionalEffectAst::IfResult {
+                predicate: prefix.predicate,
+                effects,
+            },
+            LeadingResultPrefixKind::When => ConditionalEffectAst::WhenResult {
+                predicate: prefix.predicate,
+                effects,
+            },
+        })]));
+    }
     if crate::grammar::structure::split_leading_numeric_result_prefix_lexed(input.sentence)
         .is_some()
     {

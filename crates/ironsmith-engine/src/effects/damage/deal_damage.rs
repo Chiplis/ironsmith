@@ -873,14 +873,44 @@ impl EffectExecutor for DealDamageEffect {
             ));
         }
 
-        if let Ok(object_ids) = resolve_objects_for_effect(game, ctx, &self.target)
-            && let Some(object_id) = object_ids.into_iter().find(|object_id| {
-                game.object(*object_id).is_some_and(|obj| {
-                    obj.zone == crate::zone::Zone::Battlefield
-                        && object_can_be_dealt_damage(game, *object_id)
-                })
+        let resolved_objects = resolve_objects_for_effect(game, ctx, &self.target)
+            .map(|object_ids| {
+                object_ids
+                    .into_iter()
+                    .filter(|object_id| {
+                        game.object(*object_id).is_some_and(|obj| {
+                            obj.zone == crate::zone::Zone::Battlefield
+                                && object_can_be_dealt_damage(game, *object_id)
+                        })
+                    })
+                    .collect::<Vec<_>>()
             })
-        {
+            .unwrap_or_default();
+        // "Deals N damage to each of up to two target creatures": every
+        // announced object that is still legal is dealt the damage, as one
+        // simultaneous event (CR 601.2c, 608.2b, 120.3).
+        let names_several = matches!(
+            self.target.base(),
+            ChooseSpec::All(_) | ChooseSpec::Tagged(_)
+        ) || self.target.count().max.is_none_or(|max| max > 1);
+        if names_several && resolved_objects.len() > 1 {
+            return Ok(apply_simultaneous_damage_outcome_opts(
+                game,
+                ctx.source,
+                ctx.source_snapshot.as_ref(),
+                resolved_objects
+                    .into_iter()
+                    .map(DamageTarget::Object)
+                    .collect(),
+                amount,
+                self.source_is_combat,
+                self.unpreventable,
+                ctx.provenance,
+                ctx.cause.clone(),
+                &mut *ctx.decision_maker,
+            ));
+        }
+        if let Some(object_id) = resolved_objects.first().copied() {
             if let Some(outcome) = self.deal_with_excess_redirect(game, ctx, object_id, amount)? {
                 return Ok(outcome);
             }

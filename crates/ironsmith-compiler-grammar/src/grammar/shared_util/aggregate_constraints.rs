@@ -63,9 +63,36 @@ pub fn lift_total_mana_value_choice_constraint(
         return None;
     }
 
+    // "with total mana value N or greater" (The Capitoline Triad) is a lower
+    // bound and "with total mana value X" (Fabrication Foundry) is an exact
+    // total; both bound the chosen set, not each object (CR 118.3).
     let mut maximum = match filter.mana_value.take()? {
         crate::filter::Comparison::LessThanOrEqual(maximum) => Value::Fixed(maximum),
         crate::filter::Comparison::LessThanOrEqualExpr(maximum) => *maximum,
+        crate::filter::Comparison::GreaterThanOrEqual(minimum) => {
+            return Some(ChoiceAggregateConstraint::total_mana_value_at_least(
+                Value::Fixed(minimum),
+            ));
+        }
+        crate::filter::Comparison::GreaterThanOrEqualExpr(minimum) => {
+            return Some(ChoiceAggregateConstraint::total_mana_value_at_least(
+                *minimum,
+            ));
+        }
+        crate::filter::Comparison::Equal(total) => {
+            return Some(ChoiceAggregateConstraint {
+                metric: crate::effect::ChoiceAggregateMetric::ManaValue,
+                minimum: Some(Value::Fixed(total)),
+                maximum: Value::Fixed(total),
+            });
+        }
+        crate::filter::Comparison::EqualExpr(total) => {
+            return Some(ChoiceAggregateConstraint {
+                metric: crate::effect::ChoiceAggregateMetric::ManaValue,
+                minimum: Some((*total).clone()),
+                maximum: *total,
+            });
+        }
         other => {
             filter.mana_value = Some(other);
             return None;

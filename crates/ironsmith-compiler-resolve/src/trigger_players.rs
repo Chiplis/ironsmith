@@ -54,6 +54,14 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
         TriggerSpec::PlayerLosesLife(_) | TriggerSpec::PlayersLoseLifeOneOrMore(_) => {
             Some(PlayerFilter::IteratedPlayer)
         }
+        // CR 607.2a: in "When this leaves the battlefield, that player ...",
+        // the only possible antecedent is the player chosen by this object's
+        // linked entering ability ("When this enters, target player ...").
+        TriggerSpec::ThisLeavesBattlefield | TriggerSpec::ThisLeavesBattlefieldWithSurface(_) => {
+            Some(PlayerFilter::TaggedPlayer(
+                crate::tag::CompilerReferenceTag::LinkedTriggerPlayer.bind().into(),
+            ))
+        }
         TriggerSpec::PlayerLosesGame(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerLosesLifeDuringTurn { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDrawsCard(_) => Some(PlayerFilter::IteratedPlayer),

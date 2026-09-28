@@ -919,6 +919,12 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         /// payload name is retained for serialized-model compatibility.
         transforms_into: Option<String>,
         presentation_label: Option<PresentationLabel>,
+        /// Authored as a self entry replacement: "If this land would enter,
+        /// instead <program>, then put this land onto the battlefield"
+        /// (Sheltered Valley). Same CR 614.1c/614.12 semantics as "As this
+        /// enters"; only the rendered surface differs.
+        #[cfg_attr(feature = "serde", serde(default))]
+        entry_instead_surface: bool,
     },
     EntersWithCharacteristicsForFilter {
         filter: ObjectFilter,
@@ -2380,6 +2386,7 @@ where
                 uses_enters_with_counter_surface,
                 transforms_into,
                 presentation_label,
+                entry_instead_surface,
             } => StaticAbilityPayload::AsEntersEffectProgram {
                 program: program.try_map_effects(&mut *map_effect)?,
                 subject,
@@ -2388,6 +2395,7 @@ where
                 uses_enters_with_counter_surface,
                 transforms_into,
                 presentation_label,
+                entry_instead_surface,
             },
             StaticAbilityPayload::EntersWithCharacteristicsForFilter {
                 filter,
@@ -5395,8 +5403,24 @@ impl<
                 uses_enters_with_counter_surface,
                 transforms_into: None,
                 presentation_label,
+                entry_instead_surface: false,
             },
         }
+    }
+    /// Mark an "as enters" program as authored in the entry-replacement form
+    /// "If this <permanent> would enter, instead <program>, then put this
+    /// <permanent> onto the battlefield".
+    pub fn with_entry_instead_surface(mut self) -> Self {
+        if let StaticAbilityPayload::AsEntersEffectProgram {
+            subject,
+            entry_instead_surface,
+            ..
+        } = &mut self.payload
+        {
+            *entry_instead_surface = true;
+            self.label = format!("If {subject} would enter");
+        }
+        self
     }
     pub fn as_turns_face_up_effect_program(
         program: ResolutionProgram<E>,
@@ -5415,6 +5439,7 @@ impl<
                 uses_enters_with_counter_surface: false,
                 transforms_into: None,
                 presentation_label,
+                entry_instead_surface: false,
             },
         }
     }
@@ -5437,6 +5462,7 @@ impl<
                 uses_enters_with_counter_surface: false,
                 transforms_into: Some(destination),
                 presentation_label,
+                entry_instead_surface: false,
             },
         }
     }

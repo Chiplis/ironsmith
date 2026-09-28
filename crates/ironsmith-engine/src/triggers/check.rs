@@ -4077,6 +4077,27 @@ pub fn verify_intervening_if(
     } else {
         None
     };
+    // "Whenever a land enters under an opponent's control, if that player
+    // ...": the intervening condition's "that player" is the triggering
+    // event's player (the entering object's controller for an entry).
+    let event_player = event.player().or_else(|| {
+        let entered = event
+            .downcast::<crate::events::zones::ZoneChangeEvent>()
+            .filter(|zone_change| zone_change.to == crate::zone::Zone::Battlefield)
+            .and_then(|zone_change| {
+                zone_change
+                    .result_objects
+                    .first()
+                    .or_else(|| zone_change.objects.first())
+                    .copied()
+            })
+            .or_else(|| {
+                event
+                    .downcast::<crate::events::zones::EnterBattlefieldEvent>()
+                    .map(|entered| entered.object)
+            })?;
+        game.object(entered).map(|object| game.controller_of(object))
+    });
     let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
         controller,
         source: source_object_id,
@@ -4084,7 +4105,7 @@ pub fn verify_intervening_if(
         attacking_player: None,
         // Legacy intervening-if checks intentionally did not provide a filter-context source.
         filter_source: None,
-        iterated_player: None,
+        iterated_player: event_player,
         triggering_event: Some(event),
         trigger_identity,
         ability_index: None,
@@ -5510,6 +5531,7 @@ mod tests {
             .optional_costs_paid = crate::cost::OptionalCostsPaid {
             costs: vec![("Conspire".into(), 1), ("Conspire 2".into(), 1)],
             cast_at_sorcery_timing: false,
+            branch_choices: Vec::new(),
         };
 
         let triggered = check_triggers(

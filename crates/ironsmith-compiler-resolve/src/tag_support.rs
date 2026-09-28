@@ -1725,6 +1725,9 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
             ..
         })
         | SubjectVerbActionAst::Replacements(
+            ReplacementActionAst::RegisterCounterPlacementReplacement { .. },
+        )
+        | SubjectVerbActionAst::Replacements(
             ReplacementActionAst::RegisterDamagedBySourceZoneReplacement { .. },
         )
         | SubjectVerbActionAst::Replacements(
@@ -1785,6 +1788,9 @@ pub fn effect_references_event_derived_amount(effect: &EffectAst) -> bool {
         EffectAst::SubjectVerb(subject_verb) => {
             subject_verb_action_value(&subject_verb.action)
                 .is_some_and(value_references_event_derived_amount)
+                || granted_entry_counter_amounts(&subject_verb.action)
+                    .into_iter()
+                    .any(value_references_event_derived_amount)
                 || match &subject_verb.action {
                     SubjectVerbActionAst::Stack(StackActionAst::CounterUnlessPays {
                         cost, ..
@@ -2555,4 +2561,41 @@ pub fn collect_tag_spans_from_target(
             annotations.record_tag_span(&it_tag, mapped);
         }
     }
+}
+
+/// Entry-counter amounts carried by a granted static ability ("This creature
+/// enters with X +1/+1 counters on it, where X is ... revealed this way").
+fn granted_entry_counter_amounts(action: &SubjectVerbActionAst) -> Vec<&Value> {
+    let SubjectVerbActionAst::Grants(crate::cards::builders::GrantActionAst::GrantAbilitiesToTarget {
+        abilities,
+        ..
+    }) = action
+    else {
+        return Vec::new();
+    };
+    let mut values = Vec::new();
+    for ability in abilities {
+        if let crate::cards::builders::GrantedAbilityAst::StaticAbility(static_ability) = ability
+            && let crate::cards::builders::StaticAbilityAst::Static(ability) =
+                static_ability.as_ref()
+        {
+            match &ability.payload {
+                ironsmith_core::StaticAbilityPayload::EntersWithCountersValue { count, .. } => {
+                    values.push(count)
+                }
+                ironsmith_core::StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
+                    count,
+                    otherwise_count,
+                    ..
+                } => {
+                    values.push(count);
+                    if let Some(otherwise) = otherwise_count {
+                        values.push(otherwise);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    values
 }

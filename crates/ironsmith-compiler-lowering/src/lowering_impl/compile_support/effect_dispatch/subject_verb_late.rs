@@ -521,11 +521,18 @@ pub(super) fn compile_subject_verb_late(
             // refers to the trigger's source; last-object memory is seeded
             // with the BLOCKER there (for "that creature" references), so
             // the pronoun must not inherit it as the damage source.
-            let source_spec = if matches!(
+            // The pronoun may already have been bound to the blocker by the
+            // reference annotation; its retained surface still says `it`.
+            let source_is_bare_it = matches!(
                 source,
                 TargetAst::Tagged(tag, _) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
-            ) && matches!(
-                &source_spec,
+            ) || matches!(
+                source_spec.source_reference_surface(),
+                Some(crate::target::SourceReferenceSurface::ThisPermanentType(text))
+                    if text.eq_ignore_ascii_case("it")
+            );
+            let source_spec = if source_is_bare_it && matches!(
+                source_spec.base(),
                 ChooseSpec::Tagged(tag) if tag.as_str() == "blocking"
             ) {
                 ChooseSpec::Source

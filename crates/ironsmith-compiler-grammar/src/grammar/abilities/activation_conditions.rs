@@ -42,6 +42,65 @@ const ANY_PLAYER_DURING_THEIR_TURN_BEFORE_END_STEP: &[&str] = &[
     "any", "player", "may", "activate", "this", "ability", "but", "only", "during", "their",
     "turn", "before", "the", "end", "step",
 ];
+const STEP_WINDOW_PREFIXES: &[(&[&[&str]], ActivationTiming)] = &[
+    (
+        &[
+            &[
+                "activate", "only", "during", "your", "turn", "before", "attackers", "are",
+                "declared",
+            ],
+            &[
+                "activate", "only", "during", "your", "turn", "and", "before", "attackers", "are",
+                "declared",
+            ],
+        ],
+        ActivationTiming::DuringYourTurnBeforeAttackersDeclared,
+    ),
+    (
+        &[&["activate", "only", "before", "attackers", "are", "declared"]],
+        ActivationTiming::BeforeAttackersDeclared,
+    ),
+    (
+        &[&["activate", "only", "before", "blockers", "are", "declared"]],
+        ActivationTiming::BeforeBlockersDeclared,
+    ),
+    (
+        &[
+            &["activate", "only", "before", "the", "combat", "damage", "step"],
+            &["activate", "only", "before", "combat", "damage"],
+        ],
+        ActivationTiming::BeforeCombatDamageStep,
+    ),
+    (
+        &[
+            &["activate", "only", "before", "the", "end", "of", "combat", "step"],
+            &["activate", "only", "before", "the", "end", "of", "combat"],
+            &["activate", "only", "before", "end", "of", "combat"],
+        ],
+        ActivationTiming::BeforeEndOfCombatStep,
+    ),
+    (
+        &[
+            &["activate", "only", "during", "the", "declare", "attackers", "step"],
+            &["activate", "only", "during", "declare", "attackers", "step"],
+        ],
+        ActivationTiming::DuringDeclareAttackersStep,
+    ),
+    (
+        &[
+            &["activate", "only", "during", "the", "declare", "blockers", "step"],
+            &["activate", "only", "during", "declare", "blockers", "step"],
+        ],
+        ActivationTiming::DuringDeclareBlockersStep,
+    ),
+    (
+        &[
+            &["activate", "only", "during", "your", "draw", "step"],
+            &["activate", "only", "during", "their", "draw", "step"],
+        ],
+        ActivationTiming::DuringYourDrawStep,
+    ),
+];
 const THIS_ABILITY_TRIGGERS_ONLY_PREFIXES: &[&[&str]] = &[
     &["this", "ability", "triggers", "only"],
     &["do", "this", "only"],
@@ -91,6 +150,13 @@ struct ControlledCreaturePowerShape<'a> {
 pub fn parse_activate_only_timing_lexed(tokens: &[OwnedLexToken]) -> Option<ActivationTiming> {
     if matches_exact_tokens(tokens, ANY_PLAYER_DURING_THEIR_TURN_BEFORE_END_STEP) {
         return Some(ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep);
+    }
+    // Step windows (CR 506.8): checked before the "during your turn" marker
+    // so "during your turn, before attackers are declared" keeps its cutoff.
+    for (prefixes, timing) in STEP_WINDOW_PREFIXES {
+        if matches_any_prefix_tokens(tokens, prefixes) {
+            return Some(*timing);
+        }
     }
     let marker = parse_activate_only_timing_marker(tokens);
     if matches_any_prefix_tokens(tokens, ACTIVATE_ONLY_SORCERY_PREFIXES) {

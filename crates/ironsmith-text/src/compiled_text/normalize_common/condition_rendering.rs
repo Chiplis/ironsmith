@@ -759,6 +759,44 @@ fn describe_turn_history_value_comparison(
                 ))
             }
         }
+        ironsmith_core::TurnHistoryCount::KeywordActionsPerformed { player, actions } => {
+            let player = describe_history_player_subject(player);
+            let actions = actions
+                .iter()
+                .map(|action| match action {
+                    ironsmith_core::KeywordActionKind::Scry => "scried".to_string(),
+                    ironsmith_core::KeywordActionKind::Surveil => "surveilled".to_string(),
+                    other => format!("performed {}", other.infinitive()),
+                })
+                .collect::<Vec<_>>()
+                .join(" or ");
+            if is_absent {
+                Some(format!("{player} haven't {actions} this turn"))
+            } else {
+                Some(format!("{player}'ve {actions} this turn"))
+            }
+        }
+        ironsmith_core::TurnHistoryCount::CountersRemovedFrom {
+            counter_type,
+            filter,
+        } => {
+            let subject = describe_history_filter_subject(filter, "permanent");
+            let counter = counter_type
+                .map(|kind| format!("{} counter", kind.description()))
+                .unwrap_or_else(|| "counter".to_string());
+            if is_absent {
+                Some(format!(
+                    "no {counter} was removed from {} this turn",
+                    with_indefinite_article(&subject)
+                ))
+            } else {
+                Some(format!(
+                    "{} was removed from {} this turn",
+                    with_indefinite_article(&counter),
+                    with_indefinite_article(&subject)
+                ))
+            }
+        }
         ironsmith_core::TurnHistoryCount::Cycled(player) => {
             let player = describe_history_player_subject(player);
             if is_present {
@@ -3421,6 +3459,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     "during an opponent's upkeep"
                 }
                 crate::ability::ActivationTiming::DuringAnyUpkeep => "during any upkeep step",
+                timing => timing.step_window_phrase().unwrap_or("any time"),
             };
             format!("timing restriction: {label}")
         }

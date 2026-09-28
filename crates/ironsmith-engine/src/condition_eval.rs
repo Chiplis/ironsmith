@@ -120,6 +120,47 @@ fn source_was_cast_from_zone(
         == Some(zone)
 }
 
+/// The object a "cast it from ..." intervening-if asks about: the permanent
+/// whose entering triggered the ability. A self-ETB trigger ("When this
+/// creature enters, if you cast it from your hand") names the source itself;
+/// Wild Pair's "Whenever a creature enters, if you cast it from your hand"
+/// names the entering creature.
+fn cast_condition_subject(source: ObjectId, triggering_event: Option<&TriggerEvent>) -> ObjectId {
+    let Some(event) = triggering_event else {
+        return source;
+    };
+    let entering = event
+        .downcast::<crate::events::EnterBattlefieldEvent>()
+        .map(|etb| etb.object)
+        .or_else(|| {
+            event
+                .downcast::<crate::events::zones::ZoneChangeEvent>()
+                .filter(|zc| zc.to == Zone::Battlefield && zc.objects.len() == 1)
+                .map(|zc| zc.objects[0])
+        });
+    entering.unwrap_or(source)
+}
+
+/// Whether `source` was cast and its most recent cast was from a zone other
+/// than its owner's hand.
+fn source_was_cast_from_non_hand(
+    game: &GameState,
+    source: ObjectId,
+    triggering_event: Option<&TriggerEvent>,
+) -> bool {
+    if !source_was_cast(game, source, triggering_event) {
+        return false;
+    }
+    let stable_id = game.object(source).map(|obj| obj.stable_id).or_else(|| {
+        triggering_event
+            .and_then(TriggerEvent::snapshot)
+            .map(|snapshot| snapshot.stable_id)
+    });
+    stable_id
+        .and_then(|stable_id| game.turn_store.turn_history.latest_cast_zone(stable_id))
+        .is_some_and(|zone| zone != Zone::Hand)
+}
+
 /// CR 707.10 / 707.10f: a copy of a permanent spell becomes a token as it
 /// resolves, and it was never cast. Tokens are never otherwise on the stack, so
 /// a token that entered from the stack without a cast record (CR 707.12 cast
@@ -1757,8 +1798,18 @@ fn evaluate_value_comparison(
     triggering_event: Option<&TriggerEvent>,
     defending_player: Option<PlayerId>,
     attacking_player: Option<PlayerId>,
+    iterated_player: Option<PlayerId>,
+    ability_identity: (
+        Option<crate::triggers::TriggerIdentity>,
+        Option<usize>,
+    ),
 ) -> bool {
     let mut ctx = ExecutionContext::new_default(source, controller);
+    ctx.iteration.iterated_player = iterated_player;
+    // "If you haven't added mana with this ability this turn": the ability's
+    // own resolution count needs its identity outside resolution too.
+    ctx.trigger_identity = ability_identity.0;
+    ctx.ability_index = ability_identity.1;
     if let Some(attached) = game
         .object(source)
         .and_then(|source| source.attached_to.as_ref())
@@ -2827,17 +2878,26 @@ fn evaluate_turn_history_condition(
             required_count,
             prohibited,
         } => {
-            let Some(blocked) = ctx
-                .triggering_event
-                .and_then(|event| event.downcast::<crate::events::combat::CreatureBlockedEvent>())
-            else {
+            // The per-pair CreatureBlocked event, or the attacker's single
+            // "becomes blocked" event ("becomes blocked by two or more
+            // creatures").
+            let Some(attacker) = ctx.triggering_event.and_then(|event| {
+                event
+                    .downcast::<crate::events::combat::CreatureBlockedEvent>()
+                    .map(|blocked| blocked.attacker)
+                    .or_else(|| {
+                        event
+                            .downcast::<crate::events::combat::CreatureBecameBlockedEvent>()
+                            .map(|blocked| blocked.attacker)
+                    })
+            }) else {
                 return false;
             };
             let Some(combat) = game.combat.as_ref() else {
                 return false;
             };
             let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
-            let blockers = crate::combat_state::get_blockers(combat, blocked.attacker);
+            let blockers = crate::combat_state::get_blockers(combat, attacker);
             let required_matches = blockers
                 .iter()
                 .filter(|blocker| {
@@ -2876,6 +2936,40 @@ pub struct ExternalEvaluationOptions {
     pub ignore_timing: bool,
     /// If true, treat per-turn activation limits as satisfied.
     pub ignore_activation_limits: bool,
+    /// The object a static effect is being applied to, when the condition is
+    /// evaluated for one recipient ("each creature ... as long as it's not
+    /// attacking", "enchanted creature has first strike as long as it's
+    /// blocking"). `TargetMatches` binds "it" to this object when there is no
+    /// triggering event.
+    pub recipient: Option<ObjectId>,
+}
+
+/// Whether a condition reads the recipient of the static effect it gates
+/// (the object `TargetMatches` binds to outside resolution).
+pub fn condition_reads_static_recipient(condition: &Condition) -> bool {
+    match condition {
+        Condition::TargetMatches(_) => true,
+        Condition::Not(inner) => condition_reads_static_recipient(inner),
+        Condition::And(left, right) | Condition::Or(left, right) => {
+            condition_reads_static_recipient(left) || condition_reads_static_recipient(right)
+        }
+        _ => false,
+    }
+}
+
+/// The object an Aura/Equipment/Fortification source is attached to, which is
+/// what the "enchanted"/"equipped" tags name outside resolution.
+fn external_attached_tag_object(
+    game: &GameState,
+    source: ObjectId,
+    tag: &str,
+) -> Option<ObjectId> {
+    if !matches!(tag, "enchanted" | "equipped" | "fortified") {
+        return None;
+    }
+    game.object(source)
+        .and_then(|source| source.attached_to.as_ref())
+        .and_then(|target| target.object_id())
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -3208,10 +3302,37 @@ fn resolve_condition_player_external(
 ) -> Option<PlayerId> {
     match player {
         PlayerFilter::IteratedPlayer => ctx.iterated_player,
-        PlayerFilter::Defending => ctx.defending_player,
+        PlayerFilter::Defending => ctx
+            .defending_player
+            .or_else(|| combat_defending_player(game)),
         PlayerFilter::Attacking => Some(ctx.attacking_player.unwrap_or(ctx.controller)),
         _ => resolve_condition_player_simple(game, ctx.controller, player),
     }
+}
+
+/// The defending player of the current combat when no event names one, as an
+/// activated ability's "only if defending player controls ..." reads it: the
+/// one player being attacked, or before attackers are declared in a
+/// two-player game, the nonactive player (CR 506.2).
+fn combat_defending_player(game: &GameState) -> Option<PlayerId> {
+    if game.turn.phase != crate::game_state::Phase::Combat {
+        return None;
+    }
+    if let Some(combat) = game.combat.as_ref() {
+        let players = crate::combat_state::defending_players(combat);
+        if let [player] = players.as_slice() {
+            return Some(*player);
+        }
+        if !players.is_empty() {
+            return None;
+        }
+    }
+    let mut nonactive = game
+        .players
+        .iter()
+        .filter(|player| player.is_in_game() && !game.is_active_player(player.id));
+    let player = nonactive.next()?;
+    nonactive.next().is_none().then_some(player.id)
 }
 
 fn matching_condition_players_simple(
@@ -3236,6 +3357,35 @@ fn matching_condition_players_simple(
             .into_iter()
             .collect(),
     }
+}
+
+/// A read-only copy of the resolution context with "an opponent" bound to
+/// `opponent`, used to test a quantified-opponent condition per opponent.
+fn an_opponent_probe_context(
+    exec: &ExecutionContext,
+    opponent: PlayerId,
+) -> ExecutionContext<'static> {
+    let mut probe = ExecutionContext::new_default(exec.source, exec.controller);
+    probe.targets = exec.targets.clone();
+    probe.target_assignments = exec.target_assignments.clone();
+    probe.target_snapshots = exec.target_snapshots.clone();
+    probe.x_value = exec.x_value;
+    probe.effect_outcomes = exec.effect_outcomes.clone();
+    probe.iteration = exec.iteration.clone();
+    probe.combat = exec.combat;
+    probe.source_snapshot = exec.source_snapshot.clone();
+    probe.tagged_objects = exec.tagged_objects.clone();
+    probe.tagged_players = exec.tagged_players.clone();
+    probe.triggering_event = exec.triggering_event.clone();
+    probe.event_value_amount = exec.event_value_amount;
+    probe.optional_costs_paid = exec.optional_costs_paid.clone();
+    probe.trigger_identity = exec.trigger_identity;
+    probe.ability_index = exec.ability_index;
+    probe.set_tagged_players(
+        crate::tag::TagKey::from(crate::effects::helpers::AN_OPPONENT_CHOICE_TAG),
+        vec![opponent],
+    );
+    probe
 }
 
 /// Evaluate a condition.
@@ -3308,43 +3458,57 @@ fn evaluate_condition_in_context(
                 .player_was_dealt_combat_damage_by_creature_subtype_this_turn(&players, *subtype))
         }
         Condition::PlayerControls { player, filter } => {
-            let Some(player_id) = ctx.resolve_player(game, player)? else {
-                return Ok(false);
-            };
-            let filter_ctx = ctx.player_filter_context(game, player, player_id);
-            let has_matching = condition_objects_for_zone(game, filter.zone)
-                .filter(|obj| {
-                    condition_object_matches_player_zone(game, obj, player_id, filter.zone)
-                })
-                .any(|obj| filter.matches(obj, &filter_ctx, game));
-            Ok(has_matching)
+            for player_id in ctx.matching_players(game, player)? {
+                // A quantified player ("an opponent", "a player") matches
+                // when any such player satisfies the condition.
+                let matched = (|| -> Result<bool, ExecutionError> {
+                    let filter_ctx = ctx.player_filter_context(game, player, player_id);
+                    let has_matching = condition_objects_for_zone(game, filter.zone)
+                        .filter(|obj| {
+                            condition_object_matches_player_zone(game, obj, player_id, filter.zone)
+                        })
+                        .any(|obj| filter.matches(obj, &filter_ctx, game));
+                    Ok(has_matching)
+                })()?;
+                if matched {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
         }
         Condition::PlayerOwnsCardNamedInZones {
             player,
             name,
             zones,
         } => {
-            let Some(player_id) = ctx.resolve_player(game, player)? else {
-                return Ok(false);
-            };
-            let filter_ctx = ctx.owned_card_filter_context(game, player, player_id);
+            for player_id in ctx.matching_players(game, player)? {
+                // A quantified player ("an opponent", "a player") matches
+                // when any such player satisfies the condition.
+                let matched = (|| -> Result<bool, ExecutionError> {
+                    let filter_ctx = ctx.owned_card_filter_context(game, player, player_id);
 
-            if zones.is_empty() {
-                return Ok(false);
-            }
+                    if zones.is_empty() {
+                        return Ok(false);
+                    }
 
-            let mut filter = crate::target::ObjectFilter::default().named(name.clone());
-            for zone in zones {
-                filter.zone = Some(*zone);
-                let has_matching = condition_objects_for_zone(game, Some(*zone))
-                    .filter(|obj| obj.owner == player_id)
-                    .any(|obj| filter.matches(obj, &filter_ctx, game));
-                if !has_matching {
-                    return Ok(false);
+                    let mut filter = crate::target::ObjectFilter::default().named(name.clone());
+                    for zone in zones {
+                        filter.zone = Some(*zone);
+                        let has_matching = condition_objects_for_zone(game, Some(*zone))
+                            .filter(|obj| obj.owner == player_id)
+                            .any(|obj| filter.matches(obj, &filter_ctx, game));
+                        if !has_matching {
+                            return Ok(false);
+                        }
+                    }
+
+                    Ok(true)
+                })()?;
+                if matched {
+                    return Ok(true);
                 }
             }
-
-            Ok(true)
+            Ok(false)
         }
         Condition::PlayerHasAtLeast {
             player,
@@ -3367,36 +3531,50 @@ fn evaluate_condition_in_context(
             use crate::types::Subtype;
             use std::collections::HashSet;
 
-            let Some(player_id) = ctx.resolve_player(game, player)? else {
-                return Ok(false);
-            };
-            let mut seen: HashSet<Subtype> = HashSet::new();
-            for obj in game
-                .battlefield
-                .iter()
-                .filter_map(|&id| game.object(id))
-                .filter(|obj| game.controller_of(obj) == player_id && obj.is_land())
-            {
-                for subtype in game.calculated_subtypes(obj.id) {
-                    if matches!(
-                        subtype,
-                        Subtype::Plains
-                            | Subtype::Island
-                            | Subtype::Swamp
-                            | Subtype::Mountain
-                            | Subtype::Forest
-                    ) {
-                        seen.insert(subtype);
+            for player_id in ctx.matching_players(game, player)? {
+                // A quantified player ("an opponent", "a player") matches
+                // when any such player satisfies the condition.
+                let matched = (|| -> Result<bool, ExecutionError> {
+                    let mut seen: HashSet<Subtype> = HashSet::new();
+                    for obj in game
+                        .battlefield
+                        .iter()
+                        .filter_map(|&id| game.object(id))
+                        .filter(|obj| game.controller_of(obj) == player_id && obj.is_land())
+                    {
+                        for subtype in game.calculated_subtypes(obj.id) {
+                            if matches!(
+                                subtype,
+                                Subtype::Plains
+                                    | Subtype::Island
+                                    | Subtype::Swamp
+                                    | Subtype::Mountain
+                                    | Subtype::Forest
+                            ) {
+                                seen.insert(subtype);
+                            }
+                        }
                     }
+                    Ok(seen.len() >= *count as usize)
+                })()?;
+                if matched {
+                    return Ok(true);
                 }
             }
-            Ok(seen.len() >= *count as usize)
+            Ok(false)
         }
         Condition::PlayerHasCardTypesInGraveyardOrMore { player, count } => {
-            let Some(player_id) = ctx.resolve_player(game, player)? else {
-                return Ok(false);
-            };
-            Ok(count_distinct_card_types_in_graveyard(game, player_id) >= *count as usize)
+            for player_id in ctx.matching_players(game, player)? {
+                // A quantified player ("an opponent", "a player") matches
+                // when any such player satisfies the condition.
+                let matched = (|| -> Result<bool, ExecutionError> {
+                    Ok(count_distinct_card_types_in_graveyard(game, player_id) >= *count as usize)
+                })()?;
+                if matched {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
         }
         Condition::PlayerControlsExactly {
             player,
@@ -3420,38 +3598,52 @@ fn evaluate_condition_in_context(
             filter,
             count,
         } => {
-            let Some(player_id) = ctx.resolve_player(game, player)? else {
-                return Ok(false);
-            };
-            let filter_ctx = ctx.player_filter_context(game, player, player_id);
-            let distinct = count_distinct_matching_powers(game, player_id, filter, &filter_ctx);
-            Ok(distinct >= *count as usize)
+            for player_id in ctx.matching_players(game, player)? {
+                // A quantified player ("an opponent", "a player") matches
+                // when any such player satisfies the condition.
+                let matched = (|| -> Result<bool, ExecutionError> {
+                    let filter_ctx = ctx.player_filter_context(game, player, player_id);
+                    let distinct = count_distinct_matching_powers(game, player_id, filter, &filter_ctx);
+                    Ok(distinct >= *count as usize)
+                })()?;
+                if matched {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
         }
         Condition::PlayerControlsMost { player, filter } => {
-            let Some(player_id) = ctx.resolve_player(game, player)? else {
-                return Ok(false);
-            };
-            let count_for = |candidate: PlayerId| {
-                let filter_ctx = ctx.player_filter_context(game, player, candidate);
-                condition_objects_for_zone(game, filter.zone)
-                    .filter(|obj| {
-                        condition_object_matches_player_zone(game, obj, candidate, filter.zone)
+            for player_id in ctx.matching_players(game, player)? {
+                // A quantified player ("an opponent", "a player") matches
+                // when any such player satisfies the condition.
+                let matched = (|| -> Result<bool, ExecutionError> {
+                    let count_for = |candidate: PlayerId| {
+                        let filter_ctx = ctx.player_filter_context(game, player, candidate);
+                        condition_objects_for_zone(game, filter.zone)
+                            .filter(|obj| {
+                                condition_object_matches_player_zone(game, obj, candidate, filter.zone)
+                            })
+                            .filter(|obj| filter.matches(obj, &filter_ctx, game))
+                            .count()
+                    };
+                    let current = count_for(player_id);
+                    let max_count = game
+                        .players
+                        .iter()
+                        .map(|player| count_for(player.id))
+                        .max()
+                        .unwrap_or(0);
+                    Ok(if ctx.external().is_some() {
+                        current >= max_count
+                    } else {
+                        current == max_count
                     })
-                    .filter(|obj| filter.matches(obj, &filter_ctx, game))
-                    .count()
-            };
-            let current = count_for(player_id);
-            let max_count = game
-                .players
-                .iter()
-                .map(|player| count_for(player.id))
-                .max()
-                .unwrap_or(0);
-            Ok(if ctx.external().is_some() {
-                current >= max_count
-            } else {
-                current == max_count
-            })
+                })()?;
+                if matched {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
         }
         Condition::PlayerControlsMoreThanEachOtherPlayer { player, filter } => Ok(ctx
             .matching_players(game, player)?
@@ -3537,94 +3729,164 @@ fn evaluate_condition_in_context(
             .into_iter()
             .any(|player_id| game.is_monarch(player_id))),
         Condition::PlayerHasInitiative { player } => {
-            let Some(player_id) = ctx.resolve_player(game, player)? else {
-                return Ok(false);
-            };
-            Ok(game.has_initiative(player_id))
+            for player_id in ctx.matching_players(game, player)? {
+                // A quantified player ("an opponent", "a player") matches
+                // when any such player satisfies the condition.
+                let matched = (|| -> Result<bool, ExecutionError> {
+                    Ok(game.has_initiative(player_id))
+                })()?;
+                if matched {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
         }
         Condition::PlayerHasCitysBlessing { player } => {
-            let Some(player_id) = ctx.resolve_player(game, player)? else {
-                return Ok(false);
-            };
-            Ok(game.has_citys_blessing(player_id))
+            for player_id in ctx.matching_players(game, player)? {
+                // A quantified player ("an opponent", "a player") matches
+                // when any such player satisfies the condition.
+                let matched = (|| -> Result<bool, ExecutionError> {
+                    Ok(game.has_citys_blessing(player_id))
+                })()?;
+                if matched {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
         }
         Condition::PlayerHasEnduringStory { player } => {
-            let Some(player_id) = ctx.resolve_player(game, player)? else {
-                return Ok(false);
-            };
-            Ok(game.has_enduring_story(player_id))
+            for player_id in ctx.matching_players(game, player)? {
+                // A quantified player ("an opponent", "a player") matches
+                // when any such player satisfies the condition.
+                let matched = (|| -> Result<bool, ExecutionError> {
+                    Ok(game.has_enduring_story(player_id))
+                })()?;
+                if matched {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
         }
         Condition::PlayerCommittedCrimeThisTurn { player } => {
-            let Some(player_id) = ctx.resolve_player(game, player)? else {
-                return Ok(false);
-            };
-            Ok(game
-                .turn_store
-                .turn_history
-                .player_committed_crime_this_turn(player_id))
+            for player_id in ctx.matching_players(game, player)? {
+                // A quantified player ("an opponent", "a player") matches
+                // when any such player satisfies the condition.
+                let matched = (|| -> Result<bool, ExecutionError> {
+                    Ok(game
+                        .turn_store
+                        .turn_history
+                        .player_committed_crime_this_turn(player_id))
+                })()?;
+                if matched {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
         }
         Condition::PlayerRolledResultThisTurn { player, result } => {
-            let Some(player_id) = ctx.resolve_player(game, player)? else {
-                return Ok(false);
-            };
-            Ok(game
-                .turn_store
-                .turn_history
-                .player_rolled_result_this_turn(player_id, *result))
+            for player_id in ctx.matching_players(game, player)? {
+                // A quantified player ("an opponent", "a player") matches
+                // when any such player satisfies the condition.
+                let matched = (|| -> Result<bool, ExecutionError> {
+                    Ok(game
+                        .turn_store
+                        .turn_history
+                        .player_rolled_result_this_turn(player_id, *result))
+                })()?;
+                if matched {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
         }
         Condition::PlayerCompletedDungeon {
             player,
             dungeon_name,
         } => {
-            let Some(player_id) = ctx.resolve_player(game, player)? else {
-                return Ok(false);
-            };
-            Ok(match dungeon_name {
-                Some(name) => game.has_completed_named_dungeon(player_id, name),
-                None => game.has_completed_dungeon(player_id),
-            })
+            for player_id in ctx.matching_players(game, player)? {
+                // A quantified player ("an opponent", "a player") matches
+                // when any such player satisfies the condition.
+                let matched = (|| -> Result<bool, ExecutionError> {
+                    Ok(match dungeon_name {
+                        Some(name) => game.has_completed_named_dungeon(player_id, name),
+                        None => game.has_completed_dungeon(player_id),
+                    })
+                })()?;
+                if matched {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
         }
         Condition::PlayerCardsInHandOrMore { player, count } => {
-            let Some(player_id) = ctx.resolve_player(game, player)? else {
-                return Ok(false);
-            };
-            let hand = game.player(player_id).map(|p| p.hand.len());
-            // External gating uses a signed comparison and requires the player to exist.
-            // Cast/resolution historically compare usize counts, with a missing hand as zero.
-            Ok(if ctx.external().is_some() {
-                hand.is_some_and(|hand| hand as i32 >= *count)
-            } else {
-                hand.unwrap_or(0) >= *count as usize
-            })
+            for player_id in ctx.matching_players(game, player)? {
+                // A quantified player ("an opponent", "a player") matches
+                // when any such player satisfies the condition.
+                let matched = (|| -> Result<bool, ExecutionError> {
+                    let hand = game.player(player_id).map(|p| p.hand.len());
+                    // External gating uses a signed comparison and requires the player to exist.
+                    // Cast/resolution historically compare usize counts, with a missing hand as zero.
+                    Ok(if ctx.external().is_some() {
+                        hand.is_some_and(|hand| hand as i32 >= *count)
+                    } else {
+                        hand.unwrap_or(0) >= *count as usize
+                    })
+                })()?;
+                if matched {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
         }
         Condition::PlayerCardsInHandOrFewer { player, count } => {
-            let Some(player_id) = ctx.resolve_player(game, player)? else {
-                return Ok(false);
-            };
-            let hand = game.player(player_id).map(|p| p.hand.len());
-            // External gating uses a signed comparison and requires the player to exist.
-            // Cast/resolution historically compare usize counts, with a missing hand as zero.
-            Ok(if ctx.external().is_some() {
-                hand.is_some_and(|hand| hand as i32 <= *count)
-            } else {
-                hand.unwrap_or(0) <= *count as usize
-            })
+            for player_id in ctx.matching_players(game, player)? {
+                // A quantified player ("an opponent", "a player") matches
+                // when any such player satisfies the condition.
+                let matched = (|| -> Result<bool, ExecutionError> {
+                    let hand = game.player(player_id).map(|p| p.hand.len());
+                    // External gating uses a signed comparison and requires the player to exist.
+                    // Cast/resolution historically compare usize counts, with a missing hand as zero.
+                    Ok(if ctx.external().is_some() {
+                        hand.is_some_and(|hand| hand as i32 <= *count)
+                    } else {
+                        hand.unwrap_or(0) <= *count as usize
+                    })
+                })()?;
+                if matched {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
         }
         Condition::PlayerCardsInHandAtTurnStartOrMore { player, count } => {
-            let Some(player_id) = ctx.resolve_player(game, player)? else {
-                return Ok(false);
-            };
-            Ok(player_hand_count_at_turn_start(game, player_id)
-                .map(|hand_count| hand_count >= *count)
-                .unwrap_or(false))
+            for player_id in ctx.matching_players(game, player)? {
+                // A quantified player ("an opponent", "a player") matches
+                // when any such player satisfies the condition.
+                let matched = (|| -> Result<bool, ExecutionError> {
+                    Ok(player_hand_count_at_turn_start(game, player_id)
+                        .map(|hand_count| hand_count >= *count)
+                        .unwrap_or(false))
+                })()?;
+                if matched {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
         }
         Condition::PlayerCardsInHandAtTurnStartOrFewer { player, count } => {
-            let Some(player_id) = ctx.resolve_player(game, player)? else {
-                return Ok(false);
-            };
-            Ok(player_hand_count_at_turn_start(game, player_id)
-                .map(|hand_count| hand_count <= *count)
-                .unwrap_or(false))
+            for player_id in ctx.matching_players(game, player)? {
+                // A quantified player ("an opponent", "a player") matches
+                // when any such player satisfies the condition.
+                let matched = (|| -> Result<bool, ExecutionError> {
+                    Ok(player_hand_count_at_turn_start(game, player_id)
+                        .map(|hand_count| hand_count <= *count)
+                        .unwrap_or(false))
+                })()?;
+                if matched {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
         }
         Condition::PlayerHasMoreCardsInHandThanYou { player } => {
             let your_hand = game
@@ -3690,24 +3952,38 @@ fn evaluate_condition_in_context(
             Ok(cast_count >= *count)
         }
         Condition::PlayerTappedLandForManaThisTurn { player } => {
-            let Some(player_id) = ctx.resolve_player(game, player)? else {
-                return Ok(false);
-            };
-            Ok(game
-                .turn_store
-                .turn_history
-                .players_tapped_land_for_mana_this_turn
-                .contains(&player_id))
+            for player_id in ctx.matching_players(game, player)? {
+                // A quantified player ("an opponent", "a player") matches
+                // when any such player satisfies the condition.
+                let matched = (|| -> Result<bool, ExecutionError> {
+                    Ok(game
+                        .turn_store
+                        .turn_history
+                        .players_tapped_land_for_mana_this_turn
+                        .contains(&player_id))
+                })()?;
+                if matched {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
         }
         Condition::PlayerGainedLifeThisTurnOrMore { player, count } => {
-            let Some(player_id) = ctx.resolve_player(game, player)? else {
-                return Ok(false);
-            };
-            Ok(game
-                .turn_store
-                .turn_history
-                .total_life_gained_for_players(&[player_id])
-                >= *count)
+            for player_id in ctx.matching_players(game, player)? {
+                // A quantified player ("an opponent", "a player") matches
+                // when any such player satisfies the condition.
+                let matched = (|| -> Result<bool, ExecutionError> {
+                    Ok(game
+                        .turn_store
+                        .turn_history
+                        .total_life_gained_for_players(&[player_id])
+                        >= *count)
+                })()?;
+                if matched {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
         }
         Condition::CreatureDiedThisTurnOrMore(count) => Ok(game
             .turn_store
@@ -3726,20 +4002,34 @@ fn evaluate_condition_in_context(
             creature_card_was_put_into_your_graveyard_this_turn(game, shared.controller),
         ),
         Condition::PlayerHadLandEnterBattlefieldThisTurn { player } => {
-            let Some(player_id) = ctx.resolve_player(game, player)? else {
-                return Ok(false);
-            };
-            Ok(player_had_land_enter_battlefield_this_turn(game, player_id))
+            for player_id in ctx.matching_players(game, player)? {
+                // A quantified player ("an opponent", "a player") matches
+                // when any such player satisfies the condition.
+                let matched = (|| -> Result<bool, ExecutionError> {
+                    Ok(player_had_land_enter_battlefield_this_turn(game, player_id))
+                })()?;
+                if matched {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
         }
         Condition::PlayerDescendedThisTurn { player } => {
-            let Some(player_id) = ctx.resolve_player(game, player)? else {
-                return Ok(false);
-            };
-            Ok(game
-                .turn_store
-                .turn_history
-                .player_descended_count_this_turn(player_id)
-                > 0)
+            for player_id in ctx.matching_players(game, player)? {
+                // A quantified player ("an opponent", "a player") matches
+                // when any such player satisfies the condition.
+                let matched = (|| -> Result<bool, ExecutionError> {
+                    Ok(game
+                        .turn_store
+                        .turn_history
+                        .player_descended_count_this_turn(player_id)
+                        > 0)
+                })()?;
+                if matched {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
         }
         Condition::TargetIsTapped => {
             let Some(ctx) = ctx.execution() else {
@@ -3787,17 +4077,23 @@ fn evaluate_condition_in_context(
             // to the recorded cast event.
             Ok(source_was_cast_from_zone(
                 game,
-                shared.source,
+                cast_condition_subject(shared.source, shared.triggering_event),
                 shared.triggering_event,
                 *zone,
             ))
         }
         Condition::ThisSpellWasCastFromNonHand => {
-            let Some(ctx) = ctx.execution() else {
-                return Ok(false);
-            };
-
-            Ok(this_spell_was_cast_from_non_hand(game, ctx.source, ctx))
+            if let Some(ctx) = ctx.execution() {
+                return Ok(this_spell_was_cast_from_non_hand(game, ctx.source, ctx));
+            }
+            // Intervening-if and static checks ("When this creature enters,
+            // if you cast it from anywhere other than your hand, ...") have no
+            // casting method; read the recorded cast zone instead.
+            Ok(source_was_cast_from_non_hand(
+                game,
+                cast_condition_subject(shared.source, shared.triggering_event),
+                shared.triggering_event,
+            ))
         }
         Condition::ThisSpellWasCastAtSorceryTiming => Ok(game
             .object(shared.source)
@@ -4095,8 +4391,21 @@ fn evaluate_condition_in_context(
         }
         Condition::TaggedObjectMatches(tag, filter) => {
             if let Some(external) = ctx.external() {
-                return Ok(tag.as_str() == "triggering"
-                    && triggering_event_object_matches(game, external, filter));
+                if tag.as_str() == "triggering" {
+                    return Ok(triggering_event_object_matches(game, external, filter));
+                }
+                // Static and gating checks have no tagged-object bindings, but
+                // "enchanted"/"equipped" always name the source's attachment
+                // ("as long as equipped creature is legendary").
+                return Ok(
+                    external_attached_tag_object(game, external.source, tag.as_str())
+                        .and_then(|id| game.object(id))
+                        .is_some_and(|object| {
+                            let filter_ctx =
+                                game.filter_context_for(external.controller, external.filter_source);
+                            filter.matches(object, &filter_ctx, game)
+                        }),
+                );
             }
             let Some(ctx) = ctx.execution() else {
                 return Ok(false);
@@ -4266,7 +4575,12 @@ fn evaluate_condition_in_context(
                         ctx.triggering_event,
                     );
                     let Some(event) = ctx.triggering_event else {
-                        return Ok(false);
+                        // A static condition reads the object its effect is
+                        // being applied to ("as long as it's blocking").
+                        return Ok(ctx.options.recipient.is_some_and(|recipient| {
+                            game.object(recipient)
+                                .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
+                        }));
                     };
                     if let Some(snapshot) = event.snapshot() {
                         return Ok(filter.matches_snapshot(snapshot, &filter_ctx, game));
@@ -4444,12 +4758,41 @@ fn evaluate_condition_in_context(
         Condition::TriggeringObjectHadCounters {
             counter_type,
             min_count,
-        } => Ok(shared
-            .triggering_event
-            .and_then(|event| event.snapshot())
-            .is_some_and(|snapshot| {
+        } => {
+            // In a triggered ability "it" is the triggering object. A spell or
+            // activated ability has no triggering event: "destroy target
+            // creature; if that creature had a counter on it" reads the
+            // target's last known information, and "exile this: ... if it had
+            // seven or more counters" reads the source's (CR 608.2h).
+            let had = |snapshot: &crate::snapshot::ObjectSnapshot| {
                 snapshot.counters.get(counter_type).copied().unwrap_or(0) >= *min_count
-            })),
+            };
+            if let Some(event) = shared.triggering_event {
+                return Ok(event.snapshot().is_some_and(had));
+            }
+            let Some(execution) = ctx.execution() else {
+                return Ok(false);
+            };
+            let target_snapshot = execution.targets.iter().find_map(|target| match target {
+                crate::effects::ResolvedTarget::Object(id) => game
+                    .object(*id)
+                    .filter(|object| object.zone == Zone::Battlefield)
+                    .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, game))
+                    .or_else(|| {
+                        crate::effects::helpers::latest_zone_change_snapshot_for_object(game, *id)
+                    })
+                    .or_else(|| execution.target_snapshots.get(id).cloned()),
+                crate::effects::ResolvedTarget::Player(_) => None,
+            });
+            if let Some(snapshot) = target_snapshot {
+                return Ok(had(&snapshot));
+            }
+            let source_snapshot = execution.source_snapshot.clone().or_else(|| {
+                game.object(execution.source)
+                    .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, game))
+            });
+            Ok(source_snapshot.as_ref().is_some_and(had))
+        }
         Condition::ControlCreaturesTotalPowerAtLeast(required_power) => {
             if ctx.is_cast_time() {
                 return Ok(false);
@@ -4551,6 +4894,11 @@ fn evaluate_condition_in_context(
                         game.turn.phase == crate::game_state::Phase::Beginning
                             && game.turn.step == Some(crate::game_state::Step::Upkeep)
                     }
+                    timing => crate::decision::activation_step_window_allows(
+                        game,
+                        ctx.controller,
+                        *timing,
+                    ),
                 }
             })
         }
@@ -4763,10 +5111,30 @@ fn evaluate_condition_in_context(
             right,
         } => {
             if let Some(exec) = ctx.execution() {
-                Ok(operator.evaluate(
-                    resolve_value(game, left, exec)?,
-                    resolve_value(game, right, exec)?,
-                ))
+                let compare = |exec: &ExecutionContext| -> Result<bool, ExecutionError> {
+                    Ok(operator.evaluate(
+                        resolve_value(game, left, exec)?,
+                        resolve_value(game, right, exec)?,
+                    ))
+                };
+                match compare(exec) {
+                    // "unless an opponent has 10 or less life": a quantified
+                    // opponent in a condition is satisfied by any opponent.
+                    Err(ExecutionError::UnresolvableValue(message))
+                        if message == crate::effects::helpers::AN_OPPONENT_CHOICE_REQUIRED =>
+                    {
+                        for opponent in
+                            crate::effects::helpers::an_opponent_choice_candidates(game, exec)
+                        {
+                            let probe = an_opponent_probe_context(exec, opponent);
+                            if compare(&probe)? {
+                                return Ok(true);
+                            }
+                        }
+                        Ok(false)
+                    }
+                    other => other,
+                }
             } else {
                 let external = ctx.external();
                 Ok(evaluate_value_comparison(
@@ -4779,6 +5147,11 @@ fn evaluate_condition_in_context(
                     shared.triggering_event,
                     external.and_then(|c| c.defending_player),
                     external.and_then(|c| c.attacking_player),
+                    external.and_then(|c| c.iterated_player),
+                    (
+                        external.and_then(|c| c.trigger_identity),
+                        external.and_then(|c| c.ability_index),
+                    ),
                 ))
             }
         }

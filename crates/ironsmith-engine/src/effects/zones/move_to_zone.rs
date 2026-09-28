@@ -391,7 +391,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
             // rest of the effect (CR 400.7 exception): "exile it and ... . If
             // you do, ... put it back on top of your library."
             let exiled_this_resolution = ctx
-                .get_tagged_all(crate::tag::SOURCE_EXILED_TAG)
+                .get_tagged_all(SOURCE_EXILED_TAG)
                 .map(|snapshots| {
                     snapshots
                         .iter()
@@ -460,6 +460,15 @@ impl SharedLookbackExecute for MoveToZoneEffect {
         let mut moved_source_lki = None;
         let mut ordered_library_results = Vec::new();
         let mut battlefield_entries = Vec::new();
+        // "... onto the battlefield attached to X" (the attach instruction
+        // that follows this move names X).
+        let entry_attachment = if self.zone == Zone::Battlefield {
+            ctx.pending_entry_attachment.clone().and_then(|spec| {
+                crate::effects::permanents::resolve_entry_attachment_target(game, &spec, ctx)
+            })
+        } else {
+            None
+        };
 
         for object_id in object_ids {
             let Some(obj) = game.object(object_id) else {
@@ -470,6 +479,27 @@ impl SharedLookbackExecute for MoveToZoneEffect {
             let requested_zone = ctx
                 .simultaneous_zone_destination(object_id)
                 .unwrap_or(self.zone);
+            // CR 303.4i: an Aura an effect would put onto the battlefield
+            // attached to something it can't legally enchant stays where it
+            // is; it doesn't enter and choose some other object instead.
+            if requested_zone == Zone::Battlefield
+                && from_zone != Zone::Battlefield
+                && let Some(target) = entry_attachment
+                && obj.subtypes.contains(&crate::types::Subtype::Aura)
+            {
+                let entering_controller = match self.battlefield_controller {
+                    BattlefieldController::You => ctx.controller,
+                    BattlefieldController::Owner | BattlefieldController::Preserve => obj.owner,
+                };
+                if !crate::effects::permanents::aura_can_enter_attached_to(
+                    game,
+                    object_id,
+                    entering_controller,
+                    target,
+                ) {
+                    continue;
+                }
+            }
             let source_lki_before_move = if moves_source && object_id == ctx.source {
                 Some(
                     crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
@@ -525,6 +555,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                         )?;
                         let options = options
                             .with_initial_counters(initial_counters)
+                            .with_entry_attachment(entry_attachment)
                             .transformed(self.enters_transformed);
                         if self.enters_face_down
                             && let Some(card) = game.object_mut(object_id)
@@ -573,10 +604,9 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                             if final_zone == Zone::Exile {
                                 game.add_exiled_with_source_link(ctx.source, new_id);
                                 if let Some(object) = game.object(new_id) {
-                                    ctx.tag_object(
-                                        SOURCE_EXILED_TAG,
-                                        ObjectSnapshot::from_object(object, game),
-                                    );
+                                    ctx.tag_source_exiled_result(ObjectSnapshot::from_object(
+                                        object, game,
+                                    ));
                                 }
                             }
                             if final_zone == Zone::Library

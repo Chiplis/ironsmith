@@ -2,7 +2,7 @@
 
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_single_object_for_effect;
+use crate::effects::helpers::resolve_effect_source_with_lki;
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
@@ -50,30 +50,34 @@ impl EffectExecutor for ExecuteWithSourceEffect {
         let rebind_to_own_source_lki = matches!(self.source.base(), ChooseSpec::Source)
             && ctx.source_snapshot.is_some()
             && game.object(ctx.source).is_none();
-        let source_id = match resolve_single_object_for_effect(game, ctx, &self.source) {
-            Ok(source_id) => source_id,
-            Err(_) if rebind_to_own_source_lki => return execute_effect(game, &self.effect, ctx),
-            Err(_) => return Ok(EffectOutcome::target_invalid()),
-        };
-        let Some(source_obj) = game.object(source_id) else {
+        let Some((source_id, tagged_snapshot)) =
+            resolve_effect_source_with_lki(game, ctx, &self.source)
+        else {
             if rebind_to_own_source_lki {
                 return execute_effect(game, &self.effect, ctx);
             }
             return Ok(EffectOutcome::target_invalid());
         };
-        let source_snapshot = match self.source.base() {
-            ChooseSpec::Tagged(tag) => ctx.get_tagged(tag).cloned(),
-            ChooseSpec::Source => ctx.source_snapshot.as_ref().and_then(|snapshot| {
-                // Rebinding an effect to its own source must not replace the
-                // stack entry's battlefield LKI with the counter-cleared card
-                // object now in a graveyard (or another destination zone).
-                (snapshot.stable_id == source_obj.stable_id
-                    && (snapshot.object_id != source_obj.id || snapshot.zone != source_obj.zone))
-                    .then(|| snapshot.clone())
-            }),
-            _ => None,
-        }
-        .or_else(|| Some(ObjectSnapshot::from_object(source_obj, game)));
+        let source_snapshot = match game.object(source_id) {
+            // A tagged source keeps its tagged last known information even
+            // after it left (CR 608.2h); that snapshot is authoritative.
+            _ if tagged_snapshot.is_some() => tagged_snapshot,
+            Some(source_obj) => match self.source.base() {
+                ChooseSpec::Source => ctx.source_snapshot.as_ref().and_then(|snapshot| {
+                    // Rebinding an effect to its own source must not replace the
+                    // stack entry's battlefield LKI with the counter-cleared card
+                    // object now in a graveyard (or another destination zone).
+                    (snapshot.stable_id == source_obj.stable_id
+                        && (snapshot.object_id != source_obj.id
+                            || snapshot.zone != source_obj.zone))
+                        .then(|| snapshot.clone())
+                }),
+                _ => None,
+            }
+            .or_else(|| Some(ObjectSnapshot::from_object(source_obj, game))),
+            None if rebind_to_own_source_lki => return execute_effect(game, &self.effect, ctx),
+            None => return Ok(EffectOutcome::target_invalid()),
+        };
 
         let original_source = ctx.source;
         let original_source_snapshot = ctx.source_snapshot.clone();

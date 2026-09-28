@@ -129,6 +129,53 @@ pub(super) fn parse_special_spell_filter(tokens: &[OwnedLexToken]) -> Option<Obj
         return Some(filter);
     }
     let tokens = strip_article(tokens);
+    {
+        let words = TokenWordView::new(tokens).word_refs();
+        // "a spell that's one or more colors without {X} in its mana cost"
+        // (Titans' Nest).
+        if matches!(
+            words.as_slice(),
+            ["colored", "spell" | "spells", "without", "x", "in", "its" | "their", "mana", "cost" | "costs"]
+                | ["spell" | "spells", "that's" | "thats" | "that", "one", "or", "more", "colors", "without", "x", "in", "its" | "their", "mana", "cost" | "costs"]
+                | ["spell" | "spells", "that", "is" | "are", "one", "or", "more", "colors", "without", "x", "in", "its" | "their", "mana", "cost" | "costs"]
+        ) {
+            let mut filter = ObjectFilter::default();
+            filter.colors = Some(crate::color::Color::ALL.into_iter().collect());
+            filter.no_x_in_cost = true;
+            return Some(filter);
+        }
+        // "[creature] spells with mana value N or greater or [creature]
+        // spells with {X} in their mana costs" (Helga, Troyan).
+        let card_type_of = |word: &str| crate::util::parse_card_type(word);
+        let (card_type, rest) = match words.as_slice() {
+            [first, rest @ ..] if card_type_of(first).is_some() => (card_type_of(first), rest),
+            rest => (None, rest),
+        };
+        if let ["spells" | "spell", "with", "mana", "value", amount, "or", "greater", "or", tail @ ..] = rest
+            && let Ok(amount) = amount.parse::<i32>()
+        {
+            let tail = match (card_type, tail) {
+                (Some(_), [first, tail @ ..]) if card_type_of(first) == card_type => tail,
+                (Some(_), _) => &[][..],
+                (None, tail) => tail,
+            };
+            if matches!(
+                tail,
+                ["spells" | "spell", "with", "x", "in", "their" | "its", "mana", "costs" | "cost"]
+            ) {
+                let base = card_type
+                    .map(|card_type| ObjectFilter::default().with_type(card_type))
+                    .unwrap_or_default();
+                let mut high = base.clone();
+                high.mana_value = Some(crate::filter::Comparison::GreaterThanOrEqual(amount));
+                let mut with_x = base;
+                with_x.has_x_in_cost = true;
+                let mut filter = ObjectFilter::default();
+                filter.any_of = vec![high, with_x];
+                return Some(filter);
+            }
+        }
+    }
     if matches_any_exact_tokens(
         tokens,
         &[

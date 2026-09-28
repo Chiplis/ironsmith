@@ -1052,6 +1052,36 @@ pub struct RegisterManaReplacementEffect {
     pub mode: ReplacementApplyMode,
 }
 
+/// "Until end of turn, if you would put one or more +1/+1 counters on a
+/// creature you control, put that many plus one +1/+1 counters on it
+/// instead": a resolved replacement effect (CR 611.2a, 614.1a) that adds
+/// `additional` counters to each matching placement for its duration,
+/// independent of the source remaining on the battlefield.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct RegisterCounterPlacementReplacementEffect {
+    pub filter: crate::filter_model::ObjectFilter,
+    pub counter_type: Option<CounterType>,
+    pub additional: u32,
+    pub mode: ReplacementApplyMode,
+}
+
+impl RegisterCounterPlacementReplacementEffect {
+    pub fn new(
+        filter: crate::filter_model::ObjectFilter,
+        counter_type: Option<CounterType>,
+        additional: u32,
+        mode: ReplacementApplyMode,
+    ) -> Self {
+        Self {
+            filter,
+            counter_type,
+            additional,
+            mode,
+        }
+    }
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct RegisterDamagedBySourceZoneReplacementEffect {

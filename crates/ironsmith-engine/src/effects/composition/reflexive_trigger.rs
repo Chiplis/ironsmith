@@ -303,10 +303,12 @@ impl EffectExecutor for ReflexiveTriggerEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        // An antecedent that never ran left no result: it didn't happen, so
+        // the reflexive ability doesn't trigger (CR 603.12).
         let outcome = ctx
             .get_outcome(self.condition)
             .cloned()
-            .ok_or(ExecutionError::EffectNotFound(self.condition))?;
+            .unwrap_or_else(EffectOutcome::impossible);
         if !self.predicate.evaluate_outcome(&outcome) {
             return Ok(EffectOutcome::resolved());
         }

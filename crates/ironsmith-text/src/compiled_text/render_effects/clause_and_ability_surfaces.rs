@@ -9767,6 +9767,7 @@ pub(crate) fn describe_static_ability_with_subject(
         uses_enters_with_counter_surface,
         transforms_into,
         presentation_label,
+        entry_instead_surface,
     }) = static_ability.compiled_model().map(|model| &model.payload)
     {
         if !also_turns_face_up
@@ -9822,7 +9823,13 @@ pub(crate) fn describe_static_ability_with_subject(
                 .replace("with this permanent", "with it")
                 .replace(" on this source ", &format!(" on {destination} "));
         }
-        let line = if body.is_empty() {
+        let line = if *entry_instead_surface && !body.is_empty() {
+            // CR 614.1c: "If this land would enter, instead <program>, then
+            // put this land onto the battlefield" (Sheltered Valley).
+            format!(
+                "If {authored_subject} would enter, instead {body}, then put {authored_subject} onto the battlefield"
+            )
+        } else if body.is_empty() {
             timing
         } else {
             format!("{timing}, {body}")

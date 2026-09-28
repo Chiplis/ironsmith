@@ -149,7 +149,16 @@ impl EffectExecutor for SequenceEffect {
             } else {
                 0
             };
-            if assignment_count > 0 {
+            // Every announced assignment already belongs to an earlier child:
+            // this child's target is the one a synthetic target prelude
+            // declared for it ("Target ...: put a counter on this; it deals 2
+            // damage to that target"), so it keeps that scope rather than an
+            // empty one.
+            let assignments_exhausted = child_assignments
+                .as_ref()
+                .is_some_and(|assignments| assignment_cursor >= assignments.len())
+                && active_scope.is_some();
+            if assignment_count > 0 && !assignments_exhausted {
                 let assignments = child_assignments
                     .as_ref()
                     .expect("child assignments checked above");
@@ -167,6 +176,13 @@ impl EffectExecutor for SequenceEffect {
                     self.effects.get(index + 1),
                 ),
             );
+            let previous_entry_attachment = std::mem::replace(
+                &mut ctx.pending_entry_attachment,
+                crate::effects::permanents::entry_attachment_for_move(
+                    effect,
+                    self.effects.get(index + 1),
+                ),
+            );
             let outcome = if let Some((scoped_targets, scoped_assignments)) = &active_scope {
                 ctx.with_temp_targets(scoped_targets.clone(), |ctx| {
                     ctx.with_temp_target_assignments(scoped_assignments.clone(), |ctx| {
@@ -177,6 +193,7 @@ impl EffectExecutor for SequenceEffect {
                 execute_effect(game, effect, ctx)
             };
             ctx.public_search_reveal_tag = previous_search_reveal;
+            ctx.pending_entry_attachment = previous_entry_attachment;
             // CR 608.2b: a coordinated sibling whose targets have all become
             // illegal does nothing, and the other siblings still resolve.
             // Executors that report the empty scope as `Err(InvalidTarget)`

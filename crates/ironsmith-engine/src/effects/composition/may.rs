@@ -122,6 +122,16 @@ impl MayEffect {
         self
     }
 
+    /// Outside any per-player iteration, an explicit non-controller decider
+    /// ("any opponent may ...") is the player the accepted effects' "they" /
+    /// "that player" name.
+    fn decider_binds_iterated_player(&self, ctx: &ExecutionContext) -> bool {
+        ctx.iteration.iterated_player.is_none()
+            && self.decider.as_ref().is_some_and(|decider| {
+                !matches!(decider, PlayerFilter::You | PlayerFilter::IteratedPlayer)
+            })
+    }
+
     /// What this offer says, phrased to follow "You may ".
     ///
     /// The optional branch was compiled from a sentence of the source's own
@@ -213,7 +223,19 @@ impl EffectExecutor for MayEffect {
             {
                 game.record_do_this_action(limit.source, limit.trigger_identity);
             }
-            execute_optional_effects(&self.effects, game, ctx)
+            // "Any opponent may tap an untapped creature they control": the
+            // accepted effects are performed by the deciding player, whom
+            // their "they"/"that player" references name.
+            let bind_decider = self.decider_binds_iterated_player(ctx);
+            let previous_iterated_player = ctx.iteration.iterated_player;
+            if bind_decider {
+                ctx.iteration.iterated_player = Some(deciding_player);
+            }
+            let result = execute_optional_effects(&self.effects, game, ctx);
+            if bind_decider {
+                ctx.iteration.iterated_player = previous_iterated_player;
+            }
+            result
         } else {
             Ok(EffectOutcome::declined())
         }
@@ -256,7 +278,11 @@ impl EffectExecutor for MayEffect {
             } else {
                 Vec::new()
             },
-            iterated_player: ctx.iteration.iterated_player,
+            iterated_player: if self.decider_binds_iterated_player(ctx) {
+                Some(deciding_player)
+            } else {
+                ctx.iteration.iterated_player
+            },
         }))
     }
 

@@ -173,6 +173,27 @@ impl BattlefieldCharacteristicScope {
     }
 }
 
+/// Append an ability to a fast-path ability list unless it is already there,
+/// with the same identity rule the layer calculation uses (static abilities
+/// by instance id, everything else by value).
+fn push_fast_path_ability_once(abilities: &mut Vec<Ability>, candidate: Ability) {
+    let present = match &candidate.kind {
+        AbilityKind::Static(static_ability) => {
+            let instance_id = static_ability.instance_id();
+            abilities.iter().any(|existing| {
+                matches!(
+                    &existing.kind,
+                    AbilityKind::Static(existing) if existing.instance_id() == instance_id
+                )
+            })
+        }
+        _ => abilities.contains(&candidate),
+    };
+    if !present {
+        abilities.push(candidate);
+    }
+}
+
 fn battlefield_characteristic_scope(
     game: &GameState,
     effects: &[ContinuousEffect],
@@ -607,7 +628,29 @@ impl<'a> DerivedGameView<'a> {
             .requires_battlefield_characteristic_calculation(object_id)
             || (self.game.deploy_creatures_enabled() && object.zone == Zone::Battlefield);
         let abilities = if !needs_calculated_abilities {
+            // This fast path must produce the same list, in the same order, as
+            // the calculated characteristics `GameState::current_ability`
+            // dispatches against: legal actions advertise indexes into this
+            // vector and priority dispatch resolves them against that one.
+            // Mirror the no-effect tail of the layer calculation — level
+            // grants, intrinsic basic-land mana abilities, then dropping
+            // inactive static abilities — so the two index spaces agree.
             let mut abilities = object.abilities_vec();
+            for level_ability in object.level_granted_abilities() {
+                for granted in level_ability.source_granted_inline_abilities() {
+                    let candidate = match &granted.kind {
+                        AbilityKind::Static(static_ability) => {
+                            crate::ability::Ability::static_ability(static_ability.clone())
+                        }
+                        _ => granted.clone(),
+                    };
+                    push_fast_path_ability_once(&mut abilities, candidate);
+                }
+                push_fast_path_ability_once(
+                    &mut abilities,
+                    crate::ability::Ability::static_ability(level_ability),
+                );
+            }
             for ability in crate::continuous::intrinsic_basic_land_mana_abilities(
                 &object.card_types,
                 &object.subtypes,
@@ -616,6 +659,12 @@ impl<'a> DerivedGameView<'a> {
                     abilities.push(ability);
                 }
             }
+            abilities.retain(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => {
+                    static_ability.is_active(self.game, object_id)
+                }
+                _ => true,
+            });
             Arc::new(abilities)
         } else {
             // The calculated abilities already live behind an `Arc`; sharing it

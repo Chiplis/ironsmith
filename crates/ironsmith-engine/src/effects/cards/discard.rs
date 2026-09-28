@@ -763,10 +763,15 @@ impl CostExecutableEffect for DiscardEffect {
 
         let required = match self.count {
             Value::Fixed(n) => n.max(0) as usize,
-            _ => {
-                return Err(CostValidationError::Other(
-                    "dynamic discard cost amount is unsupported".to_string(),
-                ));
+            // A variable amount ("discard X cards") is checked before X is
+            // announced, and X = 0 is always an available announcement
+            // (CR 107.3a), so the minimum requirement is evaluated at X = 0.
+            // Payment resolves the real amount from the announced X.
+            ref count => {
+                let ctx =
+                    crate::effects::ExecutionContext::new_default(source, controller).with_x(0);
+                crate::effects::helpers::resolve_value(game, count, &ctx)
+                    .map_or(0, |amount| amount.max(0) as usize)
             }
         };
         if required == 0 {

@@ -545,6 +545,20 @@ pub fn parse_resource_look_shape<'a>(
         } else {
             return None;
         };
+    // "Target player looks at the top three cards of their library": the
+    // possessive refers back to the sentence's own player subject.
+    let player = match (player, subject_player) {
+        (
+            PlayerAst::That,
+            Some(
+                subject @ (PlayerAst::Target
+                | PlayerAst::TargetOpponent
+                | PlayerAst::Opponent
+                | PlayerAst::Any),
+            ),
+        ) => subject,
+        (player, _) => player,
+    };
     let owner_rest = trimmed(owner_rest);
     let count = if sentence_finished(owner_rest) {
         count

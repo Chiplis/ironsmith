@@ -2133,6 +2133,16 @@ fn stage_effects_from_normalized(
     };
     bind_aggregate_source_exiled_returns(&mut semantic_effects);
     let mut prelude = Vec::new();
+    // The trigger's own default antecedent ("When this Aura enters, it deals
+    // 2 damage to enchanted creature": `it` is the Aura) outranks the
+    // attached object, which only seeds `it` when the trigger names no
+    // object of its own.
+    if imports.last_object_tag.is_none()
+        && let Some(tag) = default_last_object_tag.as_ref()
+        && tag.as_str() == crate::tag::CompilerReferenceTag::Triggering.as_str()
+    {
+        imports.last_object_tag = Some(tag.clone());
+    }
     for (tag, referenced) in [
         (
             crate::tag::CompilerReferenceTag::Equipped,
@@ -4264,6 +4274,7 @@ fn lower_pregame_reveal_from_opening_hand(
     display: String,
 ) -> Result<StaticAbility, CardTextError> {
     let (effects, choices) = compile_trigger_effects(Some(&trigger), &effects)?;
+    let effects = crate::lower::finalize_effect_list_references(effects);
     if !choices.is_empty() {
         return Err(CardTextError::InvariantViolation(
             "opening-hand delayed consequences cannot require choices before the game begins"

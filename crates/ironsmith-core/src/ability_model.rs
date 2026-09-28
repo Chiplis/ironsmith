@@ -37,6 +37,46 @@ pub enum ActivationTiming {
     DuringOpponentsUpkeep,
     /// "Activate only during any upkeep step".
     DuringAnyUpkeep,
+    /// "Activate only during your draw step" (and, for an ability any player
+    /// may activate, "only during their draw step"): the activating player is
+    /// the active player and the game is in the draw step.
+    DuringYourDrawStep,
+    /// "Activate only during the declare attackers step".
+    DuringDeclareAttackersStep,
+    /// "Activate only during the declare blockers step".
+    DuringDeclareBlockersStep,
+    /// "Activate only before attackers are declared": earlier in the turn
+    /// than the declare attackers step of its first combat (CR 506.8).
+    BeforeAttackersDeclared,
+    /// "Activate only during your turn, before attackers are declared".
+    DuringYourTurnBeforeAttackersDeclared,
+    /// "Activate only before blockers are declared": earlier in the turn than
+    /// the declare blockers step of its first combat (CR 506.8).
+    BeforeBlockersDeclared,
+    /// "Activate only before the combat damage step" (CR 506.8).
+    BeforeCombatDamageStep,
+    /// "Activate only before the end of combat step" (CR 506.8).
+    BeforeEndOfCombatStep,
+}
+
+impl ActivationTiming {
+    /// The authored window of a step-window timing ("before blockers are
+    /// declared"), without the leading "activate only".
+    pub fn step_window_phrase(self) -> Option<&'static str> {
+        Some(match self {
+            ActivationTiming::DuringYourDrawStep => "during your draw step",
+            ActivationTiming::DuringDeclareAttackersStep => "during the declare attackers step",
+            ActivationTiming::DuringDeclareBlockersStep => "during the declare blockers step",
+            ActivationTiming::BeforeAttackersDeclared => "before attackers are declared",
+            ActivationTiming::DuringYourTurnBeforeAttackersDeclared => {
+                "during your turn, before attackers are declared"
+            }
+            ActivationTiming::BeforeBlockersDeclared => "before blockers are declared",
+            ActivationTiming::BeforeCombatDamageStep => "before the combat damage step",
+            ActivationTiming::BeforeEndOfCombatStep => "before the end of combat step",
+            _ => return None,
+        })
+    }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

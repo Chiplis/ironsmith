@@ -1160,6 +1160,25 @@ pub(in super::super) fn parse_object_filter_inner(
     }
 
     let clause_words = all_words.clone();
+    // "a creature card with the same total power and toughness" (Wild Pair):
+    // equal to the triggering creature's power plus toughness.
+    if let Some(idx) = all_words
+        .windows(5)
+        .position(|window| window == ["same", "total", "power", "and", "toughness"])
+        && idx + 5 == all_words.len()
+    {
+        let triggering = || {
+            Box::new(crate::target::ChooseSpec::Tagged(crate::tag::TagKey::from(
+                "triggering",
+            )))
+        };
+        filter.total_power_toughness = Some(crate::filter::Comparison::EqualExpr(Box::new(
+            Value::Add(
+                Box::new(Value::PowerOf(triggering())),
+                Box::new(Value::ToughnessOf(triggering())),
+            ),
+        )));
+    }
     for idx in 0..all_words.len() {
         let value_tokens = match all_words.get(idx..) {
             Some(["total", "power", "and", "toughness", rest @ ..])

@@ -2637,6 +2637,10 @@ pub(crate) fn describe_mana_activation_condition(condition: &crate::ConditionExp
             ActivationTiming::DuringAnyUpkeep => {
                 "Activate only during any upkeep step".to_string()
             }
+            timing => format!(
+                "Activate only {}",
+                timing.step_window_phrase().unwrap_or("at any time")
+            ),
         },
         crate::ConditionExpr::MaxActivationsPerObject(limit) => {
             if *limit == 1 { "Activate only once".to_string() }

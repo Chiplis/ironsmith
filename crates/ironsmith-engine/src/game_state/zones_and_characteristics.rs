@@ -608,6 +608,11 @@ impl GameState {
             // CR 506.4: a planeswalker or battle that leaves the battlefield
             // stops being attacked.
             self.remove_attacked_permanent_from_combat(old_id, None);
+            // CR 506.4: an attacking or blocking creature that leaves the
+            // battlefield is removed from combat. The new object in the
+            // destination zone is unrelated to the departed combatant (CR
+            // 400.7), so its old ID must not linger in the combat state.
+            self.remove_object_from_combat(old_id);
         }
         if let Some(snapshot) = pre_move_snapshot.as_ref() {
             for entry in &mut self.stack {
@@ -1966,6 +1971,29 @@ impl GameState {
             crate::events::cause::EventCause::effect(),
             decision_maker,
             true,
+            Vec::new(),
+            entering_controller,
+            false,
+            Some(prepared_entry),
+        )
+    }
+
+    /// Commit a prepared entry whose attachment the effect fixes ("onto the
+    /// battlefield attached to X"). The caller attaches it; an Aura must not
+    /// choose something else to enchant (CR 303.4f).
+    pub(crate) fn commit_prepared_etb_with_fixed_attachment_and_dm(
+        &mut self,
+        old_id: ObjectId,
+        prepared_entry: PreparedEtbEntry,
+        entering_controller: Option<PlayerId>,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Option<EntersResult> {
+        self.move_object_with_etb_processing_with_dm_and_cause_internal(
+            old_id,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            decision_maker,
+            false,
             Vec::new(),
             entering_controller,
             false,
@@ -3725,7 +3753,11 @@ impl GameState {
         }
 
         let effects = self.cached_continuous_effects_snapshot();
+        let marker = crate::continuous::provisional_condition_marker();
         let calculated = self.calculated_characteristics_batch_with_effects(&missing, &effects);
+        if crate::continuous::computed_provisionally(marker) {
+            return;
+        }
         for id in missing {
             self.runtime_cache.characteristics_cache.insert(
                 id,
@@ -3785,8 +3817,14 @@ impl GameState {
                 })
                 .collect();
             if !missing.is_empty() {
+                let marker = crate::continuous::provisional_condition_marker();
                 let calculated_batch =
                     self.calculated_characteristics_batch_with_effects(&missing, &all_effects);
+                // A self-dependent condition an enclosing evaluation treated
+                // provisionally (CR 613.8) makes these results unfit to cache.
+                if crate::continuous::computed_provisionally(marker) {
+                    return calculated_batch.get(&id).cloned().map(Arc::new);
+                }
                 let mut calculated = None;
                 for candidate in missing {
                     let cached = self.runtime_cache.characteristics_cache.insert(
@@ -3802,8 +3840,9 @@ impl GameState {
             }
         }
 
+        let marker = crate::continuous::provisional_condition_marker();
         let calculated = self.calculated_characteristics_with_effects(id, &all_effects);
-        if self.continuous_state_is_clean() {
+        if self.continuous_state_is_clean() && !crate::continuous::computed_provisionally(marker) {
             return self.runtime_cache.characteristics_cache.insert(
                 id,
                 effects_revision,

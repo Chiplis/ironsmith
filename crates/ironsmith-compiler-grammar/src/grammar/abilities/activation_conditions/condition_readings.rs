@@ -314,42 +314,65 @@ fn read_text_only_activation_restriction(input: &ActivationCondition<'_>) -> Opt
 }
 fn read_activate_only_if_predicate(input: &ActivationCondition<'_>) -> Option<PredicateAst> {
     let tokens = input.tokens;
-    if let Some(condition_tokens) = parse_activate_only_if_tail_tokens(tokens)
-        && let Ok(predicate) = super::super::super::filters::parse_predicate(condition_tokens)
-    {
-        match predicate {
-            crate::cards::builders::PredicateAst::Source(
-                crate::cards::builders::SourcePredicateAst::SourceHasCounterAtLeast {
-                    counter_type,
-                    count,
-                    surface,
-                },
-            ) => {
-                return Some(PredicateAst::Source(
-                    crate::cards::builders::SourcePredicateAst::SourceHasCounterAtLeast {
-                        counter_type,
-                        count,
-                        surface,
-                    },
-                ));
-            }
-            crate::cards::builders::PredicateAst::Source(
-                crate::cards::builders::SourcePredicateAst::SourceMatches(filter),
-            ) => {
-                return Some(PredicateAst::Source(
-                    crate::cards::builders::SourcePredicateAst::SourceMatches(filter),
-                ));
-            }
-            // "Activate only if there are no charge counters on this artifact."
-            crate::cards::builders::PredicateAst::Source(
-                crate::cards::builders::SourcePredicateAst::SourceHasNoCounter(counter_type),
-            ) => {
-                return Some(PredicateAst::Source(
-                    crate::cards::builders::SourcePredicateAst::SourceHasNoCounter(counter_type),
-                ));
-            }
-            _ => {}
+    let condition_tokens = parse_activate_only_if_tail_tokens(tokens)?;
+    // The shared condition grammar reads the "only if" predicate. Every
+    // predicate it recognizes is an activation gate (CR 602.5b), except the
+    // ones that read an object or event the surrounding effect or trigger
+    // supplies: an activated ability has no triggering event and no
+    // implicit "it" other than its source.
+    let predicate = super::super::super::filters::parse_predicate(condition_tokens).ok()?;
+    activation_gate_predicate(predicate)
+}
+
+/// The predicate as an activation gate, if it can be one.
+fn activation_gate_predicate(predicate: PredicateAst) -> Option<PredicateAst> {
+    match predicate {
+        PredicateAst::Triggering(_)
+        | PredicateAst::ItIsLandCard
+        | PredicateAst::ItIsSoulbondPaired
+        | PredicateAst::ItMatches(_)
+        | PredicateAst::ItMatchedLastKnown(_)
+        | PredicateAst::TargetMatches(_)
+        | PredicateAst::TaggedMatches(..)
+        | PredicateAst::TaggedWasCast(_)
+        | PredicateAst::TaggedObjectIsTopOfLibrary { .. }
+        | PredicateAst::TargetWasKicked
+        | PredicateAst::TargetSpellCastOrderThisTurn(_)
+        | PredicateAst::TargetSpellControllerIsPoisoned
+        | PredicateAst::TargetSpellNoManaSpentToCast
+        | PredicateAst::YouControlMoreCreaturesThanTargetSpellController
+        | PredicateAst::TargetIsBlocked
+        | PredicateAst::TargetHasGreatestPowerAmongCreatures
+        | PredicateAst::TargetManaValueLteColorsSpentToCastThisSpell
+        | PredicateAst::TargetObjectsHaveDifferentColorSets
+        | PredicateAst::AllTargetsStillLegal
+        | PredicateAst::ThisSpellWasCastAtSorceryTiming
+        | PredicateAst::ThisSpellEscaped
+        | PredicateAst::ThisSpellWasKicked
+        | PredicateAst::ThisSpellPaidLabel(_)
+        | PredicateAst::ThisSpellWasCastFromZone(_)
+        | PredicateAst::ThisSpellWasCastFromNonHand
+        | PredicateAst::ManaSpentToCastThisSpellAtLeast { .. }
+        | PredicateAst::ColoredManaSpentToCastThisSpellAtLeast(_)
+        | PredicateAst::SnowManaOfAnySpellColorSpentToCastThisSpell
+        | PredicateAst::SameColorManaSpentToCastThisSpellAtLeast(_)
+        | PredicateAst::ColorsOfManaSpentToCastThisSpellOrMore(_)
+        | PredicateAst::VoteOptionGetsMoreVotes { .. }
+        | PredicateAst::VoteOptionGetsMoreVotesOrTied { .. }
+        | PredicateAst::SecretChoicesMatch
+        | PredicateAst::NoVoteObjectsMatched { .. }
+        | PredicateAst::XValueAtLeast(_) => None,
+        PredicateAst::Not(inner) => {
+            Some(PredicateAst::Not(Box::new(activation_gate_predicate(*inner)?)))
         }
+        PredicateAst::And(left, right) => Some(PredicateAst::And(
+            Box::new(activation_gate_predicate(*left)?),
+            Box::new(activation_gate_predicate(*right)?),
+        )),
+        PredicateAst::Or(left, right) => Some(PredicateAst::Or(
+            Box::new(activation_gate_predicate(*left)?),
+            Box::new(activation_gate_predicate(*right)?),
+        )),
+        predicate => Some(predicate),
     }
-    None
 }

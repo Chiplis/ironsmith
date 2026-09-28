@@ -1817,7 +1817,8 @@ fn resolve_value_for_replacement(
     let mut ctx = crate::effects::ExecutionContext::new(source, controller, &mut dm);
 
     if let Some(source_obj) = game.object(source) {
-        ctx.x_value = source_obj.x_value;
+        // CR 107.3m: without a cast, the X in the object's own mana cost is 0.
+        ctx.x_value = source_obj.own_entry_x_value();
         ctx.optional_costs_paid = source_obj.optional_costs_paid.clone();
         if !source_obj.cast_tagged_objects.is_empty() {
             ctx = ctx.with_tagged_objects(source_obj.cast_tagged_objects.clone());

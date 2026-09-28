@@ -2623,7 +2623,12 @@ fn has_payable_legal_spree_selection_with_view(
             .unwrap_or_default();
         for (index, optional) in spell.optional_costs.iter().enumerate() {
             for _ in 0..spell.optional_costs_paid.times_paid(index) {
-                if let Some(cost) = optional.cost.mana_cost() {
+                if let Some(cost) = crate::cost::optional_cost_payment_branch(
+                    &optional.cost,
+                    spell.optional_costs_paid.branch_choice(index),
+                )
+                .mana_cost()
+                {
                     pips.extend(cost.pips().iter().cloned());
                 }
             }
@@ -3216,7 +3221,18 @@ pub(crate) fn can_cast_spell_with_context(
                     game, player, spell.id, &cost, view,
                 )
             });
-        if !can_pay_effective && !can_pay_with_optional_reduction {
+        let can_pay_with_sacrifice_reduction = !can_pay_effective
+            && !can_pay_with_optional_reduction
+            && affordable_with_max_cost_payment_sacrifice_reduction(
+                game,
+                player,
+                spell_for_checks,
+                spell.id,
+                &effective_cost,
+                view,
+            );
+        if !can_pay_effective && !can_pay_with_optional_reduction && !can_pay_with_sacrifice_reduction
+        {
             ctx.add_affordability_ms(affordability_started_at.elapsed_ms());
             ctx.add_total_ms(total_started_at.elapsed_ms());
             return false;
@@ -3567,7 +3583,18 @@ pub(crate) fn can_cast_with_cost_with_context(
                     view,
                 )
             });
-        if !can_pay_adjusted && !can_pay_with_optional_reduction {
+        let can_pay_with_sacrifice_reduction = !can_pay_adjusted
+            && !can_pay_with_optional_reduction
+            && affordable_with_max_cost_payment_sacrifice_reduction(
+                game,
+                player,
+                spell_for_checks,
+                spell_id,
+                &adjusted,
+                view,
+            );
+        if !can_pay_adjusted && !can_pay_with_optional_reduction && !can_pay_with_sacrifice_reduction
+        {
             ctx.add_affordability_ms(affordability_started_at.elapsed_ms());
             return false;
         }
@@ -3985,35 +4012,9 @@ fn tagged_dependency_satisfied_by_prior_cost(
     cost: &crate::costs::Cost,
     available_tags: &[crate::tag::TagKey],
 ) -> bool {
-    let Some(effect) = cost.effect_ref() else {
-        return false;
-    };
-    let tagged_constraints = if let Some(sacrifice) =
-        effect.downcast_ref::<crate::effects::SacrificeEffect>()
-    {
-        &sacrifice.filter.tagged_constraints
-    } else if let Some(sacrifice) = effect.downcast_ref::<ironsmith_core::SacrificePlayerEffect>() {
-        &sacrifice.filter.tagged_constraints
-    } else if let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>() {
-        match exile.spec.base() {
-            ChooseSpec::Tagged(tag) => return available_tags.contains(tag),
-            _ => return false,
-        }
-    } else if let Some(returned) = effect.downcast_ref::<crate::effects::ReturnToHandEffect>() {
-        match returned.spec.base() {
-            ChooseSpec::Object(filter) | ChooseSpec::All(filter) => &filter.tagged_constraints,
-            ChooseSpec::Tagged(tag) => return available_tags.contains(tag),
-            _ => return false,
-        }
-    } else {
-        return false;
-    };
-
-    !tagged_constraints.is_empty()
-        && tagged_constraints.iter().all(|constraint| {
-            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
-                && available_tags.iter().any(|tag| tag == &constraint.tag)
-        })
+    // The consumer pays with exactly the objects an earlier choice cost
+    // selects; that choice already validated their availability.
+    crate::cost::cost_consumed_choice_tag(cost).is_some_and(|tag| available_tags.contains(&tag))
 }
 
 pub(crate) fn can_pay_non_mana_cost_sequence_for_cast(
@@ -4027,7 +4028,7 @@ pub(crate) fn can_pay_non_mana_cost_sequence_for_cast(
     let mut available_tags = Vec::new();
     let mut discard_slots = Vec::new();
 
-    for cost in costs {
+    for (idx, cost) in costs.iter().enumerate() {
         if let crate::costs::CostProcessingMode::DiscardCards { count, filter } =
             cost.processing_mode()
         {
@@ -4038,19 +4039,35 @@ pub(crate) fn can_pay_non_mana_cost_sequence_for_cast(
             discard_slots.extend(std::iter::repeat_n(candidates, count as usize));
         }
         if game
-            .validate_cost_for_payment_reason(player, source, &cost, check_ctx.reason)
+            .validate_cost_for_payment_reason(player, source, cost, check_ctx.reason)
             .is_err()
         {
             return false;
         }
 
-        if crate::costs::can_pay_with_check_context(&*cost.0, game, &check_ctx).is_err()
-            && !tagged_dependency_satisfied_by_prior_cost(&cost, &available_tags)
+        // A choice immediately consumed by the next component is checked as a
+        // pair with a representative selection, so the consumer sees the tag.
+        if crate::cost::tagged_choice_pair_at(&costs, idx).is_some()
+            && !crate::cost::tagged_choice_pair_is_payable(
+                game,
+                player,
+                source,
+                &costs,
+                idx,
+                check_ctx.reason,
+                None,
+            )
         {
             return false;
         }
 
-        if let Some(tag) = choose_cost_tag(&cost)
+        if crate::costs::can_pay_with_check_context(&*cost.0, game, &check_ctx).is_err()
+            && !tagged_dependency_satisfied_by_prior_cost(cost, &available_tags)
+        {
+            return false;
+        }
+
+        if let Some(tag) = choose_cost_tag(cost)
             && !available_tags.iter().any(|available| available == &tag)
         {
             available_tags.push(tag);
@@ -5822,7 +5839,243 @@ pub(crate) fn resolve_this_spell_cost_reduction_value(
             .max(0);
     }
 
+    // "for each permanent sacrificed this way" is decided while the spell's
+    // own sacrifice cost is paid; before that it contributes nothing, and
+    // `cost_payment_sacrifice_reduction` adds it once the choice is made.
+    if let Some(unpaid) =
+        substitute_cost_payment_sacrifice_metric(&reduction.reduction, &|_| {
+            crate::effect::Value::Fixed(0)
+        })
+    {
+        return resolve_cost_modifier_value(game, player, spell, &unpaid);
+    }
+
     resolve_cost_modifier_value(game, player, spell, &reduction.reduction)
+}
+
+/// Replace every unbound "permanents sacrificed this way" metric in a cost
+/// modifier amount. Returns `None` when the amount has no such metric.
+pub(crate) fn substitute_cost_payment_sacrifice_metric(
+    value: &crate::effect::Value,
+    replacement: &dyn Fn(&ironsmith_core::PriorEffectMetricQuery) -> crate::effect::Value,
+) -> Option<crate::effect::Value> {
+    use crate::effect::Value;
+    let pair = |left: &Value, right: &Value| {
+        let new_left = substitute_cost_payment_sacrifice_metric(left, replacement);
+        let new_right = substitute_cost_payment_sacrifice_metric(right, replacement);
+        (new_left.is_some() || new_right.is_some()).then(|| {
+            (
+                Box::new(new_left.unwrap_or_else(|| left.clone())),
+                Box::new(new_right.unwrap_or_else(|| right.clone())),
+            )
+        })
+    };
+    match value {
+        Value::PendingPriorEffectMetric(query)
+            if query.action == Some(ironsmith_core::PriorEffectAction::Sacrificed) =>
+        {
+            Some(replacement(query))
+        }
+        Value::SurfaceHinted { value: inner, hints } => {
+            substitute_cost_payment_sacrifice_metric(inner, replacement).map(|inner| {
+                Value::SurfaceHinted {
+                    value: Box::new(inner),
+                    hints: hints.clone(),
+                }
+            })
+        }
+        Value::Add(left, right) => pair(left, right).map(|(l, r)| Value::Add(l, r)),
+        Value::Min(left, right) => pair(left, right).map(|(l, r)| Value::Min(l, r)),
+        Value::Scaled(inner, factor) => substitute_cost_payment_sacrifice_metric(inner, replacement)
+            .map(|inner| Value::Scaled(Box::new(inner), *factor)),
+        Value::DividedRoundedDown(inner, divisor) => {
+            substitute_cost_payment_sacrifice_metric(inner, replacement)
+                .map(|inner| Value::DividedRoundedDown(Box::new(inner), *divisor))
+        }
+        Value::HalfRoundedDown(inner) => {
+            substitute_cost_payment_sacrifice_metric(inner, replacement)
+                .map(|inner| Value::HalfRoundedDown(Box::new(inner)))
+        }
+        _ => None,
+    }
+}
+
+fn spell_cost_payment_sacrifice_reductions(
+    spell: &crate::object::Object,
+) -> impl Iterator<Item = &crate::static_abilities::ThisSpellCostReduction> {
+    spell
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            crate::ability::AbilityKind::Static(static_ability) => static_ability.this_spell_cost_reduction(),
+            _ => None,
+        })
+        .filter(|reduction| {
+            substitute_cost_payment_sacrifice_metric(&reduction.reduction, &|_| {
+                crate::effect::Value::Fixed(0)
+            })
+            .is_some()
+        })
+}
+
+/// Whether this spell's cost is reduced "for each permanent sacrificed this
+/// way" by its own additional cost (Dargo, Rottenmouth Viper).
+pub(crate) fn spell_has_cost_payment_sacrifice_reduction(spell: &crate::object::Object) -> bool {
+    spell_cost_payment_sacrifice_reductions(spell).next().is_some()
+}
+
+fn collect_cost_choices<'a>(
+    effect: &'a crate::effect::Effect,
+    out: &mut Vec<crate::effects::ChooseObjectsEffect>,
+) {
+    if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
+        out.push(choose.clone());
+        return;
+    }
+    if let Some(inner) = effect.transparent_child_effect() {
+        collect_cost_choices(inner, out);
+        return;
+    }
+    effect
+        .0
+        .visit_child_effects(&mut |child| collect_cost_choices(child, out));
+}
+
+/// The largest "{N} less for each permanent sacrificed this way" reduction the
+/// caster could lock in by sacrificing as many eligible permanents as the
+/// spell's additional cost allows (CR 601.2b, 601.2f: the sacrifices are
+/// announced before the total cost is determined).
+pub(crate) fn max_cost_payment_sacrifice_reduction(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+) -> u32 {
+    if !spell_has_cost_payment_sacrifice_reduction(spell) {
+        return 0;
+    }
+    let mut choices = Vec::new();
+    for cost in spell.additional_non_mana_costs() {
+        if let Some(effect) = cost.effect_ref() {
+            collect_cost_choices(effect, &mut choices);
+        }
+    }
+    let filter_ctx = game.filter_context_for(player, Some(spell.id));
+    let cause = crate::events::cause::EventCause::from_cost(spell.id, player);
+    let lands_only = game.player_cant_sacrifice_nonland_to_cast_or_activate(player);
+    let sacrificable = choices
+        .iter()
+        .filter(|choose| {
+            choose
+                .filter
+                .zone
+                .or(choose.zone)
+                .is_none_or(|zone| zone == crate::zone::Zone::Battlefield)
+        })
+        .map(|choose| {
+            let available = game
+                .battlefield
+                .iter()
+                .filter_map(|&id| game.object(id).map(|object| (id, object)))
+                .filter(|(id, object)| {
+                    game.controller_of(object) == player
+                        && choose.filter.matches(object, &filter_ctx, game)
+                        && game.can_be_sacrificed_with_cause(*id, &cause)
+                        && (!lands_only || game.current_has_card_type(*id, CardType::Land))
+                })
+                .count();
+            choose.count.max.map_or(available, |max| available.min(max))
+        })
+        .sum::<usize>() as i32;
+    if sacrificable == 0 {
+        return 0;
+    }
+    let mut dm = SelectFirstDecisionMaker;
+    let ctx = ExecutionContext::new(spell.id, player, &mut dm);
+    let mut total = 0u32;
+    for reduction in spell_cost_payment_sacrifice_reductions(spell) {
+        let best = substitute_cost_payment_sacrifice_metric(&reduction.reduction, &|_| {
+            crate::effect::Value::Fixed(sacrificable)
+        });
+        let none = substitute_cost_payment_sacrifice_metric(&reduction.reduction, &|_| {
+            crate::effect::Value::Fixed(0)
+        });
+        let (Some(best), Some(none)) = (best, none) else {
+            continue;
+        };
+        let best = resolve_value(game, &best, &ctx).unwrap_or(0);
+        let none = resolve_value(game, &none, &ctx).unwrap_or(0);
+        total = total.saturating_add(best.saturating_sub(none).max(0) as u32);
+    }
+    total
+}
+
+/// Whether the mana cost becomes affordable once the most favourable
+/// sacrifice-this-way reduction is locked in.
+fn affordable_with_max_cost_payment_sacrifice_reduction(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    spell_id: ObjectId,
+    effective_cost: &crate::mana::ManaCost,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    let reduction = max_cost_payment_sacrifice_reduction(game, player, spell);
+    reduction > 0
+        && mana_cost_can_be_paid_by_caster_or_assist_with_view(
+            game,
+            player,
+            spell_id,
+            &apply_minimum_spell_total_mana_with_view(
+                view,
+                &effective_cost.reduce_generic(reduction),
+            ),
+            view,
+        )
+}
+
+/// The extra generic reduction earned by the permanents sacrificed while
+/// paying this spell's additional costs, whose outcomes are `outcomes`
+/// (CR 601.2f: the total cost accounts for the announced sacrifices).
+pub(crate) fn cost_payment_sacrifice_reduction(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    outcomes: &std::collections::HashMap<crate::effect::EffectId, crate::effect::EffectOutcome>,
+) -> u32 {
+    let mut effect_ids = outcomes.keys().copied().collect::<Vec<_>>();
+    effect_ids.sort_by_key(|id| id.0);
+    let mut dm = SelectFirstDecisionMaker;
+    let mut ctx = ExecutionContext::new(spell.id, player, &mut dm);
+    ctx.effect_outcomes = outcomes.clone();
+    let mut total = 0u32;
+    for reduction in spell_cost_payment_sacrifice_reductions(spell) {
+        let paid = substitute_cost_payment_sacrifice_metric(&reduction.reduction, &|query| {
+            // The sacrificed objects' memory is last-known information; the
+            // query's zone names where they were, not where they are now.
+            let mut query = query.clone();
+            if let Some(filter) = query.filter.as_mut() {
+                filter.zone = None;
+            }
+            effect_ids
+                .iter()
+                .map(|&effect_id| crate::effect::Value::PriorEffectMetric {
+                    effect_id,
+                    query: query.clone(),
+                })
+                .reduce(|left, right| crate::effect::Value::Add(Box::new(left), Box::new(right)))
+                .unwrap_or(crate::effect::Value::Fixed(0))
+        });
+        let unpaid = substitute_cost_payment_sacrifice_metric(&reduction.reduction, &|_| {
+            crate::effect::Value::Fixed(0)
+        });
+        let (Some(paid), Some(unpaid)) = (paid, unpaid) else {
+            continue;
+        };
+        let paid = resolve_value(game, &paid, &ctx).unwrap_or(0);
+        let unpaid = resolve_value(game, &unpaid, &ctx).unwrap_or(0);
+        total = total.saturating_add(paid.saturating_sub(unpaid).max(0) as u32);
+    }
+    total
 }
 
 pub(crate) fn add_generic_mana_cost(
@@ -7218,6 +7471,22 @@ pub(crate) fn compute_potential_mana_with_view(
                                 activation_card_cost_choice_cost(&choice).clone()
                             }
                         }
+                    } else if crate::cost::tagged_choice_pair_at(&components, idx).is_some() {
+                        let paired = crate::cost::tagged_choice_pair_is_payable(
+                            game,
+                            player,
+                            perm_id,
+                            &components,
+                            idx,
+                            ctx.reason,
+                            None,
+                        );
+                        idx += 2;
+                        if !paired {
+                            payable = false;
+                            break;
+                        }
+                        continue;
                     } else {
                         let cost = components[idx].clone();
                         idx += 1;

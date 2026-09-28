@@ -1087,6 +1087,28 @@ pub(crate) fn describe_activation_timing_clause(timing: &ActivationTiming) -> Op
             Some("Activate only during an opponent's upkeep")
         }
         ActivationTiming::DuringAnyUpkeep => Some("Activate only during any upkeep step"),
+        ActivationTiming::DuringYourDrawStep => Some("Activate only during your draw step"),
+        ActivationTiming::DuringDeclareAttackersStep => {
+            Some("Activate only during the declare attackers step")
+        }
+        ActivationTiming::DuringDeclareBlockersStep => {
+            Some("Activate only during the declare blockers step")
+        }
+        ActivationTiming::BeforeAttackersDeclared => {
+            Some("Activate only before attackers are declared")
+        }
+        ActivationTiming::DuringYourTurnBeforeAttackersDeclared => {
+            Some("Activate only during your turn, before attackers are declared")
+        }
+        ActivationTiming::BeforeBlockersDeclared => {
+            Some("Activate only before blockers are declared")
+        }
+        ActivationTiming::BeforeCombatDamageStep => {
+            Some("Activate only before the combat damage step")
+        }
+        ActivationTiming::BeforeEndOfCombatStep => {
+            Some("Activate only before the end of combat step")
+        }
     }
 }
 
@@ -1595,10 +1617,41 @@ pub(super) fn describe_mana_usage_restriction(
             let crate::ability::ManaPaymentPredicate::All(predicates) = &payload.predicate else {
                 return None;
             };
-            let filter = predicates.iter().find_map(|predicate| match predicate {
+            let effects = payload.effects.all_effects();
+            fn contains_copy(effect: &Effect) -> bool {
+                copy_spell_from_effect(effect).is_some()
+                    || effect
+                        .downcast_ref::<crate::effects::SequenceEffect>()
+                        .is_some_and(|sequence| sequence.effects.iter().any(contains_copy))
+            }
+            let copies = effects.iter().any(|effect| contains_copy(effect));
+            // "When you spend this mana to cast a spell or activate an ability,
+            // copy that spell or ability" (Sunken Palace).
+            if copies
+                && predicates.iter().any(|predicate| {
+                    matches!(
+                        predicate,
+                        crate::ability::ManaPaymentPredicate::AnyOf(purposes)
+                            if purposes.contains(&crate::ability::ManaPaymentPredicate::Purpose(
+                                crate::ability::ManaPaymentPurpose::ActivateAbility,
+                            ))
+                    )
+                })
+            {
+                return Some(
+                    "When you spend this mana to cast a spell or activate an ability, copy that spell or ability. You may choose new targets for the copy"
+                        .to_string(),
+                );
+            }
+            let Some(filter) = predicates.iter().find_map(|predicate| match predicate {
                 crate::ability::ManaPaymentPredicate::SourceMatches(filter) => Some(filter),
                 _ => None,
-            })?;
+            }) else {
+                return copies.then(|| {
+                    "When you spend this mana to cast a spell, copy that spell. You may choose new targets for the copy"
+                        .to_string()
+                });
+            };
             let mut spell_text =
                 describe_mana_usage_spell_filter_target_with_options(filter, false)?;
             if predicates.iter().any(|predicate| {
@@ -1609,11 +1662,14 @@ pub(super) fn describe_mana_usage_restriction(
             }) {
                 spell_text.push_str(" that shares a creature type with your commander");
             }
-            let effects = payload.effects.all_effects();
-            let [effect] = effects.as_slice() else {
+            let Some(effect) = effects.first() else {
                 return None;
             };
-            let tail = if let Some(scry) = effect.downcast_ref::<crate::effects::ScryEffect>() {
+            let tail = if copies {
+                "copy that spell and you may choose new targets for the copy".to_string()
+            } else if effects.len() != 1 {
+                return None;
+            } else if let Some(scry) = effect.downcast_ref::<crate::effects::ScryEffect>() {
                 match &scry.count {
                     crate::effect::Value::Fixed(1) => "scry 1".to_string(),
                     crate::effect::Value::CommanderCastCount(crate::target::PlayerFilter::You) => {

@@ -800,11 +800,14 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                     ))],
                 ),
                 _ => (
-                    resolve_unless_player_filter(
-                        *player,
-                        &current_reference_env(ctx),
-                        previous_last_player_filter,
-                    )?,
+                    unless_payer_before_consequence(
+                        resolve_unless_player_filter(
+                            *player,
+                            &current_reference_env(ctx),
+                            previous_last_player_filter,
+                        )?,
+                        &inner_effects,
+                    ),
                     Vec::new(),
                 ),
             };
@@ -876,15 +879,36 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             {
                 PlayerFilter::ControllerOf(crate::target::ObjectRef::Target)
             } else {
-                resolve_unless_player_filter(
-                    *player,
-                    &current_reference_env(ctx),
-                    previous_last_player_filter,
-                )?
+                unless_payer_before_consequence(
+                    resolve_unless_player_filter(
+                        *player,
+                        &current_reference_env(ctx),
+                        previous_last_player_filter,
+                    )?,
+                    &inner_effects,
+                )
             };
             if !matches!(*player, PlayerAst::Implicit) {
                 ctx.last_player_filter = Some(player_filter.clone());
             }
+            // The alternative ("unless they pay X life") is performed by the
+            // deciding player before the consequence exists; a payer bound to
+            // the consequence's sacrifice result names that same player.
+            let alt_effects = alt_effects
+                .into_iter()
+                .map(|effect| {
+                    if let Some(pay_life) = effect.downcast_ref::<crate::effects::PayLifeEffect>()
+                        && let ChooseSpec::Player(payer) = &pay_life.player
+                        && unless_payer_before_consequence(payer.clone(), &inner_effects)
+                            != *payer
+                    {
+                        let mut rebound = pay_life.clone();
+                        rebound.player = ChooseSpec::Player(player_filter.clone());
+                        return Effect::new(rebound);
+                    }
+                    effect
+                })
+                .collect::<Vec<_>>();
             let effect = if matches!(player_filter, PlayerFilter::You)
                 && let Some((main_label, alternative_label)) =
                     binary_pile_choice_labels(effects, alternative)
@@ -1350,4 +1374,42 @@ pub(super) fn try_compile_search_and_reorder_effect(
     };
 
     Ok(Some(compiled))
+}
+
+/// The player deciding an "unless" is fixed before its consequence happens
+/// (CR 118.12), so "its controller sacrifices it unless they pay ..." can't
+/// name the controller of the object the consequence would sacrifice later.
+/// When the resolved payer points at the result tag of the consequence's own
+/// sacrifice, use that sacrifice's actor instead.
+fn unless_payer_before_consequence(payer: PlayerFilter, consequence: &[Effect]) -> PlayerFilter {
+    let tag = match &payer {
+        PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(tag))
+        | PlayerFilter::AliasedControllerOf(crate::target::ObjectRef::Tagged(tag))
+            if crate::reference_helpers::is_sacrificed_object_reference_tag(tag.as_str()) =>
+        {
+            tag.clone()
+        }
+        _ => return payer,
+    };
+    fn actor_for(effects: &[Effect], tag: &crate::tag::TagKey) -> Option<PlayerFilter> {
+        for effect in effects {
+            if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+                && &choose.tag == tag
+            {
+                return Some(choose.chooser.clone());
+            }
+            if let Some(sacrifice) = effect.downcast_ref::<crate::effects::SacrificeTargetEffect>()
+                && let Some(player) = sacrifice.player.clone()
+            {
+                return Some(player);
+            }
+            if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
+                && let Some(player) = actor_for(&sequence.effects, tag)
+            {
+                return Some(player);
+            }
+        }
+        None
+    }
+    actor_for(consequence, &tag).unwrap_or(payer)
 }

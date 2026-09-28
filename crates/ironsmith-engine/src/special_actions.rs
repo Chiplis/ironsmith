@@ -5,7 +5,10 @@
 
 mod payment;
 pub(crate) use payment::pay_resolution_cost_with_snapshot;
-use payment::{SpecialActionPayment, check_special_action_payment, pay_special_action_payment};
+use payment::{
+    SpecialActionPayment, check_special_action_payment,
+    pay_special_action_payment_with_x, special_action_payment_max_x,
+};
 
 use crate::ability::ActivatedAbilityRuntimeExt as _;
 use crate::cost::CostPaymentError;
@@ -711,8 +714,33 @@ pub fn perform(
 ) -> Result<(), ActionError> {
     can_perform(&action, game, player, &mut *decision_maker)?;
     let checkpoint = game.clone();
+    let mut announced_x = None;
     if let Some(payment) = action.payment_spec(game, player)? {
-        if let Err(error) = pay_special_action_payment(game, player, &payment, decision_maker) {
+        // CR 601.2f / 702.37: a turn-face-up cost with {X} (Bane of the
+        // Living's morph {X}{B}{B}) announces X before it is paid, and the
+        // "when turned face up" ability refers to that X.
+        if matches!(action, SpecialAction::TurnFaceUp { .. })
+            && let Some(max_x) = special_action_payment_max_x(game, player, &payment)
+        {
+            let ctx = crate::decisions::context::NumberContext::x_value(
+                player,
+                payment.source,
+                max_x,
+            );
+            let chosen = decision_maker.decide_number(game, &ctx).min(max_x);
+            if decision_maker.awaiting_choice() {
+                return Ok(());
+            }
+            announced_x = Some(chosen);
+        }
+        if let Err(error) = pay_special_action_payment_with_x(
+            game,
+            player,
+            &payment,
+            None,
+            announced_x,
+            decision_maker,
+        ) {
             if !decision_maker.awaiting_choice() {
                 *game = checkpoint;
             }
@@ -721,6 +749,12 @@ pub fn perform(
         if decision_maker.awaiting_choice() {
             return Ok(());
         }
+    }
+    if let SpecialAction::TurnFaceUp { permanent_id, .. } = &action
+        && let Some(object) = game.object_mut(*permanent_id)
+    {
+        // The X paid to turn it face up, or 0 when no X was paid (CR 107.3m).
+        object.x_value = Some(announced_x.unwrap_or(0));
     }
     let result = finish_special_action(action, game, player, decision_maker);
     if result.is_err() && !decision_maker.awaiting_choice() {
@@ -2248,6 +2282,21 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
             idx += 2;
             continue;
         }
+        if crate::cost::tagged_choice_pair_at(&components, idx).is_some() {
+            if !crate::cost::tagged_choice_pair_is_payable(
+                game,
+                player,
+                permanent_id,
+                &components,
+                idx,
+                ctx.reason,
+                ctx.x_value,
+            ) {
+                return Err(ActionError::CantPayCost);
+            }
+            idx += 2;
+            continue;
+        }
 
         mana_ability_cost_component_payable(
             game,
@@ -2732,7 +2781,7 @@ pub(crate) fn can_pay_total_cost_with_reason_in_context(
                 {
                     speculative_tagged_objects.insert(tag, snapshots);
                 } else if let Some(next) = costs.get(index + 1)
-                    && let Some((tag, snapshots)) = preflight_tagged_exile_choice_in_context(
+                    && let Some((tag, snapshots)) = preflight_tagged_choice_in_context(
                         game,
                         payer,
                         source,
@@ -2785,6 +2834,18 @@ fn preflight_tagged_sacrifice_choice_in_context(
     else {
         return Ok(None);
     };
+    // Before X is announced, an X-relative characteristic on the choice
+    // cannot make it unpayable (see `with_unbound_x_relaxed`).
+    let relaxed_choice;
+    let choice = if execution_ctx.x_value.is_none()
+        && let Some(relaxed) =
+            crate::effects::composition::choose_objects::with_unbound_x_relaxed(choice)
+    {
+        relaxed_choice = relaxed;
+        &relaxed_choice
+    } else {
+        choice
+    };
 
     let Some(mut consumer) = consumer_component.effect_ref() else {
         return Ok(None);
@@ -2824,11 +2885,9 @@ fn preflight_tagged_sacrifice_choice_in_context(
             })?
             .max(0) as usize
     } else if choice.count.dynamic_x {
-        execution_ctx.x_value.ok_or_else(|| {
-            CostPaymentError::Other(
-                "tagged sacrifice choice requires an announced X value".to_string(),
-            )
-        })? as usize
+        // A legality precheck runs before X is announced; X = 0 is always an
+        // available announcement, so the minimal selection is empty.
+        execution_ctx.x_value.unwrap_or(0) as usize
     } else {
         choice.count.min
     };
@@ -2878,7 +2937,7 @@ fn preflight_tagged_sacrifice_choice_in_context(
     Ok(Some((choice.tag.clone(), candidates)))
 }
 
-fn preflight_tagged_exile_choice_in_context(
+fn preflight_tagged_choice_in_context(
     game: &GameState,
     payer: PlayerId,
     source: ObjectId,
@@ -2893,23 +2952,21 @@ fn preflight_tagged_exile_choice_in_context(
     else {
         return Ok(None);
     };
-    let Some(mut consumer) = consumer_component.effect_ref() else {
-        return Ok(None);
+    // Before X is announced, an X-relative characteristic on the choice
+    // cannot make it unpayable (see `with_unbound_x_relaxed`).
+    let relaxed_choice;
+    let choice = if execution_ctx.x_value.is_none()
+        && let Some(relaxed) =
+            crate::effects::composition::choose_objects::with_unbound_x_relaxed(choice)
+    {
+        relaxed_choice = relaxed;
+        &relaxed_choice
+    } else {
+        choice
     };
-    while let Some(inner) = consumer.transparent_child_effect() {
-        consumer = inner;
-    }
-    let Some(exile) = consumer.downcast_ref::<crate::effects::ExileEffect>() else {
-        return Ok(None);
-    };
-    let consumes_choice = match exile.spec.base() {
-        crate::target::ChooseSpec::Tagged(tag) => tag == &choice.tag,
-        crate::target::ChooseSpec::Object(filter) => {
-            crate::game_loop::tagged_filter_matches(filter, &choice.tag)
-        }
-        _ => false,
-    };
-    if !consumes_choice {
+    // Any consumer that pays with exactly the chosen objects (exile, return,
+    // move, unattach, ...) needs the same representative selection.
+    if crate::cost::cost_consumed_choice_tag(consumer_component).as_ref() != Some(&choice.tag) {
         return Ok(None);
     }
 
@@ -2924,9 +2981,9 @@ fn preflight_tagged_exile_choice_in_context(
             })?
             .max(0) as usize
     } else if choice.count.dynamic_x {
-        execution_ctx.x_value.ok_or_else(|| {
-            CostPaymentError::Other("tagged exile choice requires an announced X value".to_string())
-        })? as usize
+        // A legality precheck runs before X is announced; X = 0 is always an
+        // available announcement, so the minimal selection is empty.
+        execution_ctx.x_value.unwrap_or(0) as usize
     } else {
         choice.count.min
     };
@@ -2942,14 +2999,25 @@ fn preflight_tagged_exile_choice_in_context(
     filter_ctx.your_commanders = payer_filter_ctx.your_commanders;
 
     let mut candidates = Vec::new();
-    crate::object_query::for_each_candidate_id_for_filter(game, &choice.filter, |id| {
-        if game.object(id).is_some_and(|object| {
-            (!choice.filter.other || id != source)
-                && choice.filter.matches(object, &filter_ctx, game)
-        }) {
+    let mut visit = |id: ObjectId| {
+        if !candidates.contains(&id)
+            && game.object(id).is_some_and(|object| {
+                (!choice.filter.other || id != source)
+                    && choice.filter.matches(object, &filter_ctx, game)
+            })
+        {
             candidates.push(id);
         }
-    });
+    };
+    if let Ok(zones) = crate::effects::composition::choose_objects::search_zones(choice) {
+        for zone in zones {
+            let mut zone_filter = choice.filter.clone();
+            zone_filter.zone = Some(zone);
+            crate::object_query::for_each_candidate_id_for_filter(game, &zone_filter, &mut visit);
+        }
+    } else {
+        crate::object_query::for_each_candidate_id_for_filter(game, &choice.filter, &mut visit);
+    }
 
     if choice.filter.single_graveyard && choice.filter.zone.or(choice.zone) == Some(Zone::Graveyard)
     {

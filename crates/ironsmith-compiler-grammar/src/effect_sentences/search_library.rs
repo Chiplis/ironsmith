@@ -631,7 +631,12 @@ pub fn parse_for_each_exiled_this_way_sentence(
         )));
     }
     if let Some(consult) = search_grammar::parse_search_exiled_consult_shape_lexed(effect_tokens) {
-        let filter = parse_object_filter_lexed(consult.filter_tokens, false)?;
+        let mut filter = parse_object_filter_lexed(consult.filter_tokens, false)?;
+        // "... reveals cards from the top of their library until they reveal
+        // a creature card": the revealed cards are library cards. A bare card
+        // noun parses with the default battlefield domain, which no library
+        // card can match; the consultation owns the zone.
+        filter.zone = None;
         let revealed_tag = helper_tag_for_tokens(tokens, "revealed");
         let matched_tag = helper_tag_for_tokens(tokens, "chosen");
         let finish = match consult.finish {

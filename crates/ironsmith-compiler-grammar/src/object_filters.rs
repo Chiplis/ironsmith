@@ -1031,10 +1031,50 @@ fn parse_terminal_different_name_filter(
     Ok(Some(filter))
 }
 
+/// "attacking or blocking creature whose controller controls an Island"
+/// (Dwarven Sea Clan): the selector and the permanent its controller must
+/// control.
+fn split_whose_controller_controls(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+    let index = tokens.windows(3).position(|window| {
+        window[0].is_word("whose") && window[1].is_word("controller") && window[2].is_word("controls")
+    })?;
+    let base = &tokens[..index];
+    let mut controlled = &tokens[index + 3..];
+    if controlled
+        .first()
+        .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+    {
+        controlled = &controlled[1..];
+    }
+    (!base.is_empty() && !controlled.is_empty()).then_some((base, controlled))
+}
+
+fn parse_whose_controller_controls_filter(
+    tokens: &[OwnedLexToken],
+    other: bool,
+    parse: fn(&[OwnedLexToken], bool) -> Result<ObjectFilter, CardTextError>,
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let Some((base, controlled)) = split_whose_controller_controls(tokens) else {
+        return Ok(None);
+    };
+    let mut filter = parse(base, other)?;
+    let mut controlled = parse(controlled, false)?;
+    controlled.zone = Some(Zone::Battlefield);
+    filter.controller_controls = Some(Box::new(controlled));
+    Ok(Some(filter))
+}
+
 pub fn parse_object_filter(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some(filter) =
+        parse_whose_controller_controls_filter(tokens, other, parse_object_filter)?
+    {
+        return Ok(filter);
+    }
     if let Some(filter) = parse_terminal_same_name_filter(tokens, other)? {
         return Ok(filter);
     }
@@ -1262,6 +1302,11 @@ pub fn parse_object_filter_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some(filter) =
+        parse_whose_controller_controls_filter(tokens, other, parse_object_filter_lexed)?
+    {
+        return Ok(filter);
+    }
     if let Some(filter) = parse_terminal_same_name_filter(tokens, other)? {
         return Ok(filter);
     }

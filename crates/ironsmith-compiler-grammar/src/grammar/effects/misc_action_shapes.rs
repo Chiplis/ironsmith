@@ -295,6 +295,9 @@ fn player_filter_for_library_count(player: PlayerAst) -> Option<PlayerFilter> {
                 crate::tag::CompilerReferenceTag::TriggeringSource.bind(),
             ))
         }
+        PlayerAst::SourceOwner => {
+            PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(ironsmith_core::SOURCE_OBJECT_TAG))
+        }
         PlayerAst::ItsController | PlayerAst::ItsOwner | PlayerAst::Enchanted => return None,
     })
 }

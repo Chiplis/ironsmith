@@ -2865,6 +2865,15 @@ fn static_condition_is_active_with_iterated_player(
     controller: PlayerId,
     iterated_player: Option<PlayerId>,
 ) -> bool {
+    // "It" in a static condition is the attached permanent for an Aura or
+    // Equipment ("enchanted creature has first strike as long as it's
+    // blocking") and otherwise the source itself. Filter-wide effects decide
+    // their per-recipient conditions in the layer system instead.
+    let recipient = crate::condition_eval::condition_reads_static_recipient(condition).then(|| {
+        game.object(source)
+            .and_then(|object| object.attached_to.and_then(|target| target.object_id()))
+            .unwrap_or(source)
+    });
     let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
         controller,
         source,
@@ -2875,7 +2884,10 @@ fn static_condition_is_active_with_iterated_player(
         triggering_event: None,
         trigger_identity: None,
         ability_index: None,
-        options: Default::default(),
+        options: crate::condition_eval::ExternalEvaluationOptions {
+            recipient,
+            ..Default::default()
+        },
     };
     crate::condition_eval::evaluate_condition_external(game, condition, &eval_ctx)
 }
@@ -5968,8 +5980,61 @@ fn materialize_named_granting_source_in_effect(
     ))
 }
 
+/// "Unattach <this Equipment>" in a granted ability names the granting
+/// attachment, not the host that now has the ability: the host is never an
+/// attached object. The cost is lowered as a choice of the ability's source
+/// followed by an unattach of that choice, so bind the choice to the
+/// granting object.
+fn materialize_granting_source_unattach_costs(
+    cost: &crate::cost::TotalCost,
+    source: ObjectId,
+) -> Option<crate::cost::TotalCost> {
+    let components = match cost.kind() {
+        ironsmith_core::TotalCostKind::All(components) => components,
+        ironsmith_core::TotalCostKind::OneOf(_) => return None,
+    };
+    let mut changed = false;
+    let mut rebuilt = components.to_vec();
+    for idx in 0..components.len() {
+        let Some(choose) = crate::cost::tagged_choice_pair_at(components, idx) else {
+            continue;
+        };
+        if !choose.filter.source {
+            continue;
+        }
+        let consumes_by_unattach = components[idx + 1]
+            .effect_ref()
+            .map(|effect| {
+                let mut effect = effect;
+                while let Some(inner) = effect.transparent_child_effect() {
+                    effect = inner;
+                }
+                effect
+            })
+            .is_some_and(|effect| {
+                effect
+                    .downcast_ref::<crate::effects::UnattachObjectsEffect>()
+                    .is_some()
+            });
+        if !consumes_by_unattach {
+            continue;
+        }
+        let mut choose = choose.clone();
+        choose.filter.source = false;
+        choose.filter.specific = Some(source);
+        rebuilt[idx] = crate::costs::Cost::validated_effect(crate::effect::Effect::new(choose));
+        changed = true;
+    }
+    changed.then(|| crate::cost::TotalCost::from_costs(rebuilt))
+}
+
 fn materialize_named_granting_source(ability: &Ability, source: ObjectId) -> Ability {
     let mut ability = ability.clone();
+    if let AbilityKind::Activated(activated) = &mut ability.kind
+        && let Some(cost) = materialize_granting_source_unattach_costs(&activated.mana_cost, source)
+    {
+        activated.mana_cost = cost;
+    }
     let program = match &mut ability.kind {
         AbilityKind::Triggered(triggered) => &mut triggered.effects,
         AbilityKind::Activated(activated) => &mut activated.effects,

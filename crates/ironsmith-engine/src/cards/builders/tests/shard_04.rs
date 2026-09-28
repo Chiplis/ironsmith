@@ -2817,6 +2817,7 @@ pub(super) fn test_rix_maadi_reveler_etb_uses_spectacle_branch_when_paid() {
     let paid = OptionalCostsPaid {
         costs: vec![("Spectacle".into(), 1)],
         cast_at_sorcery_timing: false,
+        branch_choices: Vec::new(),
     };
     game.object_mut(source)
         .expect("source object exists")

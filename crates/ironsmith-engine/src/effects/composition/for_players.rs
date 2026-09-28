@@ -220,26 +220,97 @@ fn effect_bound_tag(effect: &Effect) -> Option<crate::tag::TagKey> {
 /// `supports_simultaneous_player_action`. Left wrapped it is opaque to the unit
 /// grouping and the whole action is rejected, so unwrap it here: inside
 /// `ForPlayers` a sequence is exactly an ordered list of that player's actions.
-fn flatten_sequences_for_simultaneous_units(effects: &[Effect]) -> Vec<Effect> {
+fn flatten_sequences_for_simultaneous_units(
+    effects: &[Effect],
+    has_target_assignments: bool,
+) -> Vec<Effect> {
     let mut flattened = Vec::with_capacity(effects.len());
     for effect in effects {
         match effect.downcast_ref::<crate::effects::SequenceEffect>() {
-            // Only unwrap when every child can take part in the simultaneous
-            // protocol; otherwise keep the wrapper so the gate still reports the
-            // unsupported effect rather than silently reordering it.
+            // A multi-child sequence scopes announced target assignments to
+            // its children; unwrapping it would change which target each
+            // child reads. Without announced targets the wrapper is pure
+            // ordering, so unwrap it (recursively) and let each printed
+            // action finish for every player before the next (CR 608.2e).
             Some(sequence)
                 if !sequence.effects.is_empty()
-                    && sequence.effects.iter().all(|child| {
-                        child.0.is_read_only_simultaneous_player_action()
-                            || child.0.supports_simultaneous_player_action()
-                    }) =>
+                    && (!has_target_assignments
+                        || sequence.effects.len() == 1
+                        || sequence.effects.iter().all(|child| {
+                            child.0.is_read_only_simultaneous_player_action()
+                                || child.0.supports_simultaneous_player_action()
+                        })) =>
             {
-                flattened.extend(sequence.effects.iter().cloned());
+                flattened.extend(flatten_sequences_for_simultaneous_units(
+                    &sequence.effects,
+                    has_target_assignments,
+                ));
             }
             _ => flattened.push(effect.clone()),
         }
     }
     flattened
+}
+
+/// Attach the completed action's per-player counts to every player's copy of
+/// each result id the unit produced (collective metrics such as "the greatest
+/// number"), keeping each player's scalar result local ("that many").
+fn attach_unit_player_counts(
+    unit: &[usize],
+    simultaneous_effects: &[Effect],
+    players: &[PlayerId],
+    effect_outcomes_by_player: &mut [std::collections::HashMap<
+        crate::effect::EffectId,
+        EffectOutcome,
+    >],
+) {
+    let mut result_ids = Vec::new();
+    for &effect_index in unit {
+        collect_result_ids(&simultaneous_effects[effect_index], &mut result_ids);
+    }
+    for id in result_ids {
+        let counts = players
+            .iter()
+            .zip(effect_outcomes_by_player.iter())
+            .filter_map(|(&player, results)| {
+                results
+                    .get(&id)
+                    .map(|outcome| (player, outcome.count_or_zero()))
+            })
+            .collect::<Vec<_>>();
+        for results in effect_outcomes_by_player.iter_mut() {
+            if let Some(outcome) = results.get_mut(&id) {
+                *outcome = outcome.clone().with_player_counts(counts.clone());
+            }
+        }
+    }
+}
+
+/// Merge each player's local tagged-player bindings back into one context
+/// map after an each-player loop. Players are visited in APNAP order so the
+/// merged lists are deterministic regardless of map iteration order.
+fn merge_tagged_players_by_player(
+    incoming: &std::collections::HashMap<crate::tag::TagKey, Vec<PlayerId>>,
+    by_player: &[std::collections::HashMap<crate::tag::TagKey, Vec<PlayerId>>],
+) -> std::collections::HashMap<crate::tag::TagKey, Vec<PlayerId>> {
+    let mut merged = incoming.clone();
+    let mut changed: std::collections::HashMap<crate::tag::TagKey, Vec<PlayerId>> =
+        std::collections::HashMap::new();
+    for player_tags in by_player {
+        for (tag, tagged) in player_tags {
+            if incoming.get(tag) == Some(tagged) {
+                continue;
+            }
+            let collected = changed.entry(tag.clone()).or_default();
+            for player in tagged {
+                if !collected.contains(player) {
+                    collected.push(*player);
+                }
+            }
+        }
+    }
+    merged.extend(changed);
+    merged
 }
 
 fn collect_result_ids(effect: &Effect, ids: &mut Vec<crate::effect::EffectId>) {
@@ -372,22 +443,10 @@ impl EffectExecutor for ForPlayersEffect {
         // sequence wrappers are unwrapped first. The sequential branch below
         // keeps `self.effects` as authored: nesting there is already executed in
         // order and carries no unit grouping.
-        let simultaneous_effects = flatten_sequences_for_simultaneous_units(&self.effects);
-
-        if !self.sequential
-            && !self.starting_with_controller
-            && !self.stop_after_first_happened
-            && let Some(unsupported) = simultaneous_effects.iter().find(|effect| {
-                !effect.0.supports_simultaneous_player_action()
-                    && !effect.0.is_read_only_simultaneous_player_action()
-            })
-        {
-            let mut description = format!("{:?}", unsupported.0);
-            description.truncate(120);
-            return Err(ExecutionError::Impossible(format!(
-                "generic each-player action lacks simultaneous proposal support: {description}"
-            )));
-        }
+        let simultaneous_effects = flatten_sequences_for_simultaneous_units(
+            &self.effects,
+            !ctx.target_assignments.is_empty(),
+        );
 
         if self.sequential || self.starting_with_controller || self.stop_after_first_happened {
             // An explicit starting player describes a sequential instruction
@@ -484,6 +543,10 @@ impl EffectExecutor for ForPlayersEffect {
             // action for this same player ("reveal that many"). Keep those
             // bindings per player just like the affected-object collections.
             let mut effect_outcomes_by_player = vec![ctx.effect_outcomes.clone(); players.len()];
+            // Player bindings ("the chosen opponent", "that player") made by
+            // one player's action belong to that player's later actions only.
+            let incoming_tagged_players = ctx.tagged_players.clone();
+            let mut tagged_players_by_player = vec![incoming_tagged_players.clone(); players.len()];
 
             for unit in units {
                 let mut prepared: Vec<(
@@ -517,6 +580,96 @@ impl EffectExecutor for ForPlayersEffect {
                     Some(acting) => acting.clone(),
                     None => players.clone(),
                 };
+
+                // A printed action whose effect cannot pre-build an immutable
+                // proposal (a search, a choose-then-act body, a conditional
+                // follow-up, a nested choice) is performed by each player in
+                // APNAP order (CR 101.4): every player finishes this action
+                // before any player begins the next one (CR 608.2e), and the
+                // resulting events still form one simultaneous action
+                // (CR 603.2c). Each player keeps their own tag, player and
+                // outcome bindings.
+                let unit_runs_player_by_player = unit.iter().any(|effect_index| {
+                    let effect = &simultaneous_effects[*effect_index];
+                    !effect.0.supports_simultaneous_player_action()
+                        && !effect.0.is_read_only_simultaneous_player_action()
+                });
+                if unit_runs_player_by_player {
+                    let pinned_lookback =
+                        crate::effects::helpers::begin_simultaneous_zone_change_lookback(game);
+                    let opened_batch = game.open_simultaneous_action();
+                    let mut accumulated_unit_tags = pre_unit_tagged_objects.clone();
+                    let mut unit_error = None;
+                    let mut unit_waiting = false;
+                    for &player_id in &unit_players {
+                        let player_index = players
+                            .iter()
+                            .position(|candidate| *candidate == player_id)
+                            .expect("acting player is in the iteration set");
+                        ctx.tagged_objects = pre_unit_tagged_objects.clone();
+                        apply_player_tagged_object_partition(
+                            &mut ctx.tagged_objects,
+                            &tagged_objects_by_player[player_index],
+                            &loop_local_tags,
+                        );
+                        ctx.effect_outcomes = effect_outcomes_by_player[player_index].clone();
+                        ctx.tagged_players = tagged_players_by_player[player_index].clone();
+                        let pre_player_tagged_objects = ctx.tagged_objects.clone();
+                        let result = ctx.with_temp_iterated_player(Some(player_id), |ctx| {
+                            for &effect_index in &unit {
+                                let effect = &simultaneous_effects[effect_index];
+                                let outcome = execute_effect(game, effect, ctx)?;
+                                outcomes_by_player[player_index].push(outcome.clone());
+                                outcomes.push(outcome);
+                                if ctx.decision_maker.awaiting_choice() {
+                                    break;
+                                }
+                            }
+                            Ok::<(), ExecutionError>(())
+                        });
+                        effect_outcomes_by_player[player_index] = ctx.effect_outcomes.clone();
+                        tagged_players_by_player[player_index] = ctx.tagged_players.clone();
+                        if let Err(error) = result {
+                            unit_error = Some(error);
+                            break;
+                        }
+                        capture_player_tagged_object_deltas(
+                            &pre_player_tagged_objects,
+                            &ctx.tagged_objects,
+                            &mut tagged_objects_by_player[player_index],
+                            &mut loop_local_tags,
+                        );
+                        merge_tagged_object_sets(&mut accumulated_unit_tags, &ctx.tagged_objects);
+                        if ctx.decision_maker.awaiting_choice() {
+                            unit_waiting = true;
+                            break;
+                        }
+                    }
+                    game.close_simultaneous_action(opened_batch);
+                    crate::effects::helpers::end_simultaneous_zone_change_lookback(
+                        game,
+                        pinned_lookback,
+                    );
+                    if let Some(error) = unit_error {
+                        ctx.tagged_objects = pre_unit_tagged_objects;
+                        ctx.tagged_players = incoming_tagged_players;
+                        return Err(error);
+                    }
+                    if unit_waiting {
+                        ctx.tagged_objects = pre_unit_tagged_objects;
+                        ctx.tagged_players = incoming_tagged_players;
+                        return Ok(EffectOutcome::count(0));
+                    }
+                    ctx.tagged_objects = accumulated_unit_tags;
+                    attach_unit_player_counts(
+                        &unit,
+                        &simultaneous_effects,
+                        &players,
+                        &mut effect_outcomes_by_player,
+                    );
+                    continue;
+                }
+
                 for &player_id in &unit_players {
                     let player_index = players
                         .iter()
@@ -531,6 +684,7 @@ impl EffectExecutor for ForPlayersEffect {
                         );
                     }
                     ctx.effect_outcomes = effect_outcomes_by_player[player_index].clone();
+                    ctx.tagged_players = tagged_players_by_player[player_index].clone();
                     let pre_player_tagged_objects = ctx.tagged_objects.clone();
                     ctx.with_temp_iterated_player(Some(player_id), |ctx| {
                         for &effect_index in &unit {
@@ -558,6 +712,7 @@ impl EffectExecutor for ForPlayersEffect {
                         Ok::<(), ExecutionError>(())
                     })?;
                     effect_outcomes_by_player[player_index] = ctx.effect_outcomes.clone();
+                    tagged_players_by_player[player_index] = ctx.tagged_players.clone();
                     if unit_has_mutating_effect {
                         capture_player_tagged_object_deltas(
                             &pre_player_tagged_objects,
@@ -596,12 +751,14 @@ impl EffectExecutor for ForPlayersEffect {
                         }
                         ctx.tagged_objects = prepared_tagged_objects.clone();
                         ctx.effect_outcomes = effect_outcomes_by_player[player_index].clone();
+                        ctx.tagged_players = tagged_players_by_player[player_index].clone();
                         active_commit_player = Some(player_index);
                     }
                     let proposal_baseline = prepared_tagged_objects.clone();
                     match proposal.commit(game, ctx) {
                         Ok(outcome) => {
                             effect_outcomes_by_player[player_index] = ctx.effect_outcomes.clone();
+                            tagged_players_by_player[player_index] = ctx.tagged_players.clone();
                             capture_player_tagged_object_deltas(
                                 &proposal_baseline,
                                 &ctx.tagged_objects,
@@ -637,31 +794,19 @@ impl EffectExecutor for ForPlayersEffect {
                 // attaching the completed action's per-player counts for
                 // collective metrics such as the greatest count. No following
                 // action may read a partial result before every player commits.
-                let mut result_ids = Vec::new();
-                for &effect_index in &unit {
-                    collect_result_ids(&simultaneous_effects[effect_index], &mut result_ids);
-                }
-                for id in result_ids {
-                    let counts = players
-                        .iter()
-                        .zip(&effect_outcomes_by_player)
-                        .filter_map(|(&player, results)| {
-                            results
-                                .get(&id)
-                                .map(|outcome| (player, outcome.count_or_zero()))
-                        })
-                        .collect::<Vec<_>>();
-                    for results in &mut effect_outcomes_by_player {
-                        if let Some(outcome) = results.get_mut(&id) {
-                            *outcome = outcome.clone().with_player_counts(counts.clone());
-                        }
-                    }
-                }
+                attach_unit_player_counts(
+                    &unit,
+                    &simultaneous_effects,
+                    &players,
+                    &mut effect_outcomes_by_player,
+                );
                 for (player_index, outcome) in batch_outcomes {
                     outcomes_by_player[player_index].push(outcome.clone());
                     outcomes.push(outcome);
                 }
             }
+            ctx.tagged_players =
+                merge_tagged_players_by_player(&incoming_tagged_players, &tagged_players_by_player);
         }
 
         let mut player_counts = Vec::new();

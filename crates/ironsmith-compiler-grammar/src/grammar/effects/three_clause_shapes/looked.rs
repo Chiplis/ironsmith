@@ -242,6 +242,37 @@ pub fn parse_looked_hand_action_shape(
     })
 }
 
+const REVEAL_TO_BATTLEFIELD: &[&[&str]] = &[
+    &["and", "put", "it", "onto", "the", "battlefield"],
+    &["put", "it", "onto", "the", "battlefield"],
+    &["and", "put", "them", "onto", "the", "battlefield"],
+    &["put", "them", "onto", "the", "battlefield"],
+    &["and", "put", "that", "card", "onto", "the", "battlefield"],
+    &["put", "that", "card", "onto", "the", "battlefield"],
+];
+
+/// "[You may] reveal a <filter> card from among them and put it onto the
+/// battlefield": the same selection as the hand form, with a battlefield
+/// destination (and an optional trailing "tapped").
+pub fn parse_looked_reveal_to_battlefield_action_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<(LookedHandActionShape, bool)> {
+    let (head, tail) = split_from_among(tokens)?;
+    let (count, filter) = counted_filter_range(tokens, head);
+    if filter.is_empty() || !starts_sequence(tail, REVEAL_TO_BATTLEFIELD) {
+        return None;
+    }
+    let tapped = contains_sequence_word(tail, "tapped");
+    Some((
+        LookedHandActionShape {
+            count,
+            filter: filter.clone(),
+            filter_uses_and_or: contains_sequence_word(&tokens[filter], "and/or"),
+        },
+        tapped,
+    ))
+}
+
 pub fn parse_looked_top_action_shape(tokens: &[OwnedLexToken]) -> Option<LookedTopActionShape> {
     let (head, tail) = split_from_among(tokens)?;
     let (count, filter) = counted_filter_range(tokens, head);

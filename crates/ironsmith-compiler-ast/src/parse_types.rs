@@ -37,6 +37,9 @@ pub enum PlayerAst {
     TriggeringSourceController,
     ItsController,
     ItsOwner,
+    /// The owner of this ability's source, named explicitly ("this artifact's
+    /// owner", "<card name>'s owner") rather than through a pronoun.
+    SourceOwner,
     Implicit,
 }
 

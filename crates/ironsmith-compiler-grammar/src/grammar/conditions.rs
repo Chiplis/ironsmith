@@ -1796,6 +1796,20 @@ fn parse_battlefield_entry_shape(tokens: &[OwnedLexToken]) -> Option<Battlefield
                     min_count = Some(count);
                 }
             }
+            // "this artifact or another artifact entered the battlefield under
+            // your control this turn" (Master's Manufactory): the source is one
+            // of the artifacts, so the event is any artifact entering.
+            {
+                let words = crate::lexer::token_word_refs(object_tokens);
+                if let ["this", noun, "or", "another", rest @ ..] = words.as_slice()
+                    && rest.first() == Some(noun)
+                    && let Some(another_idx) = object_tokens
+                        .iter()
+                        .position(|token| token.is_word("another"))
+                {
+                    object_tokens = &object_tokens[another_idx + 1..];
+                }
+            }
             let mut filter = crate::grammar::primitives::probe_shape(
                 parse_object_filter_with_grammar_entrypoint(object_tokens, false),
             )?;

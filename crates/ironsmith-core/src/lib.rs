@@ -148,7 +148,8 @@ pub use effect::{
     ReconfigureEffect, RedirectAllDamageThisTurnToTargetEffect, RedirectNextDamageDestination,
     RedirectNextDamageToTargetEffect, RedirectNextTimeDamageDestination,
     RedirectNextTimeDamageSource, RedirectNextTimeDamageToSourceEffect, ReduceSpeedEffect,
-    ReflexiveTriggerEffect, RegenerateEffect, RegisterDamagedBySourceZoneReplacementEffect,
+    ReflexiveTriggerEffect, RegenerateEffect, RegisterCounterPlacementReplacementEffect,
+    RegisterDamagedBySourceZoneReplacementEffect,
     RegisterDrawReplacementEffect, RegisterEnterTappedReplacementEffect,
     RegisterEnterUnderControlReplacementEffect, RegisterEnterWithCountersReplacementEffect,
     RegisterFutureZoneReplacementEffect, RegisterManaReplacementEffect,
@@ -234,7 +235,7 @@ pub use static_ability_model::{
 pub use tag::{
     ATTACKING_GROUP_TAG, CAST_CONTROLLED_OBJECTS_TAG, CAST_MODIFIED_CREATURES_TAG,
     CHOSEN_OBJECTS_TAG, COMBAT_DAMAGE_GROUP_TAG, EXPLOITED_TAG, EXPLOITER_TAG,
-    INITIATIVE_HOLDER_TAG, MANA_PAID_OBJECT_TAG, MANA_SOURCES_SPENT_TO_CAST_TAG, TAXED_ATTACKER_TAG, BLOCK_PAIR_SUBJECT_TAG,
+    INITIATIVE_HOLDER_TAG, LINKED_TRIGGER_PLAYER_TAG, MANA_PAID_OBJECT_TAG, MANA_SOURCES_SPENT_TO_CAST_TAG, TAXED_ATTACKER_TAG, BLOCK_PAIR_SUBJECT_TAG,
     MANIFEST_DREAD_GRAVEYARD_TAG, PREVIOUS_ITERATED_OBJECTS_TAG, PRIOR_EXILED_CARD_TAG,
     REVEALED_THIS_WAY_TAG, SOURCE_EXILED_TAG, SOURCE_OBJECT_TAG, TagKey, ZONE_CHANGE_GROUP_TAG,
 };

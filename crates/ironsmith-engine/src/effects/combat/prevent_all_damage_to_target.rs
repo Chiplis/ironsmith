@@ -83,6 +83,10 @@ impl EffectExecutor for PreventAllDamageToTargetEffect {
 
         let players = resolve_players_from_spec(game, &self.target, ctx)?;
         if players.is_empty() {
+            // "Up to N targets" with none chosen prevents nothing.
+            if self.target.count().min == 0 {
+                return Ok(EffectOutcome::count(0));
+            }
             return Err(ExecutionError::InvalidTarget);
         }
         for player in players {

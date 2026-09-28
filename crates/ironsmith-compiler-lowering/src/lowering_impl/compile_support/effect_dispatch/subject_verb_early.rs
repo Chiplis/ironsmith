@@ -180,6 +180,9 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
                 ReplacementActionAst::RegisterManaReplacement { .. }
             )
             | SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterCounterPlacementReplacement { .. }
+            )
+            | SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterEnterWithCountersReplacement { .. }
             )
             | SubjectVerbActionAst::Replacements(
@@ -754,7 +757,7 @@ pub(super) fn compile_subject_verb_early(
                     .sacrifice_at_end_of_combat(*sacrifice_at_end_of_combat),
             );
             if ctx.auto_tag_object_targets {
-                let tag = ctx.next_tag("created");
+                let tag = super::reserved_or_fresh_result_tag(ctx, "created");
                 ctx.last_object_tag = Some(tag.clone());
                 effect = effect.tag(tag);
             }
@@ -1779,6 +1782,22 @@ pub(super) fn compile_subject_verb_early(
                 mode,
             ));
             Ok((vec![effect], choices))
+        }
+        SubjectVerbActionAst::Replacements(
+            ReplacementActionAst::RegisterCounterPlacementReplacement {
+                filter,
+                counter_type,
+                additional,
+                mode,
+            },
+        ) => {
+            let effect = Effect::new(crate::effects::RegisterCounterPlacementReplacementEffect::new(
+                filter.clone(),
+                *counter_type,
+                *additional,
+                *mode,
+            ));
+            Ok((vec![effect], Vec::new()))
         }
         SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaReplacement {
             source_filter,

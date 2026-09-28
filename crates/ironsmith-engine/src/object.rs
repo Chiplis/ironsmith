@@ -698,6 +698,19 @@ fn static_ability_from_id(ability: StaticAbilityId) -> Option<StaticAbility> {
 }
 
 impl Object {
+    /// The X this object's own entering ability or replacement effect sees
+    /// (CR 107.3m): the value chosen as it was cast, or 0 when it has X in
+    /// its mana cost but entered without being cast. `None` when its mana
+    /// cost has no X and nothing announced one.
+    pub fn own_entry_x_value(&self) -> Option<u32> {
+        self.x_value.or_else(|| {
+            self.mana_cost
+                .as_ref()
+                .is_some_and(|cost| cost.has_x())
+                .then_some(0)
+        })
+    }
+
     /// Returns a mutable view of this object's copiable abilities.
     ///
     /// Abilities are shared across object clones and repeated definitions, so live

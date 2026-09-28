@@ -747,11 +747,38 @@ fn parse_control_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, 
         ],
     ) {
         (PlayerAst::Opponent, PlayerFilter::Opponent)
+    } else if surface::exact(relation.subject_clause, &["defending", "player"]) {
+        // "Activate only during combat and only if defending player controls
+        // a snow land" (Arcum's Sleigh, Kjeldoran Guard).
+        (PlayerAst::Defending, PlayerFilter::Defending)
     } else {
         return Ok(None);
     };
 
     let tail = relation.tail_clause;
+    // "an opponent controls at least two more lands than you" (Isolated
+    // Watchtower): a margin over your count, not an absolute count.
+    {
+        let tail_words = crate::lexer::token_word_refs(tail.tokens());
+        if let ["at", "least", margin, "more", filter_words @ .., "than", "you"] =
+            tail_words.as_slice()
+            && !filter_words.is_empty()
+            && player != PlayerAst::You
+            && let Some(minimum_difference) = crate::util::parse_number_word_u32(margin)
+                .or_else(|| crate::util::decimal_count(margin))
+        {
+            let filter = crate::object_filters::parse_object_filter_words(filter_words, false)?;
+            return Ok(Some(PredicateAst::ValueComparison {
+                left: Value::PlayersWhoControlAtLeastMoreThanYou {
+                    players: controller,
+                    filter,
+                    minimum_difference,
+                },
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(1),
+            }));
+        }
+    }
     if tail
         .token(0)
         .is_some_and(|token| token_word_is(token, "no"))
@@ -792,7 +819,23 @@ fn parse_control_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, 
         same_name_group = true;
         filter_tokens = group_stripped.tokens();
     }
-    let mut filter = parse_object_filter(filter_tokens, false)?;
+    // "seven or more lands and/or Treefolk" (Tend the Sprigs): each counted
+    // permanent is a land, a Treefolk, or both.
+    let mut filter = if let Some(split) = filter_tokens
+        .iter()
+        .position(|token| token.is_word("and/or"))
+        .filter(|split| *split > 0 && *split + 1 < filter_tokens.len())
+    {
+        let mut left = parse_object_filter(&filter_tokens[..split], false)?;
+        let mut right = parse_object_filter(&filter_tokens[split + 1..], false)?;
+        left.zone = Some(Zone::Battlefield);
+        right.zone = Some(Zone::Battlefield);
+        let mut union = ObjectFilter::default().in_zone(Zone::Battlefield);
+        union.any_of = vec![left, right];
+        union
+    } else {
+        parse_object_filter(filter_tokens, false)?
+    };
     filter.controller = Some(controller);
     filter.power_greater_than_base_power |= above_base;
     if same_name_group {

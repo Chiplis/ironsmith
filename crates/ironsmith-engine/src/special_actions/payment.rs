@@ -202,6 +202,45 @@ pub(super) fn pay_special_action_payment_with_snapshot(
     snapshot: Option<crate::snapshot::ObjectSnapshot>,
     dm: &mut dyn DecisionMaker,
 ) -> Result<(), ActionError> {
+    pay_special_action_payment_with_x(game, player, payment, snapshot, None, dm)
+}
+
+/// The largest X the player could pay for this special action's mana cost,
+/// or `None` when that cost has no X.
+pub(super) fn special_action_payment_max_x(
+    game: &GameState,
+    player: PlayerId,
+    payment: &SpecialActionPayment,
+) -> Option<u32> {
+    let cost = payment.cost.mana_cost()?;
+    if !cost.has_x() {
+        return None;
+    }
+    let policy = game.mana_spend_policy(player, Some(payment.source));
+    let allow_black_life = crate::decision::mana_cost_has_black_symbol(cost)
+        && game.player_can_pay_black_with_life_for_reason(
+            player,
+            Some(payment.source),
+            payment.reason,
+        );
+    Some(
+        crate::decision::compute_potential_mana(game, player)
+            .max_x_for_cost_with_mana_spend_policy_and_black_life(
+                cost,
+                &policy,
+                allow_black_life,
+            ),
+    )
+}
+
+pub(super) fn pay_special_action_payment_with_x(
+    game: &mut GameState,
+    player: PlayerId,
+    payment: &SpecialActionPayment,
+    snapshot: Option<crate::snapshot::ObjectSnapshot>,
+    x_value: Option<u32>,
+    dm: &mut dyn DecisionMaker,
+) -> Result<(), ActionError> {
     let provenance = game.provenance_graph_mut().alloc_root(
         crate::provenance::ProvenanceNodeKind::EffectExecution {
             source: payment.source,
@@ -212,6 +251,7 @@ pub(super) fn pay_special_action_payment_with_snapshot(
         .with_reason(payment.reason)
         .with_provenance(provenance);
     ctx.source_snapshot = snapshot;
+    ctx.x_value = x_value;
     ctx.interactive_mana_exclusions = Some(Vec::new());
     pay_total_cost_without_preflight_with_choice(
         game,

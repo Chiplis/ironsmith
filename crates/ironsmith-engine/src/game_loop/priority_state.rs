@@ -226,6 +226,9 @@ pub struct PendingCast {
     pub keyword_payment_contributions: Vec<KeywordPaymentContribution>,
     /// Live state for staged "remove counters from among ..." cost payment.
     pub pending_remove_counters_among: Option<PendingRemoveCountersAmongChoice>,
+    /// Whether the "costs {N} less for each permanent sacrificed this way"
+    /// reduction has been applied after the sacrifice cost was paid.
+    pub cost_payment_sacrifice_reduction_applied: bool,
 }
 
 impl PendingCast {
@@ -294,6 +297,7 @@ impl PendingCast {
             stack_id,
             keyword_payment_contributions: Vec::new(),
             pending_remove_counters_among: None,
+            cost_payment_sacrifice_reduction_applied: false,
         }
     }
 }
@@ -544,6 +548,13 @@ pub(crate) fn choose_tagged_cost_step(
         });
     }
 
+    // A choice spanning several zones (craft materials: permanents you
+    // control and/or cards in your graveyard) is surfaced by the choice
+    // itself; a single-zone card step would drop its other zones.
+    if !choose.additional_zones.is_empty() {
+        return None;
+    }
+
     if let Some(exile) = next_effect.downcast_ref::<crate::effects::ExileEffect>() {
         let zone = choose.filter.zone.or(choose.zone)?;
         let description = match zone {
@@ -694,6 +705,16 @@ pub(crate) fn append_activation_cost_steps_from_components(
             && let Some(step) = choose_tagged_cost_step(choose, next)
         {
             out.push(step);
+            idx += 2;
+            continue;
+        }
+        // Any other consumer of the choice pays with the published tag. Its
+        // own processing mode would open a fresh selection whose filter can
+        // only match through that tag, so pay it directly once the choice has
+        // been made.
+        if crate::cost::tagged_choice_pair_at(components, idx).is_some() {
+            append_activation_cost_steps_from_cost(&components[idx], out);
+            out.push(ActivationCostStep::Cost(components[idx + 1].clone()));
             idx += 2;
             continue;
         }
@@ -1023,6 +1044,9 @@ pub struct PendingManaAbility {
     pub undo_locked_by_mana: bool,
     /// Authoritative payment for this mana ability's own mana activation cost.
     pub pending_mana_payment: Option<crate::mana_payment::PendingManaPayment>,
+    /// X announced for an {X} in the activation cost (CR 601.2f via 602.2b);
+    /// `mana_cost` already has that X locked in.
+    pub x_value: Option<u32>,
 }
 
 /// A suspended priority-loop response that should be rerun once a nested

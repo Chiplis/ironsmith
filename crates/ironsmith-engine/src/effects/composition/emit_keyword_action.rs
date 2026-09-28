@@ -107,9 +107,10 @@ fn object_tags_from_config(
 ) -> Result<HashMap<TagKey, Vec<ObjectSnapshot>>, ExecutionError> {
     let mut tags: HashMap<TagKey, Vec<ObjectSnapshot>> = HashMap::new();
     for config in &effect.object_tags {
-        let outcome = ctx
-            .get_outcome(config.effect_id)
-            .ok_or(ExecutionError::EffectNotFound(config.effect_id))?;
+        // An instruction that never ran named no objects.
+        let Some(outcome) = ctx.get_outcome(config.effect_id) else {
+            continue;
+        };
         let memories = if config.use_affected_memory {
             outcome.affected_object_memory()
         } else {
@@ -240,6 +241,17 @@ impl EffectExecutor for EmitKeywordActionEffect {
                 // CR 901.9a: this sourceless ability leaves the plane that was
                 // face up when the die was rolled. If that plane has already
                 // left the planar zone, the ability does nothing on resolution.
+                return Ok(EffectOutcome::count(0));
+            }
+            // CR 701.31a: a player may planeswalk only during a Planechase
+            // game, and only the planar controller may. Otherwise the
+            // instruction does nothing.
+            let may_planeswalk = if game.grand_melee().is_some() {
+                game.planar_controllers().contains(&ctx.controller)
+            } else {
+                game.planar_controller_acting_for(ctx.controller).is_some()
+            };
+            if !may_planeswalk {
                 return Ok(EffectOutcome::count(0));
             }
             let mut outcomes = Vec::with_capacity(self.amount as usize);

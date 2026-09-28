@@ -298,6 +298,16 @@ pub fn parse_create_head_tokens(tokens: &[OwnedLexToken]) -> Option<CreateHeadSp
         (CreateCountHead::EqualToDynamic, 3)
     } else if words.first().copied() == Some("x") {
         (CreateCountHead::X, 1)
+    } else if words.first().copied() == Some("half")
+        && let Some(rounded_up) = trailing_rounding_after_token_noun(&words)
+        && let Some((value, used)) =
+            super::super::super::shared_util::value_expr::parse_half_count_with_deferred_rounding(
+                &words, rounded_up,
+            )
+    {
+        // "Create half X Food tokens, rounded up": the rounding clause
+        // follows the token noun.
+        (CreateCountHead::Dynamic(value), used)
     } else if words.first().copied() == Some("twice")
         && let Some((value, used)) =
             super::super::super::shared_util::value_expr::parse_value_expr_words(&words)
@@ -331,13 +341,35 @@ pub fn parse_create_head_tokens(tokens: &[OwnedLexToken]) -> Option<CreateHeadSp
     let tail_start = token_surface.boundary(marker_word + 1)?;
     let name_tokens = body_tokens.get(name_start..name_end)?;
     let surface_name_words = token_word_refs(name_tokens);
+    let mut tail_tokens = body_tokens.get(tail_start..)?;
+    if matches!(count, CreateCountHead::Dynamic(_)) && words.first().copied() == Some("half") {
+        // The deferred rounding clause was folded into the count.
+        let tail_words = token_word_refs(tail_tokens);
+        if matches!(tail_words.as_slice(), ["rounded", "up" | "down", ..]) {
+            let skip = token_surface.boundary(marker_word + 3).unwrap_or(body_tokens.len());
+            tail_tokens = body_tokens.get(skip..).unwrap_or(&[]);
+        }
+    }
     Some(CreateHeadSpec {
         body_tokens,
         count,
         name_words: crate::util::non_article_word_refs(&surface_name_words),
         name_tokens,
-        tail_tokens: body_tokens.get(tail_start..)?,
+        tail_tokens,
     })
+}
+
+/// "half X Food tokens, rounded up": the rounding word right after the token
+/// noun, if any (`true` for up).
+fn trailing_rounding_after_token_noun(words: &[&str]) -> Option<bool> {
+    let marker = words
+        .iter()
+        .position(|word| matches!(*word, "token" | "tokens"))?;
+    match words.get(marker + 1..marker + 3)? {
+        ["rounded", "up"] => Some(true),
+        ["rounded", "down"] => Some(false),
+        _ => None,
+    }
 }
 
 /// Split a three-or-more token creation operand list whose action is authored

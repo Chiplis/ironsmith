@@ -1190,6 +1190,9 @@ fn player_filter_for_life_reference(player: PlayerAst) -> Option<PlayerFilter> {
         PlayerAst::TriggeringSourceController => Some(PlayerFilter::ControllerOf(
             crate::filter::ObjectRef::tagged(crate::tag::CompilerReferenceTag::TriggeringSource.bind()),
         )),
+        PlayerAst::SourceOwner => Some(PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(
+            ironsmith_core::SOURCE_OBJECT_TAG,
+        ))),
         PlayerAst::ItsController | PlayerAst::ItsOwner | PlayerAst::Enchanted => None,
     }
 }

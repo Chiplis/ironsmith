@@ -502,9 +502,10 @@ fn resolve_effect_metric(
     source: EffectMetricSource,
     metric: EffectMetric,
 ) -> Result<i32, ExecutionError> {
-    let outcome = ctx
-        .get_outcome(effect_id)
-        .ok_or(ExecutionError::EffectNotFound(effect_id))?;
+    // A metric over an instruction that never ran counts nothing.
+    let Some(outcome) = ctx.get_outcome(effect_id) else {
+        return Ok(0);
+    };
 
     let object_memory = || effect_metric_memory(game, outcome, source);
 
@@ -647,9 +648,9 @@ fn resolve_prior_effect_metric(
         return resolve_effect_metric(game, ctx, effect_id, query.source, query.metric);
     }
 
-    let outcome = ctx
-        .get_outcome(effect_id)
-        .ok_or(ExecutionError::EffectNotFound(effect_id))?;
+    let Some(outcome) = ctx.get_outcome(effect_id) else {
+        return Ok(0);
+    };
     let filter_ctx = ctx.filter_context(game);
     let selected_players = query
         .player
@@ -950,6 +951,24 @@ fn latest_tagged_lki_snapshot<'a>(
                 && (snapshot.object_id == tagged_snapshot.object_id
                     || snapshot.stable_id == tagged_snapshot.stable_id)
         })
+}
+
+/// The last-known snapshot recorded when `object_id` last changed zones this
+/// turn (its characteristics as it left, CR 608.2h).
+pub(crate) fn latest_zone_change_snapshot_for_object(
+    game: &GameState,
+    object_id: ObjectId,
+) -> Option<ObjectSnapshot> {
+    game.turn_store
+        .turn_history
+        .event_records
+        .iter()
+        .chain(game.turn_store.turn_history.staged_event_records.iter())
+        .rev()
+        .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
+        .flat_map(|event| event.snapshots())
+        .find(|snapshot| snapshot.object_id == object_id)
+        .cloned()
 }
 
 fn source_lki_for_moved_current_object<'a>(
@@ -1326,6 +1345,51 @@ pub fn resolve_player_from_spec(
     }
 }
 
+/// "The attacking player": the one captured by the triggering attack, else
+/// the active player while combat is under way or when the triggering event
+/// is combat damage (CR 506.2: the active player is the attacking player).
+fn combat_attacking_player(game: &GameState, ctx: &ExecutionContext) -> Option<PlayerId> {
+    ctx.combat.attacking_player.or_else(|| {
+        let combat_damage_trigger = ctx.triggering_event.as_ref().is_some_and(|event| {
+            event
+                .downcast::<DamageEvent>()
+                .is_some_and(|damage| damage.is_combat)
+                || event
+                    .downcast::<crate::CombatDamageEvent>()
+                    .is_some()
+        });
+        (combat_damage_trigger || game.turn.phase == crate::game_state::Phase::Combat)
+            .then_some(game.turn.active_player)
+    })
+}
+
+/// Context tag holding the opponent the effect's controller chose for a
+/// singular untargeted "an opponent" instruction during this resolution.
+pub(crate) const AN_OPPONENT_CHOICE_TAG: &str = "__an_opponent_choice";
+
+/// Sentinel error raised when a singular "an opponent" must be chosen among
+/// two or more opponents; [`crate::effects::execute_effect`] asks the
+/// controller and retries the instruction once.
+pub(crate) const AN_OPPONENT_CHOICE_REQUIRED: &str =
+    "Opponent filter requires choosing one of several opponents";
+
+/// The opponents a singular "an opponent" may be, in seat order.
+pub(crate) fn an_opponent_choice_candidates(
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Vec<PlayerId> {
+    let filter_ctx = ctx.filter_context(game);
+    game.players
+        .iter()
+        .filter(|player| {
+            player.id != ctx.controller
+                && player.is_in_game()
+                && PlayerFilter::Opponent.matches_player(player.id, &filter_ctx)
+        })
+        .map(|player| player.id)
+        .collect()
+}
+
 /// Resolve a PlayerFilter to a concrete PlayerId.
 pub fn resolve_player_filter(
     game: &GameState,
@@ -1378,6 +1442,22 @@ pub fn resolve_player_filter(
             if let [opponent] = opponents.as_slice() {
                 return Ok(*opponent);
             }
+            // A singular untargeted "an opponent" is chosen by the effect's
+            // controller as the instruction is performed. The choice made
+            // earlier in this resolution is reused so "that player" stays the
+            // same opponent.
+            if let Some(chosen) = ctx
+                .get_tagged_players(AN_OPPONENT_CHOICE_TAG)
+                .and_then(|players| players.first().copied())
+                .filter(|chosen| opponents.contains(chosen))
+            {
+                return Ok(chosen);
+            }
+            if opponents.len() >= 2 {
+                return Err(ExecutionError::UnresolvableValue(
+                    AN_OPPONENT_CHOICE_REQUIRED.to_string(),
+                ));
+            }
             Err(ExecutionError::UnresolvableValue(
                 "Opponent filter requires a targeted player".to_string(),
             ))
@@ -1419,7 +1499,7 @@ pub fn resolve_player_filter(
                     "there is no in-game player to the effect controller's right".to_string(),
                 )
             }),
-        PlayerFilter::Attacking => ctx.combat.attacking_player.ok_or_else(|| {
+        PlayerFilter::Attacking => combat_attacking_player(game, ctx).ok_or_else(|| {
             ExecutionError::UnresolvableValue("AttackingPlayer not set".to_string())
         }),
         PlayerFilter::DamagedPlayer => {
@@ -1613,7 +1693,29 @@ fn resolve_controller_of(
         }
         ObjectRef::Tagged(tag) => {
             if let Some(snapshot) = ctx.get_tagged(tag) {
-                Ok(snapshot.controller)
+                // The tagged object is still that same object on the
+                // battlefield or stack: its controller is its current one
+                // (a reanimated creature is controlled by the Aura's
+                // controller, not the graveyard card's owner). Once it has
+                // left, the snapshot's last known controller stands
+                // (CR 608.2h).
+                let live_controller = resolve_tagged_object_id(game, ctx, snapshot)
+                    .and_then(|id| game.object(id))
+                    .filter(|object| {
+                        matches!(
+                            object.zone,
+                            crate::zone::Zone::Battlefield | crate::zone::Zone::Stack
+                        ) && (object.id == snapshot.object_id || object.zone != snapshot.zone)
+                    })
+                    .map(|object| game.controller_of(object));
+                Ok(live_controller.unwrap_or(snapshot.controller))
+            } else if let Some(player) = ctx
+                .get_tagged_players(tag.as_str())
+                .and_then(|players| players.first().copied())
+            {
+                // "That permanent's controller or that player": the tagged
+                // result was a player (damage dealt to a player target).
+                Ok(player)
             } else if matches!(tag.as_str(), "enchanted" | "equipped")
                 && let Some(crate::object::AttachmentTarget::Object(host)) = game
                     .object(ctx.source)
@@ -1623,6 +1725,30 @@ fn resolve_controller_of(
                 // "enchanted creature's controller" resolves through the
                 // source's attachment, not an explicitly bound tag.
                 Ok(game.controller_of(host_object))
+            } else if tag.as_str().starts_with("damaged")
+                && let [target] = ctx.targets.as_slice()
+            {
+                // The damage to the single target was prevented, so the
+                // damage result bound nothing; the reference is still that
+                // target ("that permanent's controller or that player").
+                match target {
+                    ResolvedTarget::Player(player) => Ok(*player),
+                    ResolvedTarget::Object(object_id) => game
+                        .object(*object_id)
+                        .map(|object| game.controller_of(object))
+                        .or_else(|| {
+                            ctx.target_snapshots
+                                .get(object_id)
+                                .map(|snapshot| snapshot.controller)
+                        })
+                        .ok_or(ExecutionError::ObjectNotFound(*object_id)),
+                }
+            } else if tag.as_str() == crate::tag::SOURCE_OBJECT_TAG {
+                // "This permanent's controller": the ability's own source.
+                Ok(game
+                    .object(ctx.source)
+                    .map(|source| game.controller_of(source))
+                    .unwrap_or(ctx.controller))
             } else {
                 Err(ExecutionError::TagNotFound(tag.to_string()))
             }
@@ -1658,6 +1784,12 @@ fn resolve_owner_of(
         ObjectRef::Tagged(tag) => {
             if let Some(snapshot) = ctx.get_tagged(tag) {
                 Ok(snapshot.owner)
+            } else if tag.as_str() == crate::tag::SOURCE_OBJECT_TAG {
+                // "This artifact's owner": the ability's own source.
+                game.object(ctx.source)
+                    .map(|source| source.owner)
+                    .or_else(|| ctx.source_snapshot.as_ref().map(|snapshot| snapshot.owner))
+                    .ok_or(ExecutionError::ObjectNotFound(ctx.source))
             } else {
                 Err(ExecutionError::TagNotFound(tag.to_string()))
             }
@@ -2022,6 +2154,27 @@ pub struct ObjectApplyResult {
     pub outcome: EffectOutcome,
 }
 
+/// Whether a tagged relation names the tagged objects themselves (the
+/// candidates *are* the tagged set) rather than relating other objects to it.
+pub(crate) fn tagged_relation_names_members(
+    relation: crate::filter::TaggedOpbjectRelation,
+) -> bool {
+    matches!(
+        relation,
+        crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            | crate::filter::TaggedOpbjectRelation::SameObjectId
+            | crate::filter::TaggedOpbjectRelation::SameStableId
+            | crate::filter::TaggedOpbjectRelation::IsTaggedObjectSacrificedAsSourceEntered
+    )
+}
+
+fn filter_names_tagged_members(filter: &crate::filter::ObjectFilter) -> bool {
+    filter
+        .tagged_constraints
+        .iter()
+        .any(|constraint| tagged_relation_names_members(constraint.relation))
+}
+
 fn candidate_object_ids_for_filter(
     game: &GameState,
     filter: &crate::filter::ObjectFilter,
@@ -2063,7 +2216,11 @@ pub fn resolve_objects_for_effect_with_choice_description(
             return Ok(objects);
         }
 
-        if !filter.tagged_constraints.is_empty()
+        // Membership constraints ("that creature", "those cards") name the
+        // tagged objects themselves; there is nothing to choose. Relational
+        // constraints ("another creature", "a creature that shares a type
+        // with it") only narrow an ordinary choice among matching objects.
+        if filter_names_tagged_members(filter)
             && !matches!(
                 spec,
                 ChooseSpec::WithCount(..) | ChooseSpec::WithCountValue(..)
@@ -2365,6 +2522,72 @@ pub fn resolve_single_object_for_effect(
         .into_iter()
         .next()
         .ok_or(ExecutionError::InvalidTarget)
+}
+
+/// Resolve the object an effect acts *from* — a damage source, "it deals
+/// damage" rebinding — last-known-information first.
+///
+/// A tagged object that has left its zone (bounced, destroyed, or its
+/// graveyard card exiled after a dies trigger) still deals the damage its
+/// ability describes, using the characteristics it last had
+/// (CR 608.2h, 113.7a). The live lookup only decides *which* object id the
+/// source is when the tagged card may still be followed; the tagged snapshot
+/// is authoritative for the characteristics, and it alone suffices when no
+/// live object remains.
+///
+/// Returns `None` only when neither a live object nor a tagged snapshot
+/// exists.
+pub(crate) fn resolve_effect_source_with_lki(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    spec: &ChooseSpec,
+) -> Option<(ObjectId, Option<ObjectSnapshot>)> {
+    let tagged = match spec.base() {
+        ChooseSpec::Tagged(tag) => ctx.get_tagged(tag).cloned(),
+        _ => None,
+    };
+    let departed = tagged_lki_when_object_left(game, ctx, spec).cloned();
+    let live = resolve_single_object_for_effect(game, ctx, spec)
+        .ok()
+        .filter(|id| game.object(*id).is_some());
+    match (live, tagged) {
+        // The tagged object left the zone it was tagged in before this
+        // resolution: its new incarnation is a new object (CR 400.7), so the
+        // source is the object as it last existed, not the card it became.
+        // A card this resolution moved itself (CR 400.7j) is still followed.
+        (Some(id), Some(snapshot))
+            if id != snapshot.object_id
+                && departed.is_some()
+                && ctx
+                    .resolution_object_id_floor
+                    .is_none_or(|floor| id.0 < floor.0) =>
+        {
+            let lki = departed.unwrap_or(snapshot);
+            Some((lki.object_id, Some(lki)))
+        }
+        (Some(id), tagged) => Some((id, tagged)),
+        (None, Some(snapshot)) => {
+            let lki = departed.unwrap_or(snapshot);
+            Some((lki.object_id, Some(lki)))
+        }
+        (None, None) => None,
+    }
+}
+
+/// The tagged snapshot a characteristic reader must use instead of a live
+/// object: the tagged object has left the zone it was tagged in (CR 608.2h).
+pub(crate) fn tagged_lki_when_object_left<'a>(
+    game: &'a GameState,
+    ctx: &'a ExecutionContext<'_>,
+    spec: &ChooseSpec,
+) -> Option<&'a ObjectSnapshot> {
+    let ChooseSpec::Tagged(tag) = spec.base() else {
+        return None;
+    };
+    let snapshot = ctx.get_tagged(tag)?;
+    game.object(snapshot.object_id)
+        .is_none_or(|object| object.zone != snapshot.zone)
+        .then(|| latest_tagged_lki_snapshot(game, snapshot).unwrap_or(snapshot))
 }
 
 fn normalize_objects_for_count(
@@ -2796,6 +3019,12 @@ pub fn resolve_objects_from_spec(
             let filter_ctx = ctx.filter_context(game);
             let mut tagged_candidates = Vec::new();
             for constraint in &filter.tagged_constraints {
+                // Only membership constraints name candidates; a relational
+                // one (IsNotTaggedObject, SharesCardType, ...) must not limit
+                // the pool to the very objects it compares against.
+                if !tagged_relation_names_members(constraint.relation) {
+                    continue;
+                }
                 if let Some(snapshots) = ctx.get_tagged_all(&constraint.tag) {
                     for snapshot in snapshots {
                         if let Some(object_id) = resolve_tagged_object_id(game, ctx, snapshot)
@@ -2874,7 +3103,35 @@ pub fn resolve_objects_from_spec(
         // All matching - filter battlefield
         ChooseSpec::All(filter) => {
             let filter_ctx = ctx.filter_context(game);
-            let objects: Vec<ObjectId> = candidate_ids_for_filter(game, filter)
+            // "Reveal the top seven cards ... put all cards with that name
+            // among them into your hand": a zone-less filter drawn from a
+            // tagged collection names those objects wherever they are, not
+            // only permanents.
+            let candidates = if filter.zone.is_none() && filter_names_tagged_members(filter) {
+                let mut ids = Vec::new();
+                for constraint in &filter.tagged_constraints {
+                    if !tagged_relation_names_members(constraint.relation) {
+                        continue;
+                    }
+                    for snapshot in ctx.get_tagged_all(&constraint.tag).into_iter().flatten() {
+                        // Only objects still where the collection was
+                        // tagged; a tagged permanent that left keeps the
+                        // ordinary battlefield-only reading.
+                        if let Some(id) = resolve_tagged_object_id(game, ctx, snapshot)
+                            && game
+                                .object(id)
+                                .is_some_and(|object| object.zone == snapshot.zone)
+                            && !ids.contains(&id)
+                        {
+                            ids.push(id);
+                        }
+                    }
+                }
+                ids
+            } else {
+                candidate_ids_for_filter(game, filter)
+            };
+            let objects: Vec<ObjectId> = candidates
                 .iter()
                 .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
                 .filter(|(_, obj)| filter.matches(obj, &filter_ctx, game))
@@ -2952,6 +3209,20 @@ pub fn resolve_players_from_spec(
                 return Err(ExecutionError::InvalidTarget);
             }
 
+            // A targeted object spec with no chosen target ("up to two target
+            // creatures" with none chosen, or a target that became illegal)
+            // refers to no player.
+            if matches!(
+                inner.base(),
+                ChooseSpec::Object(_)
+                    | ChooseSpec::SpecificObject(_)
+                    | ChooseSpec::Tagged(_)
+                    | ChooseSpec::All(_)
+                    | ChooseSpec::AnyTarget
+                    | ChooseSpec::AnyOtherTarget
+            ) {
+                return Ok(Vec::new());
+            }
             // If no player targets, try to resolve the inner spec
             resolve_players_from_spec(game, inner, ctx)
         }
@@ -3040,14 +3311,18 @@ pub fn resolve_players_from_spec(
                 )
             }),
 
+        // "Any target" resolves to the players among the chosen targets
+        // (the target-only path, e.g. a damage source that targeted a player).
+        ChooseSpec::AnyTarget | ChooseSpec::AnyOtherTarget => {
+            Ok(matching_player_targets_for_spec(game, spec, ctx))
+        }
+
         // Object specs can't be resolved to players
         ChooseSpec::Object(_)
         | ChooseSpec::SpecificObject(_)
         | ChooseSpec::Source
         | ChooseSpec::Tagged(_)
-        | ChooseSpec::All(_)
-        | ChooseSpec::AnyTarget
-        | ChooseSpec::AnyOtherTarget => Err(ExecutionError::UnresolvableValue(
+        | ChooseSpec::All(_) => Err(ExecutionError::UnresolvableValue(
             "Object spec cannot be resolved to players".to_string(),
         )),
     }
@@ -3318,8 +3593,7 @@ pub(crate) fn resolve_player_filter_to_list(
                 })
         }
         PlayerFilter::Attacking => {
-            ctx.combat
-                .attacking_player
+            combat_attacking_player(game, ctx)
                 .map(|id| vec![id])
                 .ok_or_else(|| {
                     ExecutionError::UnresolvableValue("AttackingPlayer not set".to_string())

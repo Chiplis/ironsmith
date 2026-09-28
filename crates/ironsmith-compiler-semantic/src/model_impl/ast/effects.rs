@@ -3419,6 +3419,26 @@ impl EffectAst {
         )
     }
 
+    pub fn subject_verb_register_counter_placement_replacement(
+        filter: ObjectFilter,
+        counter_type: Option<CounterType>,
+        additional: u32,
+        mode: crate::effects::ReplacementApplyMode,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterCounterPlacementReplacement {
+                    filter,
+                    counter_type,
+                    additional,
+                    mode,
+                },
+            ),
+        )
+    }
+
     pub fn subject_verb_register_mana_replacement(
         source_filter: ObjectFilter,
         replacement_mana: Vec<ManaSymbol>,

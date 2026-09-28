@@ -851,6 +851,37 @@ impl StaticAbilityKind for AddCountersPlacementReplacement {
     }
 }
 
+/// The counter-placement addition ("if you would put ..., put that many
+/// plus N ... instead") as a replacement effect a resolving ability
+/// registers for a duration. "You would put" limits it to counters put by
+/// the effect's controller.
+pub(crate) fn counter_placement_addition_replacement(
+    source: ObjectId,
+    controller: PlayerId,
+    filter: ObjectFilter,
+    counter_type: Option<CounterType>,
+    additional: i64,
+) -> ReplacementEffect {
+    ReplacementEffect::with_matcher(
+        source,
+        controller,
+        WouldPutCountersOrEnterWithCountersMatcher {
+            ability_source: source,
+            controller,
+            filter,
+            player_filter: None,
+            counter_type,
+            actor: Some(PlayerFilter::You),
+            includes_permanents: false,
+            effect_only: false,
+        },
+        ReplacementAction::AddCountersToPlacement {
+            counter_type,
+            additional,
+        },
+    )
+}
+
 /// Replacement for "if you would get one or more [kind] counters ... you
 /// can't get additional [kind] counters this turn." The allowance is scoped
 /// to the affected player and resets with turn history.

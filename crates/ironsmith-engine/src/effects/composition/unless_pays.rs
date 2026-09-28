@@ -358,7 +358,7 @@ impl EffectExecutor for UnlessPaysEffect {
             }
             _ => vec![resolve_player_filter(game, &self.player, ctx)?],
         };
-        for paying_player in paying_players {
+        for &paying_player in &paying_players {
             let can_afford = can_pay_total_cost_with_reason_in_context(
                 game,
                 paying_player,
@@ -400,12 +400,21 @@ impl EffectExecutor for UnlessPaysEffect {
             }
         }
 
-        // Player didn't pay (or couldn't), execute the inner effects
-        let mut outcomes = Vec::new();
-        for effect in &self.effects {
-            outcomes.push(execute_effect(game, effect, ctx)?);
-        }
-        Ok(EffectOutcome::aggregate(outcomes))
+        // Player didn't pay (or couldn't), execute the inner effects. Outside
+        // a player loop, "that player"/"they" in the consequence is the single
+        // player who could have paid ("Unless target player pays {3}, that
+        // player loses 5 life").
+        let bound_player = match paying_players.as_slice() {
+            [player] if ctx.iteration.iterated_player.is_none() => Some(*player),
+            _ => ctx.iteration.iterated_player,
+        };
+        ctx.with_temp_iterated_player(bound_player, |ctx| {
+            let mut outcomes = Vec::new();
+            for effect in &self.effects {
+                outcomes.push(execute_effect(game, effect, ctx)?);
+            }
+            Ok(EffectOutcome::aggregate(outcomes))
+        })
     }
 
     fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> {

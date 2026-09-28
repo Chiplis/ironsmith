@@ -232,6 +232,13 @@ pub(super) fn predicate_matches_with_context(
     let filter_ctx = ctx.filter_context(game);
     let matching = memories
         .iter()
+        // One producer can record several actions ("create an Insect token,
+        // then mill a card"); "an Insect card was milled this way" reads only
+        // the milled cards, whose memory is captured in the library.
+        .filter(|memory| {
+            surface.action != crate::effect::PriorEffectAction::Milled
+                || (memory.zone == crate::zone::Zone::Library && !memory.is_token)
+        })
         .filter(|memory| {
             surface
                 .filter
@@ -298,9 +305,14 @@ impl EffectExecutor for IfEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        // A prior instruction that never ran (a declined optional, an
+        // untaken branch, an antecedent skipped because its object is gone)
+        // left no result: it didn't happen (CR 608.2c).
         let outcome = ctx
             .get_outcome(self.condition)
-            .ok_or(ExecutionError::EffectNotFound(self.condition))?;
+            .cloned()
+            .unwrap_or_else(EffectOutcome::impossible);
+        let outcome = &outcome;
 
         if matches!(
             self.predicate,
@@ -326,6 +338,21 @@ impl EffectExecutor for IfEffect {
                         .map(|event| event.player)
                 })
                 .collect::<Vec<_>>();
+            // Inside a player loop the condition belongs to the iterated
+            // player alone ("each opponent who didn't ..."): evaluate only
+            // that player's result, treating a player who took no part in
+            // the earlier action as one for whom it did not happen.
+            let player_counts = match ctx.iteration.iterated_player {
+                Some(iterated) => vec![(
+                    iterated,
+                    player_counts
+                        .iter()
+                        .find(|(player, _)| *player == iterated)
+                        .map(|(_, count)| *count)
+                        .unwrap_or(0),
+                )],
+                None => player_counts,
+            };
             for (player_id, count) in player_counts {
                 let predicate_matches = match self.predicate {
                     EffectPredicate::Happened => count > 0,

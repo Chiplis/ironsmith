@@ -241,6 +241,14 @@ impl CardDefinitionBuilder {
         self
     }
 
+    /// "This Equipment can be attached only to a legendary creature": the
+    /// attachment restriction alone. Unlike an Aura's enchant keyword it gives
+    /// the spell no cast-time target (CR 301.5b, 303.4a).
+    pub fn attachment_restriction(mut self, filter: AuraAttachmentFilter) -> Self {
+        self.aura_attach_filter = Some(filter);
+        self
+    }
+
     pub fn apply_keyword_action(self, action: KeywordAction) -> Self {
         crate::keyword_actions::apply_keyword_action(self, action)
     }

@@ -38,6 +38,14 @@ pub enum ReplacementActionAst {
         replacement_mana: Vec<ManaSymbol>,
         mode: crate::effects::ReplacementApplyMode,
     },
+    /// "Until end of turn, if you would put one or more <kind> counters on
+    /// <filter>, put that many plus N <kind> counters on it instead."
+    RegisterCounterPlacementReplacement {
+        filter: ObjectFilter,
+        counter_type: Option<CounterType>,
+        additional: u32,
+        mode: crate::effects::ReplacementApplyMode,
+    },
     RegisterDamagedBySourceZoneReplacement {
         filter: ObjectFilter,
         from_zone: Option<Zone>,

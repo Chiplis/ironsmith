@@ -128,6 +128,15 @@ impl EffectExecutor for ChoosePlayerEffect {
                 })
                 .flatten()
         }) else {
+            // No player could be chosen: bind the choice as explicitly empty
+            // so later "that player" instructions do nothing instead of
+            // failing on a missing binding (Backdraft with no sorcery caster).
+            if !ctx.decision_maker.awaiting_choice() {
+                ctx.set_tagged_players(self.tag.clone(), Vec::new());
+                if self.tag.as_str() != "__it__" {
+                    ctx.set_tagged_players(crate::tag::TagKey::from("__it__"), Vec::new());
+                }
+            }
             return Ok(EffectOutcome::resolved());
         };
         if ctx.decision_maker.awaiting_choice() {

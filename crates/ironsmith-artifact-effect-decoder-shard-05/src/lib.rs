@@ -53,6 +53,10 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "RegisterManaReplacementEffect" => {
             decode_as::<ironsmith_core::RegisterManaReplacementEffect>(payload).map(Some)
         }
+        "RegisterCounterPlacementReplacementEffect" => {
+            decode_as::<ironsmith_core::RegisterCounterPlacementReplacementEffect>(payload)
+                .map(Some)
+        }
         "RegisterEnterWithCountersReplacementEffect" => {
             decode_as::<ironsmith_core::RegisterEnterWithCountersReplacementEffect>(payload)
                 .map(Some)

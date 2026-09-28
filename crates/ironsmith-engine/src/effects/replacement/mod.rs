@@ -7,9 +7,11 @@ mod register_enter_tapped;
 mod register_future_zone_replacement;
 mod register_mana_replacement;
 mod register_next_batch_enter_with_counters;
+mod register_counter_placement_replacement;
 mod register_zone_replacement;
 
 pub use apply_replacement::{ApplyReplacementEffect, ReplacementApplyMode};
+pub use register_counter_placement_replacement::RegisterCounterPlacementReplacementEffect;
 pub use register_damaged_by_source_zone_replacement::RegisterDamagedBySourceZoneReplacementEffect;
 pub use register_draw_replacement::RegisterDrawReplacementEffect;
 pub use register_enter_tapped::RegisterEnterTappedReplacementEffect;

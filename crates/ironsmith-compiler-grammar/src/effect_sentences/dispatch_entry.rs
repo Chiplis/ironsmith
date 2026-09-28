@@ -1731,6 +1731,54 @@ pub(super) fn parse_if_you_cant_sentence(
     consult_family::parse_if_you_cant_sentence(tokens)
 }
 
+/// The value a sentence's "where X is ..." clause binds X to.
+pub(crate) fn where_x_value_from_tokens(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let binding_tokens =
+        effect_grammar::dispatch_entry_shapes::parse_where_x_usage_shape_tokens(tokens)
+            .map(|shape| shape.binding_tokens)
+            .or_else(|| {
+                effect_grammar::sentence_predicate_shapes::parse_where_x_sentence_tokens(tokens)
+                    .map(|shape| shape.where_tokens)
+            })?;
+    let binding_tokens = crate::util::trim_edge_punctuation_tokens(binding_tokens);
+    if let Some(value) =
+        crate::keyword_static::parse_where_x_is_aggregate_filter_value(binding_tokens)
+    {
+        return Some(with_where_x_surface_hints(value, tokens));
+    }
+    if let Some(value) =
+        crate::grammar::shared_util::value_semantics::parse_turn_history_value_binding(
+            binding_tokens,
+        )
+    {
+        return Some(with_where_x_surface_hints(value, tokens));
+    }
+    // Preserve typed `number of ...` aggregates before the generic exact
+    // value shape can reduce their trailing scope to a plain object count.
+    // For example, the count in "number of abilities from among ...
+    // found among creatures you control" is the distinct ability set,
+    // not the creatures that carry those abilities.
+    if let Some(value) =
+        crate::keyword_static::parse_where_x_is_number_of_filter_value(binding_tokens)
+    {
+        return Some(with_where_x_surface_hints(value, tokens));
+    }
+    if let Some(value) = parse_exact_where_x_value_expression(binding_tokens) {
+        return Some(with_where_x_surface_hints(value, tokens));
+    }
+    if let Some((_, value)) =
+        effect_grammar::sentence_predicate_shapes::parse_where_x_value_shape_tokens(
+            binding_tokens,
+            false,
+        )
+        .and_then(super::dispatch_inner::lower_where_x_shape)
+    {
+        return Some(with_where_x_surface_hints(value, tokens));
+    }
+    parse_value_binding_clause(binding_tokens)
+        .map(|value| with_where_x_surface_hints(value, tokens))
+}
+
 pub fn with_where_x_surface_hints(mut value: Value, binding_tokens: &[OwnedLexToken]) -> Value {
     let words = crate::lexer::token_word_refs(binding_tokens);
     let has_word = |word| crate::word_primitives::sequence_occurs(&words, &[word]);
@@ -2047,53 +2095,6 @@ fn parse_effect_sentences_from_sentence_inputs(
             // action replaces the ordinary singular `it` antecedent.
             effects.insert(0, EffectAst::SnapshotLastObjectTag { into: alias });
         }
-    }
-
-    fn where_x_value_from_tokens(tokens: &[OwnedLexToken]) -> Option<Value> {
-        let binding_tokens =
-            effect_grammar::dispatch_entry_shapes::parse_where_x_usage_shape_tokens(tokens)
-                .map(|shape| shape.binding_tokens)
-                .or_else(|| {
-                    effect_grammar::sentence_predicate_shapes::parse_where_x_sentence_tokens(tokens)
-                        .map(|shape| shape.where_tokens)
-                })?;
-        let binding_tokens = crate::util::trim_edge_punctuation_tokens(binding_tokens);
-        if let Some(value) =
-            crate::keyword_static::parse_where_x_is_aggregate_filter_value(binding_tokens)
-        {
-            return Some(with_where_x_surface_hints(value, tokens));
-        }
-        if let Some(value) =
-            crate::grammar::shared_util::value_semantics::parse_turn_history_value_binding(
-                binding_tokens,
-            )
-        {
-            return Some(with_where_x_surface_hints(value, tokens));
-        }
-        // Preserve typed `number of ...` aggregates before the generic exact
-        // value shape can reduce their trailing scope to a plain object count.
-        // For example, the count in "number of abilities from among ...
-        // found among creatures you control" is the distinct ability set,
-        // not the creatures that carry those abilities.
-        if let Some(value) =
-            crate::keyword_static::parse_where_x_is_number_of_filter_value(binding_tokens)
-        {
-            return Some(with_where_x_surface_hints(value, tokens));
-        }
-        if let Some(value) = parse_exact_where_x_value_expression(binding_tokens) {
-            return Some(with_where_x_surface_hints(value, tokens));
-        }
-        if let Some((_, value)) =
-            effect_grammar::sentence_predicate_shapes::parse_where_x_value_shape_tokens(
-                binding_tokens,
-                false,
-            )
-            .and_then(super::dispatch_inner::lower_where_x_shape)
-        {
-            return Some(with_where_x_surface_hints(value, tokens));
-        }
-        parse_value_binding_clause(binding_tokens)
-            .map(|value| with_where_x_surface_hints(value, tokens))
     }
 
     fn parse_leading_flip_result_sentence(
@@ -5529,9 +5530,64 @@ fn parse_direct_typed_coordination(
 /// shapes that each need the effect clause parsed before they can claim the
 /// line all read one parse of it.
 #[track_caller]
+/// "Until end of turn, if you would put one or more +1/+1 counters on a
+/// creature you control, put that many plus one +1/+1 counters on it
+/// instead." A resolving ability creates this replacement effect; it lasts
+/// until end of turn whether or not its source stays on the battlefield
+/// (CR 611.2a, 614.1a).
+fn parse_temporary_counter_placement_replacement(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    let text = crate::lexer::render_token_slice(tokens);
+    let lower = text.to_ascii_lowercase();
+    let lower = lower.trim().trim_end_matches('.');
+    let (mode, body) = if let Some(body) =
+        lower.strip_prefix("until end of turn, if you would put one or more ")
+    {
+        (crate::effects::ReplacementApplyMode::UntilEndOfTurn, body)
+    } else if let Some(body) =
+        lower.strip_prefix("until your next turn, if you would put one or more ")
+    {
+        (crate::effects::ReplacementApplyMode::UntilYourNextTurn, body)
+    } else {
+        return None;
+    };
+    let (counter, rest) = body.split_once(" counters on ")?;
+    let (object, rest) = rest.split_once(", put that many plus ")?;
+    let (bonus_and_counter, tail) = rest.split_once(" counters on it instead")?;
+    if !tail.trim().is_empty() {
+        return None;
+    }
+    let (bonus, bonus_counter) = bonus_and_counter.split_once(' ')?;
+    if bonus_counter != counter || object.contains(',') {
+        return None;
+    }
+    let additional = bonus
+        .parse::<u32>()
+        .ok()
+        .or_else(|| crate::util::parse_number_word_u32(bonus))?;
+    let counter_tokens = crate::lexer::lex_line(&format!("{counter} counter"), 0).ok()?;
+    let counter_type =
+        crate::grammar::filters::parse_counter_type_from_tokens(
+            &counter_tokens,
+        )?;
+    let object_tokens = crate::lexer::lex_line(object, 0).ok()?;
+    let mut filter = crate::object_filters::parse_object_filter(&object_tokens, false).ok()?;
+    if filter.zone.is_none() {
+        filter.zone = Some(Zone::Battlefield);
+    }
+    Some(EffectAst::subject_verb_register_counter_placement_replacement(
+        filter,
+        Some(counter_type),
+        additional,
+        mode,
+    ))
+}
+
 pub fn parse_effect_sentences_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effect) = parse_temporary_counter_placement_replacement(tokens) {
+        return Ok(vec![effect]);
+    }
     crate::sentence_memo::memoized(
         crate::sentence_memo::Rule::Sentences,
         tokens,
@@ -7348,7 +7404,9 @@ fn dispatch_effect_sentences_lexed_inner_remaining(
         return Ok(effects);
     }
     let sentence_segments = split_quoted_grant_then_vote_option_sentences(
-        split_leading_amass_comma_then_sentences(split_lexed_sentences(tokens)),
+        split_look_then_exile_sentences(split_leading_amass_comma_then_sentences(
+            split_lexed_sentences(tokens),
+        )),
     );
     let sentences = sentence_segments
         .into_iter()
@@ -7670,6 +7728,63 @@ fn split_leading_amass_comma_then_sentences(
             let split = super::lex_chain_helpers::split_segments_on_comma_then_lexed(vec![segment]);
             if split.len() > 1 {
                 result.extend(split);
+                continue;
+            }
+        }
+        result.push(segment);
+    }
+    result
+}
+
+/// "Look at the top ten cards of your library, then exile any number of
+/// them and put the rest back ...": the look establishes the collection the
+/// following instructions choose from, exactly as when it is its own
+/// sentence. Split it so the looked-card procedure reads both.
+fn split_look_then_exile_sentences(segments: Vec<&[OwnedLexToken]>) -> Vec<&[OwnedLexToken]> {
+    let mut result = Vec::new();
+    for segment in segments {
+        let words = segment
+            .iter()
+            .filter_map(OwnedLexToken::as_word)
+            .collect::<Vec<_>>();
+        let starts_with_look = words.len() > 2
+            && words[0].eq_ignore_ascii_case("look")
+            && words[1].eq_ignore_ascii_case("at");
+        let then_exile = words
+            .windows(2)
+            .any(|pair| pair[0].eq_ignore_ascii_case("then") && pair[1].eq_ignore_ascii_case("exile"));
+        // "Pay any amount of life, then look at that many cards from the top
+        // of your library. Put one of those cards ...": the look likewise
+        // stands as its own instruction.
+        let then_look = words.windows(3).any(|triple| {
+            triple[0].eq_ignore_ascii_case("then")
+                && triple[1].eq_ignore_ascii_case("look")
+                && triple[2].eq_ignore_ascii_case("at")
+        }) && words.iter().any(|word| word.eq_ignore_ascii_case("library"));
+        if then_look {
+            let boundary = segment.windows(3).position(|triple| {
+                triple[0].is_comma()
+                    && triple[1].as_word().is_some_and(|word| word.eq_ignore_ascii_case("then"))
+                    && triple[2].as_word().is_some_and(|word| word.eq_ignore_ascii_case("look"))
+            });
+            if let Some(comma) = boundary {
+                result.push(&segment[..comma]);
+                result.push(&segment[comma + 2..]);
+                continue;
+            }
+        }
+        if starts_with_look && then_exile {
+            let boundary = segment.windows(2).position(|pair| {
+                pair[0].is_comma() && pair[1].as_word().is_some_and(|word| word.eq_ignore_ascii_case("then"))
+            });
+            if let Some(comma) = boundary
+                && segment
+                    .get(comma + 2)
+                    .and_then(OwnedLexToken::as_word)
+                    .is_some_and(|word| word.eq_ignore_ascii_case("exile"))
+            {
+                result.push(&segment[..comma]);
+                result.push(&segment[comma + 2..]);
                 continue;
             }
         }
@@ -11137,12 +11252,35 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 *count_value = Some(replacement.clone());
             }
         }
+        // "look at the top X cards ..., where X is ... . You may cast a spell
+        // with mana value less than X from among them": the selection among
+        // the looked-at cards shares the sentence-bound X.
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+            filter, ..
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
+            filter,
+            ..
+        }) => {
+            replace_in_filter(filter, replacement, clause)?;
+        }
         EffectAst::Permissions(
             PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost { filter, .. },
         ) => {
             replace_in_filter(filter, replacement, clause)?;
         }
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+            // The where-X value also fixes a dynamic target count ("deals 1
+            // damage to each of up to X target creatures, where X is ...").
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount, target, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage {
+                amount,
+                target,
+                ..
+            }) => {
+                replace_value(amount, replacement, clause)?;
+                replace_in_target(target, replacement, clause)?;
+            }
             SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count: amount })
             | SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
                 count: amount,
@@ -11172,13 +11310,9 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 count: amount,
                 ..
             })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount, .. })
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
                 amount,
                 ..
-            })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage {
-                amount, ..
             })
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. })
             | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage {
@@ -11659,6 +11793,9 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaReplacement {
                 ..
             })
+            | SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterCounterPlacementReplacement { .. },
+            )
             | SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterDamagedBySourceZoneReplacement { .. },
             )

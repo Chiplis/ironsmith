@@ -1249,10 +1249,21 @@ fn advance_reference_frame_for_effect(
                     track_target_player(to, frame);
                 }
                 SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. }) => {
+                    let previous_object_tag = frame.last_object_tag.clone();
                     maybe_tag_target(target, frame, id_gen, "returned")?;
-                    if let Some(tag) = frame.last_object_tag.as_ref() {
+                    let refs = lowering_reference_frame(frame);
+                    let (spec, _) = resolve_target_spec_with_choices(target, &refs)?;
+                    if let Some(tag) = frame.last_object_tag.as_ref()
+                        && (frame.last_object_tag != previous_object_tag || !spec.is_target())
+                    {
                         frame.last_player_filter =
                             Some(PlayerFilter::AliasedOwnerOf(ObjectRef::tagged(tag.clone())));
+                    } else if spec.is_target() {
+                        // "Return target permanent to its owner's hand, then
+                        // that player discards a card": without an object
+                        // tag, "that player" is the returned target's owner.
+                        frame.last_player_filter =
+                            Some(PlayerFilter::AliasedOwnerOf(ObjectRef::Target));
                     }
                 }
                 SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHandOfChosenColor { filter }) => {
@@ -2444,6 +2455,30 @@ fn annotate_effect_sequence_with_env_internal(
         }
         if let Some(tag) = source_exiled_condition_tag.as_ref() {
             resolution_env.last_object_tag = RefState::Known(tag.clone());
+        }
+        // "If a land was destroyed this way, its controller may search ...
+        // Otherwise, its controller may search ...": the fallback is the
+        // alternative to the gated branch, which never ran when the fallback
+        // does. Its references see what the gate itself saw, not objects the
+        // gated branch introduced.
+        let is_otherwise_fallback = matches!(
+            &effect,
+            EffectAst::Conditionals(
+                ConditionalEffectAst::IfResult {
+                    predicate: IfResultPredicate::Otherwise,
+                    ..
+                } | ConditionalEffectAst::ResolvedIfResult {
+                    predicate: IfResultPredicate::Otherwise,
+                    ..
+                }
+            )
+        );
+        if is_otherwise_fallback
+            && let Some(gate) = annotated.last()
+            && result_gate_surface(&gate.effect).is_some()
+        {
+            resolution_env.last_object_tag = gate.in_env.last_object_tag.clone();
+            resolution_env.last_player_filter = gate.in_env.last_player_filter.clone();
         }
         resolve_definite_object_references_in_effect(
             &mut effect,
@@ -3652,6 +3687,37 @@ fn visit_comparison_values(comparison: &crate::filter::Comparison, visit: &mut i
 }
 
 fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut impl FnMut(&Value)) {
+    // A granted entry-counter amount ("This creature enters with X +1/+1
+    // counters on it, where X is ... this way") reads an earlier result.
+    if let SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { abilities, .. }) =
+        action
+    {
+        for ability in abilities {
+            if let crate::cards::builders::GrantedAbilityAst::StaticAbility(static_ability) =
+                ability
+                && let crate::cards::builders::StaticAbilityAst::Static(ability) =
+                    static_ability.as_ref()
+            {
+                match &ability.payload {
+                    ironsmith_core::StaticAbilityPayload::EntersWithCountersValue {
+                        count, ..
+                    } => visit(count),
+                    ironsmith_core::StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
+                        count,
+                        otherwise_count,
+                        ..
+                    } => {
+                        visit(count);
+                        if let Some(otherwise) = otherwise_count {
+                            visit(otherwise);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        return;
+    }
     match action {
         SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count })
         | SubjectVerbActionAst::Library(LibraryActionAst::Mill { count })
@@ -4840,6 +4906,9 @@ fn resolve_effect_result_values_in_fields(
                 ..
             })
             | SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterCounterPlacementReplacement { .. },
+            )
+            | SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterDamagedBySourceZoneReplacement { .. },
             )
             | SubjectVerbActionAst::Control(ControlActionAst::Enchant { .. })
@@ -4935,7 +5004,6 @@ fn resolve_effect_result_values_in_fields(
                 ..
             })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceAll { .. })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantBySpec { .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget {
@@ -4961,6 +5029,52 @@ fn resolve_effect_result_values_in_fields(
                 ..
             }) => {
                 resolve_effect_result_value(amount, state)?;
+            }
+            // "When you cast this spell, each player reveals ... This creature
+            // enters with X +1/+1 counters on it, where X is the total mana
+            // value of cards revealed this way": the granted entry-counter
+            // amount reads this resolution's earlier result.
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
+                abilities,
+                ..
+            }) => {
+                for ability in abilities.iter_mut() {
+                    let crate::cards::builders::GrantedAbilityAst::StaticAbility(static_ability) =
+                        ability
+                    else {
+                        continue;
+                    };
+                    let crate::cards::builders::StaticAbilityAst::Static(ability) =
+                        static_ability.as_mut()
+                    else {
+                        continue;
+                    };
+                    // Bind only when a producer result is available; an
+                    // entry amount with no earlier result stays as authored.
+                    let bind = |value: &mut Value| {
+                        let mut bound = value.clone();
+                        if resolve_effect_result_value(&mut bound, state).is_ok() {
+                            *value = bound;
+                        }
+                    };
+                    match &mut ability.payload {
+                        ironsmith_core::StaticAbilityPayload::EntersWithCountersValue {
+                            count,
+                            ..
+                        } => bind(count),
+                        ironsmith_core::StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
+                            count,
+                            otherwise_count,
+                            ..
+                        } => {
+                            bind(count);
+                            if let Some(otherwise) = otherwise_count.as_mut() {
+                                bind(otherwise);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
             }
             SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
                 count,
@@ -5930,6 +6044,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 source_filter,
                 ..
             }) => bind_unresolved_it_in_filter(source_filter, seed_tag),
+            SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterCounterPlacementReplacement { filter, .. },
+            ) => bind_unresolved_it_in_filter(filter, seed_tag),
             SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDrawReplacement {
                 replacement_effects,
                 ..

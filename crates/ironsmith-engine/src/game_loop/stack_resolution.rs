@@ -815,6 +815,13 @@ fn execute_resolution_program_inner(
                     selected_effects.get(effect_index + 1),
                 ),
             );
+            let previous_entry_attachment = std::mem::replace(
+                &mut ctx.pending_entry_attachment,
+                crate::effects::permanents::entry_attachment_for_move(
+                    effect,
+                    selected_effects.get(effect_index + 1),
+                ),
+            );
             let outcome = if !is_modal_effect
                 && let Some((effect_targets, effect_target_assignments)) = &active_scope
             {
@@ -827,6 +834,7 @@ fn execute_resolution_program_inner(
                 execute_effect(game, effect, ctx)
             };
             ctx.public_search_reveal_tag = previous_search_reveal;
+            ctx.pending_entry_attachment = previous_entry_attachment;
             match outcome {
                 // Per-event matching: the events an instruction reports are
                 // matched with the ones it queued, at its end (CR 603.2);
@@ -1224,6 +1232,7 @@ pub(super) fn resolve_stack_entry_full(
     } else {
         crate::resolution::ResolutionProgram::default()
     };
+    link_enter_and_leave_trigger_players(game, &entry, execution_source, &mut ctx);
     // ETB replacement is resolved when the spell actually moves to the battlefield.
     let etb_replacement_result: Option<(bool, bool, Zone)> = None;
     let chapter_resolution = entry
@@ -3177,6 +3186,60 @@ mod tests {
                 .iter()
                 .filter_map(|id| game.object(*id))
                 .any(|object| object.name == "Damaged")
+        );
+    }
+}
+
+/// CR 607.2a: "When this creature enters, target player loses 6 life. When
+/// this creature leaves the battlefield, that player gains 6 life." The
+/// entering trigger's single player target is remembered for the permanent,
+/// and the linked leaving trigger reads it through the typed
+/// `LINKED_TRIGGER_PLAYER_TAG` its compiled "that player" refers to.
+fn link_enter_and_leave_trigger_players(
+    game: &mut GameState,
+    entry: &crate::game_state::StackEntry,
+    execution_source: crate::ids::ObjectId,
+    ctx: &mut ExecutionContext,
+) {
+    if !entry.is_ability || entry.trigger_identity.is_none() {
+        return;
+    }
+    let (Some(stable_id), Some(event)) = (entry.source_stable_id, entry.triggering_event.as_ref())
+    else {
+        return;
+    };
+    let Some(zone_change) = event.downcast::<crate::events::zones::ZoneChangeEvent>() else {
+        return;
+    };
+    let involves_source = zone_change.objects.contains(&execution_source)
+        || zone_change.result_objects.contains(&execution_source)
+        || zone_change
+            .snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.stable_id == stable_id);
+    if !involves_source {
+        return;
+    }
+    if zone_change.to == Zone::Battlefield {
+        let players = ctx
+            .targets
+            .iter()
+            .filter_map(|target| match target {
+                ResolvedTarget::Player(player) => Some(*player),
+                ResolvedTarget::Object(_) => None,
+            })
+            .collect::<Vec<_>>();
+        if let [player] = players.as_slice() {
+            game.set_linked_trigger_player(stable_id, *player);
+        }
+    } else if zone_change.from == Zone::Battlefield
+        && let Some(player) = game.linked_trigger_player(stable_id)
+    {
+        // The compiler binds the leaving trigger's "that player" to this
+        // typed linked-player tag.
+        ctx.set_tagged_players(
+            crate::tag::TagKey::from(ironsmith_core::LINKED_TRIGGER_PLAYER_TAG),
+            vec![player],
         );
     }
 }

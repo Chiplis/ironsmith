@@ -54,6 +54,10 @@ pub struct AsEntersEffectProgramFacts {
     /// This distinguishes the entering source from an object selected by an
     /// earlier optional cost in the same replacement program.
     pub source_reference_enters_with_counter_surface: bool,
+    /// Authored as "If this <permanent> would enter, instead <program>, then
+    /// put this <permanent> onto the battlefield" (a self entry replacement,
+    /// CR 614.1c) and normalized to the "As this <permanent> enters" form.
+    pub entry_instead_surface: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

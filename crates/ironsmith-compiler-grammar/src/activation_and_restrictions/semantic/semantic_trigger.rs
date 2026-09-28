@@ -3492,6 +3492,39 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         return Ok(TriggerSpec::ThisDealsDamageTo(target_filter));
     }
 
+    // "Whenever this creature deals 4 or more damage" (Spinneret and
+    // Spiderling): the damage amount must meet the threshold.
+    if trigger_pattern_accepts(&words, SOURCE_DEALS_TRIGGER_PREFIX)
+        && let Some(deals_idx) = trigger_atom_token(tokens, TriggerClauseAtom::Deal)
+        && let Some(damage_idx_rel) =
+            trigger_atom_token(&tokens[deals_idx + 1..], TriggerClauseAtom::Damage)
+        && trigger_atom_token(&tokens[deals_idx + 1 + damage_idx_rel + 1..], TriggerClauseAtom::To)
+            .is_none()
+    {
+        let damage_idx = deals_idx + 1 + damage_idx_rel;
+        let amount_tokens = trim_commas(&tokens[deals_idx + 1..damage_idx]);
+        let amount_view = ActivationRestrictionCompatWords::new(&amount_tokens);
+        let amount_words = amount_view.to_word_refs();
+        if !amount_words.is_empty()
+            && !amount_tokens
+                .first()
+                .is_some_and(|token| token_matches_clause_shape(token, COMBAT_WORD_PATTERN))
+            && let Some((amount, _)) =
+                parse_filter_comparison_tokens("damage amount", &amount_words, &words)?
+            && let Some((operator, threshold)) = damage_amount_comparison_operator(&amount)
+        {
+            return Ok(TriggerSpec::ConditionQualified {
+                trigger: Box::new(TriggerSpec::ThisDealsDamage),
+                condition: crate::cards::builders::PredicateAst::ValueComparison {
+                    left: crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount),
+                    operator,
+                    right: crate::effect::Value::Fixed(threshold),
+                },
+                surface: format!("the damage is {}", amount_words.join(" ")),
+            });
+        }
+    }
+
     if trigger_pattern_accepts(&words, SOURCE_DEALS_DAMAGE_TRIGGER_PREFIX) {
         return Ok(TriggerSpec::ThisDealsDamage);
     }
@@ -4429,6 +4462,37 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         if let Some(player_filter) = parse_trigger_subject_player_filter(&attacked_player_words) {
             return Ok(TriggerSpec::PlayersAttackedOneOrMore(player_filter));
         }
+    }
+
+    // "a creature attacking one of your opponents becomes blocked by two or
+    // more creatures" (Seifer, Balamb Rival): the blocked trigger, gated on
+    // how many creatures block that attacker.
+    if let [.., "becomes", "blocked", "by", count, "or", "more", "creatures"] = words
+        && let Some(count) = crate::util::parse_number_word_u32(count)
+        && count >= 2
+    {
+        let becomes_word_idx = words.len() - 7;
+        let becomes_token_idx =
+            trigger_word_token_start(tokens, becomes_word_idx).unwrap_or(tokens.len());
+        let subject_tokens = &tokens[..becomes_token_idx];
+        let trigger = match parse_attack_trigger_subject_filter_lexed(subject_tokens)? {
+            Some(filter) => TriggerSpec::BecomesBlocked(filter),
+            None => TriggerSpec::ThisBecomesBlocked,
+        };
+        // No blocker is excluded: blockers are on the battlefield, never in a
+        // library.
+        let no_blocker = ObjectFilter::default().in_zone(Zone::Library);
+        return Ok(TriggerSpec::ConditionQualified {
+            trigger: Box::new(trigger),
+            condition: crate::cards::builders::PredicateAst::TurnHistory(
+                crate::cards::builders::TurnHistoryPredicateAst::TriggeringAttackerBlockers {
+                    required: ObjectFilter::creature(),
+                    required_count: count,
+                    prohibited: no_blocker,
+                },
+            ),
+            surface: format!("it's blocked by {} or more creatures", words[words.len() - 4]),
+        });
     }
 
     if last == "blocked" && words.len() >= 2 && words[words.len().saturating_sub(2)] == "becomes" {

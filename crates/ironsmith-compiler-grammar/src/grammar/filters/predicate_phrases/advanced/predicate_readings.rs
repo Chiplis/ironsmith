@@ -17,6 +17,8 @@ mod part_2;
 mod part_3;
 #[path = "predicate_readings/part_4.rs"]
 mod part_4;
+#[path = "predicate_readings/fallback.rs"]
+mod fallback;
 
 /// The input the readings read.
 pub(super) struct Predicate<'a> {
@@ -73,6 +75,7 @@ struct Reading {
 }
 
 pub(super) const REGISTRY: RuleId = RuleId::new("predicate-registry");
+const FALLBACK: RuleId = RuleId::new("fallback-predicate");
 
 /// The readings, in the order they were ranked.
 const READINGS: &[&[Reading]] = &[
@@ -104,6 +107,22 @@ pub(super) fn read(input: &Predicate<'_>) -> ParseOutcome<RuleMatch<PredicateAst
             ParseOutcome::NoMatch => {}
             ParseOutcome::Error(diagnostic) => diagnostics.push(diagnostic),
         }
+    }
+    // Shapes no ranked reading claims: read only when nothing else did, so
+    // they never compete with an established reading of the same words.
+    if candidates.is_empty()
+        && let Some(value) = fallback::read(input)
+    {
+        let span = crate::util::span_from_tokens(input.tokens);
+        crate::parse_trace::event(format!("{REGISTRY}: {FALLBACK} read the input"));
+        return ParseOutcome::matched(
+            RuleMatch {
+                rule: FALLBACK,
+                value,
+                span,
+            },
+            span,
+        );
     }
     // Equal readings from two rules are one reading.
     let mut distinct: Vec<RegistryCandidate<PredicateAst>> = Vec::new();

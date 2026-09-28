@@ -1469,6 +1469,81 @@ pub(crate) fn activation_timing_allows(
             game.turn.phase == Phase::Beginning
                 && game.turn.step == Some(crate::game_state::Step::Upkeep)
         }
+        timing => activation_step_window_allows(game, controller, *timing),
+    }
+}
+
+/// The step windows of an activation timing: a named step of the turn, or
+/// "before" a combat step, which CR 506.8 reads as earlier in the turn than
+/// that step of the turn's first combat.
+pub(crate) fn activation_step_window_allows(
+    game: &GameState,
+    controller: PlayerId,
+    timing: crate::ability::ActivationTiming,
+) -> bool {
+    use crate::ability::ActivationTiming;
+    use crate::game_state::Step;
+    match timing {
+        ActivationTiming::DuringYourDrawStep => {
+            game.is_active_player(controller)
+                && game.turn.phase == Phase::Beginning
+                && game.turn.step == Some(Step::Draw)
+        }
+        ActivationTiming::DuringDeclareAttackersStep => {
+            game.turn.phase == Phase::Combat && game.turn.step == Some(Step::DeclareAttackers)
+        }
+        ActivationTiming::DuringDeclareBlockersStep => {
+            game.turn.phase == Phase::Combat && game.turn.step == Some(Step::DeclareBlockers)
+        }
+        ActivationTiming::BeforeAttackersDeclared => {
+            turn_is_before_first_combat_step(game, Step::DeclareAttackers)
+        }
+        ActivationTiming::DuringYourTurnBeforeAttackersDeclared => {
+            game.is_active_player(controller)
+                && turn_is_before_first_combat_step(game, Step::DeclareAttackers)
+        }
+        ActivationTiming::BeforeBlockersDeclared => {
+            turn_is_before_first_combat_step(game, Step::DeclareBlockers)
+        }
+        ActivationTiming::BeforeCombatDamageStep => {
+            turn_is_before_first_combat_step(game, Step::CombatDamage)
+        }
+        ActivationTiming::BeforeEndOfCombatStep => {
+            turn_is_before_first_combat_step(game, Step::EndCombat)
+        }
+        _ => true,
+    }
+}
+
+/// Whether the game is earlier in the turn than `step` of the turn's first
+/// combat phase (CR 506.8): the beginning phase, the precombat main phase, or
+/// the first combat before that step.
+pub(crate) fn turn_is_before_first_combat_step(
+    game: &GameState,
+    step: crate::game_state::Step,
+) -> bool {
+    use crate::game_state::Step;
+    fn combat_step_order(step: Step) -> u8 {
+        match step {
+            Step::BeginCombat => 0,
+            Step::DeclareAttackers => 1,
+            Step::DeclareBlockers => 2,
+            Step::CombatDamage => 3,
+            Step::EndCombat => 4,
+            _ => 0,
+        }
+    }
+    match game.turn.phase {
+        Phase::Beginning | Phase::FirstMain => true,
+        Phase::Combat => {
+            game.turn_store.combat_phases_started_this_turn <= 1
+                && game
+                    .turn
+                    .step
+                    .map_or(0, combat_step_order)
+                    < combat_step_order(step)
+        }
+        Phase::NextMain | Phase::Ending => false,
     }
 }
 
@@ -1609,6 +1684,13 @@ pub(crate) fn is_equip_ability(
             effect
                 .downcast_ref::<crate::effects::AttachToEffect>()
                 .is_some()
+                // Printed "Equip {N}" compiles to the Equipment attaching
+                // itself (CR 702.6a).
+                || effect
+                    .downcast_ref::<crate::effects::AttachObjectsEffect>()
+                    .is_some_and(|attach| {
+                        matches!(attach.objects, crate::target::ChooseSpec::Source)
+                    })
         })
 }
 
@@ -1823,6 +1905,15 @@ fn activation_printed_costs_precheck_with_view(
                 payable_cost,
                 reason,
                 view,
+            ) {
+                return false;
+            }
+            idx += 2;
+            continue;
+        }
+        if crate::cost::tagged_choice_pair_at(costs, idx).is_some() {
+            if !crate::cost::tagged_choice_pair_is_payable(
+                game, controller, source, &costs, idx, reason, None,
             ) {
                 return false;
             }
@@ -2233,6 +2324,21 @@ pub(crate) fn activation_total_cost_is_payable_with_view(
                     idx += 2;
                     continue;
                 }
+                if crate::cost::tagged_choice_pair_at(components, idx).is_some() {
+                    if !crate::cost::tagged_choice_pair_is_payable(
+                        game,
+                        controller,
+                        source,
+                        &components,
+                        idx,
+                        crate::costs::PaymentReason::ActivateAbility,
+                        None,
+                    ) {
+                        return false;
+                    }
+                    idx += 2;
+                    continue;
+                }
 
                 if !activation_cost_is_payable_with_view(
                     game,
@@ -2318,6 +2424,21 @@ pub(crate) fn activation_total_cost_branch_is_payable_with_view(
                         source,
                         paired_cost,
                         view,
+                    ) {
+                        return false;
+                    }
+                    idx += 2;
+                    continue;
+                }
+                if crate::cost::tagged_choice_pair_at(components, idx).is_some() {
+                    if !crate::cost::tagged_choice_pair_is_payable(
+                        game,
+                        controller,
+                        source,
+                        &components,
+                        idx,
+                        crate::costs::PaymentReason::ActivateAbility,
+                        None,
                     ) {
                         return false;
                     }

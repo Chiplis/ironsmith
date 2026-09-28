@@ -123,6 +123,12 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_players_with_cards_in_hand_at_least(input)),
     },
     Reading {
+        id: RuleId::new("players-with-poison-counters-at-least"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_players_with_poison_counters_at_least(input)),
+    },
+    Reading {
         id: RuleId::new("devotion-value"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -428,6 +434,17 @@ fn read_players_with_cards_in_hand_at_least(input: &BindingClause<'_>) -> Option
         ));
     }
     None
+}
+fn read_players_with_poison_counters_at_least(input: &BindingClause<'_>) -> Option<Value> {
+    let captured = etb_grammar::parse_where_x_number_of_filter_tokens(input.tokens)?;
+    let (players, minimum) =
+        crate::grammar::shared_util::value_semantics::parse_players_with_poison_counters_at_least(
+            captured.filter_tokens,
+        )?;
+    Some(scale_where_x_number_value(
+        Value::CountPlayersWithPoisonCountersAtLeast(players, minimum),
+        captured.multiplier,
+    ))
 }
 fn read_devotion_value(input: &BindingClause<'_>) -> Option<Value> {
     let tokens = input.tokens;

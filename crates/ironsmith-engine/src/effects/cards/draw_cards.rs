@@ -454,10 +454,56 @@ impl EffectExecutor for DrawCardsEffect {
                     );
                 }
                 TraitEventResult::Proceed(e) | TraitEventResult::Modified(e) => {
-                    let final_count =
-                        crate::events::downcast_event::<crate::events::DrawEvent>(e.inner())
-                            .map(|draw| draw.count)
-                            .unwrap_or(1);
+                    let final_draw =
+                        crate::events::downcast_event::<crate::events::DrawEvent>(e.inner());
+                    let final_count = final_draw.map(|draw| draw.count).unwrap_or(1);
+                    // A redirect replacement ("instead that player skips that
+                    // draw and you draw a card", Notion Thief) changes who
+                    // draws; the card goes to that player's hand.
+                    if let Some(redirected_player) = final_draw
+                        .map(|draw| draw.player)
+                        .filter(|drawer| *drawer != player_id)
+                    {
+                        if !game.can_draw(redirected_player) {
+                            continue;
+                        }
+                        let redirected_is_first = game
+                            .turn_store
+                            .turn_history
+                            .cards_drawn_by_player(redirected_player)
+                            == 0;
+                        let (redirected_in_draw_step, redirected_previous) =
+                            game.draw_step_context_for_player(redirected_player);
+                        let drawn = game.draw_cards_with_dm(
+                            redirected_player,
+                            final_count as usize,
+                            &mut *ctx.decision_maker,
+                        );
+                        if drawn.is_empty() {
+                            continue;
+                        }
+                        let event = TriggerEvent::new_with_provenance(
+                            CardsDrawnEvent::new_with_step_context(
+                                redirected_player,
+                                drawn,
+                                redirected_is_first,
+                                redirected_in_draw_step,
+                                redirected_previous,
+                            ),
+                            ctx.provenance,
+                        );
+                        let drawn_count = event
+                            .downcast::<CardsDrawnEvent>()
+                            .map(CardsDrawnEvent::amount)
+                            .unwrap_or(0);
+                        game.record_cards_drawn_in_current_draw_step(
+                            redirected_player,
+                            drawn_count,
+                        );
+                        game.note_hidden_draw_for_reveal_window(&event);
+                        events.push(event);
+                        continue;
+                    }
 
                     let drawn = game.draw_cards_with_dm(
                         player_id,

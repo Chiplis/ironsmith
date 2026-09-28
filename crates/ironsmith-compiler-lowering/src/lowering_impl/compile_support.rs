@@ -106,6 +106,7 @@ pub use control_flow_handlers::{
     with_preserved_lowering_context,
 };
 pub use effect_dispatch::compile_effect;
+pub(crate) use effect_dispatch::link_unproduced_result_references_in_program;
 pub use effect_handlers::compile_delayed_trigger_spec;
 #[cfg(test)]
 pub use ironsmith_compiler_resolve::SpanMappingContext;
@@ -784,6 +785,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
 
             match query {
                 TurnHistoryCount::Died { filter, .. }
+                | TurnHistoryCount::CountersRemovedFrom { filter, .. }
                 | TurnHistoryCount::EnteredBattlefield(filter) => {
                     bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
                 }
@@ -795,6 +797,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
                 | TurnHistoryCount::PlayersDealtDamage(player)
                 | TurnHistoryCount::DiscardedOrCycled(player)
                 | TurnHistoryCount::Cycled(player)
+                | TurnHistoryCount::KeywordActionsPerformed { player, .. }
                 | TurnHistoryCount::CardsDrawn(player)
                 | TurnHistoryCount::PlayersLostLife(player)
                 | TurnHistoryCount::UntappedLandsAtTurnStart(player)
@@ -841,6 +844,8 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
         Value::CreaturesDiedThisTurnControlledBy(player)
         | Value::CountPlayers(player)
         | Value::CountPlayersWithCardsInHandAtLeast(player, _)
+        | Value::CountPlayersWithCardsInGraveyardAtLeast(player, _)
+        | Value::CountPlayersWithPoisonCountersAtLeast(player, _)
         | Value::PartySize(player)
         | Value::LifeTotal(player)
         | Value::LifeTotalAsTurnBegan(player)

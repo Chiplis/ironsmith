@@ -141,7 +141,7 @@ fn parse_source_and_chosen_exile(
     let source_tokens = &body[..and_idx];
     let source_words = primitives::TokenWordView::new(source_tokens).word_refs();
     if crate::util::this_source_surface_for_words(&source_words).is_none() {
-        return Ok(None);
+        return parse_chosen_and_source_exile(body);
     }
     let source_surface = crate::target::SourceReferenceSurface::ThisPermanentType(
         render_token_slice(source_tokens).trim().to_string(),
@@ -200,6 +200,46 @@ fn parse_source_and_chosen_exile(
     if shared_origin.is_some() {
         source_filter.owner = Some(PlayerFilter::You);
     }
+    Ok(Some(ActivationCostSegmentCst::ExileSourceAndChosen {
+        source_filter,
+        choice_count: choice.count,
+        filter,
+    }))
+}
+
+/// "Exile two cards from your graveyard and this creature" (Zombie Assassin):
+/// the source is named after the chosen set, and the chosen set's origin
+/// qualifies only that set.
+fn parse_chosen_and_source_exile(
+    body: &[OwnedLexToken],
+) -> Result<Option<ActivationCostSegmentCst>, CardTextError> {
+    let Some(and_idx) = body.iter().rposition(|token| token.is_word("and")) else {
+        return Ok(None);
+    };
+    let source_tokens = &body[and_idx + 1..];
+    let source_words = primitives::TokenWordView::new(source_tokens).word_refs();
+    if crate::util::this_source_surface_for_words(&source_words).is_none() {
+        return Ok(None);
+    }
+    let source_surface = crate::target::SourceReferenceSurface::ThisPermanentType(
+        render_token_slice(source_tokens).trim().to_string(),
+    );
+    let chosen_tokens = &body[..and_idx];
+    let Some(choice) = parse_activation_choice_prefix_tokens(chosen_tokens) else {
+        return Ok(None);
+    };
+    if choice.count.min == 0 || choice.count.max != Some(choice.count.min) || choice.count.dynamic_x
+    {
+        return Ok(None);
+    }
+    let filter = parse_activation_exile_filter_tokens(choice.rest)?;
+    // The chosen set must name its own origin (the source is exiled from
+    // the battlefield), so it can never include the source.
+    if filter.zone.is_none() || filter.zone == Some(Zone::Battlefield) {
+        return Ok(None);
+    }
+    let mut source_filter = crate::target::ObjectFilter::source_with_surface(source_surface);
+    source_filter.zone = Some(Zone::Battlefield);
     Ok(Some(ActivationCostSegmentCst::ExileSourceAndChosen {
         source_filter,
         choice_count: choice.count,

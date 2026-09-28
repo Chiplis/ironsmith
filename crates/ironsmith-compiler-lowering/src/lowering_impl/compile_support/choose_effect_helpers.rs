@@ -58,6 +58,13 @@ pub fn compile_choose_player_with_subject(
     if random {
         choose_effect = choose_effect.at_random();
     }
+    // CR 702.174a: the gift recipient is chosen while the spell is cast
+    // (as an optional cost) and every later "the chosen player" reference
+    // reads it at resolution, so the choice must be remembered on the spell
+    // rather than living only in the cost payment's transient tags.
+    if choose_effect.tag.as_str() == crate::tag::CompilerReferenceTag::GiftedPlayer.as_str() {
+        choose_effect = choose_effect.remember_as_chosen_player();
+    }
     let effects = subject.prepend_target_prelude_if_needed(Effect::new(choose_effect));
     (effects, subject.into_choices())
 }

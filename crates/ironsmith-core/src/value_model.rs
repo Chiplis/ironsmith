@@ -500,6 +500,20 @@ pub enum TurnHistoryCount {
     DamageDealtToSource,
     /// Total combat and noncombat damage actually dealt by the resolving source this turn.
     DamageDealtBySource,
+    /// Keyword actions of the listed kinds matching players performed this
+    /// turn ("if you've scried or surveilled this turn").
+    KeywordActionsPerformed {
+        player: PlayerFilter,
+        actions: Vec<crate::KeywordActionKind>,
+    },
+    /// Counters of the requested kind removed from objects matching the
+    /// filter this turn, each object read as it was when the counter was
+    /// removed ("an oil counter was removed from a permanent you controlled
+    /// this turn").
+    CountersRemovedFrom {
+        counter_type: Option<CounterType>,
+        filter: ObjectFilter,
+    },
     /// Spells matching the filter cast by matching players this turn.  The
     /// origin switch supports Paradox-style "from anywhere other than your
     /// hand" counts without pretending origin is a current-zone property.
@@ -593,6 +607,13 @@ pub enum Value {
     /// Number of matching players whose current hand contains at least the
     /// authored number of cards.
     CountPlayersWithCardsInHandAtLeast(PlayerFilter, u32),
+    /// Matching players with at least this many cards in their graveyards
+    /// ("for each graveyard with seven or more cards in it").
+    CountPlayersWithCardsInGraveyardAtLeast(PlayerFilter, u32),
+    /// Number of matching players with at least the authored number of
+    /// poison counters ("the number of opponents who have three or more
+    /// poison counters").
+    CountPlayersWithPoisonCountersAtLeast(PlayerFilter, u32),
     /// The number of matching players who control at least one object
     /// matching `filter` ("the number of opponents who control a creature
     /// with power 4 or greater").

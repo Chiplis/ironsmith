@@ -396,6 +396,21 @@ fn parse_devotion_value_words(words: &[&str]) -> Option<(Value, usize)> {
     Some((Value::Devotion { player, color }, color_index + 1))
 }
 
+/// "Half X" as a count whose rounding clause is authored after the counted
+/// noun ("create half X Food tokens, rounded up"). Returns the rounded value
+/// and the words `half <term>` used.
+pub fn parse_half_count_with_deferred_rounding(
+    words: &[&str],
+    rounded_up: bool,
+) -> Option<(Value, usize)> {
+    if words.first() != Some(&"half") {
+        return None;
+    }
+    let (base, used) = parse_value_expr_term_words(words.get(1..)?)?;
+    let rounding = if rounded_up { Rounding::Up } else { Rounding::Down };
+    Some((rounded_half(base, rounding), used + 1))
+}
+
 pub fn parse_value_expr_words(words: &[&str]) -> Option<(Value, usize)> {
     if let Some(parsed) = parse_whichever_is_greater_value_words(words) {
         return Some(parsed);

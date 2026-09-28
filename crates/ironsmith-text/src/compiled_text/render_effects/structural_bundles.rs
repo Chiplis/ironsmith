@@ -5998,6 +5998,8 @@ pub(super) fn value_references_target_player(value: &Value) -> bool {
         Value::CreaturesDiedThisTurnControlledBy(player)
         | Value::CountPlayers(player)
         | Value::CountPlayersWithCardsInHandAtLeast(player, _)
+        | Value::CountPlayersWithCardsInGraveyardAtLeast(player, _)
+        | Value::CountPlayersWithPoisonCountersAtLeast(player, _)
         | Value::PartySize(player)
         | Value::LifeTotal(player)
         | Value::LifeTotalAsTurnBegan(player)

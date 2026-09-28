@@ -4210,6 +4210,37 @@
         );
     }
     if let Some(register) =
+        effect.downcast_ref::<crate::effects::RegisterCounterPlacementReplacementEffect>()
+    {
+        let counters = register
+            .counter_type
+            .map(|counter_type| format!("{} counters", describe_counter_type(counter_type)))
+            .unwrap_or_else(|| "counters".to_string());
+        let mut subject_filter = register.filter.clone();
+        subject_filter.zone = None;
+        let subject = subject_filter.description();
+        let subject = if subject.starts_with("a ") || subject.starts_with("an ") {
+            subject
+        } else {
+            format!("a {subject}")
+        };
+        let bonus = match register.additional {
+            1 => "one".to_string(),
+            2 => "two".to_string(),
+            3 => "three".to_string(),
+            other => other.to_string(),
+        };
+        let prefix = match register.mode {
+            crate::effects::ReplacementApplyMode::UntilEndOfTurn => "Until end of turn, if ",
+            crate::effects::ReplacementApplyMode::UntilYourNextTurn => "Until your next turn, if ",
+            crate::effects::ReplacementApplyMode::OneShot => "The next time ",
+            crate::effects::ReplacementApplyMode::Resolution => "If ",
+        };
+        return format!(
+            "{prefix}you would put one or more {counters} on {subject}, put that many plus {bonus} {counters} on it instead"
+        );
+    }
+    if let Some(register) =
         effect.downcast_ref::<crate::effects::RegisterEnterTappedReplacementEffect>()
     {
         let mut subject_filter = register.filter.clone();
@@ -4443,6 +4474,28 @@
     if let Some(for_each_ctrl) =
         effect.downcast_ref::<crate::effects::ForEachControllerOfTaggedEffect>()
     {
+        // A per-object action repeated for each of the controller's objects
+        // from an earlier action ("for each land destroyed this way, ... that
+        // land's controller unless that player pays ...").
+        if let [repeat] = for_each_ctrl.effects.as_slice()
+            && let Some(repeat) = repeat.downcast_ref::<crate::effects::RepeatEffectsEffect>()
+            && matches!(repeat.count, crate::effect::Value::TaggedCount)
+        {
+            let verb = for_each_ctrl
+                .tag
+                .as_str()
+                .trim_start_matches('_')
+                .split('_')
+                .next()
+                .filter(|verb| verb.ends_with("ed"))
+                .unwrap_or("affected");
+            let body = describe_effect_list(&repeat.effects);
+            return format!(
+                "For each permanent {verb} this way, {}",
+                lowercase_first(body.trim().trim_end_matches('.'))
+                    .replace("that player", "its controller")
+            );
+        }
         return format!(
             "For each controller of tagged '{}' objects, {}",
             for_each_ctrl.tag.as_str(),

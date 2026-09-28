@@ -3391,6 +3391,30 @@ pub fn parse_text_to_semantic_document_with_context(
 }
 
 #[inline(never)]
+/// A Station striation ("7+ | Flying") covers every rules line printed under
+/// it until the next striation (CR 702.184, 721.2): an ability line following
+/// the threshold line carries the same charge-counter gate.
+fn propagate_station_thresholds(lines: &mut [RecognizedLine]) {
+    let mut current = None;
+    for line in lines.iter_mut() {
+        let chosen_option = match line {
+            RecognizedLine::Activated(line) => &mut line.chosen_option,
+            RecognizedLine::Triggered(line) => &mut line.chosen_option,
+            RecognizedLine::Static(line) => &mut line.chosen_option,
+            _ => continue,
+        };
+        match chosen_option {
+            Some(ChosenOptionContext::StationThreshold(threshold)) => current = Some(*threshold),
+            Some(_) => {}
+            None => {
+                if let Some(threshold) = current {
+                    *chosen_option = Some(ChosenOptionContext::StationThreshold(threshold));
+                }
+            }
+        }
+    }
+}
+
 pub fn recognize_document_with_context(
     context: ParseContextView<'_>,
     preprocessed: &PreprocessedDocument,
@@ -3497,6 +3521,7 @@ pub fn recognize_document_with_context(
         }
     }
 
+    propagate_station_thresholds(&mut lines);
     Ok(RecognizedDocument { lines })
 }
 

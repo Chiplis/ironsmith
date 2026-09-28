@@ -342,6 +342,21 @@ pub fn derive_triggered_ability_functional_zones_from_facts(
             action: crate::events::KeywordActionKind::Cycle,
             ..
         } => vec![Zone::Graveyard],
+        // "Whenever you cycle this card or cycle another card while this
+        // enchantment is on the battlefield" (Astral Drift): the cycled card
+        // triggers from the graveyard; the other half is gated to the
+        // battlefield by its own condition.
+        TriggerSpec::Either(left, right)
+            if matches!(
+                left.as_ref(),
+                TriggerSpec::KeywordActionFromSource {
+                    action: crate::events::KeywordActionKind::Cycle,
+                    ..
+                }
+            ) && matches!(right.as_ref(), TriggerSpec::ConditionQualified { .. }) =>
+        {
+            vec![Zone::Graveyard, Zone::Battlefield]
+        }
         _ => vec![Zone::Battlefield],
     };
     if let Some(explicit_zone) = &facts.explicit_zone {

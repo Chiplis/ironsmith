@@ -2959,6 +2959,30 @@ pub(crate) fn process_player_loss_with_simultaneous_zone_changes(
     dm: &mut dyn DecisionMaker,
     simultaneous_zone_changes: &std::collections::HashMap<crate::ids::ObjectId, crate::zone::Zone>,
 ) -> PlayerLossOutcome {
+    process_player_loss_inner(game, player, dm, simultaneous_zone_changes, true)
+}
+
+/// Apply CR 614 replacements to an impending SBA loss while every object of
+/// the same state-based check is still where it was (CR 704.3), without yet
+/// committing an unreplaced loss. `Lost` here means the loss still stands and
+/// the caller must commit it with [`GameState::mark_player_lost`] after the
+/// check's other actions (so the loser's permanents still die first).
+pub(crate) fn process_player_loss_replacements_before_commit(
+    game: &mut GameState,
+    player: PlayerId,
+    dm: &mut dyn DecisionMaker,
+    simultaneous_zone_changes: &std::collections::HashMap<crate::ids::ObjectId, crate::zone::Zone>,
+) -> PlayerLossOutcome {
+    process_player_loss_inner(game, player, dm, simultaneous_zone_changes, false)
+}
+
+fn process_player_loss_inner(
+    game: &mut GameState,
+    player: PlayerId,
+    dm: &mut dyn DecisionMaker,
+    simultaneous_zone_changes: &std::collections::HashMap<crate::ids::ObjectId, crate::zone::Zone>,
+    commit_loss: bool,
+) -> PlayerLossOutcome {
     if !game.can_lose_game(player)
         || game
             .player(player)
@@ -2971,7 +2995,9 @@ pub(crate) fn process_player_loss_with_simultaneous_zone_changes(
     let event = Event::player_loses_game(player);
     match process_with_dm(game, event, dm) {
         TraitEventResult::Proceed(_) | TraitEventResult::Modified(_) => {
-            if game.mark_player_lost(player) {
+            if !commit_loss {
+                PlayerLossOutcome::Lost
+            } else if game.mark_player_lost(player) {
                 PlayerLossOutcome::Lost
             } else {
                 PlayerLossOutcome::Prevented

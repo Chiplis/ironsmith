@@ -1060,6 +1060,11 @@ pub struct ChoiceStore {
     pub chosen_objects: HashMap<ObjectId, crate::snapshot::ObjectSnapshot>,
     /// Chosen named options for permanents ("as this enters, choose A or B").
     pub chosen_named_options: HashMap<ObjectId, String>,
+    /// The single player targeted by a permanent's own enters-the-battlefield
+    /// trigger, keyed by the permanent's stable identity, so its linked
+    /// leaves-the-battlefield trigger can refer to "that player" (CR 607.2a;
+    /// Laquatus's Champion, Soul Scourge).
+    pub(crate) linked_trigger_players: HashMap<crate::ids::StableId, PlayerId>,
 }
 
 #[derive(Debug, Clone)]
@@ -4016,6 +4021,22 @@ impl GameState {
         Arc::make_mut(&mut self.choice_store)
     }
 
+    /// Remember the player a permanent's own entering trigger targeted.
+    pub(crate) fn set_linked_trigger_player(
+        &mut self,
+        source: crate::ids::StableId,
+        player: PlayerId,
+    ) {
+        self.choice_store_mut()
+            .linked_trigger_players
+            .insert(source, player);
+    }
+
+    /// The player a permanent's own entering trigger targeted, if any.
+    pub(crate) fn linked_trigger_player(&self, source: crate::ids::StableId) -> Option<PlayerId> {
+        self.choice_store.linked_trigger_players.get(&source).copied()
+    }
+
     fn cast_permission_flags_mut(&mut self) -> &mut CastPermissionFlags {
         self.zone_view_changes.record(());
         Arc::make_mut(&mut self.cast_permission_flags)
@@ -4956,6 +4977,8 @@ impl GameState {
             | crate::effect::Value::DamageDealtThisTurnByTaggedSpellCast(_) => true,
             crate::effect::Value::CountPlayers(player)
             | crate::effect::Value::CountPlayersWithCardsInHandAtLeast(player, _)
+            | crate::effect::Value::CountPlayersWithCardsInGraveyardAtLeast(player, _)
+            | crate::effect::Value::CountPlayersWithPoisonCountersAtLeast(player, _)
             | crate::effect::Value::PartySize(player)
             | crate::effect::Value::LifeTotal(player)
             | crate::effect::Value::LifeTotalDifference(player)

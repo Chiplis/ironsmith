@@ -318,6 +318,7 @@ pub enum CompilerReferenceTag {
     BeheldCost0,
     BeheldChosenType,
     GiftedPlayer,
+    LinkedTriggerPlayer,
     WhereXCommanderManaValue,
     SourceExiled,
     MillProbe,
@@ -440,6 +441,7 @@ impl CompilerReferenceTag {
             Self::BeheldCost0 => "beheld_cost_0",
             Self::BeheldChosenType => "beheld_chosen_type",
             Self::GiftedPlayer => "gifted_player",
+            Self::LinkedTriggerPlayer => ironsmith_core::LINKED_TRIGGER_PLAYER_TAG,
             Self::WhereXCommanderManaValue => "__where_x_commander_mana_value",
             Self::SourceExiled => "__source_exiled__",
             Self::MillProbe => "__mill_probe__",
@@ -508,6 +510,7 @@ impl CompilerReferenceTag {
             | Self::DivvyOpponent
             | Self::DemonstrateOpponent
             | Self::GiftedPlayer
+            | Self::LinkedTriggerPlayer
             | Self::InitiativeHolder
             | Self::DelegatedLibraryChooser
             | Self::VotedWithYou

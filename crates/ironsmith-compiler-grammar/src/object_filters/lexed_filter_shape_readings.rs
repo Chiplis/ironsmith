@@ -268,6 +268,12 @@ fn read_branch_scoped_union(
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     let tokens = input.tokens;
     let other = input.other;
+    // "spell that targets an artifact or creature you control" (Fugitive
+    // Droid): the disjunction belongs to the targeting clause, not to the
+    // spell selector.
+    if super::filter_shape_readings::disjunction_is_inside_targets_clause(tokens) {
+        return Ok(None);
+    }
     let has_shared_terminal_noun = has_shared_terminal_object_noun(tokens);
     let repeats_card_noun = tokens
         .iter()

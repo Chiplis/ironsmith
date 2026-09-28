@@ -453,6 +453,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "RegisterManaReplacementEffect" => {
             decode_as::<T, ironsmith_core::RegisterManaReplacementEffect>(effect)
         }
+        "RegisterCounterPlacementReplacementEffect" => {
+            decode_as::<T, ironsmith_core::RegisterCounterPlacementReplacementEffect>(effect)
+        }
         "RegisterNextBatchEnterWithCountersEffect" => {
             decode_as::<T, ironsmith_core::RegisterNextBatchEnterWithCountersEffect>(effect)
         }

@@ -243,6 +243,7 @@ fn mana_ability_condition_met(
                     // produced, not whether the ability is currently activatable by timing/limits.
                     ignore_timing: true,
                     ignore_activation_limits: true,
+                    recipient: None,
                 },
             };
             crate::condition_eval::evaluate_condition_external(game, condition, &eval_ctx)

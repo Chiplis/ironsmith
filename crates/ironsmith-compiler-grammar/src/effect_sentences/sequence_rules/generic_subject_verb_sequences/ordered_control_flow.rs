@@ -906,8 +906,17 @@ pub fn parse_counted_from_looked_cards_action(
     bool,
 )> {
     let action_tokens = trim_commas(tokens);
-    let shape = triple_grammar::parse_looked_move_action_shape(&action_tokens)?;
-    let choice_filter_tokens = trim_commas(&action_tokens[shape.filter]);
+    let mut shape = triple_grammar::parse_looked_move_action_shape(&action_tokens)?;
+    let mut choice_filter_tokens = trim_commas(&action_tokens[shape.filter.clone()]);
+    // "Put a random creature card from among them onto the battlefield": the
+    // pick is made at random among the matching cards.
+    if choice_filter_tokens
+        .first()
+        .is_some_and(|token| token.is_word("random"))
+    {
+        choice_filter_tokens.remove(0);
+        shape.count.random = true;
+    }
     let mut filter = effect_sentences::parse_looked_card_choice_filter(&choice_filter_tokens)?;
     let aggregate_constraint =
         lift_total_mana_value_choice_constraint(&choice_filter_tokens, &mut filter);

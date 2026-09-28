@@ -760,7 +760,13 @@ pub(super) fn matches_subject(
     if filter.enlist_eligible && !object_is_enlist_eligible(game, subject.object_id()) {
         return false;
     }
-    if filter.attacking && !subject.attacking(game) {
+    // Both flags together are the "attacking or blocking" union the filter
+    // renders as "attacking/blocking"; the blocking half is checked below.
+    let attacking_or_blocking = filter.attacking && filter.blocking;
+    if filter.attacking
+        && (!attacking_or_blocking || !subject.is_live())
+        && !subject.attacking(game)
+    {
         return false;
     }
     if filter.attacking_alone {
@@ -824,6 +830,7 @@ pub(super) fn matches_subject(
     }
     if subject.is_live()
         && filter.blocking
+        && !(attacking_or_blocking && subject.attacking(game))
         && !game
             .combat
             .as_ref()

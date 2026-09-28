@@ -169,7 +169,7 @@ pub fn parse_sacrifice(
                         tag: crate::tag::TagRef::of(tag.clone()),
                     }),
                     EffectAst::subject_verb_sacrifice_all(
-                        PlayerAst::That,
+                        sacrificing_player_for_chooser(player),
                         ObjectFilter::tagged(tag),
                     ),
                 ],
@@ -286,7 +286,7 @@ pub fn parse_sacrifice(
                                 tag: crate::tag::TagRef::of(tag.clone()),
                             }),
                             EffectAst::subject_verb_sacrifice_all(
-                                PlayerAst::That,
+                                sacrificing_player_for_chooser(player),
                                 ObjectFilter::tagged(tag),
                             ),
                         ],
@@ -349,7 +349,7 @@ pub fn parse_sacrifice(
                                 tag: crate::tag::TagRef::of(tag.clone()),
                             }),
                             EffectAst::subject_verb_sacrifice_all(
-                                PlayerAst::That,
+                                sacrificing_player_for_chooser(player),
                                 ObjectFilter::tagged(tag),
                             ),
                         ],
@@ -632,4 +632,17 @@ fn parse_sacrifice_object_list(
         ObjectFilter::tagged(tag),
     ));
     Ok(Some(EffectAst::Sequence { effects }))
+}
+
+/// The player who sacrifices the objects a sacrifice's own chooser selected:
+/// the same player. An implicit ("you") chooser stays implicit rather than
+/// becoming a "that player" back-reference, which would otherwise bind to an
+/// unrelated earlier player (or an unset iterated player) in triggers such as
+/// "Whenever this creature is dealt damage, sacrifice that many permanents".
+fn sacrificing_player_for_chooser(player: PlayerAst) -> PlayerAst {
+    if matches!(player, PlayerAst::Implicit) {
+        PlayerAst::Implicit
+    } else {
+        PlayerAst::That
+    }
 }

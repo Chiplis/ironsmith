@@ -1103,9 +1103,10 @@ mod spent_mana_repeat_tests;
 
 #[path = "sentence_shape_predicates/sentence_shape_predicates_core.rs"]
 mod sentence_shape_predicates_core_programs;
+pub(crate) use sentence_shape_predicates_core_programs::parse_effect_sentence_with_where_x_lexed;
 use sentence_shape_predicates_core_programs::{
     has_unrecognized_leading_effect_label, parse_effect_sentence_lexed_inner,
-    parse_effect_sentence_lexed_inner_unstacked, parse_effect_sentence_with_where_x_lexed,
+    parse_effect_sentence_lexed_inner_unstacked,
 };
 pub use sentence_shape_predicates_core_programs::{
     parse_effect_sentence_lexed, parse_effect_sentence_lexed_with_context,

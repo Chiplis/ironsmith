@@ -1,6 +1,77 @@
 use super::*;
 use crate::cards::builders::ConditionalEffectAst;
 
+/// "Whenever a creature enters, if there are two or more other creatures on
+/// the battlefield" (Portcullis): when the trigger's subject is not the source,
+/// "other" in the condition excludes the entering object.
+fn exclude_entering_object_from_other_counts(
+    trigger: &TriggerSpec,
+    predicate: PredicateAst,
+) -> PredicateAst {
+    let (TriggerSpec::EntersBattlefield { filter, .. }
+    | TriggerSpec::EntersBattlefieldOneOrMore { filter, .. }) = trigger
+    else {
+        return predicate;
+    };
+    if filter.other || filter.source {
+        return predicate;
+    }
+    fn exclude(filter: &mut crate::ObjectFilter) {
+        if !filter.other {
+            return;
+        }
+        let tag: crate::tag::TagKey = crate::tag::CompilerReferenceTag::It.bind().into();
+        if !filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == tag
+                && constraint.relation == crate::target::TaggedOpbjectRelation::IsNotTaggedObject
+        }) {
+            filter
+                .tagged_constraints
+                .push(crate::target::TaggedObjectConstraint {
+                    tag,
+                    relation: crate::target::TaggedOpbjectRelation::IsNotTaggedObject,
+                });
+        }
+    }
+    fn rewrite(predicate: PredicateAst) -> PredicateAst {
+        match predicate {
+            PredicateAst::ValueComparison {
+                left: crate::effect::Value::Count(mut filter),
+                operator,
+                right,
+            } => {
+                exclude(&mut filter);
+                PredicateAst::ValueComparison {
+                    left: crate::effect::Value::Count(filter),
+                    operator,
+                    right,
+                }
+            }
+            PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerHasAtLeast {
+                player,
+                mut filter,
+                count,
+            }) => {
+                exclude(&mut filter);
+                PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerHasAtLeast {
+                    player,
+                    filter,
+                    count,
+                })
+            }
+            PredicateAst::And(left, right) => {
+                PredicateAst::And(Box::new(rewrite(*left)), Box::new(rewrite(*right)))
+            }
+            PredicateAst::Or(left, right) => {
+                PredicateAst::Or(Box::new(rewrite(*left)), Box::new(rewrite(*right)))
+            }
+            PredicateAst::Not(inner) => PredicateAst::Not(Box::new(rewrite(*inner))),
+            other => other,
+        }
+    }
+    rewrite(predicate)
+}
+
 pub fn apply_explicit_intervening_if_to_triggered_chunk(
     chunk: LineAst,
     explicit_intervening_if: Option<PredicateAst>,
@@ -14,6 +85,7 @@ pub fn apply_explicit_intervening_if_to_triggered_chunk(
             effects,
             max_triggers_per_turn,
         } => {
+            let predicate = exclude_entering_object_from_other_counts(&trigger, predicate);
             let random_count_antecedent_predicate = predicate.clone();
             let predicate = link_spell_cast_mana_spent_predicate(&trigger, predicate);
             let (trigger, predicate) = absorb_predicate_into_trigger(trigger, predicate);

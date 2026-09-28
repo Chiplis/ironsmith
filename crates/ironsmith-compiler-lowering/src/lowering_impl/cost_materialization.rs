@@ -624,6 +624,11 @@ fn lower_materialization_costs(
                 if filter.controller.is_none() {
                     filter.controller = Some(PlayerFilter::You);
                 }
+                // Only permanents can be sacrificed (CR 701.21a); the choice
+                // needs its search zone ("Sacrifice X Goats").
+                if filter.zone.is_none() {
+                    filter.zone = Some(crate::zone::Zone::Battlefield);
+                }
                 let exact_count =
                     (!count.dynamic_x && count.max == Some(count.min)).then_some(count.min as u32);
                 if let Some(exact_count) = exact_count {
@@ -719,13 +724,31 @@ fn lower_materialization_costs(
             } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 let mut filter = filter.clone();
-                if filter.zone.is_none() {
-                    filter.zone = Some(crate::zone::Zone::Battlefield);
-                }
-                if filter.zone == Some(crate::zone::Zone::Battlefield)
-                    && filter.controller.is_none()
+                // A union whose branches name their own zones ("permanents
+                // you control and/or cards in your graveyard", craft
+                // materials) searches each branch zone; an outer zone or
+                // controller would exclude every other branch.
+                let mut branch_zones = Vec::new();
+                if filter.zone.is_none()
+                    && !filter.any_of.is_empty()
+                    && filter.any_of.iter().all(|branch| branch.zone.is_some())
                 {
-                    filter.controller = Some(PlayerFilter::You);
+                    for zone in filter.any_of.iter().filter_map(|branch| branch.zone) {
+                        if !branch_zones.contains(&zone) {
+                            branch_zones.push(zone);
+                        }
+                    }
+                }
+                if branch_zones.len() < 2 {
+                    branch_zones.clear();
+                    if filter.zone.is_none() {
+                        filter.zone = Some(crate::zone::Zone::Battlefield);
+                    }
+                    if filter.zone == Some(crate::zone::Zone::Battlefield)
+                        && filter.controller.is_none()
+                    {
+                        filter.controller = Some(PlayerFilter::You);
+                    }
                 }
                 let tag = ironsmith_compiler_semantic::tag::declared_key(format!(
                     "exile_cost_{exile_tag_id}"
@@ -738,6 +761,9 @@ fn lower_materialization_costs(
                     PlayerFilter::You,
                     tag.clone(),
                 );
+                if !branch_zones.is_empty() {
+                    choose = choose.in_zones(branch_zones);
+                }
                 if let Some(constraint) = aggregate_constraint {
                     choose = choose.with_aggregate_constraint(*constraint);
                 }

@@ -366,6 +366,60 @@ fn compile_delayed_effects_preserving_outer_context_with_event_value(
 /// the authored "prevented this way" metric to that producer so unrelated
 /// results cannot capture it. The delayed trigger then supplies the shield's
 /// accumulated amount as its event value when it resolves.
+fn effect_has_put_counters(effect: &EffectAst) -> bool {
+    if matches!(
+        effect,
+        EffectAst::SubjectVerb(subject_verb)
+            if matches!(
+                subject_verb.action,
+                SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { .. })
+            )
+    ) {
+        return true;
+    }
+    let mut found = false;
+    for_each_nested_effects(effect, false, |nested| {
+        found |= nested.iter().any(effect_has_put_counters);
+    });
+    found
+}
+
+fn bind_event_amount_value(value: &Value, count: &Value) -> Option<Value> {
+    match value {
+        // Neither a triggering amount nor an outer instruction's outcome is
+        // available to a delayed ability when it resolves.
+        Value::EventValue(EventValueSpec::Amount) | Value::EffectValue(_) => Some(count.clone()),
+        Value::SurfaceHinted { value, hints } => Some(Value::SurfaceHinted {
+            value: Box::new(bind_event_amount_value(value, count)?),
+            hints: hints.clone(),
+        }),
+        _ => None,
+    }
+}
+
+/// Re-point a delayed body's bare "that many" (no triggering amount exists
+/// for a phase trigger) at the scheduling instruction's tagged objects.
+fn bind_delayed_event_amount(effect: &Effect, count: &Value) -> Effect {
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        let mut sequence = sequence.clone();
+        sequence.effects = sequence
+            .effects
+            .iter()
+            .map(|child| bind_delayed_event_amount(child, count))
+            .collect();
+        return Effect::new(sequence);
+    }
+    if let Some(consult) = effect.downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()
+        && let crate::effects::ConsultTopOfLibraryStopRule::MatchCount(value) = &consult.stop_rule
+        && let Some(bound) = bind_event_amount_value(value, count)
+    {
+        let mut consult = consult.clone();
+        consult.stop_rule = crate::effects::ConsultTopOfLibraryStopRule::MatchCount(bound);
+        return Effect::new(consult);
+    }
+    effect.clone()
+}
+
 fn replace_delayed_prior_prevention_amounts(effect: &mut EffectAst) {
     if let EffectAst::SubjectVerb(subject_verb) = effect
         && let SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { count, .. }) =
@@ -737,21 +791,45 @@ pub(super) fn try_compile_timing_and_control_effect(
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let compiled = match effect {
         EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep { player, effects }) => {
-            let uses_prior_prevention_amount = effects
+            // A prevention amount reaches a delayed body only as a counter
+            // count ("put a counter on it for each 1 damage prevented this
+            // way"); a bare "that many" elsewhere names an earlier result.
+            let reads_event_amount = effects
                 .iter()
                 .any(effect_references_prior_prevention_amount);
+            let uses_prior_prevention_amount =
+                reads_event_amount && effects.iter().any(effect_has_put_counters);
             let mut effects = effects.clone();
             if uses_prior_prevention_amount {
                 for effect in &mut effects {
                     replace_delayed_prior_prevention_amounts(effect);
                 }
             }
-            let (delayed_effects, choices) =
+            let (mut delayed_effects, choices) =
                 compile_delayed_effects_preserving_outer_context_with_event_value(
                     &effects,
                     ctx,
-                    uses_prior_prevention_amount,
+                    reads_event_amount,
                 )?;
+            // "Exile all creatures you control. At the beginning of the next
+            // end step, reveal cards until you reveal that many creature
+            // cards": the delayed ability has no triggering amount; "that
+            // many" counts the objects the scheduling instruction tagged.
+            if !uses_prior_prevention_amount
+                && let Some(tag) = ctx.last_object_tag.clone()
+            {
+                let mut filter = ObjectFilter::default();
+                filter.zone = None;
+                filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+                    tag: tag.clone(),
+                    relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+                });
+                let count = Value::Count(filter);
+                delayed_effects = delayed_effects
+                    .iter()
+                    .map(|effect| bind_delayed_event_amount(effect, &count))
+                    .collect();
+            }
             let mut delayed = crate::effects::ScheduleDelayedTriggerEffect::new(
                 ironsmith_core::DelayedTriggerSpec::BeginningOfEndStep(player.clone()),
                 delayed_effects,

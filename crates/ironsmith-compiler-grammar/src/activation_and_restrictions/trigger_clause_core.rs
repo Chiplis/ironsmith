@@ -2081,6 +2081,9 @@ pub fn parse_trigger_clause_lexed(tokens: &[OwnedLexToken]) -> Result<TriggerSpe
     if let Some(qualified) = try_parse_while_source_is_attacking_trigger_lexed(tokens)? {
         return Ok(qualified);
     }
+    if let Some(trigger) = try_parse_cycle_this_or_another_on_battlefield_trigger_lexed(tokens) {
+        return Ok(trigger);
+    }
     // Beginning-of-combat clauses are a small, complete phase-event grammar.
     // Recognize that shape before entering the legacy aggregate matcher,
     // whose large filter temporaries otherwise dominate this hot path's
@@ -2092,6 +2095,55 @@ pub fn parse_trigger_clause_lexed(tokens: &[OwnedLexToken]) -> Result<TriggerSpe
         ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
     parse_trigger_clause_lexed_unstacked(tokens)
+}
+
+fn try_parse_cycle_this_or_another_on_battlefield_trigger_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<TriggerSpec> {
+    // "Whenever you cycle this card or cycle another card while this
+    // enchantment is on the battlefield" (Astral Drift): a cycling event
+    // trigger, not a state trigger.
+    let words = crate::lexer::token_word_refs(trim_edge_punctuation_tokens(
+        strip_leading_trigger_intro(tokens),
+    ));
+    if let [
+        "you",
+        "cycle",
+        "this",
+        "card",
+        "or",
+        "cycle",
+        "another",
+        "card",
+        "while",
+        "this",
+        _,
+        "is",
+        "on",
+        "the",
+        "battlefield",
+    ] = words.as_slice()
+    {
+        return Some(TriggerSpec::Either(
+            Box::new(TriggerSpec::KeywordActionFromSource {
+                action: crate::events::KeywordActionKind::Cycle,
+                player: PlayerFilter::You,
+            }),
+            Box::new(TriggerSpec::ConditionQualified {
+                trigger: Box::new(TriggerSpec::KeywordAction {
+                    action: crate::events::KeywordActionKind::Cycle,
+                    player: PlayerFilter::You,
+                    source_filter: Some(ObjectFilter::default().other()),
+                    during_your_turn: false,
+                }),
+                condition: crate::cards::builders::PredicateAst::Source(
+                    crate::cards::builders::SourcePredicateAst::SourceIsInZone(Zone::Battlefield),
+                ),
+                surface: "this is on the battlefield".to_string(),
+            }),
+        ));
+    }
+    None
 }
 
 /// "<event> while this creature is attacking" (Fire Lord Azula): the event

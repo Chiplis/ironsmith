@@ -113,8 +113,10 @@ fn parse_cross_zone_target_swap(
         EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: PredicateAst::AllTargetsStillLegal,
             if_true: vec![
+                // "that player simultaneously sacrifices the artifact": the
+                // targeted artifact's controller, not the ability's.
                 EffectAst::subject_verb_sacrifice(
-                    PlayerAst::Implicit,
+                    PlayerAst::ThatPlayerOrTargetController,
                     ObjectFilter::default(),
                     1,
                     Some(TargetAst::Tagged(

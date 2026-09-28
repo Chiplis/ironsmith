@@ -2033,6 +2033,9 @@ fn parse_static_ability_ast_line_lexed_unstacked(
             return parse_static_ability_ast_line_lexed_unstacked(&visible);
         }
     }
+    if let Some(abilities) = parse_conditional_source_characteristics_and_predicate_line(tokens)? {
+        return Ok(Some(abilities));
+    }
     let input = compound_line_readings::StaticLine { tokens };
     match compound_line_readings::read(&input) {
         ParseOutcome::Match(matched) => return Ok(Some(matched.value.value)),
@@ -2239,6 +2242,80 @@ fn parse_static_ability_ast_line_lexed_single(
         conditioned.push(ability);
     }
     Ok(Some(conditioned))
+}
+
+/// "As long as ~ is tapped, it's a Human Citizen with base power and
+/// toughness 1/1 and can't be blocked" (Futurist Operative): a
+/// characteristic-setting clause and a second predicate sharing the pronoun
+/// subject under one condition. Read them as the two sentences they
+/// abbreviate ("As long as ..., it's a Human Citizen with base power and
+/// toughness 1/1. As long as ..., it can't be blocked."); read whole, the
+/// copular clause is misread as the subject of the restriction.
+fn parse_conditional_source_characteristics_and_predicate_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let Some(spec) = split_as_long_as_condition_prefix_lexed(tokens) else {
+        return Ok(None);
+    };
+    let remainder = trim_edge_punctuation(spec.remainder_tokens);
+    let starts_copular = match remainder.as_slice() {
+        [first, ..] if first.is_word("it's") || first.is_word("it’s") || first.is_word("its") => {
+            true
+        }
+        [first, second, ..] => first.is_word("it") && second.is_word("is"),
+        _ => false,
+    };
+    if !starts_copular {
+        return Ok(None);
+    }
+    const PREDICATE_HEADS: &[&str] = &[
+        "can't", "can’t", "cant", "can", "has", "have", "gets", "attacks", "blocks",
+        "doesn't", "doesn’t", "doesnt",
+    ];
+    let Some(and_index) = remainder.iter().enumerate().rposition(|(index, token)| {
+        token.is_word("and")
+            && remainder
+                .get(index + 1)
+                .is_some_and(|next| PREDICATE_HEADS.iter().any(|head| next.is_word(head)))
+    }) else {
+        return Ok(None);
+    };
+    if and_index < 3
+        || remainder
+            .iter()
+            .any(|token| token.kind == TokenKind::Quote)
+    {
+        return Ok(None);
+    }
+    let Some(comma_index) = tokens
+        .iter()
+        .position(|token| token.kind == TokenKind::Comma)
+    else {
+        return Ok(None);
+    };
+    let prefix = &tokens[..=comma_index];
+    let mut characteristics = prefix.to_vec();
+    characteristics.extend_from_slice(&remainder[..and_index]);
+    characteristics.push(OwnedLexToken::period(TextSpan::synthetic()));
+    let mut predicate = prefix.to_vec();
+    // "it" in a static line names the source; say so explicitly so the
+    // restriction parser binds the source instead of an unbound pronoun.
+    predicate.push(OwnedLexToken::word("this", TextSpan::synthetic()));
+    predicate.push(OwnedLexToken::word("permanent", TextSpan::synthetic()));
+    predicate.extend_from_slice(&remainder[and_index + 1..]);
+    predicate.push(OwnedLexToken::period(TextSpan::synthetic()));
+    let Ok(Some(mut first)) = parse_static_ability_ast_line_lexed_unstacked(&characteristics)
+    else {
+        return Ok(None);
+    };
+    let Ok(Some(mut second)) = parse_static_ability_ast_line_lexed_unstacked(&predicate) else {
+        return Ok(None);
+    };
+    if first.is_empty() || second.is_empty() {
+        return Ok(None);
+    }
+    first.append(&mut second);
+    Ok(Some(first))
 }
 
 fn cast_this_spell_as_though_flash_tokens(tokens: &[OwnedLexToken]) -> bool {

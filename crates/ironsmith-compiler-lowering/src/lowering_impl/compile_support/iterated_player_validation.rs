@@ -221,6 +221,8 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
         Value::CreaturesDiedThisTurnControlledBy(player)
         | Value::CountPlayers(player)
         | Value::CountPlayersWithCardsInHandAtLeast(player, _)
+        | Value::CountPlayersWithCardsInGraveyardAtLeast(player, _)
+        | Value::CountPlayersWithPoisonCountersAtLeast(player, _)
         | Value::PartySize(player)
         | Value::LifeTotal(player)
         | Value::LifeTotalAsTurnBegan(player)
@@ -264,7 +266,8 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
             match query {
                 TurnHistoryCount::Died { filter, .. }
                 | TurnHistoryCount::EnteredBattlefield(filter)
-                | TurnHistoryCount::MovedZones { filter, .. } => {
+                | TurnHistoryCount::MovedZones { filter, .. }
+                | TurnHistoryCount::CountersRemovedFrom { filter, .. } => {
                     object_filter_mentions_iterated_player(filter)
                 }
                 TurnHistoryCount::CountersPutOn {
@@ -285,6 +288,7 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
                 | TurnHistoryCount::PlayersDealtDamage(player)
                 | TurnHistoryCount::DiscardedOrCycled(player)
                 | TurnHistoryCount::Cycled(player)
+                | TurnHistoryCount::KeywordActionsPerformed { player, .. }
                 | TurnHistoryCount::CardsDrawn(player)
                 | TurnHistoryCount::PlayersLostLife(player)
                 | TurnHistoryCount::UntappedLandsAtTurnStart(player)

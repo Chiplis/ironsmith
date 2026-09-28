@@ -553,3 +553,4 @@ pub use value_semantics_counter_programs::parse_equal_to_number_of_counters_on_r
 mod value_semantics_library_programs;
 use value_semantics_library_programs::parse_cards_discarded_this_turn_count_value;
 pub use value_semantics_library_programs::parse_players_with_cards_in_hand_at_least;
+pub use value_semantics_library_programs::parse_players_with_poison_counters_at_least;

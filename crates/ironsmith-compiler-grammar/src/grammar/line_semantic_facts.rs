@@ -82,6 +82,7 @@ fn parse_as_enters_effect_program_facts(
         turns_face_up_only,
         uses_enters_with_counter_surface,
         source_reference_enters_with_counter_surface,
+        entry_instead_surface: false,
     })
 }
 

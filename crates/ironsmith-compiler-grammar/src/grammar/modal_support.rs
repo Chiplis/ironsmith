@@ -909,6 +909,9 @@ fn replace_modal_header_x_in_effect_ast(
                 ..
             })
             | SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterCounterPlacementReplacement { .. },
+            )
+            | SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterDamagedBySourceZoneReplacement { .. },
             )
             | SubjectVerbActionAst::Replacements(

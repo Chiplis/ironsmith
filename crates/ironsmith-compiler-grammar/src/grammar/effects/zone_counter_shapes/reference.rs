@@ -91,6 +91,9 @@ pub fn player_filter_for_half_reference(player: PlayerAst) -> Option<PlayerFilte
         PlayerAst::MostCardsInHand => Some(PlayerFilter::MostCardsInHand),
         PlayerAst::MostLifeTied => Some(PlayerFilter::MostLifeTied),
         PlayerAst::LowestLifeTied => Some(PlayerFilter::LowestLifeTied),
+        PlayerAst::SourceOwner => Some(PlayerFilter::OwnerOf(
+            crate::filter::ObjectRef::tagged(ironsmith_core::SOURCE_OBJECT_TAG),
+        )),
         PlayerAst::ThatPlayerOrTargetController
         | PlayerAst::ItsController
         | PlayerAst::ItsOwner

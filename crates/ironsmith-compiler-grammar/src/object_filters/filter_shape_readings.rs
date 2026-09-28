@@ -239,6 +239,12 @@ fn read_branch_scoped_union(
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     let tokens = input.tokens;
     let other = input.other;
+    // "spell that targets an artifact or creature you control" (Fugitive
+    // Droid): the disjunction belongs to the targeting clause, not to the
+    // spell selector.
+    if disjunction_is_inside_targets_clause(tokens) {
+        return Ok(None);
+    }
     let has_shared_terminal_noun = has_shared_terminal_object_noun(tokens);
     let repeats_card_noun = tokens
         .iter()
@@ -261,4 +267,22 @@ fn read_generic_card_tail_filter(
         return Ok(Some(filter));
     }
     Ok(None)
+}
+
+/// Whether every "or" of the phrase follows a "that targets" relative clause,
+/// so the disjunction describes the targeted objects.
+pub(super) fn disjunction_is_inside_targets_clause(tokens: &[OwnedLexToken]) -> bool {
+    let Some(targets) = tokens
+        .windows(2)
+        .position(|window| window[0].is_word("that") && window[1].is_any_word(&["targets", "target"]))
+    else {
+        return false;
+    };
+    let mut ors = tokens
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.is_word("or"))
+        .map(|(index, _)| index)
+        .peekable();
+    ors.peek().is_some() && ors.all(|index| index > targets)
 }

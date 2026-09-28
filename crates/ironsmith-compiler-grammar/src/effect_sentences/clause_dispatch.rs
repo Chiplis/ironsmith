@@ -1195,8 +1195,19 @@ pub(crate) fn parse_get_pump_clause(
         return Ok(Some(effect));
     }
 
+    // "Target creature gets +X/+0 ..., where X is its power": "its" is the
+    // pumped target when the subject introduces one.
+    let subject_is_target = subject_shape
+        .subject_tokens
+        .iter()
+        .any(|token| token.is_word("target"));
     let (power, toughness, parsed_duration, condition) =
-        parse_get_modifier_values_with_tail(modifier_tail, power, toughness)?;
+        super::for_each_helpers::parse_get_modifier_values_with_tail_for_subject(
+            modifier_tail,
+            power,
+            toughness,
+            subject_is_target,
+        )?;
     let duration = subject_shape.duration.unwrap_or(parsed_duration);
     let demonstrative_set_surface = full_tokens
         .first()

@@ -18,6 +18,40 @@ fn resolve_modal_count_value(
     }
 }
 
+/// CR 601.2b: for a modal spell whose number of modes is X ("Choose X.")
+/// with X still unannounced, the mode choice is the choice that defines X,
+/// so it is made now: any number of modes from the smallest to the largest
+/// X the caster could pay. Returns that range, or `None` when the mode count
+/// is not X or X is already announced.
+pub(super) fn x_defined_mode_count_range(
+    game: &GameState,
+    pending: &PendingCast,
+    modal_spec: &crate::effects::ModalSpec,
+) -> Option<(usize, usize)> {
+    if pending.x_value.is_some()
+        || !matches!(modal_spec.max_modes.unhinted(), crate::effect::Value::X)
+        || !matches!(modal_spec.min_modes.unhinted(), crate::effect::Value::X)
+    {
+        return None;
+    }
+    let mana_cost = get_spell_mana_cost(
+        game,
+        pending.spell_id,
+        pending.caster,
+        &pending.casting_method,
+        pending.from_zone,
+    );
+    let (needs_x, min_x, max_x) = compute_spell_cast_x_bounds_with_reduction(
+        game,
+        pending.caster,
+        pending.spell_id,
+        &pending.casting_method,
+        mana_cost.as_ref(),
+        0,
+    );
+    needs_x.then_some((min_x as usize, (max_x as usize).max(min_x as usize)))
+}
+
 fn static_ability_is_granted_conspire_marker(
     ability: &crate::static_abilities::StaticAbility,
 ) -> bool {
@@ -1136,6 +1170,9 @@ pub(super) fn check_modes_or_continue(
         );
         let base_min_modes =
             resolve_modal_count_value(&modal_spec.min_modes, pending.x_value, base_max_modes);
+        let (base_min_modes, base_max_modes) =
+            x_defined_mode_count_range(game, &pending, &modal_spec)
+                .unwrap_or((base_min_modes, base_max_modes));
         let conditional_range = conditional_mode_range_for_pending(game, &pending, &modal_spec);
         let (min_modes, max_modes) = conditional_range
             .map(|(_, conditional_min, conditional_max)| {
@@ -1895,6 +1932,7 @@ fn optional_mana_cost_is_affordable_with_spell_modifiers(
     game: &GameState,
     pending: &PendingCast,
     optional_cost_index: usize,
+    branch: Option<usize>,
 ) -> Option<bool> {
     let spell = game.object(pending.spell_id)?;
     let base_cost = if pending.base_mana_cost_waived {
@@ -1911,6 +1949,9 @@ fn optional_mana_cost_is_affordable_with_spell_modifiers(
 
     let mut optional_costs_paid = pending.optional_costs_paid.clone();
     optional_costs_paid.pay_times(optional_cost_index, 1);
+    if let Some(branch) = branch {
+        optional_costs_paid.set_branch_choice(optional_cost_index, branch);
+    }
 
     let mut hypothetical_spell = spell.clone();
     hypothetical_spell.optional_costs_paid = optional_costs_paid.clone();
@@ -1956,6 +1997,17 @@ fn optional_cost_is_affordable_for_pending(
     pending: &PendingCast,
     optional_cost_index: usize,
 ) -> bool {
+    optional_cost_branch_is_affordable_for_pending(game, pending, optional_cost_index, None)
+}
+
+/// Affordability of one optional cost, or of one announced branch of a
+/// one-of optional cost (Waterbend's "tap an artifact or creature to help").
+fn optional_cost_branch_is_affordable_for_pending(
+    game: &GameState,
+    pending: &PendingCast,
+    optional_cost_index: usize,
+    branch: Option<usize>,
+) -> bool {
     let Some(optional_cost) = game
         .object(pending.spell_id)
         .and_then(|spell| spell.optional_costs.get(optional_cost_index))
@@ -1985,8 +2037,39 @@ fn optional_cost_is_affordable_for_pending(
             return false;
         }
     }
-    if let Some(mana_cost) = optional_cost.cost.mana_cost() {
-        optional_mana_cost_is_affordable_with_spell_modifiers(game, pending, optional_cost_index)
+    let payment_branch = crate::cost::optional_cost_payment_branch(
+        &optional_cost.cost,
+        branch.or_else(|| pending.optional_costs_paid.branch_choice(optional_cost_index)),
+    );
+    // A branch that mixes mana with other components must be able to pay both.
+    if payment_branch.mana_cost().is_some() && payment_branch.has_non_mana_costs() {
+        let non_mana = crate::cost::TotalCost::from_costs(
+            payment_branch
+                .costs()
+                .iter()
+                .filter(|component| component.mana_cost_ref().is_none())
+                .cloned()
+                .collect(),
+        );
+        if crate::cost::can_pay_cost_with_reason(
+            game,
+            pending.spell_id,
+            pending.caster,
+            &non_mana,
+            crate::costs::PaymentReason::CastSpell,
+        )
+        .is_err()
+        {
+            return false;
+        }
+    }
+    if let Some(mana_cost) = payment_branch.mana_cost() {
+        optional_mana_cost_is_affordable_with_spell_modifiers(
+            game,
+            pending,
+            optional_cost_index,
+            branch,
+        )
             .unwrap_or_else(|| {
                 let adjusted_cost = game.adjust_mana_cost_for_payment_reason(
                     pending.caster,
@@ -2001,7 +2084,7 @@ fn optional_cost_is_affordable_for_pending(
             game,
             pending.spell_id,
             pending.caster,
-            &optional_cost.cost,
+            payment_branch,
             crate::costs::PaymentReason::CastSpell,
         )
         .is_ok()
@@ -2030,7 +2113,7 @@ fn conditional_mode_range_for_pending(
     })
 }
 
-fn mode_point_total(modal_spec: &crate::effects::ModalSpec, modes: &[usize]) -> Option<usize> {
+pub(super) fn mode_point_total(modal_spec: &crate::effects::ModalSpec, modes: &[usize]) -> Option<usize> {
     let mut seen = std::collections::HashSet::new();
     let mut total = 0usize;
     for mode in modes {
@@ -2071,6 +2154,8 @@ pub(super) fn cast_mode_selection_required_optional_cost(
         modal_spec.mode_descriptions.len().max(1),
     );
     let base_min = resolve_modal_count_value(&modal_spec.min_modes, pending.x_value, base_max);
+    let (base_min, base_max) =
+        x_defined_mode_count_range(game, pending, &modal_spec).unwrap_or((base_min, base_max));
     if (base_min..=base_max).contains(&total) {
         return Ok(None);
     }
@@ -2083,6 +2168,29 @@ pub(super) fn cast_mode_selection_required_optional_cost(
     Err(GameLoopError::ActionCancelled(
         "mode selection has no legal joint optional-cost proposal".to_string(),
     ))
+}
+
+/// Option ids at or above this base name one payment branch of a one-of
+/// optional cost rather than an optional cost itself.
+const OPTIONAL_COST_BRANCH_OPTION_BASE: usize = 1 << 20;
+const OPTIONAL_COST_BRANCH_OPTION_STRIDE: usize = 1 << 10;
+
+fn encode_optional_cost_branch_option(optional_cost_index: usize, branch: usize) -> usize {
+    OPTIONAL_COST_BRANCH_OPTION_BASE
+        + optional_cost_index * OPTIONAL_COST_BRANCH_OPTION_STRIDE
+        + branch
+}
+
+/// Split an optional-cost option id into (optional cost index, announced
+/// branch of a one-of optional cost).
+pub(super) fn decode_optional_cost_branch_option(option: usize) -> (usize, Option<usize>) {
+    match option.checked_sub(OPTIONAL_COST_BRANCH_OPTION_BASE) {
+        Some(offset) => (
+            offset / OPTIONAL_COST_BRANCH_OPTION_STRIDE,
+            Some(offset % OPTIONAL_COST_BRANCH_OPTION_STRIDE),
+        ),
+        None => (option, None),
+    }
 }
 
 /// Check for optional costs and either prompt for them or continue to targeting/finalization.
@@ -2159,7 +2267,30 @@ pub(super) fn check_optional_costs_or_continue(
         let mut options: Vec<OptionalCostOption> = optional_costs
             .iter()
             .enumerate()
-            .map(|(index, opt_cost)| {
+            .flat_map(|(index, opt_cost)| {
+                // A one-of optional cost (Waterbend) announces which of its
+                // payment branches the caster will pay (CR 601.2b), so each
+                // branch is its own option.
+                if let Some(branches) = opt_cost.cost.as_one_of()
+                    && branches.len() > 1
+                {
+                    return branches
+                        .iter()
+                        .enumerate()
+                        .map(|(branch_index, branch)| OptionalCostOption {
+                            index: encode_optional_cost_branch_option(index, branch_index),
+                            label: opt_cost.display_label(),
+                            repeatable: false,
+                            affordable: optional_cost_branch_is_affordable_for_pending(
+                                game,
+                                &pending,
+                                index,
+                                Some(branch_index),
+                            ),
+                            cost_description: branch.display(),
+                        })
+                        .collect::<Vec<_>>();
+                }
                 let affordable = optional_cost_is_affordable_for_pending(game, &pending, index);
 
                 // Format the cost description
@@ -2169,19 +2300,19 @@ pub(super) fn check_optional_costs_or_continue(
                     "special".to_string()
                 };
 
-                OptionalCostOption {
+                vec![OptionalCostOption {
                     index,
                     label: opt_cost.display_label(),
                     repeatable: opt_cost.repeatable,
                     affordable,
                     cost_description,
-                }
+                }]
             })
             .collect();
         options.sort_by_key(|option| {
             !pending
                 .required_optional_cost_indices
-                .contains(&option.index)
+                .contains(&decode_optional_cost_branch_option(option.index).0)
         });
 
         // Set up pending cast for optional costs stage
@@ -2504,13 +2635,19 @@ pub(super) fn check_x_or_continue(
         );
     }
 
+    // CR 601.2b: an announced optional cost with {X} (Kicker {X}) is part of
+    // the X the player now announces.
     let mana_cost = get_spell_mana_cost(
         game,
         pending.spell_id,
         pending.caster,
         &pending.casting_method,
         pending.from_zone,
-    );
+    )
+    .zip(game.object(pending.spell_id))
+    .map(|(base, spell)| {
+        mana_cost_with_paid_optional_costs(&base, spell, &pending.optional_costs_paid)
+    });
     // CR 601.2f: cost reductions also reduce the X part of the total cost, so
     // the affordable X grows by whatever the reductions take off. Measure it
     // with X locked high enough that every generic reduction is absorbed.
@@ -3150,6 +3287,47 @@ pub(super) fn continue_spell_next_cost_or_finalize(
     mut pending: PendingCast,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
+    // "This spell costs {2} less to cast for each permanent sacrificed this
+    // way": the sacrifices are chosen with the additional cost, before the
+    // total cost is locked (CR 601.2b, 601.2f). Pay the non-mana components
+    // first, then reduce the mana still to be paid.
+    if !pending.cost_payment_sacrifice_reduction_applied
+        && pending.pending_mana_payment.is_none()
+        && pending.mana_cost_to_pay.is_some()
+        && game
+            .object(pending.spell_id)
+            .is_some_and(crate::decision::spell_has_cost_payment_sacrifice_reduction)
+    {
+        if !pending.remaining_cost_steps.is_empty() {
+            pending.stage = CastStage::ProcessingCosts;
+            return continue_spell_cost_payment(game, trigger_queue, state, pending, decision_maker);
+        }
+        pending.cost_payment_sacrifice_reduction_applied = true;
+        let reduction = game.object(pending.spell_id).map_or(0, |spell| {
+            crate::decision::cost_payment_sacrifice_reduction(
+                game,
+                pending.caster,
+                spell,
+                &pending.effect_outcomes,
+            )
+        });
+        if reduction > 0
+            && let Some(cost) = pending.mana_cost_to_pay.take()
+        {
+            let reduced =
+                crate::decision::mana_cost_with_locked_x_and_generic_reduction(&cost, 0, reduction);
+            pending.mana_cost_to_pay = Some(reduced).filter(|cost| !cost.is_empty());
+            if pending.mana_cost_to_pay.is_none() {
+                return continue_spell_next_cost_or_finalize(
+                    game,
+                    trigger_queue,
+                    state,
+                    pending,
+                    decision_maker,
+                );
+            }
+        }
+    }
     if pending.mana_cost_to_pay.is_some() && pending.pending_mana_payment.is_none() {
         return begin_spell_mana_payment(game, trigger_queue, state, pending, decision_maker);
     }
@@ -3183,11 +3361,7 @@ pub(super) fn continue_spell_next_cost_or_finalize(
         CastStage::ChoosingNextCost => {
             // Same as the activation path: a component that asks the player for
             // nothing is paid here instead of appearing on the ordering menu.
-            if let Some(index) = pending
-                .remaining_cost_steps
-                .iter()
-                .position(is_atomic_cost_step)
-            {
+            if let Some(index) = next_atomic_cost_step_index(&pending.remaining_cost_steps) {
                 pending.remaining_cost_steps.swap(0, index);
                 pending.stage = CastStage::ProcessingCosts;
                 return continue_spell_cost_payment(
@@ -3959,7 +4133,11 @@ fn mana_cost_with_paid_optional_costs(
     let mut pips = base_cost.pips().to_vec();
     for (index, optional_cost) in spell.optional_costs.iter().enumerate() {
         let times = optional_costs_paid.times_paid(index);
-        let Some(mana_cost) = optional_cost.cost.mana_cost() else {
+        let Some(mana_cost) = crate::cost::optional_cost_payment_branch(
+            &optional_cost.cost,
+            optional_costs_paid.branch_choice(index),
+        )
+        .mana_cost() else {
             continue;
         };
         for _ in 0..times {
@@ -4708,14 +4886,21 @@ pub(super) fn get_legal_cost_choice_objects(
             .player(player)
             .map(|p| p.hand.to_vec())
             .unwrap_or_default(),
-        Zone::Graveyard => game.player(player).map_or_else(Vec::new, |p| {
-            if top_only {
-                p.graveyard.iter().rev().copied().collect()
-            } else {
-                p.graveyard.to_vec()
-            }
-        }),
+        // "The top card of your graveyard" names the player's own ordered
+        // graveyard; any other graveyard choice may use every graveyard the
+        // filter's owner restriction admits ("a Fungus card from a
+        // graveyard", Thelon of Havenwood).
+        Zone::Graveyard if top_only => game
+            .player(player)
+            .map_or_else(Vec::new, |p| p.graveyard.iter().rev().copied().collect()),
+        Zone::Graveyard => game
+            .players
+            .iter()
+            .flat_map(|p| p.graveyard.iter().copied())
+            .collect(),
         Zone::Exile => game.exile.to_vec(),
+        // Spells on the stack ("exile a spell", "return a spell you control").
+        Zone::Stack => game.objects_in_zone(Zone::Stack),
         _ => Vec::new(),
     };
 
@@ -5065,7 +5250,13 @@ pub(super) fn collect_spell_cost_steps(
         for (idx, optional_cost) in obj.optional_costs.iter().enumerate() {
             let times = optional_costs_paid.times_paid(idx);
             for _ in 0..times {
-                extend_non_mana(&mut cost_steps, &optional_cost.cost);
+                extend_non_mana(
+                    &mut cost_steps,
+                    crate::cost::optional_cost_payment_branch(
+                        &optional_cost.cost,
+                        optional_costs_paid.branch_choice(idx),
+                    ),
+                );
             }
         }
         for splice_cost in splice_costs {
@@ -5161,6 +5352,56 @@ pub(super) fn is_atomic_cost_step(step: &ActivationCostStep) -> bool {
         }
         ActivationCostStep::Sacrifice { .. } | ActivationCostStep::CardChoice(_) => false,
     }
+}
+
+/// Whether paying this step removes the source from its zone (sacrifice,
+/// exile or return "this"). Such a step must not be auto-paid ahead of other
+/// remaining steps: those may still need the source (for example "remove ten
+/// oil counters from this", The Filigree Sylex), and the printed order puts
+/// them first.
+fn cost_step_moves_source(step: &ActivationCostStep) -> bool {
+    let ActivationCostStep::Cost(cost) = step else {
+        return false;
+    };
+    if cost.is_sacrifice_self() {
+        return true;
+    }
+    let Some(mut effect) = cost.effect_ref() else {
+        return false;
+    };
+    while let Some(inner) = effect.transparent_child_effect() {
+        effect = inner;
+    }
+    let is_source =
+        |spec: &crate::target::ChooseSpec| matches!(spec.base(), crate::target::ChooseSpec::Source);
+    effect.0.is_sacrifice_source_cost()
+        || effect
+            .downcast_ref::<crate::effects::SacrificeTargetEffect>()
+            .is_some_and(|effect| is_source(&effect.target))
+        || effect
+            .downcast_ref::<crate::effects::ExileEffect>()
+            .is_some_and(|effect| is_source(&effect.spec))
+        || effect
+            .downcast_ref::<crate::effects::ReturnToHandEffect>()
+            .is_some_and(|effect| is_source(&effect.spec))
+        || effect
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            .is_some_and(|effect| is_source(&effect.target))
+}
+
+/// The next remaining cost step that needs no player input and can be paid
+/// immediately. A step that removes the source waits until every other step
+/// has been paid.
+pub(super) fn next_atomic_cost_step_index(steps: &[ActivationCostStep]) -> Option<usize> {
+    let others_remain = |index: usize| {
+        steps
+            .iter()
+            .enumerate()
+            .any(|(other, step)| other != index && !cost_step_moves_source(step))
+    };
+    steps.iter().enumerate().position(|(index, step)| {
+        is_atomic_cost_step(step) && (!cost_step_moves_source(step) || !others_remain(index))
+    })
 }
 
 pub(super) fn delve_cost_step() -> ActivationCostStep {
@@ -6093,8 +6334,13 @@ pub(super) fn continue_activation(
                 ));
             }
             ActivationStage::ChoosingX => {
-                // Need to choose X value first
-                let mut max_x = if let Some(ref cost) = pending.mana_cost_to_pay {
+                // Need to choose X value first. Mana bounds X only when the
+                // mana cost itself contains {X}; an X defined by another cost
+                // ("Reveal X cards", "Sacrifice X Goats") is bounded by that
+                // cost below, not by a fixed mana cost (CR 107.3).
+                let mut max_x = if let Some(ref cost) = pending.mana_cost_to_pay
+                    && cost.has_x()
+                {
                     let mana_spend_policy =
                         game.mana_spend_policy(pending.activator, Some(pending.source));
                     let allow_black_life = crate::decision::mana_cost_has_black_symbol(cost)
@@ -6115,6 +6361,7 @@ pub(super) fn continue_activation(
                 };
                 if let Some(mana_max) = max_x.as_mut()
                     && let Some(cost) = pending.mana_cost_to_pay.as_ref()
+                    && cost.has_x()
                 {
                     let x_pips = cost
                         .pips()
@@ -6218,14 +6465,26 @@ pub(super) fn continue_activation(
                 // listing them as an order to choose. Yawgmoth's life payment
                 // resolves on activation, leaving the sacrifice as the only
                 // remaining option, which the branch above walks straight into.
-                if let Some(index) = pending
-                    .remaining_cost_steps
-                    .iter()
-                    .position(is_atomic_cost_step)
-                {
+                if let Some(index) = next_atomic_cost_step_index(&pending.remaining_cost_steps) {
                     pending.remaining_cost_steps.swap(0, index);
                     pending.stage = ActivationStage::ProcessingCosts;
                     continue;
+                }
+                // Only source-leaving steps remain besides one step that
+                // still needs the source: pay that one first.
+                if pending.mana_cost_to_pay.is_none() {
+                    let keeps_source = pending
+                        .remaining_cost_steps
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, step)| !cost_step_moves_source(step))
+                        .map(|(index, _)| index)
+                        .collect::<Vec<_>>();
+                    if let [index] = keeps_source.as_slice() {
+                        pending.remaining_cost_steps.swap(0, *index);
+                        pending.stage = ActivationStage::ProcessingCosts;
+                        continue;
+                    }
                 }
 
                 let ability_name = game

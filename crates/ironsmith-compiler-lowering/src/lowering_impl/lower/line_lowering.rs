@@ -222,8 +222,16 @@ fn materialize_static_abilities(
     let mut turn_surface_recorded = false;
     for ability in abilities {
         match ability {
-            StaticAbilityAst::AttachmentRestriction { filter, .. } => {
-                builder = builder.enchants(filter);
+            StaticAbilityAst::AttachmentRestriction { filter, display } => {
+                builder = if display
+                    .trim_start()
+                    .to_ascii_lowercase()
+                    .starts_with("enchant")
+                {
+                    builder.enchants(filter)
+                } else {
+                    builder.attachment_restriction(filter)
+                };
             }
             StaticAbilityAst::KeywordAction(KeywordAction::Fuse) => {
                 builder = builder.has_fuse();
@@ -597,13 +605,18 @@ fn materialize_statement(
                 statement_facts.presentation_label.clone(),
             )
         } else {
-            crate::static_abilities::StaticAbility::as_enters_effect_program(
+            let ability = crate::static_abilities::StaticAbility::as_enters_effect_program(
                 lowered.effects,
                 as_enters.subject.clone(),
                 as_enters.also_turns_face_up,
                 as_enters.uses_enters_with_counter_surface,
                 statement_facts.presentation_label.clone(),
-            )
+            );
+            if as_enters.entry_instead_surface {
+                ability.with_entry_instead_surface()
+            } else {
+                ability
+            }
         };
         return Ok(builder.with_ability(Ability::static_ability(static_ability)));
     }

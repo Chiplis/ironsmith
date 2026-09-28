@@ -377,6 +377,12 @@ pub struct ExecutionContext<'a> {
     /// chosen cards are revealed publicly with the selection (opened on every
     /// peer before the answer is replayed).
     pub(crate) public_search_reveal_tag: Option<TagKey>,
+    /// Destination of a "put ... onto the battlefield attached to X"
+    /// instruction: the attach instruction that immediately follows the move
+    /// in the same instruction list. Set only while that move executes, so an
+    /// Aura enters attached to X (CR 303.4f) and stays in its zone when it
+    /// can't legally enchant X (CR 303.4i) instead of choosing on its own.
+    pub(crate) pending_entry_attachment: Option<crate::target::ChooseSpec>,
 }
 
 impl std::fmt::Debug for ExecutionContext<'_> {
@@ -478,6 +484,7 @@ impl<'a> ExecutionContext<'a> {
             restarted_game: false,
             resolution_object_id_floor: None,
             public_search_reveal_tag: None,
+            pending_entry_attachment: None,
         }
     }
 
@@ -537,6 +544,7 @@ impl<'a> ExecutionContext<'a> {
             restarted_game: false,
             resolution_object_id_floor: None,
             public_search_reveal_tag: None,
+            pending_entry_attachment: None,
         }
     }
 
@@ -586,6 +594,7 @@ impl<'a> ExecutionContext<'a> {
             restarted_game: self.restarted_game,
             resolution_object_id_floor: self.resolution_object_id_floor,
             public_search_reveal_tag: self.public_search_reveal_tag,
+            pending_entry_attachment: self.pending_entry_attachment,
         }
     }
 
@@ -1139,6 +1148,23 @@ impl<'a> ExecutionContext<'a> {
             .entry(tag.into())
             .or_default()
             .push(snapshot);
+    }
+
+    /// Record an object this resolution just exiled with its source.
+    ///
+    /// Resolution starts with the source-exiled tag seeded from every card
+    /// ever exiled with the source ("cards exiled with ~"). A pronoun after an
+    /// exile in the same resolution ("exile it with a stash counter on it")
+    /// names only what this resolution exiled, so the first such exile
+    /// replaces the seeded history. Filter references to "cards exiled with
+    /// ~" still read the full link set through the filter context.
+    pub fn tag_source_exiled_result(&mut self, snapshot: ObjectSnapshot) {
+        const RESOLUTION_MARKER: &str = "__source_exiled_this_resolution__";
+        if !self.tagged_objects.contains_key(RESOLUTION_MARKER) {
+            self.tagged_objects.remove(SOURCE_EXILED_TAG);
+        }
+        self.tag_object(RESOLUTION_MARKER, snapshot.clone());
+        self.tag_object(SOURCE_EXILED_TAG, snapshot);
     }
 
     /// Tag multiple objects at once under the same tag.

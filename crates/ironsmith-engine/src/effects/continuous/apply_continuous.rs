@@ -180,13 +180,25 @@ fn lock_targets_for_filter(
     ctx: &ExecutionContext,
 ) -> Vec<ObjectId> {
     let filter_ctx = ctx.filter_context(game);
-    game.battlefield
-        .iter()
-        .filter_map(|&id| game.object(id))
-        .filter(|obj| obj.zone == Zone::Battlefield)
-        .filter(|obj| filter.matches(obj, &filter_ctx, game))
-        .map(|obj| obj.id)
-        .collect()
+    // "Each legendary card in your graveyard gains ..." (Kethis) locks the
+    // cards in the filter's own zone; an unzoned filter means permanents.
+    match filter.zone {
+        Some(zone) if zone != Zone::Battlefield => game
+            .objects_in_deterministic_order()
+            .into_iter()
+            .filter(|obj| obj.zone == zone)
+            .filter(|obj| filter.matches(obj, &filter_ctx, game))
+            .map(|obj| obj.id)
+            .collect(),
+        _ => game
+            .battlefield
+            .iter()
+            .filter_map(|&id| game.object(id))
+            .filter(|obj| obj.zone == Zone::Battlefield)
+            .filter(|obj| filter.matches(obj, &filter_ctx, game))
+            .map(|obj| obj.id)
+            .collect(),
+    }
 }
 
 fn resolve_set_pt_modification(
@@ -294,6 +306,22 @@ fn resolve_runtime_modification(
                         return None;
                     }
                     Some(snapshot.clone())
+                })
+                .or_else(|| {
+                    // "Return target creature to its owner's hand. ... become
+                    // copies of that creature": a tagged permanent that has
+                    // left the battlefield is copied from its last known
+                    // copiable values, not from the card it became
+                    // (CR 707.2, 608.2h).
+                    let ChooseSpec::Tagged(tag) = source.base() else {
+                        return None;
+                    };
+                    let snapshot = ctx.get_tagged(tag.as_str())?;
+                    (snapshot.zone == crate::zone::Zone::Battlefield
+                        && game
+                            .object(snapshot.object_id)
+                            .is_none_or(|object| object.zone != snapshot.zone))
+                    .then(|| snapshot.clone())
                 });
             let source_id = if let Some(snapshot) = sacrificed_snapshot.as_ref() {
                 snapshot.object_id
@@ -622,6 +650,125 @@ pub(crate) fn materialize_duration_predicate(
     })
 }
 
+/// True when evaluating `value` needs this resolution's execution context
+/// (an earlier instruction's result, the announced X, a tagged count) and it
+/// does not read the entering object itself.
+fn entry_count_needs_resolution_context(value: &Value) -> bool {
+    fn reads_entering_object(value: &Value) -> bool {
+        match value {
+            Value::SurfaceHinted { value, .. }
+            | Value::Scaled(value, _)
+            | Value::DividedRoundedDown(value, _)
+            | Value::HalfRoundedDown(value) => reads_entering_object(value),
+            Value::Add(left, right) | Value::Min(left, right) => {
+                reads_entering_object(left) || reads_entering_object(right)
+            }
+            Value::SourcePower
+            | Value::SourceToughness
+            | Value::CountersOnSource(_)
+            | Value::ManaSpentToCastThisSpell
+            | Value::ColorsOfManaSpentToCastThisSpell => true,
+            Value::PowerOf(spec)
+            | Value::ToughnessOf(spec)
+            | Value::ManaValueOf(spec)
+            | Value::CountersOn(spec, _) => matches!(spec.base(), ChooseSpec::Source),
+            _ => false,
+        }
+    }
+    fn needs_context(value: &Value) -> bool {
+        match value {
+            Value::SurfaceHinted { value, .. }
+            | Value::Scaled(value, _)
+            | Value::DividedRoundedDown(value, _)
+            | Value::HalfRoundedDown(value) => needs_context(value),
+            Value::Add(left, right) | Value::Min(left, right) => {
+                needs_context(left) || needs_context(right)
+            }
+            Value::PriorEffectMetric { .. }
+            | Value::EffectMetric { .. }
+            | Value::EffectMetricOffset { .. }
+            | Value::EffectValue(_)
+            | Value::EffectValueOffset(..)
+            | Value::TaggedCount
+            | Value::X
+            | Value::XTimes(_) => true,
+            _ => false,
+        }
+    }
+    needs_context(value) && !reads_entering_object(value)
+}
+
+/// A granted "enters with counters" ability outlives this resolution: freeze
+/// the parts of it that read this resolution's context. The amount is
+/// computed now ("where X is the total mana value of cards revealed this
+/// way"), and a filter naming a tagged object ("that creature enters with
+/// ...") is pinned to that object's identity, which it keeps while it
+/// becomes a permanent.
+fn freeze_granted_entry_counter_context(
+    modification: Modification,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Modification {
+    let freeze = |value: &mut Value| {
+        if entry_count_needs_resolution_context(value)
+            && let Ok(amount) = resolve_value(game, value, ctx)
+        {
+            *value = Value::Fixed(amount);
+        }
+    };
+    let (ability, rewrap): (
+        _,
+        Box<dyn FnOnce(crate::static_abilities::StaticAbility) -> Modification>,
+    ) = match modification {
+        Modification::AddAbility(ability) => (ability, Box::new(Modification::AddAbility)),
+        Modification::AddAbilityGeneric(granted) => {
+            let crate::ability::AbilityKind::Static(ability) = granted.kind.clone() else {
+                return Modification::AddAbilityGeneric(granted);
+            };
+            (
+                ability,
+                Box::new(move |materialized| {
+                    let mut granted = granted.clone();
+                    granted.kind = crate::ability::AbilityKind::Static(materialized);
+                    Modification::AddAbilityGeneric(granted)
+                }),
+            )
+        }
+        other => return other,
+    };
+    let Some(mut model) = ability.compiled_model().cloned() else {
+        return rewrap(ability);
+    };
+    match &mut model.payload {
+        ironsmith_core::StaticAbilityPayload::EntersWithCountersValue { count, .. } => {
+            freeze(count);
+        }
+        ironsmith_core::StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
+            filter,
+            count,
+            otherwise_count,
+            ..
+        } => {
+            freeze(count);
+            if let Some(otherwise_count) = otherwise_count {
+                freeze(otherwise_count);
+            }
+            if filter.specific.is_none()
+                && let [constraint] = filter.tagged_constraints.as_slice()
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && let Some([snapshot]) = ctx
+                    .get_tagged_all(constraint.tag.as_str())
+                    .map(Vec::as_slice)
+            {
+                filter.specific = Some(snapshot.object_id);
+                filter.tagged_constraints.clear();
+            }
+        }
+        _ => return rewrap(ability),
+    }
+    rewrap(crate::static_abilities::StaticAbility::from_model(model))
+}
+
 fn materialize_granted_entry_counter_source(
     modification: Modification,
     outer_source: ObjectId,
@@ -829,8 +976,11 @@ impl EffectExecutor for ApplyContinuousEffect {
 
         if self.require_creature_target {
             for id in target_object_ids(&target, &source_type) {
+                // CR 608.2b: a target that left its zone since the spell's
+                // targets were checked (an earlier mode bounced it) is now
+                // illegal, so this instruction does nothing to it.
                 if game.object(id).is_none() {
-                    return Err(ExecutionError::ObjectNotFound(id));
+                    return Ok(EffectOutcome::target_invalid());
                 }
                 if !game.current_is_creature(id) {
                     return Ok(EffectOutcome::target_invalid());
@@ -843,9 +993,13 @@ impl EffectExecutor for ApplyContinuousEffect {
         let affected_objects = control_change_target_object_ids(&target, &source_type, game, ctx);
         let mut registered_active_modification = false;
         for modification in mods {
-            let resolved_modification = materialize_granted_entry_counter_source(
-                resolve_set_pt_modification(self, game, ctx, &modification)?,
-                ctx.source,
+            let resolved_modification = freeze_granted_entry_counter_context(
+                materialize_granted_entry_counter_source(
+                    resolve_set_pt_modification(self, game, ctx, &modification)?,
+                    ctx.source,
+                ),
+                game,
+                ctx,
             )
             .bind_chosen_protection_qualities(game, ctx.source);
             if let Modification::ChangeController(new_controller) = &resolved_modification {

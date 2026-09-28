@@ -264,12 +264,30 @@ pub(crate) fn resolve(
         Value::CountPlayers(player_filter) => {
             Ok(context.matching_player_ids(player_filter).len() as i32)
         }
+        Value::CountPlayersWithPoisonCountersAtLeast(player_filter, minimum) => Ok(context
+            .matching_player_ids(player_filter)
+            .into_iter()
+            .filter(|id| {
+                game.player(*id)
+                    .is_some_and(|player| player.poison_counters >= *minimum)
+            })
+            .count()
+            as i32),
         Value::CountPlayersWithCardsInHandAtLeast(player_filter, minimum) => Ok(context
             .matching_player_ids(player_filter)
             .into_iter()
             .filter(|id| {
                 game.player(*id)
                     .is_some_and(|player| player.hand.len() >= *minimum as usize)
+            })
+            .count()
+            as i32),
+        Value::CountPlayersWithCardsInGraveyardAtLeast(player_filter, minimum) => Ok(context
+            .matching_player_ids(player_filter)
+            .into_iter()
+            .filter(|id| {
+                game.player(*id)
+                    .is_some_and(|player| player.graveyard.len() >= *minimum as usize)
             })
             .count()
             as i32),
@@ -858,19 +876,19 @@ pub(crate) fn resolve(
         Value::EffectValue(effect_id) => {
             let ctx = context.require_execution(value, RESOLUTION_ONLY);
             {
-                let outcome = ctx
+                // "That many" of an instruction that never ran is zero.
+                Ok(ctx
                     .get_outcome(*effect_id)
-                    .ok_or(ExecutionError::EffectNotFound(*effect_id))?;
-                Ok(outcome.count_or_zero())
+                    .map_or(0, |outcome| outcome.count_or_zero()))
             }
         }
         Value::EffectValueOffset(effect_id, offset) => {
             let ctx = context.require_execution(value, RESOLUTION_ONLY);
             {
-                let outcome = ctx
+                Ok(ctx
                     .get_outcome(*effect_id)
-                    .ok_or(ExecutionError::EffectNotFound(*effect_id))?;
-                Ok(outcome.count_or_zero() + *offset)
+                    .map_or(0, |outcome| outcome.count_or_zero())
+                    + *offset)
             }
         }
         Value::EffectMetric {

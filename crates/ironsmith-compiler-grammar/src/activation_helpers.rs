@@ -66,6 +66,81 @@ fn parse_add_mana_amount(tokens: &[OwnedLexToken]) -> Option<Value> {
     parse_value(amount_tokens).map(|(value, _)| value)
 }
 
+/// "Add {U}{U}, {U}{R}, or {R}{R}" (filter lands) lists every combination of
+/// two mana from its colors, which is exactly "two mana in any combination of
+/// {U} and/or {R}". Any other list ("{B}{B} or {G}{G}", Cadaverous Bloom) is
+/// a choice between the listed fixed outputs.
+fn add_mana_alternatives_effect(player: PlayerAst, groups: Vec<Vec<ManaSymbol>>) -> EffectAst {
+    fn symbol_color(symbol: ManaSymbol) -> Option<crate::color::Color> {
+        match symbol {
+            ManaSymbol::White => Some(crate::color::Color::White),
+            ManaSymbol::Blue => Some(crate::color::Color::Blue),
+            ManaSymbol::Black => Some(crate::color::Color::Black),
+            ManaSymbol::Red => Some(crate::color::Color::Red),
+            ManaSymbol::Green => Some(crate::color::Color::Green),
+            _ => None,
+        }
+    }
+    let size = groups[0].len();
+    let colors = {
+        let mut colors: Vec<crate::color::Color> = Vec::new();
+        for symbol in groups.iter().flatten() {
+            if let Some(color) = symbol_color(*symbol)
+                && !colors.contains(&color)
+            {
+                colors.push(color);
+            }
+        }
+        colors
+    };
+    let all_colored = groups
+        .iter()
+        .flatten()
+        .all(|symbol| symbol_color(*symbol).is_some());
+    if all_colored && groups.iter().all(|group| group.len() == size) {
+        let normalize = |group: &Vec<ManaSymbol>| {
+            let mut counts = colors
+                .iter()
+                .map(|color| {
+                    group
+                        .iter()
+                        .filter(|symbol| {
+                            symbol_color(**symbol) == Some(*color)
+                        })
+                        .count()
+                })
+                .collect::<Vec<_>>();
+            counts.shrink_to_fit();
+            counts
+        };
+        let mut listed = groups.iter().map(normalize).collect::<Vec<_>>();
+        listed.sort();
+        listed.dedup();
+        // Number of multisets of `size` mana over the colors.
+        let expected = (1..=size).fold(1usize, |acc, k| acc * (colors.len() + k - 1) / k);
+        if listed.len() == expected {
+            return EffectAst::subject_verb_add_mana_any_color(
+                player,
+                Value::Fixed(size as i32),
+                Some(colors),
+            );
+        }
+    }
+    EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseOneOf {
+        chooser: crate::target::PlayerFilter::You,
+        modes: groups
+            .into_iter()
+            .map(|group| crate::cards::builders::ChooseOneModeAst {
+                description: format!(
+                    "Add {}",
+                    crate::mana::ManaCost::from_symbols(group.clone()).to_oracle()
+                ),
+                effects: vec![EffectAst::subject_verb_add_mana(player, group)],
+            })
+            .collect(),
+    })
+}
+
 pub fn parse_add_mana(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
@@ -164,6 +239,9 @@ pub fn parse_add_mana(
         ));
     }
 
+    if let Some(groups) = activation_grammar::parse_or_mana_symbol_groups(tokens) {
+        return Ok(add_mana_alternatives_effect(player, groups));
+    }
     if let Some(available_colors) = parse_or_mana_color_choices(tokens)? {
         return Ok(EffectAst::subject_verb_add_mana_any_color(
             player,

@@ -38,9 +38,33 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
     pub fn filter_context(&self) -> crate::filter::FilterContext {
         continuous_filter_context(self.calculation.game, self.controller, self.source)
     }
+    /// Filter context for a count that may compare against "it", the object
+    /// the continuous effect is currently modifying ("each other creature
+    /// that shares a creature type with it", Coat of Arms). The affected
+    /// object is bound with its in-progress layered subtypes so changeling
+    /// and other type-changing effects already applied are respected.
+    fn filter_context_for_count(&self, filter: &ObjectFilter) -> crate::filter::FilterContext {
+        let mut filter_ctx = self.filter_context();
+        let it = TagKey::from("__it__");
+        if filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.tag == it)
+            && !filter_ctx.tagged_objects.contains_key(&it)
+            && let Some(object) = self.calculation.game.object(self.calculation.current_object)
+        {
+            let mut snapshot = ObjectSnapshot::from_object(object, self.calculation.game);
+            if let Some(chars) = in_progress_characteristics(object.id) {
+                snapshot.subtypes = chars.subtypes.to_vec();
+                snapshot.card_types = chars.card_types.to_vec();
+            }
+            filter_ctx.tagged_objects.insert(it, vec![snapshot]);
+        }
+        filter_ctx
+    }
     pub fn count(&self, filter: &ObjectFilter) -> i32 {
         let ctx = self.calculation;
-        let filter_ctx = self.filter_context();
+        let filter_ctx = self.filter_context_for_count(filter);
         let Some((effects, commanders)) = self.direct_counts else {
             return count_filter_matches(filter, ctx, &filter_ctx);
         };
@@ -56,13 +80,12 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
                 ctx.battlefield,
                 commanders,
                 ctx.game,
-            ) && filter_matches_with_characteristics(
+            ) && filter_matches_with_characteristics_in_context(
                 filter,
                 object,
                 &chars,
                 ctx.game,
-                filter_ctx.you.unwrap_or(object.owner),
-                filter_ctx.source.unwrap_or(ctx.current_object),
+                &filter_ctx,
             ) {
                 count += 1;
             }

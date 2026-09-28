@@ -267,6 +267,16 @@ fn effect_ast_is_mana_effect(effect: &EffectAst) -> bool {
             (!if_true.is_empty() && if_true.iter().all(effect_ast_is_mana_effect))
                 || (!if_false.is_empty() && if_false.iter().all(effect_ast_is_mana_effect))
         }
+        // "Add {B}{B} or {G}{G}": a choice between fixed mana outputs.
+        EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseOneOf {
+            modes,
+            ..
+        }) => {
+            !modes.is_empty()
+                && modes.iter().all(|mode| {
+                    !mode.effects.is_empty() && mode.effects.iter().all(effect_ast_is_mana_effect)
+                })
+        }
         _ => false,
     }
 }
@@ -362,6 +372,37 @@ fn bind_activated_x_definition_to_mana_cost(
     .unwrap_or_else(|_: std::convert::Infallible| unreachable!())
 }
 
+/// "When you spend this mana to cast a spell or activate an ability, copy
+/// that spell or ability. You may choose new targets for the copy." (Sunken
+/// Palace): the retarget permission belongs to the mana-spend copy, not to the
+/// mana ability's own resolution.
+fn merge_copy_retarget_sentences(sentences: Vec<Vec<OwnedLexToken>>) -> Vec<Vec<OwnedLexToken>> {
+    let mut merged: Vec<Vec<OwnedLexToken>> = Vec::with_capacity(sentences.len());
+    for sentence in sentences {
+        let words = crate::lexer::token_word_refs(&sentence);
+        let is_retarget = words.as_slice()
+            == ["you", "may", "choose", "new", "targets", "for", "the", "copy"];
+        if is_retarget
+            && let Some(previous) = merged.last_mut()
+            && {
+                let previous_words = crate::lexer::token_word_refs(previous);
+                previous_words.first() == Some(&"when")
+                    && previous_words.windows(2).any(|pair| pair == ["this", "mana"] || pair == ["that", "mana"])
+                    && previous_words.contains(&"copy")
+            }
+        {
+            while previous.last().is_some_and(|token| token.is_period()) {
+                previous.pop();
+            }
+            previous.push(OwnedLexToken::synthetic_word("and"));
+            previous.extend(sentence);
+            continue;
+        }
+        merged.push(sentence);
+    }
+    merged
+}
+
 fn finalize_rewrite_activated_effect_sentences(
     mut restrictions: ParsedRestrictions,
     sentence_tokens: Vec<Vec<OwnedLexToken>>,
@@ -371,7 +412,7 @@ fn finalize_rewrite_activated_effect_sentences(
     let mut mana_restrictions = Vec::new();
     let mut x_cant_be_zero = false;
 
-    for tokens in sentence_tokens {
+    for tokens in merge_copy_retarget_sentences(sentence_tokens) {
         let sentence = render_token_slice(&tokens).trim().to_string();
         let restriction_kind = activated_grammar::classify_activated_restriction_sentence(&tokens);
         if restriction_kind == Some(ActivatedRestrictionSentenceKind::ManaSource) {

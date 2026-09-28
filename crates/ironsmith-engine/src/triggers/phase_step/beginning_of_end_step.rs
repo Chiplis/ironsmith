@@ -117,7 +117,11 @@ impl TriggerMatcher for BeginningOfEndStepTrigger {
     }
 }
 
-fn player_filter_matches(filter: &PlayerFilter, player: PlayerId, ctx: &TriggerContext) -> bool {
+pub(crate) fn player_filter_matches(
+    filter: &PlayerFilter,
+    player: PlayerId,
+    ctx: &TriggerContext,
+) -> bool {
     match filter {
         PlayerFilter::You => player == ctx.controller,
         PlayerFilter::Opponent => player != ctx.controller,

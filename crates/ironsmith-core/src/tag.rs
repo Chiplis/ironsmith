@@ -42,6 +42,10 @@ pub const SOURCE_OBJECT_TAG: &str = "__source_object__";
 /// resolution, so the delayed registration preserves those players under
 /// this system tag.
 pub const DELAYED_TARGET_PLAYERS_TAG: &str = "__delayed_target_players__";
+/// The single player a permanent's own entering trigger targeted, exposed to
+/// that permanent's linked leaves-the-battlefield trigger as "that player"
+/// (CR 607.2a).
+pub const LINKED_TRIGGER_PLAYER_TAG: &str = "__linked_trigger_player__";
 
 /// The object selected by an authored "the chosen object" choice.
 ///

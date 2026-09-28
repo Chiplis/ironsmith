@@ -3599,33 +3599,158 @@ pub(crate) fn continuous_effect_condition_is_active(
     effect: &ContinuousEffect,
     game: &crate::game_state::GameState,
 ) -> bool {
-    if let Some(condition) = &effect.condition {
-        let iterated_player = match effect.applies_to {
-            EffectTarget::AttachedTo(source_id) => game
-                .object(source_id)
-                .and_then(|source| source.attached_to.and_then(|target| target.object_id()))
-                .and_then(|attached_to| game.object(attached_to))
-                .map(|attached_object| game.controller_of(attached_object)),
-            _ => None,
-        };
-        let ctx = crate::condition_eval::ExternalEvaluationContext {
-            controller: effect.controller,
-            source: effect.source,
-            defending_player: None,
-            attacking_player: None,
-            filter_source: Some(effect.source),
-            iterated_player,
-            triggering_event: None,
-            trigger_identity: None,
-            ability_index: None,
-            options: crate::condition_eval::ExternalEvaluationOptions::default(),
-        };
-        if !crate::condition_eval::evaluate_condition_external(game, condition, &ctx) {
-            return false;
-        }
+    let Some(condition) = &effect.condition else {
+        return true;
+    };
+    let recipient = continuous_effect_fixed_recipient(effect, game);
+    if recipient.is_none() && crate::condition_eval::condition_reads_static_recipient(condition) {
+        // "Each creature ... as long as it's not attacking": the condition is
+        // per recipient, so `effect_target_applies_to_direct` decides it for
+        // each object the effect reaches.
+        return true;
     }
+    continuous_effect_condition_is_active_for(effect, condition, game, recipient)
+}
 
-    true
+/// Evaluate an effect's condition for one specific recipient object.
+pub(crate) fn continuous_effect_condition_is_active_for_object(
+    effect: &ContinuousEffect,
+    game: &crate::game_state::GameState,
+    recipient: ObjectId,
+) -> bool {
+    let Some(condition) = &effect.condition else {
+        return true;
+    };
+    continuous_effect_condition_is_active_for(effect, condition, game, Some(recipient))
+}
+
+/// The single object an effect's condition talks about when the effect itself
+/// names one ("enchanted creature ... as long as it's blocking", "this
+/// creature gets ... as long as it isn't attacking").
+fn continuous_effect_fixed_recipient(
+    effect: &ContinuousEffect,
+    game: &crate::game_state::GameState,
+) -> Option<ObjectId> {
+    match &effect.applies_to {
+        EffectTarget::AttachedTo(source_id) => game
+            .object(*source_id)
+            .and_then(|source| source.attached_to.and_then(|target| target.object_id())),
+        EffectTarget::Source => Some(effect.source),
+        EffectTarget::Specific(id) => Some(*id),
+        _ => None,
+    }
+}
+
+fn continuous_effect_condition_is_active_for(
+    effect: &ContinuousEffect,
+    condition: &crate::ConditionExpr,
+    game: &crate::game_state::GameState,
+    recipient: Option<ObjectId>,
+) -> bool {
+    // CR 613.8: an effect's condition may read characteristics that the
+    // effect itself changes (Goddric counting nonland entries while it makes
+    // itself a Dragon; a Rune asking whether its Equipment is an Equipment
+    // while granting that Equipment an ability). Re-entering the same
+    // condition evaluates it as though this effect did not apply, which ends
+    // the recursion instead of overflowing the stack.
+    let Some(_guard) = ConditionPredicateEvaluationGuard::enter(effect.source, recipient, condition)
+    else {
+        return false;
+    };
+    let iterated_player = match effect.applies_to {
+        EffectTarget::AttachedTo(source_id) => game
+            .object(source_id)
+            .and_then(|source| source.attached_to.and_then(|target| target.object_id()))
+            .and_then(|attached_to| game.object(attached_to))
+            .map(|attached_object| game.controller_of(attached_object)),
+        _ => None,
+    };
+    let ctx = crate::condition_eval::ExternalEvaluationContext {
+        controller: effect.controller,
+        source: effect.source,
+        defending_player: None,
+        attacking_player: None,
+        filter_source: Some(effect.source),
+        iterated_player,
+        triggering_event: None,
+        trigger_identity: None,
+        ability_index: None,
+        options: crate::condition_eval::ExternalEvaluationOptions {
+            recipient,
+            ..Default::default()
+        },
+    };
+    crate::condition_eval::evaluate_condition_external(game, condition, &ctx)
+}
+
+thread_local! {
+    /// Conditions currently being evaluated, keyed by effect source and
+    /// recipient. The condition pointer is only dereferenced while the frame
+    /// that registered it is still on the stack.
+    static IN_PROGRESS_CONDITION_PREDICATES: RefCell<Vec<(ObjectId, Option<ObjectId>, *const crate::ConditionExpr)>> =
+        const { RefCell::new(Vec::new()) };
+}
+
+thread_local! {
+    /// Bumped each time a re-entered condition is evaluated as inactive.
+    /// Characteristics computed across such a fallback are provisional and
+    /// must not be cached.
+    static CONDITION_REENTRY_FALLBACKS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// A token for a characteristics computation: `None` when no condition
+/// evaluation encloses it (its results are final), otherwise the fallback
+/// count at its start.
+pub(crate) fn provisional_condition_marker() -> Option<u64> {
+    let nested = IN_PROGRESS_CONDITION_PREDICATES.with(|in_progress| !in_progress.borrow().is_empty());
+    nested.then(|| CONDITION_REENTRY_FALLBACKS.with(std::cell::Cell::get))
+}
+
+/// Whether a computation that began at `marker` read a condition that an
+/// enclosing evaluation had provisionally treated as inactive (CR 613.8
+/// self-dependency). Such results are unfit to cache.
+pub(crate) fn computed_provisionally(marker: Option<u64>) -> bool {
+    marker.is_some_and(|before| CONDITION_REENTRY_FALLBACKS.with(std::cell::Cell::get) != before)
+}
+
+struct ConditionPredicateEvaluationGuard;
+
+impl ConditionPredicateEvaluationGuard {
+    fn enter(
+        source: ObjectId,
+        recipient: Option<ObjectId>,
+        condition: &crate::ConditionExpr,
+    ) -> Option<Self> {
+        let reentered = IN_PROGRESS_CONDITION_PREDICATES.with(|in_progress| {
+            let mut in_progress = in_progress.borrow_mut();
+            let reentered = in_progress.iter().any(|(entry_source, entry_recipient, entry)| {
+                *entry_source == source
+                    && *entry_recipient == recipient
+                    && (std::ptr::eq(*entry, condition)
+                        // SAFETY: every entry's pointee is borrowed by a live
+                        // outer frame whose guard removes the entry on drop.
+                        || unsafe { &**entry } == condition)
+            });
+            if !reentered {
+                in_progress.push((source, recipient, condition as *const _));
+            }
+            reentered
+        });
+        if reentered {
+            CONDITION_REENTRY_FALLBACKS.with(|count| count.set(count.get().wrapping_add(1)));
+        }
+        // Lazily: an eager `then_some(Self)` drops a guard on the re-entry
+        // path, and that Drop would pop the outer frame's entry.
+        (!reentered).then(|| Self)
+    }
+}
+
+impl Drop for ConditionPredicateEvaluationGuard {
+    fn drop(&mut self) {
+        IN_PROGRESS_CONDITION_PREDICATES.with(|in_progress| {
+            in_progress.borrow_mut().pop();
+        });
+    }
 }
 
 // Reject identity/zone mismatches before evaluating conditions, which may
@@ -3657,6 +3782,32 @@ fn effect_target_definitely_excludes_object(
 }
 
 fn effect_target_applies_to_direct(
+    effect: &ContinuousEffect,
+    object: &Object,
+    chars: &CalculatedCharacteristics,
+    objects: &ObjectMap,
+    game: &crate::game_state::GameState,
+) -> bool {
+    if !effect_target_matches_object_direct(effect, object, chars, objects, game) {
+        return false;
+    }
+    // A per-recipient condition on an effect without one fixed recipient
+    // ("each untapped creature you control gets +0/+2 as long as it's not
+    // attacking") is decided here, for each object the effect reaches.
+    match &effect.condition {
+        Some(condition)
+            if !matches!(
+                effect.applies_to,
+                EffectTarget::AttachedTo(_) | EffectTarget::Source | EffectTarget::Specific(_)
+            ) && crate::condition_eval::condition_reads_static_recipient(condition) =>
+        {
+            continuous_effect_condition_is_active_for_object(effect, game, object.id)
+        }
+        _ => true,
+    }
+}
+
+fn effect_target_matches_object_direct(
     effect: &ContinuousEffect,
     object: &Object,
     chars: &CalculatedCharacteristics,
@@ -3718,6 +3869,10 @@ fn resolution_effect_zone_applies(effect: &ContinuousEffect, zone: Zone) -> bool
     // (CR 123.5); their stored effect is retargeted to its new object identity.
     zone == Zone::Battlefield
         || (matches!(effect.modification, Modification::InsertNameWords { .. }) && zone.is_public())
+        // A lock made over another zone's cards ("each legendary card in your
+        // graveyard gains ...") applies to them there; a zone change makes a
+        // new object (CR 400.7), which the lock never names.
+        || matches!(&effect.applies_to, EffectTarget::Filter(filter) if filter.zone == Some(zone))
 }
 
 fn affected_objects_for_effect(
@@ -4086,7 +4241,19 @@ pub(crate) fn filter_matches_with_characteristics(
     effect_source: ObjectId,
 ) -> bool {
     let filter_ctx = continuous_filter_context(game, effect_controller, effect_source);
-    match filter_matches_layered_fast(filter, object, chars, game, &filter_ctx) {
+    filter_matches_with_characteristics_in_context(filter, object, chars, game, &filter_ctx)
+}
+
+/// [`filter_matches_with_characteristics`] with a caller-built filter
+/// context (for example one binding "it" to the object being modified).
+pub(crate) fn filter_matches_with_characteristics_in_context(
+    filter: &ObjectFilter,
+    object: &Object,
+    chars: &CalculatedCharacteristics,
+    game: &crate::game_state::GameState,
+    filter_ctx: &crate::target::FilterContext,
+) -> bool {
+    match filter_matches_layered_fast(filter, object, chars, game, filter_ctx) {
         Some(true) => {}
         Some(false) => return false,
         None => {
@@ -4148,7 +4315,7 @@ pub(crate) fn filter_matches_with_characteristics(
         let Some(candidate_power) = chars.power else {
             return false;
         };
-        let Some(source_obj) = game.object(effect_source) else {
+        let Some(source_obj) = filter_ctx.source.and_then(|id| game.object(id)) else {
             return false;
         };
         let Some(source_power) = source_obj.power() else {

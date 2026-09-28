@@ -1570,6 +1570,8 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::PlayersBeingAttacked
         | Value::CountPlayers(_)
         | Value::CountPlayersWithCardsInHandAtLeast(_, _)
+        | Value::CountPlayersWithCardsInGraveyardAtLeast(_, _)
+        | Value::CountPlayersWithPoisonCountersAtLeast(_, _)
         | Value::PlayersWhoControl { .. }
         | Value::PlayersWhoControlMoreThanYou { .. }
         | Value::PlayersWhoControlAtLeastMoreThanYou { .. }
@@ -2252,6 +2254,8 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::PlayersBeingAttacked
         | Value::CountPlayers(_)
         | Value::CountPlayersWithCardsInHandAtLeast(_, _)
+        | Value::CountPlayersWithCardsInGraveyardAtLeast(_, _)
+        | Value::CountPlayersWithPoisonCountersAtLeast(_, _)
         | Value::ManaSpentToCastThisSpell
         | Value::ManaSymbolSpentToCastThisSpell { .. }
         | Value::ManaFromSourceSpentToCastThisSpell { .. }

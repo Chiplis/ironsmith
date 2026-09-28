@@ -26,6 +26,10 @@ pub(crate) struct BattlefieldEntryOptions {
     pub initial_counters: Vec<(crate::object::CounterType, u32)>,
     /// One-shot continuous modifications that define how this object enters.
     pub entry_modifications: Vec<crate::continuous::Modification>,
+    /// The object or player the effect says this enters attached to ("...
+    /// onto the battlefield attached to X"). An Aura then doesn't choose what
+    /// to enchant (CR 303.4f).
+    pub entry_attachment: Option<crate::object::AttachmentTarget>,
 }
 
 impl BattlefieldEntryOptions {
@@ -36,6 +40,7 @@ impl BattlefieldEntryOptions {
             transformed: false,
             initial_counters: Vec::new(),
             entry_modifications: Vec::new(),
+            entry_attachment: None,
         }
     }
 
@@ -46,6 +51,7 @@ impl BattlefieldEntryOptions {
             transformed: false,
             initial_counters: Vec::new(),
             entry_modifications: Vec::new(),
+            entry_attachment: None,
         }
     }
 
@@ -56,6 +62,7 @@ impl BattlefieldEntryOptions {
             transformed: false,
             initial_counters: Vec::new(),
             entry_modifications: Vec::new(),
+            entry_attachment: None,
         }
     }
 
@@ -72,6 +79,14 @@ impl BattlefieldEntryOptions {
         modifications: Vec<crate::continuous::Modification>,
     ) -> Self {
         self.entry_modifications = modifications;
+        self
+    }
+
+    pub(crate) fn with_entry_attachment(
+        mut self,
+        target: Option<crate::object::AttachmentTarget>,
+    ) -> Self {
+        self.entry_attachment = target;
         self
     }
 
@@ -525,17 +540,38 @@ pub(crate) fn move_to_battlefield_batch_with_options(
             BattlefieldEntryController::Specific(controller) => Some(controller),
             BattlefieldEntryController::Preserve | BattlefieldEntryController::Owner => None,
         };
-        let Some(result) = working.commit_prepared_etb_with_controller_and_dm(
-            *object,
-            prepared_entry,
-            entering_controller,
-            &mut ctx.decision_maker,
-        ) else {
+        let committed = if options.entry_attachment.is_some() {
+            working.commit_prepared_etb_with_fixed_attachment_and_dm(
+                *object,
+                prepared_entry,
+                entering_controller,
+                &mut ctx.decision_maker,
+            )
+        } else {
+            working.commit_prepared_etb_with_controller_and_dm(
+                *object,
+                prepared_entry,
+                entering_controller,
+                &mut ctx.decision_maker,
+            )
+        };
+        let Some(result) = committed else {
             if ctx.decision_maker.awaiting_choice() {
                 return vec![BattlefieldEntryOutcome::Prevented; requests.len()];
             }
             continue;
         };
+        if let Some(target) = options.entry_attachment
+            && working
+                .object(result.new_id)
+                .is_some_and(|entered| entered.zone == Zone::Battlefield)
+        {
+            crate::effects::permanents::attach_battlefield_object_to_target(
+                &mut working,
+                result.new_id,
+                target,
+            );
+        }
         if let Some((_, transformed_definition)) = transformed_entry_states.get(&index) {
             apply_entry_definition(&mut working, result.new_id, transformed_definition);
         }

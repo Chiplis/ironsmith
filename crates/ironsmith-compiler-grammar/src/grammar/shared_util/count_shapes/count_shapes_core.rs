@@ -4,6 +4,57 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
     let head = parse_for_each_head(words)?;
     let idx = head.item_start;
 
+    // "for each of that spell's colors" (Ancient Cornucopia, Moonveil Regent,
+    // Ramos): the colors of the referenced spell.
+    if let ["that", "spell's" | "spells", "colors", ..] = &words[idx..] {
+        return Some((
+            Value::ColorsOf(Box::new(ChooseSpec::Tagged(
+                (crate::tag::CompilerReferenceTag::It.bind()).into(),
+            )))
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+            idx + 3,
+        ));
+    }
+
+    // "for each graveyard with seven or more cards in it" (The Master of
+    // Lake-town): graveyards, one per player, meeting the size threshold.
+    if !head.other
+        && let ["graveyard", "with", minimum, "or", "more", "cards", "in", "it", ..] =
+            &words[idx..]
+        && let Some(minimum) = crate::util::parse_number_word_u32(minimum)
+    {
+        return Some((
+            Value::CountPlayersWithCardsInGraveyardAtLeast(PlayerFilter::Any, minimum),
+            idx + 8,
+        ));
+    }
+
+    // "for each card fewer than three in their hand" (Stabwhisker the
+    // Odious): the shortfall below the threshold, never negative.
+    if !head.other
+        && let ["card", "fewer" | "less", "than", threshold, rest @ ..] = &words[idx..]
+        && rest.first() == Some(&"in")
+        && let Some(threshold) = crate::util::parse_number_word_u32(threshold)
+    {
+        let mut counted = vec!["for", "each", "card"];
+        counted.extend_from_slice(rest);
+        if let Some((cards, used)) = parse_for_each_count_value_words(&counted)
+            && used > 3
+        {
+            let shortfall = Value::Scaled(
+                Box::new(Value::Min(
+                    Box::new(Value::Fixed(0)),
+                    Box::new(Value::Add(
+                        Box::new(cards),
+                        Box::new(Value::Fixed(-(threshold as i32))),
+                    )),
+                )),
+                -1,
+            );
+            return Some((shortfall, idx + 4 + (used - 3)));
+        }
+    }
+
     // "for each unique vowel on that sticker": the sticker just placed.
     if crate::word_primitives::parse_sequence_prefix(
         &words[idx..],

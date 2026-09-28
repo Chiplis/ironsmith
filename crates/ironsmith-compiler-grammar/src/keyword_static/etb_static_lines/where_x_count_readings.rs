@@ -54,6 +54,12 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_players_with_cards_in_hand_at_least(input)),
     },
     Reading {
+        id: RuleId::new("players-with-poison-counters-at-least"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_players_with_poison_counters_at_least(input)),
+    },
+    Reading {
         id: RuleId::new("number-of-counters-on-source-value"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -171,6 +177,16 @@ fn read_players_with_cards_in_hand_at_least(input: &CountedFilter<'_>) -> Option
         ));
     }
     None
+}
+fn read_players_with_poison_counters_at_least(input: &CountedFilter<'_>) -> Option<Value> {
+    let (players, minimum) =
+        crate::grammar::shared_util::value_semantics::parse_players_with_poison_counters_at_least(
+            input.tokens,
+        )?;
+    Some(scale_where_x_number_value(
+        Value::CountPlayersWithPoisonCountersAtLeast(players, minimum),
+        input.multiplier,
+    ))
 }
 fn read_number_of_counters_on_source_value(input: &CountedFilter<'_>) -> Option<Value> {
     let filter_tokens = input.tokens;

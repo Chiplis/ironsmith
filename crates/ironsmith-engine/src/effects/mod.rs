@@ -203,7 +203,8 @@ pub use player::{
     TakeInitiativeEffect, TicketCountersEffect, VentureIntoDungeonEffect, WinTheGameEffect,
 };
 pub use replacement::{
-    ApplyReplacementEffect, RegisterDamagedBySourceZoneReplacementEffect,
+    ApplyReplacementEffect, RegisterCounterPlacementReplacementEffect,
+    RegisterDamagedBySourceZoneReplacementEffect,
     RegisterDrawReplacementEffect, RegisterEnterTappedReplacementEffect,
     RegisterEnterUnderControlReplacementEffect, RegisterEnterWithCountersReplacementEffect,
     RegisterFutureZoneReplacementEffect, RegisterManaReplacementEffect,

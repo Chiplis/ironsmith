@@ -700,6 +700,18 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("replacement_mana", replacement_mana)
                 .field("mode", mode)
                 .finish(),
+            Self::Replacements(ReplacementActionAst::RegisterCounterPlacementReplacement {
+                filter,
+                counter_type,
+                additional,
+                mode,
+            }) => f
+                .debug_struct("RegisterCounterPlacementReplacement")
+                .field("filter", filter)
+                .field("counter_type", counter_type)
+                .field("additional", additional)
+                .field("mode", mode)
+                .finish(),
             Self::Replacements(ReplacementActionAst::RegisterDamagedBySourceZoneReplacement {
                 filter,
                 from_zone,

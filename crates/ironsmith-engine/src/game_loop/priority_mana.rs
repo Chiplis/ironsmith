@@ -1271,6 +1271,18 @@ pub(super) fn apply_modes_response(
             )
         });
 
+    // CR 601.2b: "Choose X." — the number of modes chosen is the announced X.
+    if let Some(modal_spec) =
+        extract_modal_spec_from_spell(game, pending.spell_id, pending.caster)
+        && super::priority_cast::x_defined_mode_count_range(game, &pending, &modal_spec).is_some()
+        && let Some(total) = super::priority_cast::mode_point_total(&modal_spec, modes)
+    {
+        let x = total as u32;
+        pending.x_value = Some(x);
+        if let Some(spell) = game.object_mut(pending.spell_id) {
+            spell.x_value = Some(x);
+        }
+    }
     // Continue through splice and additional/optional costs before announcing X.
     check_splice_or_continue(game, trigger_queue, state, pending, decision_maker)
 }
@@ -1291,6 +1303,31 @@ pub(super) fn apply_optional_costs_response(
         .object(pending.spell_id)
         .map(|spell| spell.optional_costs.clone())
         .unwrap_or_default();
+    // Branch options of a one-of optional cost name the cost and the
+    // announced payment branch.
+    let mut announced_branches = Vec::new();
+    let decoded_choices = choices
+        .iter()
+        .map(|&(option, times)| {
+            let (index, branch) = super::priority_cast::decode_optional_cost_branch_option(option);
+            if let Some(branch) = branch {
+                announced_branches.push((index, branch));
+            }
+            (index, times)
+        })
+        .collect::<Vec<_>>();
+    let choices = decoded_choices.as_slice();
+    if announced_branches.iter().any(|&(index, branch)| {
+        optional_costs
+            .get(index)
+            .and_then(|cost| cost.cost.as_one_of())
+            .is_none_or(|branches| branch >= branches.len())
+    }) {
+        state.rollback_action(game);
+        return Err(GameLoopError::ActionCancelled(
+            "optional-cost response names an invalid payment branch".to_string(),
+        ));
+    }
     let mut announced_counts = std::collections::HashMap::<usize, u32>::new();
     for &(index, times) in choices {
         if times == 0 || index >= optional_costs.len() {
@@ -1322,6 +1359,9 @@ pub(super) fn apply_optional_costs_response(
     // Store the optional costs paid
     for &(index, times) in choices {
         pending.optional_costs_paid.pay_times(index, times);
+    }
+    for &(index, branch) in &announced_branches {
+        pending.optional_costs_paid.set_branch_choice(index, branch);
     }
 
     if let Some(spell) = game.object_mut(pending.spell_id) {
@@ -1611,10 +1651,15 @@ pub(super) fn execute_pending_mana_ability(
     let mut cost_ctx = CostContext::new(pending.source, pending.activator, decision_maker)
         .with_reason(crate::costs::PaymentReason::ActivateManaAbility)
         .with_provenance(pending.provenance);
+    cost_ctx.x_value = pending.x_value;
     for c in &pending.other_costs {
         crate::special_actions::pay_cost_component_with_choice(game, c, &mut cost_ctx)
             .map_err(|e| GameLoopError::InvalidState(format!("Failed to pay cost: {e}")))?;
     }
+    // X is bound by the announced {X} or by a cost that fixes it as it is
+    // paid ("Remove X storage counters"); the effect reads that value.
+    let x_value_from_costs = cost_ctx.x_value;
+    drop(cost_ctx);
     drain_pending_trigger_events(game, trigger_queue);
 
     // Add fixed mana to player's pool
@@ -1671,6 +1716,9 @@ pub(super) fn execute_pending_mana_ability(
             .with_mana_production_provenance(pending.mana_production_provenance);
         if let Some(snapshot) = source_snapshot.clone() {
             ctx = ctx.with_source_snapshot(snapshot);
+        }
+        if let Some(x) = x_value_from_costs {
+            ctx = ctx.with_x(x);
         }
         let emitted_events = crate::game_loop::execute_resolution_program(
             game,

@@ -2141,7 +2141,31 @@ pub(crate) fn apply_state_based_actions_from_actions_with(
     let (player_losses, other_actions): (Vec<_>, Vec<_>) = actions
         .into_iter()
         .partition(|action| matches!(action, StateBasedAction::PlayerLoses { .. }));
-    for action in other_actions.into_iter().chain(player_losses) {
+    // CR 704.3 / 614: a loss replacement (Exquisite Archangel) applies if its
+    // source is on the battlefield when the check begins, even when that
+    // source dies in the same check. Apply loss replacements first, while
+    // every object is still in place, and commit unreplaced losses after the
+    // check's other actions.
+    let mut unreplaced_losses = Vec::new();
+    for action in &player_losses {
+        let StateBasedAction::PlayerLoses { player, .. } = action else {
+            continue;
+        };
+        if !processed_player_losses.insert(*player) {
+            continue;
+        }
+        if crate::events::processing::process_player_loss_replacements_before_commit(
+            game,
+            *player,
+            decision_maker,
+            &simultaneous_zone_changes,
+        ) == crate::events::processing::PlayerLossOutcome::Lost
+        {
+            unreplaced_losses.push(*player);
+        }
+        any_applied = true;
+    }
+    for action in other_actions {
         // Skip legend rule - it requires player choice
         if matches!(action, StateBasedAction::LegendRuleViolation { .. }) {
             continue;
@@ -2163,6 +2187,11 @@ pub(crate) fn apply_state_based_actions_from_actions_with(
             decision_maker,
         );
         any_applied = true;
+    }
+    for player in unreplaced_losses {
+        if game.can_lose_game(player) {
+            game.mark_player_lost(player);
+        }
     }
 
     any_applied

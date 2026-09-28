@@ -158,10 +158,33 @@ impl EffectExecutor for TaggedEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let runtime = capture_tagged_runtime_state(game, &self.effect, ctx);
+        // "Choose up to one target artifact. Choose up to one target creature.
+        // ... the chosen permanents": successive target declarations under one
+        // tag name accumulate into a single chosen set rather than each
+        // replacing the last.
+        let accumulated_declarations = self
+            .effect
+            .downcast_ref::<crate::effects::TargetOnlyEffect>()
+            .is_some()
+            .then(|| ctx.get_tagged_all(self.tag.as_str()).cloned())
+            .flatten()
+            .filter(|previous| !previous.is_empty());
 
         // Execute the inner effect
         let outcome = crate::effects::execute_effect(game, &self.effect, ctx)?;
         apply_outcome_tags(self, game, ctx, &outcome, runtime);
+        if let Some(previous) = accumulated_declarations {
+            let mut merged = previous;
+            for snapshot in ctx.get_tagged_all(self.tag.as_str()).cloned().unwrap_or_default() {
+                if !merged
+                    .iter()
+                    .any(|existing| existing.object_id == snapshot.object_id)
+                {
+                    merged.push(snapshot);
+                }
+            }
+            ctx.set_tagged_objects(self.tag.clone(), merged);
+        }
         Ok(outcome)
     }
 

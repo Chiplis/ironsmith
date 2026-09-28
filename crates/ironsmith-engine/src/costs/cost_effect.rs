@@ -278,6 +278,30 @@ fn tagged_unattach_cost_precheck(
     }
 }
 
+/// Any other consumer of a preceding choice (for example "return the chosen
+/// lands to their owner's hand"): once the choice has published its tag, the
+/// consumer is payable while every chosen object is still present. Cardinality
+/// belongs to the choice itself.
+fn tagged_choice_consumer_cost_precheck(
+    effect: &Effect,
+    game: &GameState,
+    ctx: &CostContext,
+) -> Option<Result<(), CostPaymentError>> {
+    let tag = crate::cost::effect_consumed_choice_tag(effect)?;
+    let chosen = ctx.tagged_objects.get(tag.as_str())?;
+    if chosen.iter().all(|snapshot| {
+        game.find_object_by_stable_id(snapshot.stable_id)
+            .and_then(|id| game.object(id))
+            .is_some()
+    }) {
+        Some(Ok(()))
+    } else {
+        Some(Err(CostPaymentError::Other(
+            "chosen object is no longer available".to_string(),
+        )))
+    }
+}
+
 fn dynamic_counter_removal_cost_precheck(
     effect: &Effect,
     game: &GameState,
@@ -363,6 +387,9 @@ impl CostPayer for CostEffect {
         if let Some(result) = tagged_unattach_cost_precheck(&self.effect, game, ctx) {
             return result;
         }
+        if let Some(result) = tagged_choice_consumer_cost_precheck(&self.effect, game, ctx) {
+            return result;
+        }
         if let Some(result) = dynamic_counter_removal_cost_precheck(&self.effect, game, ctx) {
             return result;
         }
@@ -409,6 +436,8 @@ impl CostPayer for CostEffect {
         } else if let Some(result) = tagged_exile_cost_precheck(&self.effect, game, ctx) {
             result?;
         } else if let Some(result) = tagged_unattach_cost_precheck(&self.effect, game, ctx) {
+            result?;
+        } else if let Some(result) = tagged_choice_consumer_cost_precheck(&self.effect, game, ctx) {
             result?;
         } else {
             self.can_pay(game, ctx)?;

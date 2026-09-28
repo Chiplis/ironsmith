@@ -39,6 +39,11 @@ fn with_target_count_preserving_value(spec: ChooseSpec, count: ChoiceCount) -> C
 enum NestedResultReferenceKind {
     Outcome,
     Metric(ironsmith_core::EffectMetricSource),
+    /// An `IfEffect`/reflexive-trigger result gate ("if you do", "if a
+    /// creature card was discarded this way").
+    ResultPredicate {
+        action: Option<ironsmith_core::PriorEffectAction>,
+    },
     PriorMetric {
         source: ironsmith_core::EffectMetricSource,
         action: Option<ironsmith_core::PriorEffectAction>,
@@ -345,6 +350,363 @@ fn preserve_nested_result_value_links(effects: &mut [Effect]) {
             }
         }
     }
+}
+
+fn nested_effect_result_references_deep(effect: &Effect, references: &mut Vec<NestedResultReference>) {
+    for reference in direct_nested_effect_result_references(effect) {
+        if !references.iter().any(|existing| existing.id == reference.id) {
+            references.push(reference);
+        }
+    }
+    let predicate_reference = if let Some(if_effect) = effect.downcast_ref::<crate::effects::IfEffect>() {
+        Some((if_effect.condition, &if_effect.predicate))
+    } else {
+        effect
+            .downcast_ref::<crate::effects::ReflexiveTriggerEffect>()
+            .map(|reflexive| (reflexive.condition, &reflexive.predicate))
+    };
+    if let Some((id, predicate)) = predicate_reference
+        && !references.iter().any(|existing| existing.id == id)
+    {
+        let action = match predicate {
+            ironsmith_core::EffectPredicate::PriorEffectResult(surface) => Some(surface.action),
+            _ => None,
+        };
+        references.push(NestedResultReference {
+            id,
+            kind: NestedResultReferenceKind::ResultPredicate { action },
+        });
+    }
+    effect.visit_child_effects(&mut |child| nested_effect_result_references_deep(child, references));
+}
+
+fn nested_effect_defined_result_ids(effect: &Effect, ids: &mut Vec<EffectId>) {
+    if let Some(with_id) = effect.as_with_id()
+        && !ids.contains(&with_id.id)
+    {
+        ids.push(with_id.id);
+    }
+    effect.visit_child_effects(&mut |child| nested_effect_defined_result_ids(child, ids));
+}
+
+fn reference_action(reference: NestedResultReference) -> Option<ironsmith_core::PriorEffectAction> {
+    match reference.kind {
+        NestedResultReferenceKind::PriorMetric { action, .. }
+        | NestedResultReferenceKind::ResultPredicate { action } => action,
+        _ => None,
+    }
+}
+
+/// Every `EffectId` an effect subtree defines (`WithIdEffect`) and references
+/// anywhere else (values, result gates, cost links). Read from the typed
+/// Debug surface so a consumer field of any effect shape is seen; this is a
+/// compile-time consistency scan, not a semantic read.
+fn debug_scan_result_ids(effect: &Effect) -> (Vec<EffectId>, Vec<EffectId>) {
+    let text = format!("{effect:?}");
+    let mut defined = Vec::new();
+    let mut referenced = Vec::new();
+    let needle = "EffectId(";
+    let mut offset = 0;
+    while let Some(found) = text[offset..].find(needle) {
+        let start = offset + found;
+        let digits_start = start + needle.len();
+        let digits: String = text[digits_start..]
+            .chars()
+            .take_while(|ch| ch.is_ascii_digit())
+            .collect();
+        offset = digits_start;
+        let Ok(raw) = digits.parse::<u32>() else {
+            continue;
+        };
+        let id = EffectId(raw);
+        let is_definition = text[..start].ends_with("WithIdEffect { id: ");
+        let bucket = if is_definition {
+            &mut defined
+        } else {
+            &mut referenced
+        };
+        if !bucket.contains(&id) {
+            bucket.push(id);
+        }
+    }
+    (defined, referenced)
+}
+
+fn effect_unproduced_result_ids(effect: &Effect) -> Vec<EffectId> {
+    let (defined, referenced) = debug_scan_result_ids(effect);
+    referenced
+        .into_iter()
+        .filter(|id| !defined.contains(id))
+        .collect()
+}
+
+/// Give every prior-result consumer of a complete ability or spell a
+/// producer. A consumer ("this way", "that much", "if you do") whose
+/// `EffectId` no `WithIdEffect` anywhere in the program defines would fail
+/// at runtime with `EffectNotFound`; some lowering paths (sentence-level
+/// sequences, coordinated clauses rebuilt after annotation, segment splits)
+/// drop the wrapper the annotation intended. Its antecedent is the nearest
+/// earlier instruction performing the named action, else the instruction
+/// immediately before it. Only ids with no producer at all are linked, so
+/// an existing producer is never shadowed.
+pub(crate) fn link_unproduced_result_references_in_program(
+    program: &mut crate::resolution::ResolutionProgram,
+) {
+    let mut defined = Vec::new();
+    let mut referenced = Vec::new();
+    for segment in &program.segments {
+        for effect in segment.default_effects.iter().chain(
+            segment
+                .self_replacements
+                .iter()
+                .flat_map(|branch| branch.replacement_effects.iter()),
+        ) {
+            let (effect_defined, effect_referenced) = debug_scan_result_ids(effect);
+            defined.extend(effect_defined);
+            referenced.extend(effect_referenced);
+        }
+    }
+    let mut missing: Vec<EffectId> = Vec::new();
+    for id in referenced {
+        if !defined.contains(&id) && !missing.contains(&id) {
+            missing.push(id);
+        }
+    }
+    if missing.is_empty() {
+        return;
+    }
+    // Default effects of consecutive segments resolve as one instruction
+    // list; link across the segment boundary through a flattened view.
+    let mut flat: Vec<Effect> = Vec::new();
+    let mut lengths = Vec::new();
+    for segment in &mut program.segments {
+        lengths.push(segment.default_effects.len());
+        flat.append(&mut segment.default_effects);
+    }
+    link_unproduced_result_references_in_list(&mut flat, &mut missing);
+    let mut rest = flat.into_iter();
+    for (segment, length) in program.segments.iter_mut().zip(lengths) {
+        segment.default_effects = rest.by_ref().take(length).collect();
+    }
+    for segment in &mut program.segments {
+        for branch in &mut segment.self_replacements {
+            link_unproduced_result_references_in_list(&mut branch.replacement_effects, &mut missing);
+        }
+    }
+}
+
+/// Link inside the instruction lists an effect owns (a sequence, a result
+/// branch, a loop body), returning the rebuilt effect when anything changed.
+fn link_unproduced_result_references_in_children(
+    effect: &Effect,
+    missing: &mut Vec<EffectId>,
+) -> Option<Effect> {
+    if missing.is_empty() {
+        return None;
+    }
+    let before = missing.len();
+    macro_rules! relink_lists {
+        ($type:ty, $($field:ident),+) => {
+            if let Some(container) = effect.downcast_ref::<$type>() {
+                let mut container = container.clone();
+                $(link_unproduced_result_references_in_list(&mut container.$field, missing);)+
+                return (missing.len() != before).then(|| Effect::new(container));
+            }
+        };
+    }
+    if let Some(with_id) = effect.as_with_id() {
+        let inner = link_unproduced_result_references_in_children(&with_id.effect, missing)?;
+        return Some(Effect::with_id(with_id.id.0, inner));
+    }
+    if let Some(tagged) = effect.as_tagged() {
+        let inner = link_unproduced_result_references_in_children(&tagged.effect, missing)?;
+        let mut tagged = tagged.clone();
+        tagged.effect = Box::new(inner);
+        return Some(Effect::new(tagged));
+    }
+    relink_lists!(crate::effects::SequenceEffect, effects);
+    relink_lists!(crate::effects::IfEffect, then, else_);
+    relink_lists!(crate::effects::ConditionalEffect, if_true, if_false);
+    relink_lists!(crate::effects::ReflexiveTriggerEffect, effects);
+    relink_lists!(crate::effects::MayEffect<Effect>, effects);
+    relink_lists!(crate::effects::ForPlayersEffect<Effect>, effects);
+    relink_lists!(crate::effects::ForEachObject, effects);
+    None
+}
+
+fn link_unproduced_result_references_in_list(effects: &mut Vec<Effect>, missing: &mut Vec<EffectId>) {
+    if missing.is_empty() {
+        return;
+    }
+    // Inner lists first: an antecedent inside the same body is nearer than
+    // anything before that body.
+    for effect in effects.iter_mut() {
+        if let Some(rebuilt) = link_unproduced_result_references_in_children(effect, missing) {
+            *effect = rebuilt;
+        }
+    }
+    for consumer_index in 1..effects.len() {
+        let unproduced = effect_unproduced_result_ids(&effects[consumer_index]);
+        if !unproduced.iter().any(|id| missing.contains(id)) {
+            continue;
+        }
+        let mut typed = Vec::new();
+        nested_effect_result_references_deep(&effects[consumer_index], &mut typed);
+        for id in unproduced {
+            if !missing.contains(&id) {
+                continue;
+            }
+            let reference = typed
+                .iter()
+                .copied()
+                .find(|reference| reference.id == id)
+                .unwrap_or(NestedResultReference {
+                    id,
+                    kind: NestedResultReferenceKind::ResultPredicate { action: None },
+                });
+            let adjacent = consumer_index - 1;
+            // "Put that many counters on it and draw that many cards": the
+            // second "that many" shares the first one's antecedent rather
+            // than naming the result of the instruction between them.
+            if matches!(reference.kind, NestedResultReferenceKind::Outcome)
+                && let Some(shared) = direct_nested_effect_result_references(&effects[adjacent])
+                    .into_iter()
+                    .find(|prior| {
+                        matches!(prior.kind, NestedResultReferenceKind::Outcome)
+                            && prior.id != id
+                            && !missing.contains(&prior.id)
+                    })
+                && let Some(rewritten) =
+                    rewrite_direct_outcome_reference(&effects[consumer_index], id, shared.id)
+            {
+                effects[consumer_index] = rewritten;
+                missing.retain(|missing_id| *missing_id != id);
+                continue;
+            }
+            // "Destroy all creatures, then create an X/X token, where X is
+            // the number of creatures destroyed this way": a result naming
+            // its action belongs to the nearest earlier instruction that
+            // performs that action, not to an intervening one.
+            let producer_index = reference_action(reference)
+                .and_then(|action| {
+                    (0..consumer_index)
+                        .rev()
+                        .find(|&index| nested_effect_performs_action(&effects[index], action))
+                })
+                .unwrap_or(adjacent);
+            effects[producer_index] = Effect::with_id(id.0, effects[producer_index].clone());
+            missing.retain(|missing_id| *missing_id != id);
+        }
+    }
+}
+
+fn nested_effect_contains<T: 'static>(effect: &Effect) -> bool {
+    if effect.downcast_ref::<T>().is_some() {
+        return true;
+    }
+    let mut found = false;
+    effect.visit_child_effects(&mut |child| {
+        if !found && nested_effect_contains::<T>(child) {
+            found = true;
+        }
+    });
+    found
+}
+
+fn nested_effect_performs_action(effect: &Effect, action: ironsmith_core::PriorEffectAction) -> bool {
+    use ironsmith_core::PriorEffectAction as Action;
+    match action {
+        Action::Destroyed => {
+            nested_effect_contains::<crate::effects::DestroyEffect>(effect)
+                || nested_effect_contains::<crate::effects::DestroyNoRegenerationEffect>(effect)
+        }
+        Action::Exiled => nested_effect_is_exile(effect),
+        Action::Discarded => nested_effect_is_discard(effect),
+        Action::Sacrificed => nested_effect_is_sacrifice(effect),
+        Action::Tapped => nested_effect_contains::<crate::effects::TapEffect>(effect),
+        Action::Drawn => nested_effect_contains::<crate::effects::DrawCardsEffect>(effect),
+        Action::Milled => nested_effect_contains::<crate::effects::MillEffect>(effect),
+        Action::CountersPut => nested_effect_contains::<crate::effects::PutCountersEffect>(effect),
+        Action::Removed => nested_effect_contains::<crate::effects::RemoveCountersEffect>(effect),
+        Action::DealtDamage => nested_effect_contains::<crate::effects::DealDamageEffect>(effect),
+        Action::Returned => {
+            nested_effect_contains::<crate::effects::ReturnToHandEffect>(effect)
+                || nested_effect_is_move_to_zone(effect)
+        }
+        Action::PutOntoBattlefield | Action::PutIntoGraveyard => {
+            nested_effect_is_move_to_zone(effect)
+        }
+        _ => false,
+    }
+}
+
+fn rewrite_outcome_reference_in_value(value: &Value, from: EffectId, to: EffectId) -> Option<Value> {
+    Some(match value {
+        Value::EffectValue(id) if *id == from => Value::EffectValue(to),
+        Value::EffectValueOffset(id, offset) if *id == from => Value::EffectValueOffset(to, *offset),
+        Value::SurfaceHinted { value, hints } => Value::SurfaceHinted {
+            value: Box::new(rewrite_outcome_reference_in_value(value, from, to)?),
+            hints: hints.clone(),
+        },
+        Value::Scaled(value, factor) => {
+            Value::Scaled(Box::new(rewrite_outcome_reference_in_value(value, from, to)?), *factor)
+        }
+        Value::DividedRoundedDown(value, divisor) => Value::DividedRoundedDown(
+            Box::new(rewrite_outcome_reference_in_value(value, from, to)?),
+            *divisor,
+        ),
+        Value::HalfRoundedDown(value) => {
+            Value::HalfRoundedDown(Box::new(rewrite_outcome_reference_in_value(value, from, to)?))
+        }
+        Value::Add(left, right) | Value::Min(left, right) => {
+            let new_left = rewrite_outcome_reference_in_value(left, from, to);
+            let new_right = rewrite_outcome_reference_in_value(right, from, to);
+            if new_left.is_none() && new_right.is_none() {
+                return None;
+            }
+            let left = Box::new(new_left.unwrap_or_else(|| (**left).clone()));
+            let right = Box::new(new_right.unwrap_or_else(|| (**right).clone()));
+            if matches!(value, Value::Add(..)) {
+                Value::Add(left, right)
+            } else {
+                Value::Min(left, right)
+            }
+        }
+        _ => return None,
+    })
+}
+
+/// Re-point a consumer's direct "that many" amount from one prior result to
+/// another. Only the common single-amount instruction shapes are rewritten;
+/// anything else is left for the adjacent-producer link.
+fn rewrite_direct_outcome_reference(effect: &Effect, from: EffectId, to: EffectId) -> Option<Effect> {
+    if let Some(tagged) = effect.as_tagged() {
+        let inner = rewrite_direct_outcome_reference(&tagged.effect, from, to)?;
+        let mut tagged = tagged.clone();
+        tagged.effect = Box::new(inner);
+        return Some(Effect::new(tagged));
+    }
+    macro_rules! rewrite_field {
+        ($type:ty, $field:ident) => {
+            if let Some(value_effect) = effect.downcast_ref::<$type>() {
+                let value = rewrite_outcome_reference_in_value(&value_effect.$field, from, to)?;
+                let mut value_effect = value_effect.clone();
+                value_effect.$field = value;
+                return Some(Effect::new(value_effect));
+            }
+        };
+    }
+    rewrite_field!(crate::effects::DealDamageEffect, amount);
+    rewrite_field!(crate::effects::DrawCardsEffect, count);
+    rewrite_field!(crate::effects::PutCountersEffect, amount);
+    rewrite_field!(crate::effects::CreateTokenEffect, count);
+    rewrite_field!(crate::effects::DiscardEffect, count);
+    rewrite_field!(crate::effects::MillEffect, count);
+    rewrite_field!(crate::effects::GainLifeEffect, amount);
+    rewrite_field!(crate::effects::LoseLifeEffect, amount);
+    rewrite_field!(crate::effects::ScryEffect, count);
+    rewrite_field!(crate::effects::SurveilEffect, count);
+    None
 }
 
 fn lower_source_top_only_choice(
@@ -714,6 +1076,17 @@ fn choose_spec_owned_by_iterated_player(spec: &ChooseSpec) -> bool {
         }
         _ => false,
     }
+}
+
+/// The result tag reference annotation reserved for this object-producing
+/// effect, or a fresh one. Later references ("when that token dies") were
+/// resolved against the reserved tag, so the producer must carry it too.
+pub(super) fn reserved_or_fresh_result_tag(
+    ctx: &mut EffectLoweringContext,
+    prefix: &str,
+) -> TagKey {
+    ctx.take_reserved_object_result_tag(prefix)
+        .unwrap_or_else(|| ctx.next_tag(prefix))
 }
 
 fn reserved_or_next_object_tag(ctx: &mut EffectLoweringContext, prefix: &str) -> TagKey {
@@ -2184,7 +2557,7 @@ fn compile_plain_fixed_token_creation(
         .transpose()?;
     let mut created_tag = None;
     if ctx.auto_tag_object_targets || attached_to.is_some() {
-        let tag = ctx.next_tag("created");
+        let tag = reserved_or_fresh_result_tag(ctx, "created");
         effect = effect.tag(tag.clone());
         ctx.last_object_tag = Some(tag);
         created_tag = ctx.last_object_tag.clone();
@@ -2494,6 +2867,8 @@ fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSp
         Value::Devotion { player, .. }
         | Value::CountPlayers(player)
         | Value::CountPlayersWithCardsInHandAtLeast(player, _)
+        | Value::CountPlayersWithCardsInGraveyardAtLeast(player, _)
+        | Value::CountPlayersWithPoisonCountersAtLeast(player, _)
         | Value::PartySize(player)
         | Value::LifeTotal(player)
         | Value::LifeTotalAsTurnBegan(player)

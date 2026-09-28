@@ -419,11 +419,10 @@ fn lower_selected_hand_reveal(
     if let Some((parsed_count, used)) =
         crate::util::parse_choice_count_token_prefix_consumed(descriptor_clause.tokens())
     {
-        count = if parsed_count.dynamic_x {
-            ChoiceCount::any_number()
-        } else {
-            parsed_count
-        };
+        // "Reveal X cards": keep X dynamic. When no cost defines X, the
+        // revealing player chooses it as the ability resolves by choosing
+        // that many cards (CR 107.3f), so later "-X/-X" reads the same X.
+        count = parsed_count;
         descriptor_clause = descriptor_clause.from(used).trimmed();
         if choice_shapes::first_choice_damage_word_is(&descriptor_clause.word_refs(), "of") {
             descriptor_clause = descriptor_clause.from(1).trimmed();
@@ -468,6 +467,37 @@ fn lower_selected_hand_reveal(
     filter.owner = Some(owner);
 
     let tag = helper_tag_for_tokens(clause.tokens(), "revealed");
+    if shape.or_top_of_library {
+        // "Reveal a creature card from your hand or the top of your library":
+        // the top card is one more candidate, eligible only if it matches.
+        // Identify it first, then choose among the hand cards and that card.
+        let top_tag = helper_tag_for_tokens(clause.tokens(), "top_of_library");
+        let mut top_filter = filter.clone();
+        top_filter.zone = Some(Zone::Library);
+        let top_filter = top_filter.match_tagged(
+            top_tag.clone(),
+            ironsmith_core::TaggedOpbjectRelation::IsTaggedObject,
+        );
+        let union = ObjectFilter {
+            any_of: vec![filter, top_filter],
+            ..ObjectFilter::default()
+        };
+        return Ok(Some(vec![
+            EffectAst::subject_verb_look_at_top_cards(
+                player,
+                Value::Fixed(1),
+                crate::tag::TagRef::of(top_tag),
+            ),
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                filter: union,
+                count,
+                count_value: None,
+                player,
+                tag: crate::tag::TagRef::of(tag.clone()),
+            }),
+            EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(tag)),
+        ]));
+    }
     Ok(Some(vec![
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter,
