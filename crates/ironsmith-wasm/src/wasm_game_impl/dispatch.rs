@@ -1272,6 +1272,44 @@ impl WasmGame {
             .collect()
     }
 
+    /// Seats whose open decklist may hold a card with splice (see
+    /// `GameState::set_hidden_splice_players`). Judged like
+    /// `hidden_draw_reveal_players_for_setup`, after it loaded every listed
+    /// name; an unknown card counts as possibly having splice.
+    fn hidden_splice_players_for_setup(
+        &self,
+        hidden_manifests: &[HiddenDeckManifestInput],
+        public_decklists: Option<&[Vec<String>]>,
+        commanders: Option<&[Vec<String>]>,
+    ) -> Vec<PlayerId> {
+        let mut seats = hidden_manifests
+            .iter()
+            .map(|manifest| manifest.owner)
+            .collect::<Vec<_>>();
+        seats.sort_unstable();
+        seats.dedup();
+        seats
+            .into_iter()
+            .filter(|&seat| {
+                let Some(lists) = public_decklists else {
+                    return true;
+                };
+                let Some(list) = lists.get(usize::from(seat)) else {
+                    return true;
+                };
+                let seat_commanders = commanders
+                    .and_then(|commanders| commanders.get(usize::from(seat)))
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[]);
+                list.iter().chain(seat_commanders).any(|name| {
+                    self.find_card_definition(name)
+                        .is_none_or(card_definition_has_splice)
+                })
+            })
+            .map(PlayerId::from_index)
+            .collect()
+    }
+
     /// Start a fully specified match from a synchronized lobby payload.
     #[wasm_bindgen(js_name = startMatch)]
     pub fn start_match(&mut self, config: JsValue) -> Result<JsValue, JsValue> {
@@ -1690,6 +1728,11 @@ impl WasmGame {
             config.public_decklists.as_deref(),
             config.commanders.as_deref(),
         );
+        let hidden_splice_players = self.hidden_splice_players_for_setup(
+            &hidden_manifests,
+            config.public_decklists.as_deref(),
+            config.commanders.as_deref(),
+        );
 
         if let Some(decks) = config.decks {
             if decks.len() != self.game.players.len() {
@@ -1735,6 +1778,7 @@ impl WasmGame {
         }
         self.game
             .set_hidden_draw_reveal_players(hidden_draw_reveal_players);
+        self.game.set_hidden_splice_players(hidden_splice_players);
 
         if let Some(commanders) = config.commanders {
             if commanders.len() != self.game.players.len() {
@@ -4713,6 +4757,19 @@ impl WasmGame {
 /// Whether a card can trigger from its owner's hand as it is drawn (Miracle,
 /// CR 702.94a) or can give that ability to other cards (miracle granters such
 /// as Lorehold, the Historian).
+fn card_definition_has_splice(definition: &CardDefinition) -> bool {
+    definition.abilities.iter().any(|ability| {
+        matches!(
+            &ability.kind,
+            ironsmith::ability::AbilityKind::Static(static_ability)
+                if static_ability.splice_spec().is_some()
+        )
+    }) || definition
+        .canonical_text
+        .to_ascii_lowercase()
+        .contains("splice onto")
+}
+
 fn card_definition_may_trigger_when_drawn(definition: &CardDefinition) -> bool {
     definition
         .alternative_casts

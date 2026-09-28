@@ -15,6 +15,9 @@
 
 mod application;
 
+#[cfg(test)]
+pub(crate) use application::hand_replacement_choice_candidates;
+
 use crate::DecisionMaker;
 use crate::decisions::replacement_option_description;
 use crate::events::DamageTarget;
@@ -1105,6 +1108,14 @@ fn handle_discard_or_redirect(
             // Handle new context-based discard response (vector of cards)
             // For interactive replacement, we expect exactly 1 card
             if let Some(&card_id) = cards.first() {
+                // A hidden hand card was opened on every peer before this
+                // answer replayed; the claim is checked like any other.
+                game.record_hidden_identity_obligations(
+                    &[card_id],
+                    filter,
+                    &crate::target::FilterContext::new(controller),
+                    "discard a card matching the filter",
+                );
                 let matching_cards = find_matching_cards_in_hand(game, controller, filter);
                 if matching_cards.contains(&card_id) {
                     let result = execute_discard(
@@ -1153,10 +1164,19 @@ fn handle_reveal_card_or_enter_tapped(
     let Some(&card_id) = cards.first() else {
         return InteractiveReplacementResult::enters_tapped();
     };
+    // A hidden hand card was opened on every peer before this answer
+    // replayed; the claim is checked like any other.
+    game.record_hidden_identity_obligations(
+        &[card_id],
+        filter,
+        &crate::target::FilterContext::new(controller),
+        "reveal a card matching the filter",
+    );
     let matching_cards = find_matching_cards_in_hand(game, controller, filter);
     if !matching_cards.contains(&card_id) {
         return InteractiveReplacementResult::enters_tapped();
     }
+    game.mark_hidden_cards_publicly_revealed(&[card_id]);
     let snapshot = game
         .object(card_id)
         .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, game));

@@ -77,23 +77,90 @@ impl EffectExecutor for MayCastMatchingSpellWithoutPayingManaCostEffect {
                 &filter_ctx,
             ));
         }
-        if options.is_empty() {
-            return Ok(EffectOutcome::count(0));
-        }
-
-        let should_cast = {
-            let choice_ctx = crate::decisions::context::BooleanContext::new(
+        // In peer matches only the owner can tell which of its hidden hand
+        // cards are castable here: peers hold placeholders with no cast
+        // options. Ask every peer the same card choice (placeholders
+        // included), open the chosen card publicly before the answer is
+        // replayed, then read its options on the opened card (see
+        // `game_state::hidden_hand_choices`).
+        if self.zone == Zone::Hand
+            && object_ids_in_zone(game, zone_owner_id, self.zone)
+                .into_iter()
+                .any(|id| game.is_hidden_tracked_hand_card(id))
+        {
+            let hand_ids = object_ids_in_zone(game, zone_owner_id, self.zone);
+            let mut candidates: Vec<ObjectId> = Vec::new();
+            for option in &options {
+                if !candidates.contains(&option.object_id) {
+                    candidates.push(option.object_id);
+                }
+            }
+            for id in game.hidden_hand_placeholder_candidates(&self.filter, &filter_ctx, hand_ids) {
+                if !candidates.contains(&id) {
+                    candidates.push(id);
+                }
+            }
+            let spec = crate::decisions::specs::ChooseObjectsSpec::new(
+                ctx.source,
+                "Choose a spell to cast without paying its mana cost",
+                candidates.clone(),
+                0,
+                Some(1),
+            )
+            .require_explicit_choice()
+            .with_selection_reveal_policy(crate::decisions::context::SelectionRevealPolicy::Public);
+            let chosen: Vec<ObjectId> = crate::decisions::make_decision(
+                game,
+                ctx.decision_maker,
                 player_id,
                 Some(ctx.source),
-                "Cast a spell without paying its mana cost?".to_string(),
+                spec,
             );
-            ctx.decision_maker.decide_boolean(game, &choice_ctx)
-        };
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        if !should_cast {
-            return Ok(EffectOutcome::count(0));
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            let Some(card) = chosen.into_iter().find(|id| candidates.contains(id)) else {
+                return Ok(EffectOutcome::count(0));
+            };
+            game.record_hidden_identity_obligations(
+                &[card],
+                &self.filter,
+                &filter_ctx,
+                "cast a spell matching the filter",
+            );
+            game.mark_hidden_cards_publicly_revealed(&[card]);
+            options = effect_driven_cast_options_for_card_in_context(
+                game,
+                player_id,
+                ctx.source,
+                card,
+                self.zone,
+                &self.filter,
+                payment,
+                &filter_ctx,
+            );
+            if options.is_empty() {
+                return Ok(EffectOutcome::count(0));
+            }
+        } else {
+            if options.is_empty() {
+                return Ok(EffectOutcome::count(0));
+            }
+
+            let should_cast = {
+                let choice_ctx = crate::decisions::context::BooleanContext::new(
+                    player_id,
+                    Some(ctx.source),
+                    "Cast a spell without paying its mana cost?".to_string(),
+                );
+                ctx.decision_maker.decide_boolean(game, &choice_ctx)
+            };
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            if !should_cast {
+                return Ok(EffectOutcome::count(0));
+            }
         }
 
         let option = if options.len() == 1 {

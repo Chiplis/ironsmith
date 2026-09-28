@@ -199,6 +199,8 @@ pub struct ConspiracySetupCard {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod hidden_hand_regression_tests;
 
 /// Pending replacement effect choice when multiple effects apply to the same event.
 ///
@@ -649,6 +651,9 @@ struct AuxiliaryTrackingState {
     /// Players whose deck may hold a card that triggers as it is drawn
     /// (Miracle). Drawing a hidden card opens an owner reveal window for them.
     hidden_draw_reveal_players: BTreeSet<PlayerId>,
+    /// Players whose deck may hold a card with splice. Casting a spell with
+    /// hidden hand cards always offers them the splice announcement.
+    hidden_splice_players: BTreeSet<PlayerId>,
     /// Hidden cards just drawn whose owner has not yet answered the draw
     /// reveal window, in draw order.
     pending_hidden_draw_reveals: Vec<(PlayerId, ObjectId)>,

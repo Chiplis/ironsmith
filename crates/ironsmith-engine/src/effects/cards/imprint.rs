@@ -3,12 +3,15 @@
 //! Imprint exiles a card from a zone (typically hand) and associates it with
 //! the source permanent. Used by Chrome Mox, Isochron Scepter, etc.
 
+use crate::decisions::context::SelectionRevealPolicy;
+use crate::decisions::specs::ChooseObjectsSpec;
 use crate::decisions::{MayChooseCardSpec, make_decision};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
+use crate::ids::ObjectId;
 use crate::target::ObjectFilter;
 use crate::zone::Zone;
 
@@ -74,31 +77,83 @@ impl EffectExecutor for ImprintFromHandEffect {
             .map(|p| p.hand.clone())
             .unwrap_or_default();
 
+        // In peer matches a hidden hand card's filter result is known only
+        // to its owner: keep this peer's placeholders choosable and always ask,
+        // so every peer replays the owner's answer (see
+        // `game_state::hidden_hand_choices`).
+        let hidden_hand_choice =
+            game.hand_choice_depends_on_hidden_identity(&self.filter, hand.iter().copied());
+        let placeholders = if hidden_hand_choice {
+            game.hidden_hand_placeholder_candidates(&self.filter, &filter_ctx, hand.iter().copied())
+        } else {
+            Vec::new()
+        };
         let valid_cards: Vec<_> = hand
             .iter()
             .filter_map(|&id| game.object(id))
-            .filter(|obj| self.filter.matches(obj, &filter_ctx, game))
+            .filter(|obj| {
+                placeholders.contains(&obj.id) || self.filter.matches(obj, &filter_ctx, game)
+            })
             .map(|obj| obj.id)
             .collect();
 
-        if valid_cards.is_empty() {
+        if valid_cards.is_empty() && !hidden_hand_choice {
             // No valid cards to imprint
             return Ok(EffectOutcome::count(0));
         }
 
         // Ask the player if they want to imprint (this is optional - "you may")
-        let spec = MayChooseCardSpec::new(
-            source_id,
-            "choose a card to exile and imprint",
-            valid_cards.clone(),
-        );
-        let chosen_card = make_decision(
-            game,
-            &mut ctx.decision_maker,
-            controller,
-            Some(source_id),
-            spec,
-        );
+        let chosen_card = if hidden_hand_choice
+            || valid_cards
+                .iter()
+                .any(|id| game.hidden_identity_is_private(*id))
+        {
+            // The exiled card becomes public: the owner opens it on every
+            // peer before the answer is replayed.
+            let spec = ChooseObjectsSpec::new(
+                source_id,
+                "choose a card to exile and imprint",
+                valid_cards.clone(),
+                0,
+                Some(1),
+            )
+            .require_explicit_choice()
+            .with_selection_reveal_policy(SelectionRevealPolicy::Public);
+            let chosen: Vec<ObjectId> = make_decision(
+                game,
+                &mut ctx.decision_maker,
+                controller,
+                Some(source_id),
+                spec,
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            let chosen = chosen.into_iter().find(|id| valid_cards.contains(id));
+            game.record_hidden_identity_obligations(
+                chosen.as_slice(),
+                &self.filter,
+                &filter_ctx,
+                "imprint a card matching the filter",
+            );
+            if let Some(id) = chosen {
+                game.mark_hidden_cards_publicly_revealed(&[id]);
+            }
+            chosen
+        } else {
+            let spec = MayChooseCardSpec::new(
+                source_id,
+                "choose a card to exile and imprint",
+                valid_cards.clone(),
+            );
+            make_decision(
+                game,
+                &mut ctx.decision_maker,
+                controller,
+                Some(source_id),
+                spec,
+            )
+        };
 
         // Verify the card is still valid
         let chosen_card = chosen_card.filter(|card_id| valid_cards.contains(card_id));

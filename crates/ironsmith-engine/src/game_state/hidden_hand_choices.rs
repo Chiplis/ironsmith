@@ -481,6 +481,31 @@ impl GameState {
             .collect()
     }
 
+    /// Placeholders among `ids` that a cost or legality check must treat as
+    /// matching hand cards: the filter states a quality of hidden hand cards
+    /// this peer cannot evaluate, and the owner (who never sees placeholders)
+    /// may be paying with one of them. The chosen card is opened before the
+    /// payment replays, so it is validated then. Empty unless the choice
+    /// depends on hidden identity.
+    pub(crate) fn hidden_hand_payable_placeholders(
+        &self,
+        filter: &ObjectFilter,
+        filter_ctx: &FilterContext,
+        ids: impl IntoIterator<Item = ObjectId>,
+    ) -> Vec<ObjectId> {
+        let hand: Vec<ObjectId> = ids
+            .into_iter()
+            .filter(|id| {
+                self.object(*id)
+                    .is_some_and(|object| object.zone == Zone::Hand)
+            })
+            .collect();
+        if !self.hand_choice_depends_on_hidden_identity(filter, hand.iter().copied()) {
+            return Vec::new();
+        }
+        self.hidden_hand_placeholder_candidates(filter, filter_ctx, hand)
+    }
+
     /// Whether `id`'s identity is hidden from some player right now, judged
     /// only from facts every peer shares: the card is tracked by the
     /// mental-poker layer, was not opened by an owner-answered public reveal,
@@ -496,7 +521,7 @@ impl GameState {
     }
 
     /// Whether this match tracks hidden cards at all (peer matches). Symmetric.
-    fn tracks_hidden_cards(&self) -> bool {
+    pub(crate) fn tracks_hidden_cards(&self) -> bool {
         !self.auxiliary_tracking.hidden_cards.is_empty()
     }
 
@@ -1731,6 +1756,31 @@ impl GameState {
         self.auxiliary_tracking_mut().hidden_draw_reveal_players = players.into_iter().collect();
     }
 
+    /// Players whose deck may hold a card with splice (CR 702.47): with hidden
+    /// hand cards, the splice announcement is offered to them whenever a
+    /// spell a splice could apply to is cast, since only the owner knows
+    /// whether a splice card is in hand.
+    ///
+    /// Set once at match setup from public information (open decklists), so it
+    /// is identical on every peer.
+    pub fn set_hidden_splice_players(&mut self, players: impl IntoIterator<Item = PlayerId>) {
+        self.auxiliary_tracking_mut().hidden_splice_players = players.into_iter().collect();
+    }
+
+    pub fn hidden_splice_players(&self) -> Vec<PlayerId> {
+        self.auxiliary_tracking
+            .hidden_splice_players
+            .iter()
+            .copied()
+            .collect()
+    }
+
+    pub(crate) fn is_hidden_splice_player(&self, player: PlayerId) -> bool {
+        self.auxiliary_tracking
+            .hidden_splice_players
+            .contains(&player)
+    }
+
     pub fn hidden_draw_reveal_players(&self) -> Vec<PlayerId> {
         self.auxiliary_tracking
             .hidden_draw_reveal_players
@@ -2025,6 +2075,67 @@ impl GameState {
     /// Returns the cards revealed by this call, or `None` while the decision
     /// is awaiting the owner's answer (the caller must stop and let the answer
     /// be replayed).
+    /// Before an instruction acts on "all <quality> cards in a hand", let each
+    /// owner of private hand cards reveal which of them match: the owner
+    /// knows, peers hold placeholders that never match locally. Revealed
+    /// cards are opened on every peer before the answer replays, so the
+    /// instruction then sees the same set everywhere; each withheld card is
+    /// claimed not to match, checked once it is opened.
+    ///
+    /// Returns `false` while an owner's answer is awaited.
+    pub(crate) fn settle_hidden_hand_all_matching(
+        &mut self,
+        decision_maker: &mut (impl crate::decision::DecisionMaker + ?Sized),
+        source: ObjectId,
+        filter: &ObjectFilter,
+        filter_ctx: &FilterContext,
+    ) -> bool {
+        if !self.hidden_hand_choice_for_filter(filter, filter_ctx) {
+            return true;
+        }
+        let generic = identity_free_filter(filter);
+        let description = format!("Reveal each {} in your hand", filter.description());
+        for player_index in 0..self.players.len() {
+            let owner = PlayerId::from_index(player_index as u8);
+            let private: Vec<ObjectId> = self
+                .player(owner)
+                .map(|player| player.hand.to_vec())
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|id| self.hidden_identity_is_private(*id))
+                .filter(|id| {
+                    self.object(*id)
+                        .is_some_and(|object| generic.matches(object, filter_ctx, self))
+                })
+                .collect();
+            if private.is_empty() {
+                continue;
+            }
+            let Some(revealed) = self.reveal_private_hidden_cards_publicly(
+                decision_maker,
+                owner,
+                source,
+                &private,
+                &description,
+                true,
+            ) else {
+                return false;
+            };
+            let withheld: Vec<ObjectId> = private
+                .into_iter()
+                .filter(|id| !revealed.contains(id))
+                .collect();
+            self.record_hidden_non_matching_obligations(
+                &withheld,
+                filter,
+                filter_ctx,
+                &format!("claimed no further match for \"{description}\""),
+                true,
+            );
+        }
+        true
+    }
+
     pub(crate) fn reveal_private_hidden_cards_publicly(
         &mut self,
         decision_maker: &mut (impl crate::decision::DecisionMaker + ?Sized),

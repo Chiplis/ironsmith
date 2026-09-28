@@ -1778,17 +1778,48 @@ impl EffectExecutor for AmplifyEffect {
                 })
             })
             .collect::<Vec<_>>();
+        // Only the owner knows which hidden hand cards share a creature type:
+        // peers offer their placeholders too, every peer asks, and the chosen
+        // cards are opened before the answer replays (see
+        // `game_state::hidden_hand_choices`). Opened cards that don't qualify
+        // drop out of `candidates` on every peer alike.
+        let creature_filter = crate::filter::ObjectFilter::default()
+            .in_zone(Zone::Hand)
+            .owned_by(crate::target::PlayerFilter::Specific(ctx.controller))
+            .with_type(crate::types::CardType::Creature);
+        let hand: Vec<ObjectId> = game
+            .player(ctx.controller)
+            .map(|player| player.hand.iter().copied().filter(|&id| id != ctx.source).collect())
+            .unwrap_or_default();
+        let hidden_hand_choice =
+            game.hand_choice_depends_on_hidden_identity(&creature_filter, hand.iter().copied());
+        let mut offered = candidates.clone();
+        if hidden_hand_choice {
+            let filter_ctx = ctx.filter_context(game);
+            for id in
+                game.hidden_hand_placeholder_candidates(&creature_filter, &filter_ctx, hand)
+            {
+                if !offered.contains(&id) {
+                    offered.push(id);
+                }
+            }
+        }
 
-        let chosen = if candidates.is_empty() {
+        let chosen = if offered.is_empty() {
             Vec::new()
         } else {
-            let spec = ChooseObjectsSpec::new(
+            let mut spec = ChooseObjectsSpec::new(
                 ctx.source,
                 "Choose any number of cards from your hand that share a creature type with this creature to reveal for amplify",
-                candidates.clone(),
+                offered.clone(),
                 0,
-                Some(candidates.len()),
+                Some(offered.len()),
             );
+            if hidden_hand_choice {
+                spec = spec.require_explicit_choice().with_selection_reveal_policy(
+                    crate::decisions::context::SelectionRevealPolicy::Public,
+                );
+            }
             let selection: Vec<ObjectId> = make_decision(
                 game,
                 ctx.decision_maker,
@@ -1798,6 +1829,21 @@ impl EffectExecutor for AmplifyEffect {
             );
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
+            }
+            if hidden_hand_choice {
+                let opened: Vec<ObjectId> = selection
+                    .iter()
+                    .copied()
+                    .filter(|id| offered.contains(id))
+                    .collect();
+                let filter_ctx = ctx.filter_context(game);
+                game.record_hidden_identity_obligations(
+                    &opened,
+                    &creature_filter,
+                    &filter_ctx,
+                    "reveal creature cards for amplify",
+                );
+                game.mark_hidden_cards_publicly_revealed(&opened);
             }
             selection
                 .into_iter()

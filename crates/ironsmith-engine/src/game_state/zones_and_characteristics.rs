@@ -1710,14 +1710,33 @@ impl GameState {
                     Vec::new(),
                 );
                 let filter_ctx = self.filter_context_for(prospective_controller, Some(old_id));
-                let candidates = self
+                let hand: Vec<ObjectId> = self
                     .player(prospective_controller)
-                    .map(|player| player.hand.clone())
-                    .unwrap_or_default()
+                    .map(|player| player.hand.to_vec())
+                    .unwrap_or_default();
+                // Only the owner knows which hidden hand cards match: peers
+                // offer their placeholders too, every peer asks, and the
+                // chosen cards are opened before the answer replays (see
+                // `game_state::hidden_hand_choices`).
+                let hidden_hand_choice = self
+                    .hand_choice_depends_on_hidden_identity(&spec.filter, hand.iter().copied());
+                let placeholders = if hidden_hand_choice {
+                    self.hidden_hand_placeholder_candidates(
+                        &spec.filter,
+                        &filter_ctx,
+                        hand.iter().copied(),
+                    )
+                } else {
+                    Vec::new()
+                };
+                let candidates = hand
                     .into_iter()
                     .filter_map(|candidate_id| {
                         self.object(candidate_id)
-                            .filter(|object| spec.filter.matches(object, &filter_ctx, self))
+                            .filter(|object| {
+                                placeholders.contains(&candidate_id)
+                                    || spec.filter.matches(object, &filter_ctx, self)
+                            })
                             .map(|object| {
                                 crate::decisions::context::SelectableObject::new(
                                     candidate_id,
@@ -1726,8 +1745,10 @@ impl GameState {
                             })
                     })
                     .collect::<Vec<_>>();
-                if !candidates.is_empty() {
-                    let min = if spec.optional {
+                if !candidates.is_empty() || hidden_hand_choice {
+                    // A hidden choice may be answered short: the owner's real
+                    // match count is unknown here.
+                    let min = if spec.optional || hidden_hand_choice {
                         0
                     } else {
                         spec.count.min.min(candidates.len())
@@ -1745,11 +1766,21 @@ impl GameState {
                         min,
                         Some(max),
                     );
+                    let context = if hidden_hand_choice {
+                        context.require_explicit_choice().with_reveal_policy(
+                            crate::decisions::context::SelectionRevealPolicy::Public,
+                        )
+                    } else {
+                        context
+                    };
                     let candidate_ids = candidates
                         .iter()
                         .map(|candidate| candidate.id)
                         .collect::<Vec<_>>();
-                    let selected = if min == candidates.len() && max == candidates.len() {
+                    let selected = if !hidden_hand_choice
+                        && min == candidates.len()
+                        && max == candidates.len()
+                    {
                         candidate_ids.clone()
                     } else {
                         decision_maker.decide_objects(self, &context)
@@ -1762,6 +1793,23 @@ impl GameState {
                         .filter(|selected| candidate_ids.contains(selected))
                         .take(max)
                         .collect::<Vec<_>>();
+                    if hidden_hand_choice {
+                        self.record_hidden_identity_obligations(
+                            &revealed,
+                            &spec.filter,
+                            &filter_ctx,
+                            "reveal cards matching the filter",
+                        );
+                        self.record_hidden_shortfall_obligations(
+                            &candidate_ids,
+                            &revealed,
+                            if spec.optional { 0 } else { spec.count.min },
+                            &spec.filter,
+                            &filter_ctx,
+                            "reveal cards matching the filter",
+                        );
+                        self.mark_hidden_cards_publicly_revealed(&revealed);
+                    }
                     if revealed.len() >= min {
                         let snapshots = revealed
                             .iter()

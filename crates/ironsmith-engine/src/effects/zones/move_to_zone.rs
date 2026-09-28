@@ -255,10 +255,19 @@ fn matching_cost_candidate_count(
         return 0;
     };
 
+    // Peers cannot evaluate hidden hand cards; count their placeholders as
+    // payable (see `game_state::hidden_hand_choices`).
+    let placeholders = if zone == crate::zone::Zone::Hand {
+        game.hidden_hand_payable_placeholders(filter, &filter_ctx, game.zone_ids(zone))
+    } else {
+        Vec::new()
+    };
     game.zone_ids(zone)
         .filter(|id| {
-            game.object(*id)
-                .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
+            (placeholders.contains(id) && *id != source)
+                || game
+                    .object(*id)
+                    .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
         })
         .count()
 }

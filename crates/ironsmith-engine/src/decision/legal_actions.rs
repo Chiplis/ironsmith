@@ -1830,12 +1830,26 @@ fn activation_cost_component_precheck_with_view(
         let Some(player) = game.player(controller) else {
             return false;
         };
+        let placeholders = match card_type {
+            // Peers cannot see the type of hidden hand cards; count their
+            // placeholders as payable (see `game_state::hidden_hand_choices`).
+            Some(required_type) => game.hidden_hand_payable_placeholders(
+                &crate::filter::ObjectFilter::default()
+                    .in_zone(crate::zone::Zone::Hand)
+                    .with_type(required_type),
+                &crate::filter::FilterContext::new(controller).with_source(source),
+                player.hand.iter().copied(),
+            ),
+            None => Vec::new(),
+        };
         let available = player
             .hand
             .iter()
             .filter_map(|object_id| game.object(*object_id))
             .filter(|object| {
-                card_type.is_none_or(|required_type| object.card_types.contains(&required_type))
+                placeholders.contains(&object.id)
+                    || card_type
+                        .is_none_or(|required_type| object.card_types.contains(&required_type))
             })
             .count();
         return available >= count as usize;

@@ -169,14 +169,26 @@ fn matching_cost_candidates(
 ) -> Vec<crate::ids::ObjectId> {
     let filter_ctx = FilterContext::new(controller).with_source(source);
     let mut candidates = Vec::new();
+    let mut hand_ids = Vec::new();
     for_each_candidate_id_for_filter(game, filter, |id| {
-        if game
-            .object(id)
-            .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
-        {
+        let Some(obj) = game.object(id) else {
+            return;
+        };
+        if obj.zone == crate::zone::Zone::Hand {
+            hand_ids.push(id);
+        }
+        if filter.matches(obj, &filter_ctx, game) {
             candidates.push(id);
         }
     });
+    // Peers cannot evaluate hidden hand cards ("exile a blue card from your
+    // hand"): count their placeholders as payable (see
+    // `game_state::hidden_hand_choices`).
+    for id in game.hidden_hand_payable_placeholders(filter, &filter_ctx, hand_ids) {
+        if id != source && !candidates.contains(&id) {
+            candidates.push(id);
+        }
+    }
     candidates
 }
 

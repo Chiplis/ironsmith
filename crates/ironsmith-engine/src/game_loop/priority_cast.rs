@@ -1295,9 +1295,29 @@ pub(super) fn check_splice_or_continue(
         .player(pending.caster)
         .map(|player| player.hand.clone())
         .unwrap_or_default();
+    // Only the owner knows which of its hidden hand cards have splice: for a
+    // player whose open decklist holds a splice card, offer this peer's
+    // private hand cards too (as `hidden_hand_choices` does) whenever a
+    // splice could apply to this spell, so every peer asks. Chosen cards are
+    // opened before the answer replays and validated then.
+    let hidden_splice_choice = game.is_hidden_splice_player(pending.caster)
+        && [
+            crate::static_abilities::SpliceQuality::Arcane,
+            crate::static_abilities::SpliceQuality::InstantOrSorcery,
+        ]
+        .into_iter()
+        .any(|quality| splice_quality_matches_spell(game, pending.spell_id, quality))
+        && hand
+            .iter()
+            .any(|card_id| *card_id != pending.spell_id && game.hidden_identity_is_private(*card_id));
     let candidates = hand
         .into_iter()
-        .filter(|card_id| applicable_splice_spec(game, *card_id, pending.spell_id).is_some())
+        .filter(|card_id| {
+            applicable_splice_spec(game, *card_id, pending.spell_id).is_some()
+                || (hidden_splice_choice
+                    && *card_id != pending.spell_id
+                    && game.is_hidden_card_placeholder(*card_id))
+        })
         .map(|card_id| {
             let name = game
                 .object(card_id)
@@ -1309,7 +1329,7 @@ pub(super) fn check_splice_or_continue(
         })
         .collect::<Vec<_>>();
 
-    if candidates.is_empty() {
+    if candidates.is_empty() && !hidden_splice_choice {
         return check_optional_costs_or_continue(
             game,
             trigger_queue,
@@ -5010,7 +5030,7 @@ pub(super) fn card_cost_choice_description_and_candidates(
     (description, candidates)
 }
 
-fn card_cost_choice_reveal_policy(
+pub(crate) fn card_cost_choice_reveal_policy(
     card_choice_cost: &ActivationCardCostChoice,
 ) -> crate::decisions::context::SelectionRevealPolicy {
     use crate::decisions::context::SelectionRevealPolicy;

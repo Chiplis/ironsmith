@@ -1953,7 +1953,12 @@ fn can_activate_mana_ability_with_cost_checks(
     }
     let view = crate::derived_view::DerivedGameView::new(game);
     if !crate::decision::exhaust_activation_allows(
-        game, player, permanent_id, ability_index, mana_ability, &view,
+        game,
+        player,
+        permanent_id,
+        ability_index,
+        mana_ability,
+        &view,
     ) {
         return Err(ActionError::CantPayCost);
     }
@@ -2125,7 +2130,12 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
     }
 
     if !crate::decision::exhaust_activation_allows(
-        game, player, permanent_id, ability_index, mana_ability, view,
+        game,
+        player,
+        permanent_id,
+        ability_index,
+        mana_ability,
+        view,
     ) {
         return Err(ActionError::CantPayCost);
     }
@@ -2525,7 +2535,12 @@ pub(crate) fn perform_mana_ability_with_payment_mode(
 
         let view = crate::derived_view::DerivedGameView::new(game);
         if !crate::decision::exhaust_activation_allows(
-            game, player, permanent_id, ability_index, mana_ability, &view,
+            game,
+            player,
+            permanent_id,
+            ability_index,
+            mana_ability,
+            &view,
         ) {
             return Err(ActionError::CantPayCost);
         }
@@ -3195,6 +3210,7 @@ fn pay_activation_cost_step_without_execution_context(
                 cost_ctx,
                 format!("Choose {} to sacrifice", describe_permanent_filter(filter)),
                 candidates,
+                crate::decisions::context::SelectionRevealPolicy::None,
             ) else {
                 return Err(CostPaymentError::NoValidSacrificeTarget);
             };
@@ -3229,6 +3245,7 @@ fn pay_activation_card_choice_without_execution_context(
                 cost_ctx,
                 format!("Choose a card to discard: {description}"),
                 candidates,
+                crate::game_loop::card_cost_choice_reveal_policy(choice),
             ) else {
                 return Err(CostPaymentError::InsufficientCardsInHand);
             };
@@ -3246,6 +3263,7 @@ fn pay_activation_card_choice_without_execution_context(
                 cost_ctx,
                 format!("Choose a card to exile: {description}"),
                 candidates,
+                crate::game_loop::card_cost_choice_reveal_policy(choice),
             ) else {
                 return Err(CostPaymentError::InsufficientCardsToExile);
             };
@@ -3263,6 +3281,7 @@ fn pay_activation_card_choice_without_execution_context(
                 cost_ctx,
                 format!("Choose a card to exile from your graveyard: {description}"),
                 candidates,
+                crate::game_loop::card_cost_choice_reveal_policy(choice),
             ) else {
                 return Err(CostPaymentError::InsufficientCardsInGraveyard);
             };
@@ -3289,6 +3308,7 @@ fn pay_activation_card_choice_without_execution_context(
                 cost_ctx,
                 format!("Choose an object to exile: {description}"),
                 candidates,
+                crate::game_loop::card_cost_choice_reveal_policy(choice),
             ) else {
                 return Err(CostPaymentError::InsufficientCardsToExile);
             };
@@ -3318,6 +3338,7 @@ fn pay_activation_card_choice_without_execution_context(
                 cost_ctx,
                 format!("Choose a card to reveal: {description}"),
                 candidates,
+                crate::game_loop::card_cost_choice_reveal_policy(choice),
             ) else {
                 return Err(CostPaymentError::InsufficientCardsToReveal);
             };
@@ -3335,6 +3356,7 @@ fn pay_activation_card_choice_without_execution_context(
                 cost_ctx,
                 format!("Choose a permanent to return: {description}"),
                 candidates,
+                crate::game_loop::card_cost_choice_reveal_policy(choice),
             ) else {
                 return Err(CostPaymentError::NoValidReturnTarget);
             };
@@ -3367,6 +3389,7 @@ fn pay_activation_card_choice_without_execution_context(
                 cost_ctx,
                 format!("Choose an object to move to {destination_zone}: {description}"),
                 candidates,
+                crate::game_loop::card_cost_choice_reveal_policy(choice),
             ) else {
                 return Err(CostPaymentError::Other(
                     "no legal object for move-to-zone cost".to_string(),
@@ -3383,16 +3406,62 @@ fn pay_activation_card_choice_without_execution_context(
     }
 }
 
+/// A cost choice among cards that may include hidden hand cards: always
+/// asked (peers offer placeholders, so their candidate lists differ from the
+/// owner's), and a card the payment makes public is opened on every peer
+/// before the answer replays (see `game_state::hidden_hand_choices`).
+fn hidden_hand_cost_choice_spec(
+    game: &GameState,
+    spec: ChooseObjectsSpec,
+    candidates: &[ObjectId],
+    reveal_policy: crate::decisions::context::SelectionRevealPolicy,
+) -> ChooseObjectsSpec {
+    if !candidates
+        .iter()
+        .any(|id| game.hidden_identity_is_private(*id))
+    {
+        return spec;
+    }
+    let spec = spec.require_explicit_choice();
+    if reveal_policy == crate::decisions::context::SelectionRevealPolicy::Public {
+        spec.with_selection_reveal_policy(reveal_policy)
+    } else {
+        spec
+    }
+}
+
+/// Hidden-hand placeholders among `ids` that stay payable for `filter` (see
+/// `GameState::hidden_hand_payable_placeholders`).
+fn hand_cost_placeholders(
+    game: &GameState,
+    payer: PlayerId,
+    source: ObjectId,
+    filter: &ObjectFilter,
+    ids: &[ObjectId],
+) -> Vec<ObjectId> {
+    let ctx = game.filter_context_for(payer, Some(source));
+    game.hidden_hand_payable_placeholders(filter, &ctx, ids.iter().copied())
+        .into_iter()
+        .filter(|id| *id != source)
+        .collect()
+}
+
 fn choose_single_cost_object(
     game: &mut GameState,
     cost_ctx: &mut CostContext<'_>,
     prompt: String,
     candidates: Vec<ObjectId>,
+    reveal_policy: crate::decisions::context::SelectionRevealPolicy,
 ) -> Option<ObjectId> {
     if candidates.is_empty() {
         return None;
     }
-    let spec = ChooseObjectsSpec::new(cost_ctx.source, prompt, candidates.clone(), 1, Some(1));
+    let spec = hidden_hand_cost_choice_spec(
+        game,
+        ChooseObjectsSpec::new(cost_ctx.source, prompt, candidates.clone(), 1, Some(1)),
+        &candidates,
+        reveal_policy,
+    );
     let chosen: Vec<ObjectId> = make_decision(
         game,
         cost_ctx.decision_maker,
@@ -3950,16 +4019,21 @@ fn resolve_cost_choice(
                 return Err(CostPaymentError::InsufficientCardsToExile);
             }
 
-            let spec = ChooseObjectsSpec::new(
-                ctx.source,
-                format!(
-                    "Choose {} card{} to exile from your hand",
+            let spec = hidden_hand_cost_choice_spec(
+                game,
+                ChooseObjectsSpec::new(
+                    ctx.source,
+                    format!(
+                        "Choose {} card{} to exile from your hand",
+                        required,
+                        if required == 1 { "" } else { "s" }
+                    ),
+                    candidates.clone(),
                     required,
-                    if required == 1 { "" } else { "s" }
+                    Some(required),
                 ),
-                candidates.clone(),
-                required,
-                Some(required),
+                &candidates,
+                crate::decisions::context::SelectionRevealPolicy::Public,
             );
             let chosen: Vec<ObjectId> =
                 make_decision(game, ctx.decision_maker, ctx.payer, Some(ctx.source), spec);
@@ -4020,16 +4094,21 @@ fn resolve_cost_choice(
                 return Err(CostPaymentError::InsufficientCardsToExile);
             }
 
-            let spec = ChooseObjectsSpec::new(
-                ctx.source,
-                format!(
-                    "Choose {} object{} to exile",
+            let spec = hidden_hand_cost_choice_spec(
+                game,
+                ChooseObjectsSpec::new(
+                    ctx.source,
+                    format!(
+                        "Choose {} object{} to exile",
+                        required,
+                        if required == 1 { "" } else { "s" }
+                    ),
+                    candidates.clone(),
                     required,
-                    if required == 1 { "" } else { "s" }
+                    Some(required),
                 ),
-                candidates.clone(),
-                required,
-                Some(required),
+                &candidates,
+                crate::decisions::context::SelectionRevealPolicy::Public,
             );
             let chosen: Vec<ObjectId> =
                 make_decision(game, ctx.decision_maker, ctx.payer, Some(ctx.source), spec);
@@ -4058,16 +4137,21 @@ fn resolve_cost_choice(
                 return Err(CostPaymentError::InsufficientCardsToReveal);
             }
 
-            let spec = ChooseObjectsSpec::new(
-                ctx.source,
-                format!(
-                    "Choose {} card{} to reveal from your hand",
+            let spec = hidden_hand_cost_choice_spec(
+                game,
+                ChooseObjectsSpec::new(
+                    ctx.source,
+                    format!(
+                        "Choose {} card{} to reveal from your hand",
+                        required,
+                        if required == 1 { "" } else { "s" }
+                    ),
+                    candidates.clone(),
                     required,
-                    if required == 1 { "" } else { "s" }
+                    Some(required),
                 ),
-                candidates.clone(),
-                required,
-                Some(required),
+                &candidates,
+                crate::decisions::context::SelectionRevealPolicy::Public,
             );
             let chosen: Vec<ObjectId> =
                 make_decision(game, ctx.decision_maker, ctx.payer, Some(ctx.source), spec);
@@ -4164,12 +4248,29 @@ fn legal_exile_cards(
     source: ObjectId,
     color_filter: Option<crate::color::ColorSet>,
 ) -> Vec<ObjectId> {
+    let placeholders = color_filter.map_or_else(Vec::new, |colors| {
+        let hand = game
+            .player(payer)
+            .map_or_else(Vec::new, |p| p.hand.to_vec());
+        hand_cost_placeholders(
+            game,
+            payer,
+            source,
+            &ObjectFilter::default()
+                .in_zone(Zone::Hand)
+                .with_colors(colors),
+            &hand,
+        )
+    });
     game.player(payer)
         .map(|p| {
             p.hand
                 .iter()
                 .copied()
                 .filter(|&card_id| {
+                    if placeholders.contains(&card_id) {
+                        return true;
+                    }
                     if card_id == source {
                         return false;
                     }
@@ -4230,14 +4331,20 @@ fn legal_exile_objects(
         _ => Vec::new(),
     };
     let ctx = game.filter_context_for(payer, Some(source));
+    let placeholders = if zone == Zone::Hand {
+        hand_cost_placeholders(game, payer, source, filter, &ids)
+    } else {
+        Vec::new()
+    };
     ids.into_iter()
         .filter(|&id| {
-            game.object(id).is_some_and(|obj| {
-                if filter.other && obj.id == source {
-                    return false;
-                }
-                filter.matches(obj, &ctx, game)
-            })
+            placeholders.contains(&id)
+                || game.object(id).is_some_and(|obj| {
+                    if filter.other && obj.id == source {
+                        return false;
+                    }
+                    filter.matches(obj, &ctx, game)
+                })
         })
         .collect()
 }
@@ -4249,6 +4356,17 @@ fn legal_reveal_cards(
     card_type: Option<crate::types::CardType>,
     color_filter: Option<crate::color::ColorSet>,
 ) -> Vec<ObjectId> {
+    let mut reveal_filter = ObjectFilter::default().in_zone(Zone::Hand);
+    if let Some(card_type) = card_type {
+        reveal_filter = reveal_filter.with_type(card_type);
+    }
+    if let Some(colors) = color_filter {
+        reveal_filter = reveal_filter.with_colors(colors);
+    }
+    let hand = game
+        .player(payer)
+        .map_or_else(Vec::new, |p| p.hand.to_vec());
+    let placeholders = hand_cost_placeholders(game, payer, source, &reveal_filter, &hand);
     game.player(payer)
         .map(|p| {
             p.hand
@@ -4257,6 +4375,9 @@ fn legal_reveal_cards(
                 .filter(|&card_id| {
                     if card_id == source {
                         return false;
+                    }
+                    if placeholders.contains(&card_id) {
+                        return true;
                     }
                     let Some(obj) = game.object(card_id) else {
                         return false;
@@ -4334,15 +4455,21 @@ fn legal_cost_choice_objects(
         _ => Vec::new(),
     };
 
+    let placeholders = if zone == Zone::Hand {
+        hand_cost_placeholders(game, payer, source, filter, &ids)
+    } else {
+        Vec::new()
+    };
     let mut candidates = ids
         .into_iter()
         .filter(|&id| {
-            game.object(id).is_some_and(|obj| {
-                if filter.other && obj.id == source {
-                    return false;
-                }
-                filter.matches(obj, &ctx, game)
-            })
+            placeholders.contains(&id)
+                || game.object(id).is_some_and(|obj| {
+                    if filter.other && obj.id == source {
+                        return false;
+                    }
+                    filter.matches(obj, &ctx, game)
+                })
         })
         .collect::<Vec<_>>();
     if top_only {

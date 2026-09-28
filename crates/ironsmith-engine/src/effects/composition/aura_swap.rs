@@ -1,5 +1,6 @@
 //! Aura swap keyword action.
 
+use crate::decisions::context::SelectionRevealPolicy;
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::EffectOutcome;
@@ -34,18 +35,50 @@ impl EffectExecutor for AuraSwapEffect {
             return Ok(EffectOutcome::resolved());
         }
 
-        let candidates = aura_swap_candidates(game, ctx.controller, attached_to);
-        if candidates.is_empty() {
+        let mut candidates = aura_swap_candidates(game, ctx.controller, attached_to);
+        // In peer matches only the owner knows which of its hidden hand cards
+        // are Auras: keep this peer's placeholders choosable and always ask,
+        // so every peer replays the owner's answer (see
+        // `game_state::hidden_hand_choices`). The chosen card is opened on
+        // every peer before the replay and then checked like any other.
+        let aura_filter = crate::filter::ObjectFilter::default()
+            .in_zone(Zone::Hand)
+            .owned_by(crate::target::PlayerFilter::Specific(ctx.controller))
+            .with_subtype(Subtype::Aura);
+        let hand: Vec<ObjectId> = game
+            .player(ctx.controller)
+            .map(|player| player.hand.to_vec())
+            .unwrap_or_default();
+        let hidden_hand_choice =
+            game.hand_choice_depends_on_hidden_identity(&aura_filter, hand.iter().copied());
+        if hidden_hand_choice {
+            let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
+            for id in game.hidden_hand_placeholder_candidates(
+                &aura_filter,
+                &filter_ctx,
+                hand.iter().copied(),
+            ) {
+                if !candidates.contains(&id) {
+                    candidates.push(id);
+                }
+            }
+        }
+        if candidates.is_empty() && !hidden_hand_choice {
             return Ok(EffectOutcome::resolved());
         }
 
-        let spec = ChooseObjectsSpec::new(
+        let mut spec = ChooseObjectsSpec::new(
             ctx.source,
             "Choose an Aura card in your hand",
             candidates.clone(),
             0,
             Some(1),
         );
+        if hidden_hand_choice {
+            spec = spec
+                .require_explicit_choice()
+                .with_selection_reveal_policy(SelectionRevealPolicy::Public);
+        }
         let chosen = make_decision(
             game,
             ctx.decision_maker,
@@ -59,6 +92,20 @@ impl EffectExecutor for AuraSwapEffect {
         let hand_aura = chosen[0];
         if !candidates.contains(&hand_aura) {
             return Ok(EffectOutcome::resolved());
+        }
+        if hidden_hand_choice {
+            let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
+            game.record_hidden_identity_obligations(
+                &[hand_aura],
+                &aura_filter,
+                &filter_ctx,
+                "exchange with an Aura card in hand",
+            );
+            game.mark_hidden_cards_publicly_revealed(&[hand_aura]);
+            // The opened card must still be one that can be exchanged.
+            if !aura_swap_candidates(game, ctx.controller, attached_to).contains(&hand_aura) {
+                return Ok(EffectOutcome::resolved());
+            }
         }
 
         // CR 701.12a / 702.65b: stage the exchange and publish it only if

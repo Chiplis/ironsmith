@@ -689,9 +689,10 @@ pub(super) fn apply_trait_replacement(
             redirect_zone,
         } => {
             let controller = effect.controller;
-            let matching_cards = find_matching_cards_in_hand(game, controller, filter);
+            let (matching_cards, hidden_hand_choice) =
+                hand_replacement_choice_candidates(game, controller, filter);
 
-            if matching_cards.is_empty() {
+            if matching_cards.is_empty() && !hidden_hand_choice {
                 let modified = apply_trait_change_destination(&event, *redirect_zone);
                 match modified {
                     Some(e) => TraitApplyResult::Modified(e),
@@ -715,16 +716,20 @@ pub(super) fn apply_trait_replacement(
                 let discard_phrase = describe_discard_filter_card_phrase(filter);
                 let redirect_phrase = describe_redirect_zone_phrase(*redirect_zone);
                 let decision_ctx = crate::decisions::context::DecisionContext::SelectObjects(
-                    crate::decisions::context::SelectObjectsContext::new(
-                        controller,
-                        Some(effect.source),
-                        format!(
-                            "Discard {} to put {} onto the battlefield, or it goes to {}",
-                            discard_phrase, source_name, redirect_phrase
+                    hidden_hand_replacement_context(
+                        crate::decisions::context::SelectObjectsContext::new(
+                            controller,
+                            Some(effect.source),
+                            format!(
+                                "Discard {} to put {} onto the battlefield, or it goes to {}",
+                                discard_phrase, source_name, redirect_phrase
+                            ),
+                            candidates,
+                            // The owner may hold no matching card at all.
+                            usize::from(!hidden_hand_choice),
+                            Some(1),
                         ),
-                        candidates,
-                        1,
-                        Some(1),
+                        hidden_hand_choice,
                     ),
                 );
                 TraitApplyResult::NeedsInteraction {
@@ -834,8 +839,9 @@ pub(super) fn apply_trait_replacement(
 
         ReplacementAction::InteractiveRevealCardOrEnterTapped { filter } => {
             let controller = effect.controller;
-            let matching_cards = find_matching_cards_in_hand(game, controller, filter);
-            if matching_cards.is_empty() {
+            let (matching_cards, hidden_hand_choice) =
+                hand_replacement_choice_candidates(game, controller, filter);
+            if matching_cards.is_empty() && !hidden_hand_choice {
                 return match apply_trait_enter_tapped(&event) {
                     Some(modified) => TraitApplyResult::Modified(modified),
                     None => TraitApplyResult::Unchanged(event),
@@ -856,17 +862,20 @@ pub(super) fn apply_trait_replacement(
                 .map(|o| o.name.to_string())
                 .unwrap_or_else(|| "permanent".to_string());
             let decision_ctx = crate::decisions::context::DecisionContext::SelectObjects(
-                crate::decisions::context::SelectObjectsContext::new(
-                    controller,
-                    Some(effect.source),
-                    format!(
-                        "Reveal {} from your hand? (If you don't, {} enters tapped)",
-                        describe_discard_filter_card_phrase(filter),
-                        source_name
+                hidden_hand_replacement_context(
+                    crate::decisions::context::SelectObjectsContext::new(
+                        controller,
+                        Some(effect.source),
+                        format!(
+                            "Reveal {} from your hand? (If you don't, {} enters tapped)",
+                            describe_discard_filter_card_phrase(filter),
+                            source_name
+                        ),
+                        candidates,
+                        0,
+                        Some(1),
                     ),
-                    candidates,
-                    0,
-                    Some(1),
+                    hidden_hand_choice,
                 ),
             );
             // A hand filter whose fallback destination is the battlefield
@@ -1042,6 +1051,48 @@ fn describe_redirect_zone_phrase(zone: Zone) -> &'static str {
         Zone::Ante => "ante",
         Zone::OutsideGame => "outside the game",
     }
+}
+
+/// Hand cards offered by an interactive "discard/reveal a X card from your
+/// hand" replacement, and whether that choice depends on hidden hand
+/// identities (symmetric across peers). When it does, this peer's
+/// placeholders stay choosable and the prompt is always shown, so every peer
+/// replays the owner's answer; the chosen card is opened publicly before the
+/// replay (see `game_state::hidden_hand_choices`).
+pub(crate) fn hand_replacement_choice_candidates(
+    game: &GameState,
+    controller: crate::ids::PlayerId,
+    filter: &crate::target::ObjectFilter,
+) -> (Vec<crate::ids::ObjectId>, bool) {
+    let mut cards = find_matching_cards_in_hand(game, controller, filter);
+    let hand: Vec<crate::ids::ObjectId> = game
+        .player(controller)
+        .map(|p| p.hand.to_vec())
+        .unwrap_or_default();
+    let hidden = game.hand_choice_depends_on_hidden_identity(filter, hand.iter().copied());
+    if hidden {
+        let filter_ctx = crate::target::FilterContext::new(controller);
+        for id in game.hidden_hand_placeholder_candidates(filter, &filter_ctx, hand) {
+            if !cards.contains(&id) {
+                cards.push(id);
+            }
+        }
+    }
+    (cards, hidden)
+}
+
+/// Mark a hidden hand replacement prompt: always asked, and its chosen card
+/// opened on every peer before the answer replays.
+fn hidden_hand_replacement_context(
+    ctx: crate::decisions::context::SelectObjectsContext,
+    hidden: bool,
+) -> crate::decisions::context::SelectObjectsContext {
+    if !hidden {
+        return ctx;
+    }
+    ctx.allow_partial_completion()
+        .require_explicit_choice()
+        .with_reveal_policy(crate::decisions::context::SelectionRevealPolicy::Public)
 }
 
 pub(super) fn find_matching_cards_in_hand(

@@ -542,6 +542,10 @@ struct SyncRulesState {
     /// at match setup from public inputs.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     hidden_draw_reveal_players: Vec<u8>,
+    /// Seats that may hold a splice card in hand; fixed at match setup from
+    /// public inputs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    hidden_splice_players: Vec<u8>,
     /// Hidden-tracked cards every peer opened through an owner-answered
     /// public reveal.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -2948,6 +2952,12 @@ impl WasmGame {
                 .into_iter()
                 .map(|player| player.0)
                 .collect(),
+            hidden_splice_players: self
+                .game
+                .hidden_splice_players()
+                .into_iter()
+                .map(|player| player.0)
+                .collect(),
             publicly_revealed_hidden_cards: self
                 .game
                 .publicly_revealed_hidden_cards()
@@ -3228,6 +3238,13 @@ impl WasmGame {
         self.game.set_hidden_draw_reveal_players(
             rules
                 .hidden_draw_reveal_players
+                .iter()
+                .copied()
+                .map(PlayerId::from_index),
+        );
+        self.game.set_hidden_splice_players(
+            rules
+                .hidden_splice_players
                 .iter()
                 .copied()
                 .map(PlayerId::from_index),

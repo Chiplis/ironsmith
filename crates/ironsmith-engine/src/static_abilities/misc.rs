@@ -1679,6 +1679,32 @@ impl StaticAbilityKind for EntersTappedUnlessCondition {
         source: ObjectId,
         controller: PlayerId,
     ) -> Option<ReplacementEffect> {
+        // "You may reveal a <quality> card from your hand. If you don't / This
+        // enters tapped unless you revealed one or <other condition>": the
+        // player decides whether to reveal (CR 701.20), so the hand part is
+        // an interactive reveal rather than a silent look at the hand. It is
+        // also the only reading every peer can follow when hand cards are
+        // hidden (see `game_state::hidden_hand_choices`).
+        if let Some((filter, rest)) = split_hand_reveal_condition(&self.condition) {
+            let action = ReplacementAction::InteractiveRevealCardOrEnterTapped { filter };
+            return Some(match rest {
+                None => ReplacementEffect::with_matcher(
+                    source,
+                    controller,
+                    crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+                    action,
+                ),
+                Some(rest) => ReplacementEffect::with_matcher(
+                    source,
+                    controller,
+                    ThisWouldEnterTappedUnlessConditionMatcher {
+                        condition: rest,
+                        display: self.display.clone(),
+                    },
+                    action,
+                ),
+            });
+        }
         Some(ReplacementEffect::with_matcher(
             source,
             controller,
@@ -1693,6 +1719,24 @@ impl StaticAbilityKind for EntersTappedUnlessCondition {
     fn enters_tapped(&self) -> bool {
         // Conditionally enters tapped; replacement determines final state.
         false
+    }
+}
+
+/// Split "you have a <quality> card in hand [or <rest>]" into the reveal
+/// filter and the remaining condition.
+fn split_hand_reveal_condition(
+    condition: &Condition,
+) -> Option<(crate::filter::ObjectFilter, Option<Condition>)> {
+    match condition {
+        Condition::YouHaveCardInHandMatching(filter) => Some((filter.clone(), None)),
+        Condition::Or(left, right) => match (left.as_ref(), right.as_ref()) {
+            (Condition::YouHaveCardInHandMatching(filter), rest)
+            | (rest, Condition::YouHaveCardInHandMatching(filter)) => {
+                Some((filter.clone(), Some(rest.clone())))
+            }
+            _ => None,
+        },
+        _ => None,
     }
 }
 

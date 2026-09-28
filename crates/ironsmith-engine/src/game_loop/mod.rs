@@ -130,7 +130,7 @@ pub use self::types::*;
 pub(crate) use self::priority_cast::{
     apply_attack_mana_ability_window_response, apply_blocker_mana_ability_window_response,
     attack_mana_ability_window_context, blocker_mana_ability_window_context,
-    cast_spell_from_resolving_effect,
+    card_cost_choice_reveal_policy, cast_spell_from_resolving_effect,
 };
 pub(crate) use self::priority_mana::propose_spell_cast;
 pub use self::priority_mana::{

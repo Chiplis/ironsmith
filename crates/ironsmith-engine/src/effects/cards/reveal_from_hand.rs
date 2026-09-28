@@ -1,7 +1,7 @@
 //! Reveal cards from hand.
 
 use crate::decision::FallbackStrategy;
-use crate::decisions::context::ViewCardsContext;
+use crate::decisions::context::{SelectionRevealPolicy, ViewCardsContext};
 use crate::decisions::{ChooseObjectsSpec, make_decision_with_fallback};
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::helpers::{normalize_object_selection, resolve_value};
@@ -16,40 +16,80 @@ use crate::zone::Zone;
 pub type RevealSourceFromHandEffect = ironsmith_core::RevealSourceFromHandEffect;
 pub type RevealFromHandEffect = ironsmith_core::RevealFromHandEffect;
 
+/// The hand cards `effect` may reveal, as a filter (used for hidden-hand
+/// claims in peer matches).
+fn reveal_filter(
+    effect: &RevealFromHandEffect,
+    player: crate::ids::PlayerId,
+) -> crate::filter::ObjectFilter {
+    let mut filter = crate::filter::ObjectFilter::default()
+        .in_zone(Zone::Hand)
+        .owned_by(crate::target::PlayerFilter::Specific(player));
+    if let Some(card_type) = effect.card_type {
+        filter = filter.with_type(card_type);
+    }
+    if let Some(colors) = effect.color_filter {
+        filter = filter.with_colors(colors);
+    }
+    filter
+}
+
+/// The hand cards `player` may reveal, and whether that depends on hidden
+/// hand identities (symmetric across peers; see
+/// `game_state::hidden_hand_choices`). When it does, this peer's hidden-card
+/// placeholders stay revealable: only the owner knows whether they match.
+fn reveal_from_hand_candidates(
+    effect: &RevealFromHandEffect,
+    game: &GameState,
+    player: crate::ids::PlayerId,
+    source: crate::ids::ObjectId,
+) -> (Vec<ObjectId>, bool) {
+    let hand: Vec<ObjectId> = game
+        .player(player)
+        .map(|p| p.hand.iter().copied().filter(|id| *id != source).collect())
+        .unwrap_or_default();
+    let filter = reveal_filter(effect, player);
+    let hidden_hand_choice =
+        game.hand_choice_depends_on_hidden_identity(&filter, hand.iter().copied());
+    let placeholders = if hidden_hand_choice {
+        let filter_ctx = crate::filter::FilterContext::new(player).with_source(source);
+        game.hidden_hand_placeholder_candidates(&filter, &filter_ctx, hand.iter().copied())
+    } else {
+        Vec::new()
+    };
+    let candidates = hand
+        .into_iter()
+        .filter(|card_id| {
+            if placeholders.contains(card_id) {
+                return true;
+            }
+            let Some(obj) = game.object(*card_id) else {
+                return false;
+            };
+            if effect
+                .card_type
+                .is_some_and(|card_type| !obj.has_card_type(card_type))
+            {
+                return false;
+            }
+            if let Some(required_colors) = effect.color_filter {
+                return game
+                    .current_colors(*card_id)
+                    .is_some_and(|colors| !colors.intersection(required_colors).is_empty());
+            }
+            true
+        })
+        .collect();
+    (candidates, hidden_hand_choice)
+}
+
 fn valid_reveal_from_hand_cards(
     effect: &RevealFromHandEffect,
     game: &GameState,
     player: crate::ids::PlayerId,
     source: crate::ids::ObjectId,
 ) -> Vec<ObjectId> {
-    game.player(player)
-        .map(|p| {
-            p.hand
-                .iter()
-                .copied()
-                .filter(|card_id| {
-                    if *card_id == source {
-                        return false;
-                    }
-                    let Some(obj) = game.object(*card_id) else {
-                        return false;
-                    };
-                    if effect
-                        .card_type
-                        .is_some_and(|card_type| !obj.has_card_type(card_type))
-                    {
-                        return false;
-                    }
-                    if let Some(required_colors) = effect.color_filter {
-                        return game.current_colors(*card_id).is_some_and(|colors| {
-                            !colors.intersection(required_colors).is_empty()
-                        });
-                    }
-                    true
-                })
-                .collect()
-        })
-        .unwrap_or_default()
+    reveal_from_hand_candidates(effect, game, player, source).0
 }
 
 fn required_reveal_count(
@@ -70,9 +110,13 @@ impl EffectExecutor for RevealFromHandEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let valid_cards = valid_reveal_from_hand_cards(self, game, ctx.controller, ctx.source);
+        let (valid_cards, hidden_hand_choice) =
+            reveal_from_hand_candidates(self, game, ctx.controller, ctx.source);
         let required = required_reveal_count(self, game, ctx)?;
-        if valid_cards.len() < required {
+        // With hidden hand cards involved the local candidate count differs
+        // between the owner and peers holding placeholders, so a shortfall
+        // decides nothing here: every peer asks and replays the owner's answer.
+        if valid_cards.len() < required && !hidden_hand_choice {
             return Err(ExecutionError::Impossible(format!(
                 "cannot reveal {required} card(s): only {} matching card(s) are available",
                 valid_cards.len()
@@ -81,6 +125,11 @@ impl EffectExecutor for RevealFromHandEffect {
         if required == 0 {
             return Ok(EffectOutcome::count(0));
         }
+        // Revealed hidden cards are opened on every peer before the answer is
+        // replayed, so the choice is always asked (never auto-picked).
+        let reveal_publicly = valid_cards
+            .iter()
+            .any(|id| game.hidden_identity_is_private(*id));
 
         let explicit_cards: Vec<_> = ctx
             .targets
@@ -94,7 +143,7 @@ impl EffectExecutor for RevealFromHandEffect {
         let cards_to_reveal = if !explicit_cards.is_empty() {
             normalize_object_selection(explicit_cards, &valid_cards, required)
         } else {
-            let spec = ChooseObjectsSpec::new(
+            let mut spec = ChooseObjectsSpec::new(
                 ctx.source,
                 format!(
                     "Choose {} card{} to reveal",
@@ -105,6 +154,16 @@ impl EffectExecutor for RevealFromHandEffect {
                 required,
                 Some(required),
             );
+            if reveal_publicly {
+                spec = spec
+                    .require_explicit_choice()
+                    .with_selection_reveal_policy(SelectionRevealPolicy::Public);
+            }
+            if hidden_hand_choice && ctx.optional_action {
+                // The owner may hold fewer matching cards than a peer's
+                // placeholder count suggests.
+                spec = spec.allow_partial_completion();
+            }
             let chosen: Vec<_> = make_decision_with_fallback(
                 game,
                 &mut ctx.decision_maker,
@@ -116,8 +175,62 @@ impl EffectExecutor for RevealFromHandEffect {
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
             }
-            normalize_object_selection(chosen, &valid_cards, required)
+            if hidden_hand_choice {
+                // No fill-up: it would pick different cards on peers holding
+                // placeholders.
+                let mut normalized = Vec::new();
+                for id in chosen {
+                    if normalized.len() < required
+                        && valid_cards.contains(&id)
+                        && !normalized.contains(&id)
+                    {
+                        normalized.push(id);
+                    }
+                }
+                normalized
+            } else {
+                normalize_object_selection(chosen, &valid_cards, required)
+            }
         };
+        if hidden_hand_choice {
+            let filter = reveal_filter(self, ctx.controller);
+            let filter_ctx =
+                crate::filter::FilterContext::new(ctx.controller).with_source(ctx.source);
+            let description = self.cost_display();
+            game.record_hidden_identity_obligations(
+                &cards_to_reveal,
+                &filter,
+                &filter_ctx,
+                &description,
+            );
+            if cards_to_reveal.len() < required {
+                let hand: Vec<ObjectId> = game
+                    .player(ctx.controller)
+                    .map(|p| {
+                        p.hand
+                            .iter()
+                            .copied()
+                            .filter(|id| *id != ctx.source)
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                game.record_hidden_shortfall_obligations(
+                    &hand,
+                    &cards_to_reveal,
+                    required,
+                    &filter,
+                    &filter_ctx,
+                    &description,
+                );
+            }
+        }
+        if reveal_publicly {
+            // Every peer opened the chosen cards before this replay.
+            game.mark_hidden_cards_publicly_revealed(&cards_to_reveal);
+        }
+        if cards_to_reveal.len() < required {
+            return Ok(EffectOutcome::impossible());
+        }
 
         for viewer_idx in 0..game.players.len() {
             let viewer = crate::ids::PlayerId::from_index(viewer_idx as u8);

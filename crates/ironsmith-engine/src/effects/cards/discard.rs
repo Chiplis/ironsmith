@@ -798,9 +798,18 @@ impl CostExecutableEffect for DiscardEffect {
 
         if let Some(filter) = &self.card_filter {
             let filter_ctx = crate::filter::FilterContext::new(controller).with_source(source);
+            // Peers holding hidden-card placeholders cannot evaluate the
+            // filter; count them as payable (see `game_state::hidden_hand_choices`).
+            let placeholders = game.hidden_hand_payable_placeholders(
+                filter,
+                &filter_ctx,
+                hand_cards.iter().copied(),
+            );
             hand_cards.retain(|card_id| {
-                game.object(*card_id)
-                    .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
+                placeholders.contains(card_id)
+                    || game
+                        .object(*card_id)
+                        .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
             });
         }
 

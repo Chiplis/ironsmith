@@ -208,12 +208,34 @@ fn cost_candidate_count(
                     }
                     hidden_zone_filter.matches(obj, &filter_ctx, game)
                 };
-                total += hidden_zone_owner_ids(&effect.filter)
+                let hand_ids: Vec<crate::ids::ObjectId> = hidden_zone_owner_ids(&effect.filter)
                     .into_iter()
                     .filter_map(|owner_id| game.player(owner_id))
-                    .flat_map(|player| player.hand.iter())
+                    .flat_map(|player| player.hand.iter().copied())
+                    .collect();
+                // Peers holding hidden-card placeholders cannot evaluate the
+                // filter; count them as payable so the owner's real choice
+                // replays on every peer (see `game_state::hidden_hand_choices`).
+                let placeholders = if game.hand_choice_depends_on_hidden_identity(
+                    &hidden_zone_filter,
+                    hand_ids.iter().copied(),
+                ) {
+                    game.hidden_hand_placeholder_candidates(
+                        &hidden_zone_filter,
+                        &filter_ctx,
+                        hand_ids.iter().copied(),
+                    )
+                } else {
+                    Vec::new()
+                };
+                total += hand_ids
+                    .iter()
                     .filter_map(|&id| game.object(id))
-                    .filter(|obj| matches_hidden_filter(obj))
+                    .filter(|obj| {
+                        (placeholders.contains(&obj.id)
+                            && !(effect.filter.other && obj.id == source))
+                            || matches_hidden_filter(obj)
+                    })
                     .count();
             }
             Zone::Graveyard => {

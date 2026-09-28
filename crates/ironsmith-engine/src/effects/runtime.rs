@@ -204,6 +204,55 @@ pub(crate) fn with_per_event_trigger_matching<R>(
     result
 }
 
+/// An instruction acting on "all <quality> cards" in a hand reads identities
+/// only the owner knows in peer matches: the owners reveal the matching cards
+/// first (see `GameState::settle_hidden_hand_all_matching`). Returns `false`
+/// while an owner's answer is awaited.
+fn settle_hidden_hand_all_matching_specs(
+    game: &mut GameState,
+    effect: &Effect,
+    ctx: &mut ExecutionContext,
+) -> bool {
+    if !game.tracks_hidden_cards() || effect.0.transparent_child_effect().is_some() {
+        return true;
+    }
+    // Only the instruction's own object spec: composite effects expose their
+    // children's specs for previews, and each child is settled when it runs.
+    let mut filters: Vec<crate::filter::ObjectFilter> = Vec::new();
+    if let Some(crate::target::ChooseSpec::All(filter)) =
+        effect.0.get_target_spec().map(|spec| spec.base())
+    {
+        filters.push(filter.clone());
+    }
+    if let Some(tag_matching) = effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()
+        && tag_matching.source_tags.is_empty()
+    {
+        for spec in effect.0.decision_related_object_specs() {
+            if let crate::target::ChooseSpec::All(filter) = spec {
+                filters.push(filter);
+            }
+        }
+    }
+    for filter in &filters {
+        if filter.zone != Some(crate::zone::Zone::Hand) {
+            continue;
+        }
+        let filter_ctx = ctx.filter_context(game);
+        if !game.settle_hidden_hand_all_matching(
+            &mut *ctx.decision_maker,
+            ctx.source,
+            filter,
+            &filter_ctx,
+        ) {
+            return false;
+        }
+        if ctx.decision_maker.awaiting_choice() {
+            return false;
+        }
+    }
+    true
+}
+
 pub fn execute_effect(
     game: &mut GameState,
     effect: &Effect,
@@ -217,6 +266,9 @@ pub fn execute_effect(
         || game.turn_store.end_combat_phase_procedure_pending
     {
         return Ok(EffectOutcome::resolved());
+    }
+    if !settle_hidden_hand_all_matching_specs(game, effect, ctx) {
+        return Ok(EffectOutcome::count(0));
     }
     let previous_effect = ctx.executing_effect;
     let effect_identity =
