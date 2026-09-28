@@ -1,4 +1,4 @@
-//! Backdraft actual spell history and chosen-player context probes.
+//! Boreas Charger qualifying-player absence and search-count probes.
 use ironsmith::cards::builders::CardDefinitionBuilder;
 use ironsmith::decision::{DecisionMaker, GameProgress, LegalAction, compute_legal_actions};
 use ironsmith::decisions::context::{DecisionContext, SelectObjectsContext, SelectOptionsContext, TargetsContext};
@@ -35,7 +35,7 @@ impl DecisionMaker for Choices {
     fn decide_objects(&mut self, game: &GameState, ctx: &SelectObjectsContext) -> Vec<ObjectId> {
         let mut candidates:Vec<_> = ctx.candidates.iter().filter(|o|o.legal).collect();
         candidates.sort_by_key(|c|!game.object(c.id).is_some_and(|o|o.card_types.contains(&CardType::Land)));
-        let selected:Vec<_> = candidates.iter().take(ctx.min).map(|o|o.id).collect();
+        let selected:Vec<_> = candidates.iter().take(ctx.max.unwrap_or(candidates.len())).map(|o|o.id).collect();
         self.trace.push(json!({"choice":"objects","context":format!("{ctx:?}"),"selected":format!("{selected:?}")}));
         selected
     }
@@ -92,41 +92,34 @@ fn find(g: &GameState, name: &str) -> Result<ObjectId,String> {
 fn lands(g: &GameState) -> usize {
     g.battlefield.iter().filter(|id|g.object(**id).is_some_and(|o|o.name=="Trigger sacrifice land")).count()
 }
-fn run(defs:&HashMap<String,CardDefinition>,producer:&str,caster:u8)->Result<(Value,Value),String>{
-    let mut g=setup(3,0);
-    while g.turn.active_player!=PlayerId(caster){g.next_turn();}
-    g.turn.phase=ironsmith::Phase::FirstMain;g.turn.step=None;
-    for p in [PlayerId(0),PlayerId(1),PlayerId(2)]{
-        for color in [ManaSymbol::White,ManaSymbol::Blue,ManaSymbol::Black,ManaSymbol::Red,ManaSymbol::Green,ManaSymbol::Colorless]{g.player_mut(p).unwrap().mana_pool.add(color,10);}
-        for _ in 0..8{let d=CardDefinitionBuilder::new(CardId::new(),"Backdraft library witness").card_types(vec![CardType::Instant]).build();g.create_object_from_definition(&d,p,Zone::Library);}
-    }
-    let victim=if caster==0{1}else{0};
-    let d=CardDefinitionBuilder::new(CardId::new(),"Backdraft damage witness").card_types(vec![CardType::Creature]).power_toughness(ironsmith::PowerToughness::fixed(2,6)).build();
-    let creature=g.create_object_from_definition(&d,PlayerId(victim),Zone::Battlefield);
-    let mut dm=Choices{object:if producer=="Flame Slash"{Some(creature)}else{None},player:PlayerId(victim),chosen:PlayerId(caster),trace:vec![]};
-    let producer_cast=if producer=="None" { Value::Null } else { cast(&mut g,&defs[producer],caster,&mut dm)? };
-    if !producer_cast.is_null() && !producer_cast["resolution_error"].is_null(){return Err(format!("producer failed:{producer_cast}"));}
-    if producer!="None" { let expected_cost=match producer{"Lava Axe"=>5,"Divination"=>3,_=>1}; if producer_cast["mana_paid"]!=expected_cost{return Err(format!("wrong producer payment:{producer_cast}"));} }
-    let life_before:Vec<_>=g.players.iter().map(|p|p.life).collect();
-    dm.object=None;
-    let response=cast(&mut g,&defs["Backdraft"],0,&mut dm)?;
-    if response["mana_paid"]!=2{return Err(format!("wrong Backdraft payment:{response}"));}
-    let actual=json!({"resolution_error":response["resolution_error"],"life":g.players.iter().map(|p|p.life).collect::<Vec<_>>()});
-    Ok((actual,json!({"producer_cast":producer_cast,"backdraft_cast":response,"life_before_backdraft":life_before,"choices":dm.trace,"active_player":caster,"qualifying_sorcery_caster":if ["None","Shock"].contains(&producer){Value::Null}else{json!(caster)}})))
+
+fn run(defs:&HashMap<String,CardDefinition>,own:usize,opponent:usize,plains:usize)->Result<(Value,Value),String>{
+    let mut g=setup(2,own);let land=CardDefinitionBuilder::new(CardId::new(),"Opponent land witness").card_types(vec![CardType::Land]).build();
+    for _ in 0..opponent{g.create_object_from_definition(&land,PlayerId(1),Zone::Battlefield);}
+    for _ in 0..plains{g.create_object_from_definition(&defs["Plains"],PlayerId(0),Zone::Library);}
+    for p in [PlayerId(0),PlayerId(1)]{for _ in 0..4{let d=CardDefinitionBuilder::new(CardId::new(),"Charger library witness").card_types(vec![CardType::Instant]).build();g.create_object_from_definition(&d,p,Zone::Library);}}
+    let mut dm=Choices{object:None,player:PlayerId(1),chosen:PlayerId(1),trace:vec![]};let paid=cast(&mut g,&defs["Boreas Charger"],0,&mut dm)?;
+    if paid["mana_paid"]!=3||!paid["resolution_error"].is_null(){return Err(format!("source cast failed:{paid}"));}
+    let source=find(&g,"Boreas Charger")?;dm.object=Some(source);
+    let removal=cast(&mut g,&defs["Unsummon"],0,&mut dm)?;
+    if removal["mana_paid"]!=1{return Err(format!("removal cost incorrect:{removal}"));}
+    let count=|zone|g.objects_in_deterministic_order().iter().filter(|o|o.owner==PlayerId(0)&&o.name=="Plains"&&o.zone==zone).count();
+    let actual=json!({"resolution_error":removal["resolution_error"],"plains_battlefield":count(Zone::Battlefield),"plains_hand":count(Zone::Hand),"plains_library":count(Zone::Library),"tapped_plains":g.battlefield.iter().filter(|id|g.object(**id).is_some_and(|o|o.name=="Plains")&&g.is_tapped(**id)).count(),"charger_in_hand":g.player(PlayerId(0)).unwrap().hand.iter().filter(|id|g.object(**id).is_some_and(|o|o.name=="Boreas Charger")).count()});
+    Ok((actual,json!({"source_cast":paid,"removal_cast":removal,"choices":dm.trace})))
 }
 fn hash(p:&std::path::Path)->String{Sha256::digest(std::fs::read(p).unwrap()).iter().map(|b|format!("{b:02x}")).collect()}
 #[test]
-#[ignore="actual-history reporter, inspect expected versus actual states"]
-fn report_backdraft(){
+#[ignore="qualifying-player/search audit reporter"]
+fn report_boreas(){
     let input=std::path::PathBuf::from(std::env::var("AUDIT_RUNTIME_INVENTORY").unwrap());let payloads:Value=serde_json::from_slice(&std::fs::read(&input).unwrap()).unwrap();let mut defs=HashMap::new();let mut artifacts=vec![];
-    for p in payloads["cards"].as_array().unwrap(){let n=p["name"].as_str().unwrap();if !["Backdraft","Firebolt","Lava Spike","Flame Slash","Lava Axe","Divination","Shock"].contains(&n){continue;}let(a,d)=ironsmith_registry::compile_builder_to_artifact(ironsmith_compiler::CardDefinitionBuilder::new(CardId::new(),n),p["parse_input"].as_str().unwrap(),false).unwrap();artifacts.push(json!({"card":n,"checksum":a.payload_checksum,"definition":a.payload.definition}));defs.insert(n.to_string(),d);}
+    for p in payloads["cards"].as_array().unwrap(){let n=p["name"].as_str().unwrap();if !["Boreas Charger","Unsummon","Plains"].contains(&n){continue;}let(a,d)=ironsmith_registry::compile_builder_to_artifact(ironsmith_compiler::CardDefinitionBuilder::new(CardId::new(),n),p["parse_input"].as_str().unwrap(),false).unwrap();artifacts.push(json!({"card":n,"checksum":a.payload_checksum,"definition":a.payload.definition}));defs.insert(n.to_string(),d);}
     let mut rows=vec![];
-    for (producer,damage) in [("Firebolt",2),("Lava Spike",3),("Flame Slash",4),("Lava Axe",5),("Divination",0),("None",0),("Shock",2)]{for caster in [0,1]{
-        let mut life=vec![20,20,20];if producer!="Shock"{life[caster as usize]-=damage/2;}if producer!="Flame Slash"{life[if caster==0{1}else{0}]-=damage;}
-        let expected=json!({"resolution_error":null,"life":life});
-        let(status,actual,evidence)=match run(&defs,producer,caster){Ok((a,e))=>(if a==expected{"expected_result_observed"}else if !a["resolution_error"].is_null(){"resolution_failed"}else{"semantic_mismatch"},a,e),Err(e)=>("fixture_or_producer_error",json!({"error":e}),Value::Null)};
-        rows.push(json!({"card":"Backdraft","scenario":{"producer":producer,"active_player":caster,"qualifying_sorcery_caster":if ["None","Shock"].contains(&producer){Value::Null}else{json!(caster)},"damage_from_producer":damage},"status":status,"expected":expected,"actual":actual,"fixture_evidence":evidence}));
-    }}
-    let root=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");let binary=std::env::current_exe().unwrap();let r=json!({"scope":"Strict canonical paid source sorceries and paid Backdraft cast; actual damage or draw history, explicit player-choice callbacks, three players, normal priority resolution. Single qualifying sorcery removes ambiguity over spell selection; no-spell and actual instant-only branches test legal resolution when no player qualifies.","rows":rows,"artifacts":artifacts,"provenance":{"binary":binary,"binary_sha256":hash(&binary),"inventory_sha256":hash(&input),"source_sha256":hash(&root.join("crates/ironsmith-tools/tests/runtime_backdraft_reproductions.rs")),"runtime_stack_bytes":67108864}});
-    std::fs::write(root.join("reports/runtime-audit/backdraft-reproductions.json"),serde_json::to_string_pretty(&r).unwrap()).unwrap();println!("{}",serde_json::to_string_pretty(&r).unwrap());
+    for (own,opponent,plains) in [(0usize,0usize,4usize),(1,0,4),(1,1,4),(1,2,4),(1,3,4),(1,5,4),(1,3,1),(1,3,0)]{
+        let chosen=opponent.saturating_sub(own).min(plains);let battlefield=usize::from(chosen>0);
+        let expected=json!({"resolution_error":null,"plains_battlefield":battlefield,"plains_hand":chosen.saturating_sub(1),"plains_library":plains-chosen,"tapped_plains":battlefield,"charger_in_hand":1});
+        let(status,actual,evidence)=match run(&defs,own,opponent,plains){Ok((a,e))=>(if a==expected{"expected_result_observed"}else if !a["resolution_error"].is_null(){"resolution_failed"}else{"semantic_mismatch"},a,e),Err(e)=>("fixture_or_producer_error",json!({"error":e}),Value::Null)};
+        rows.push(json!({"card":"Boreas Charger","scenario":{"own_lands":own,"opponent_lands":opponent,"library_plains":plains},"status":status,"expected":expected,"actual":actual,"fixture_evidence":evidence}));
+    }
+    let root=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");let binary=std::env::current_exe().unwrap();let r=json!({"scope":"Full strict paid Boreas Charger and Unsummon produce actual LTB trigger; no qualifying opponent, positive differences, insufficient/zero Plains. Explicit maximum offered search choices, exact zones and tapped state.","rows":rows,"artifacts":artifacts,"provenance":{"binary":binary,"binary_sha256":hash(&binary),"inventory_sha256":hash(&input),"source_sha256":hash(&root.join("crates/ironsmith-tools/tests/runtime_boreas_choice_reproductions.rs")),"runtime_stack_bytes":67108864}});
+    std::fs::write(root.join("reports/runtime-audit/boreas-choice-reproductions.json"),serde_json::to_string_pretty(&r).unwrap()).unwrap();println!("{}",serde_json::to_string_pretty(&r).unwrap());
 }
