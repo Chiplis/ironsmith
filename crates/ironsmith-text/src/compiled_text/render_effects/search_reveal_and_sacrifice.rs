@@ -3729,6 +3729,70 @@ pub(super) fn describe_attack_block_if_able_grant(
     }
 }
 
+/// "Each player chooses from among the lands they control a land of each
+/// basic land type, then sacrifices the rest" (Global Ruin): five per-type
+/// choices under one tag, the rest tagged, then sacrificed.
+pub(super) fn describe_for_players_choose_land_of_each_basic_land_type_then_rest(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    fn flatten<'a>(effects: &'a [Effect], out: &mut Vec<&'a Effect>) {
+        for effect in effects {
+            if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+                flatten(&sequence.effects, out);
+            } else {
+                out.push(effect);
+            }
+        }
+    }
+    let subject = describe_for_players_subject(&for_players.filter)?;
+    let mut flat = Vec::new();
+    flatten(&for_players.effects, &mut flat);
+    let [plains, island, swamp, mountain, forest, rest, sacrifice] = flat.as_slice() else {
+        return None;
+    };
+    let mut tag = None;
+    for (effect, subtype) in [plains, island, swamp, mountain, forest].into_iter().zip([
+        Subtype::Plains,
+        Subtype::Island,
+        Subtype::Swamp,
+        Subtype::Mountain,
+        Subtype::Forest,
+    ]) {
+        let choose = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+        if !choose.count.is_single()
+            || choose.chooser != PlayerFilter::IteratedPlayer
+            || choose.filter.controller != Some(PlayerFilter::IteratedPlayer)
+            || choose.filter.card_types != vec![CardType::Land]
+            || choose.filter.subtypes != vec![subtype]
+            || tag.is_some_and(|tag: &TagKey| *tag != choose.tag)
+        {
+            return None;
+        }
+        tag = Some(&choose.tag);
+    }
+    let rest = rest.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    if rest.tag.as_str() != "rest" {
+        return None;
+    }
+    let sacrifice = sacrifice.downcast_ref::<crate::effects::SacrificeTargetEffect>()?;
+    let ChooseSpec::Object(filter) = sacrifice.target.base() else {
+        return None;
+    };
+    if !filter
+        .tagged_constraints
+        .iter()
+        .any(|constraint| constraint.tag.as_str() == "rest")
+    {
+        return None;
+    }
+    let verb = if subject == "You" { "choose" } else { "chooses" };
+    let sacrifice_verb = if subject == "You" { "sacrifice" } else { "sacrifices" };
+    let pronoun = if subject == "You" { "you" } else { "they" };
+    Some(format!(
+        "{subject} {verb} from among the lands {pronoun} control a land of each basic land type, then {sacrifice_verb} the rest"
+    ))
+}
+
 pub(super) fn describe_for_players_choose_nonland_put_counter(
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {
@@ -4250,6 +4314,23 @@ pub(super) fn describe_exile_creatures_consult_that_many_battlefield_shuffle(
         return None;
     }
     let exile_effect_id = wrapped_effect_id(exile_effect)?;
+    let exile_tag = wrapped_effect_tag(exile_effect);
+    // "that many" is either the exile's result count or a count of the
+    // objects the exile tagged.
+    let counts_exiled = |count: &Value| {
+        is_effect_count_reference(count, Some(exile_effect_id))
+            || matches!(count.unhinted(), Value::Count(filter)
+                if exile_tag.is_some_and(|tag| {
+                    let mut rest = filter.clone();
+                    rest.zone = None;
+                    let constraints = std::mem::take(&mut rest.tagged_constraints);
+                    rest == ObjectFilter::default()
+                        && matches!(constraints.as_slice(), [constraint]
+                            if &constraint.tag == tag
+                                && constraint.relation
+                                    == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
+                }))
+    };
 
     let consult = unwrap_effect(consult_effect)
         .downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
@@ -4259,7 +4340,7 @@ pub(super) fn describe_exile_creatures_consult_that_many_battlefield_shuffle(
         || !matches!(
             &consult.stop_rule,
             crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count)
-                if is_effect_count_reference(count, Some(exile_effect_id))
+                if counts_exiled(count)
         )
     {
         return None;

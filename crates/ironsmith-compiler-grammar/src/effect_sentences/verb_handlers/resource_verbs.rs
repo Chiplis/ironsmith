@@ -471,6 +471,19 @@ pub fn parse_look(
                 None,
             )))
         }
+        // "Target player looks at the top three cards of their library": that
+        // player, not the ability's controller, sees the cards.
+        ResourceLookShape::TopCards { player, count }
+            if subject_player.is_some_and(|subject| {
+                subject == player && !matches!(subject, PlayerAst::You | PlayerAst::Implicit)
+            }) =>
+        {
+            Ok(EffectAst::subject_verb_player_looks_at_own_top_cards(
+                player,
+                count,
+                crate::tag::CompilerReferenceTag::It.bind(),
+            ))
+        }
         ResourceLookShape::TopCards { player, count } => Ok(
             EffectAst::subject_verb_look_at_top_cards(player, count, crate::tag::CompilerReferenceTag::It.bind()),
         ),

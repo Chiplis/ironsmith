@@ -4755,10 +4755,29 @@ impl ObjectFilterExt for ObjectFilter {
             }
         }
         if let Some(ref total_power_toughness) = self.total_power_toughness {
-            parts.push(format!(
-                "with total power and toughness {}",
-                describe_comparison(total_power_toughness)
-            ));
+            // "a creature card with the same total power and toughness"
+            // (Wild Pair): equal to the referenced object's own total.
+            let same_total = matches!(
+                total_power_toughness,
+                Comparison::EqualExpr(total)
+                    if matches!(
+                        total.unhinted(),
+                        crate::effect::Value::Add(power, toughness)
+                            if matches!(
+                                (power.unhinted(), toughness.unhinted()),
+                                (crate::effect::Value::PowerOf(left), crate::effect::Value::ToughnessOf(right))
+                                    if left.unhinted() == right.unhinted()
+                            )
+                    )
+            );
+            if same_total {
+                parts.push("with the same total power and toughness".to_string());
+            } else {
+                parts.push(format!(
+                    "with total power and toughness {}",
+                    describe_comparison(total_power_toughness)
+                ));
+            }
         }
         if let Some(ref exact_mana_cost) = self.exact_mana_cost {
             parts.push(format!("with mana cost {}", exact_mana_cost.to_oracle()));

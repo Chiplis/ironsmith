@@ -2573,6 +2573,34 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     return "it's modified".to_string();
                 }
             }
+            // Bare combat-role checks read as predicates of the object:
+            // "as long as it isn't attacking or blocking".
+            {
+                let mut remainder = filter.clone();
+                remainder.attacking = false;
+                remainder.blocking = false;
+                remainder.nonattacking = false;
+                remainder.nonblocking = false;
+                if remainder == ObjectFilter::default() {
+                    let rendered = match (
+                        filter.attacking,
+                        filter.blocking,
+                        filter.nonattacking,
+                        filter.nonblocking,
+                    ) {
+                        (true, true, false, false) => Some("it's attacking or blocking"),
+                        (true, false, false, false) => Some("it's attacking"),
+                        (false, true, false, false) => Some("it's blocking"),
+                        (false, false, true, true) => Some("it isn't attacking or blocking"),
+                        (false, false, true, false) => Some("it isn't attacking"),
+                        (false, false, false, true) => Some("it isn't blocking"),
+                        _ => None,
+                    };
+                    if let Some(rendered) = rendered {
+                        return rendered.to_string();
+                    }
+                }
+            }
             let desc = filter.description();
             let stripped = strip_leading_article(&desc).to_ascii_lowercase();
             if stripped == "land" {
@@ -3595,6 +3623,28 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 return "the amount of mana spent to cast it was less than its mana value"
                     .to_string();
             }
+            // An object an earlier instruction acted on ("Destroy target
+            // creature. If its mana value was 3 or less, ...") is checked by
+            // last-known information, so the comparison reads in past tense.
+            if let Value::ManaValueOf(spec) = left.unhinted()
+                && let ChooseSpec::Tagged(tag) = spec.base()
+                && this_way_action_from_tag(tag).is_some()
+                && let Value::Fixed(count) = right.unhinted()
+            {
+                let bound = match operator {
+                    crate::effect::ValueComparisonOperator::GreaterThanOrEqual => {
+                        Some(format!("{count} or greater"))
+                    }
+                    crate::effect::ValueComparisonOperator::LessThanOrEqual => {
+                        Some(format!("{count} or less"))
+                    }
+                    crate::effect::ValueComparisonOperator::Equal => Some(count.to_string()),
+                    _ => None,
+                };
+                if let Some(bound) = bound {
+                    return format!("its mana value was {bound}");
+                }
+            }
             if let Value::ManaValueOf(spec) = left.unhinted()
                 && spec.is_target()
             {
@@ -3834,6 +3884,43 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 let count_text = small_number_word(*count as u32)
                     .unwrap_or_else(|| count.to_string());
                 return format!("{count_text} or more cards have been exiled with this permanent");
+            }
+            // Upper bounds on a counted set read as "fewer": "if you control
+            // four or fewer lands", "if there are fewer than six creature
+            // cards in your graveyard".
+            if let (Value::Count(filter), operator, Value::Fixed(count)) =
+                (left.unhinted(), operator, right.unhinted())
+                && matches!(
+                    operator,
+                    crate::effect::ValueComparisonOperator::LessThan
+                        | crate::effect::ValueComparisonOperator::LessThanOrEqual
+                )
+                && *count > 0
+            {
+                let count_text =
+                    small_number_word(*count as u32).unwrap_or_else(|| count.to_string());
+                let bound = |objects: &str| {
+                    if matches!(operator, crate::effect::ValueComparisonOperator::LessThan) {
+                        format!("fewer than {count_text} {objects}")
+                    } else {
+                        format!("{count_text} or fewer {objects}")
+                    }
+                };
+                if filter.zone == Some(Zone::Graveyard) {
+                    let subject = describe_count_filter_value_subject(filter);
+                    return format!("there are {}", bound(&subject));
+                }
+                if filter.zone == Some(Zone::Battlefield)
+                    && filter.controller == Some(PlayerFilter::You)
+                {
+                    let mut base = filter.clone();
+                    base.controller = None;
+                    base.zone = None;
+                    let objects = pluralize_relative_object_phrase(strip_indefinite_article(
+                        &base.description(),
+                    ));
+                    return format!("you control {}", bound(&objects));
+                }
             }
             if let (
                 Value::Count(filter),

@@ -354,7 +354,27 @@ impl SharedLookbackExecute for MoveToZoneEffect {
         if moves_source && crate::effects::helpers::resolve_source_object_id(game, ctx).is_none() {
             return Ok(EffectOutcome::target_invalid());
         }
-        let mut object_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
+        // "That player puts one of them back on top of their library": a
+        // counted pick out of an earlier collection is made by the player
+        // performing the instruction, not by the ability's controller.
+        let actor_pick = !self.target.is_target()
+            && matches!(
+                self.target,
+                ChooseSpec::WithCount(..) | ChooseSpec::WithCountValue(..)
+            );
+        let actor = match (&self.actor_surface, actor_pick) {
+            (Some(actor), true) => Some(
+                crate::effects::helpers::resolve_player_filter_as_chooser(game, actor, ctx)?,
+            ),
+            _ => None,
+        };
+        let saved_iterated_player = ctx.iteration.iterated_player;
+        if let Some(actor) = actor {
+            ctx.iteration.iterated_player = Some(actor);
+        }
+        let resolved = resolve_objects_for_effect(game, ctx, &self.target);
+        ctx.iteration.iterated_player = saved_iterated_player;
+        let mut object_ids = resolved?;
         // When a tag snapshot carries a stale ObjectId (the tagged object
         // changed zones since the snapshot was taken), resolve through
         // stable_id so the move can find the actual game object.

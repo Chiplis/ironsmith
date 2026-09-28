@@ -2928,8 +2928,10 @@ pub struct MoveToZoneEffect {
     /// executable definition of which objects move.
     pub remainder_surface: Option<LibraryRemainderSurface>,
     /// Explicit player who performs the oracle instruction. The rules engine
-    /// still moves the same objects to the same zones; this only preserves
-    /// surfaces such as "that player puts" and "each player puts".
+    /// still moves the same objects to the same zones; this preserves
+    /// surfaces such as "that player puts" and "each player puts", and names
+    /// who makes a counted pick out of an earlier collection ("that player
+    /// puts one of them on top").
     pub actor_surface: Option<PlayerFilter>,
     /// Explicit contextual player named by the oracle destination (for
     /// example, "your graveyard" or "that player's hand"). Nonbattlefield

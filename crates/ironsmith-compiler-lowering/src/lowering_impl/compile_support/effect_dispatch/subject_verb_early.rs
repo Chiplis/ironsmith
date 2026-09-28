@@ -2073,6 +2073,16 @@ pub(super) fn compile_subject_verb_early(
             }
             let effect = if *reveal {
                 Effect::reveal_top_cards(player_filter, count.clone(), resolved_tag)
+            } else if role == SubjectRole::Actor && player_filter != PlayerFilter::You {
+                // "Target player looks at the top three cards of their
+                // library": the subject player is the private viewer.
+                let mut look = crate::effects::LookAtTopCardsEffect::new(
+                    player_filter.clone(),
+                    count.clone(),
+                    resolved_tag,
+                );
+                look.viewer = player_filter;
+                Effect::new(look)
             } else {
                 Effect::look_at_top_cards(player_filter, count.clone(), resolved_tag)
             };

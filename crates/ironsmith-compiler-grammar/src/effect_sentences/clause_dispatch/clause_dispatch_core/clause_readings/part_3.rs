@@ -611,6 +611,11 @@ pub(super) fn read_target_player_choose_objects_with_count(
     if let Some((chooser, choose_filter, choose_count, count_value)) =
         parse_target_player_choose_objects_clause_with_count_value(tokens)?
     {
+        if let Some(effects) =
+            choose_land_of_each_basic_land_type(tokens, &choose_filter, chooser)
+        {
+            return Ok(Some(EffectAst::Sequence { effects }));
+        }
         return Ok(Some(EffectAst::ObjectChoices(
             ObjectChoiceEffectAst::ChooseObjects {
                 filter: choose_filter,
@@ -622,6 +627,53 @@ pub(super) fn read_target_player_choose_objects_with_count(
         )));
     }
     Ok(None)
+}
+
+/// "Each player chooses from among the lands they control a land of each
+/// basic land type" (Global Ruin): one choice per basic land type, all under
+/// the same chosen-object tag, and "the rest" is every other land among the
+/// ones chosen from.
+fn choose_land_of_each_basic_land_type(
+    tokens: &[OwnedLexToken],
+    filter: &ObjectFilter,
+    chooser: PlayerAst,
+) -> Option<Vec<EffectAst>> {
+    let words = crate::lexer::token_word_refs(tokens);
+    if !filter.has_basic_land_type
+        || !crate::word_primitives::sequence_occurs(
+            &words,
+            &["of", "each", "basic", "land", "type"],
+        )
+    {
+        return None;
+    }
+    let mut base = filter.clone();
+    base.has_basic_land_type = false;
+    let chosen = crate::tag::CompilerReferenceTag::It.bind();
+    let mut effects = [
+        crate::types::Subtype::Plains,
+        crate::types::Subtype::Island,
+        crate::types::Subtype::Swamp,
+        crate::types::Subtype::Mountain,
+        crate::types::Subtype::Forest,
+    ]
+    .into_iter()
+    .map(|subtype| {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+            filter: base.clone().with_subtype(subtype),
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player: chooser,
+            tag: chosen.clone(),
+        })
+    })
+    .collect::<Vec<_>>();
+    effects.push(EffectAst::subject_verb_tag_matching_objects(
+        base.not_tagged(chosen.key.clone()),
+        vec![Zone::Battlefield],
+        crate::tag::CompilerReferenceTag::Rest.bind(),
+    ));
+    Some(effects)
 }
 pub(super) fn read_you_choose_objects_with_count(
     input: &Clause<'_>,

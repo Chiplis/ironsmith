@@ -560,6 +560,29 @@
                 filter_text
             );
         }
+        // "Look at the top five cards of your library. For each card, put
+        // that card into your graveyard unless ..." (Moonlight Bargain): the
+        // iteration covers exactly the looked-at cards still in the library.
+        if let [constraint] = for_each.filter.tagged_constraints.as_slice()
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && (crate::cards::is_sentence_helper_tag(constraint.tag.as_str(), "revealed")
+                || crate::cards::is_sentence_helper_tag(constraint.tag.as_str(), "looked"))
+            && for_each.filter.zone == Some(Zone::Library)
+            && {
+                let mut bare = for_each.filter.clone();
+                bare.tagged_constraints.clear();
+                bare.zone = None;
+                bare == ObjectFilter::default()
+            }
+        {
+            let effect_text = describe_effect_list(&for_each.effects);
+            let effect_text = lowercase_first(effect_text.trim());
+            let effect_text = effect_text
+                .strip_prefix("put it ")
+                .map(|rest| format!("put that card {rest}"))
+                .unwrap_or(effect_text);
+            return format!("For each card, {effect_text}");
+        }
         if let Some(subject) = describe_for_each_tagged_this_way_subject(&for_each.filter) {
             let mut effect_text = describe_effect_list(&for_each.effects);
             if for_each.filter.set_quantifier_surface()
@@ -986,6 +1009,11 @@
             return compact;
         }
         if let Some(compact) = describe_for_players_choose_nonland_put_counter(for_players) {
+            return compact;
+        }
+        if let Some(compact) =
+            describe_for_players_choose_land_of_each_basic_land_type_then_rest(for_players)
+        {
             return compact;
         }
         if let Some(compact) = describe_for_players_bend_or_break(for_players) {
@@ -4391,7 +4419,9 @@
         }
         if lose.amount.has_surface_hint(ValueSurfaceHint::ForEach) {
             let (basis, multiplier) = match lose.amount.unhinted() {
-                Value::Scaled(basis, multiplier) => (basis.as_ref(), *multiplier),
+                Value::Scaled(basis, multiplier) if *multiplier > 0 => {
+                    (basis.as_ref(), *multiplier)
+                }
                 Value::Add(left, right) if left == right => (left.as_ref(), 2),
                 basis => (basis, 1),
             };
@@ -5797,6 +5827,21 @@
             let verb = player_verb(&subject, "reveal", "reveals");
             return format!("{subject} {verb} the {top_phrase} of {owner} library{where_clause}");
         }
+        // "Target player looks at the top three cards of their library": a
+        // private look by a player other than you names that player.
+        if look_at_top.viewer != PlayerFilter::You {
+            let subject = describe_player_filter(&look_at_top.viewer);
+            let verb = player_verb(&subject, "look", "looks");
+            let library = if look_at_top.viewer == look_at_top.player {
+                "their".to_string()
+            } else {
+                owner
+            };
+            return format!(
+                "{} {verb} at the {top_phrase} of {library} library{where_clause}",
+                capitalize_first(&subject)
+            );
+        }
         return format!("Look at the {top_phrase} of {owner} library{where_clause}");
     }
     if let Some(rearrange) =
@@ -6534,7 +6579,11 @@
                     return finish_condition(format!("{effect_text} if it has {rest}"));
                 }
             }
-            return finish_condition(format!("{effect_text} if {}", describe_condition(&conditional.condition)));
+            // The trailing condition checks this clause's own pending target
+            // before the action happens: present tense.
+            let condition_text = describe_condition(&conditional.condition)
+                .replace("its mana value was ", "its mana value is ");
+            return finish_condition(format!("{effect_text} if {condition_text}"));
         }
         if conditional.surface == ironsmith_core::ConditionalSurface::Instead {
             let segment = crate::resolution::ResolutionSegment {

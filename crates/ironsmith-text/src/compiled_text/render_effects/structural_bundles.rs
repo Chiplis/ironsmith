@@ -4590,7 +4590,7 @@ pub(super) fn describe_search_selection_from_filter_text(
     }
 
     let count_text = describe_choice_count(&choose.count);
-    if filter_is_generic_card {
+    let selection = if filter_is_generic_card {
         if count_text == "all" {
             "all cards".to_string()
         } else if count_text == "any number of" {
@@ -4600,10 +4600,26 @@ pub(super) fn describe_search_selection_from_filter_text(
         }
     } else {
         format!("{count_text} {filter_text}")
+    };
+    // "any number of creature cards with total mana value 6 or less"
+    // (Protean Hulk): the aggregate bound is part of the searched set.
+    if choose.aggregate_constraint.is_some() && !selection.contains(" with total ") {
+        return format!(
+            "{selection}{}",
+            super::player_and_zone_effects::describe_choice_aggregate_constraint_suffix(choose)
+        );
     }
+    selection
 }
 
 pub(super) fn describe_search_selection_with_cards_preserving_where(selection: &str) -> String {
+    if let Some((head, tail)) = selection.split_once(" with total ") {
+        return format!(
+            "{} with total {}",
+            describe_search_selection_with_cards_preserving_where(head),
+            tail
+        );
+    }
     if let Some((head, tail)) = selection.split_once(", where X is ") {
         return format!(
             "{}, where X is {}",
@@ -5089,6 +5105,9 @@ pub(super) fn describe_draw_count_for_each_phrase(count: &Value) -> Option<Strin
             "a card for each different power among {}",
             describe_count_filter_value_subject(filter)
         )),
+        Value::ColorsOf(_) | Value::CountPlayersWithCardsInGraveyardAtLeast(..) => {
+            describe_create_for_each_count(count).map(|basis| format!("a card for each {basis}"))
+        }
         _ => None,
     }
 }

@@ -121,6 +121,9 @@
         if let Some(compact) = describe_tap_or_untap_mode(choose_mode) {
             return compact;
         }
+        if let Some(compact) = describe_add_mana_choice_mode(choose_mode) {
+            return compact;
+        }
         if let Some(compact) = describe_put_counter_choice_mode(choose_mode) {
             return compact;
         }
@@ -2516,6 +2519,16 @@
                     describe_add_mana_destination_suffix(&add_any.player)
                 );
             }
+            // Filter lands: "Add {U}{U}, {U}{R}, or {R}{R}" lists every
+            // two-mana combination of two colors.
+            if matches!(add_any.amount, Value::Fixed(2))
+                && let [first, second] = colors.as_slice()
+                && matches!(add_any.player, PlayerFilter::You)
+            {
+                let first = describe_mana_symbol(crate::mana::ManaSymbol::from_color(*first));
+                let second = describe_mana_symbol(crate::mana::ManaSymbol::from_color(*second));
+                return format!("Add {first}{first}, {first}{second}, or {second}{second}");
+            }
             let options = colors
                 .iter()
                 .copied()
@@ -4490,11 +4503,11 @@
                 .filter(|verb| verb.ends_with("ed"))
                 .unwrap_or("affected");
             let body = describe_effect_list(&repeat.effects);
-            return format!(
-                "For each permanent {verb} this way, {}",
-                lowercase_first(body.trim().trim_end_matches('.'))
-                    .replace("that player", "its controller")
-            );
+            let body = lowercase_first(body.trim().trim_end_matches('.'))
+                .replace("unless that player pays ", "unless they pay ")
+                .replacen("that player", "that permanent's controller", 1)
+                .replace("that player", "they");
+            return format!("For each permanent {verb} this way, {body}");
         }
         return format!(
             "For each controller of tagged '{}' objects, {}",

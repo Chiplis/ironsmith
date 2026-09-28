@@ -7773,7 +7773,11 @@ fn split_look_then_exile_sentences(segments: Vec<&[OwnedLexToken]>) -> Vec<&[Own
                 continue;
             }
         }
-        if starts_with_look && then_exile {
+        // Only a tail that goes on to dispose of "the rest" needs the looked
+        // collection as its own sentence; "then exile one of them" is read
+        // whole as a pick from the looked cards.
+        let mentions_rest = words.iter().any(|word| word.eq_ignore_ascii_case("rest"));
+        if starts_with_look && then_exile && mentions_rest {
             let boundary = segment.windows(2).position(|pair| {
                 pair[0].is_comma() && pair[1].as_word().is_some_and(|word| word.eq_ignore_ascii_case("then"))
             });

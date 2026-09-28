@@ -240,6 +240,21 @@ fn choose_payable_cost_for_simultaneous_action(
     }
 }
 
+/// Number of leading instructions that only declare (and tag) a target.
+fn leading_target_declaration_count(effects: &[Effect]) -> usize {
+    effects
+        .iter()
+        .take_while(|effect| {
+            let inner = effect
+                .downcast_ref::<crate::effects::TaggedEffect>()
+                .map_or(*effect, |tagged| tagged.effect.as_ref());
+            inner
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                .is_some()
+        })
+        .count()
+}
+
 #[derive(Debug)]
 struct UnlessPaysProposal {
     effects: Vec<Effect>,
@@ -347,6 +362,15 @@ impl EffectExecutor for UnlessPaysEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        // "Target enchantment deals damage ... to its controller unless that
+        // player sacrifices it": the payer and the payment may name a target
+        // the wrapped instructions declare. Target declarations perform no
+        // game action, so bind them before the payer and cost are resolved.
+        let declared = leading_target_declaration_count(&self.effects);
+        for effect in &self.effects[..declared] {
+            execute_effect(game, effect, ctx)?;
+        }
+        let consequences = &self.effects[declared..];
         let paying_players = match self.player {
             PlayerFilter::Any => players_in_turn_order(game),
             PlayerFilter::Opponent => {
@@ -410,7 +434,7 @@ impl EffectExecutor for UnlessPaysEffect {
         };
         ctx.with_temp_iterated_player(bound_player, |ctx| {
             let mut outcomes = Vec::new();
-            for effect in &self.effects {
+            for effect in consequences {
                 outcomes.push(execute_effect(game, effect, ctx)?);
             }
             Ok(EffectOutcome::aggregate(outcomes))

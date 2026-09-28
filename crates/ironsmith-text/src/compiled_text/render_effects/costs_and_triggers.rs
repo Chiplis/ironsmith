@@ -1312,7 +1312,13 @@ pub(super) fn describe_target_source_damage_unless_referential_sacrifice(
         || cost_effect
             .downcast_ref::<crate::effects::SacrificeEffect>()
             .is_some_and(|sacrifice| {
-                sacrifice.filter == tagged_source_filter
+                // Sacrifice-cost filters carry the battlefield search zone
+                // (only permanents can be sacrificed).
+                let mut filter = sacrifice.filter.clone();
+                if filter.zone == Some(Zone::Battlefield) {
+                    filter.zone = None;
+                }
+                filter == tagged_source_filter
                     && sacrifice.count == Value::Fixed(1)
                     && sacrifice.player == PlayerFilter::You
             });

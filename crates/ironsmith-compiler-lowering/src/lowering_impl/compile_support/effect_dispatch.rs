@@ -156,6 +156,10 @@ fn visit_direct_nested_effect_values(effect: &Effect, visit: &mut impl FnMut(&Va
     value_field!(crate::effects::ConniveEffect, count);
     value_field!(crate::effects::RemoveUpToCountersEffect, max_count);
     value_field!(crate::effects::mana::AddScaledManaEffect, amount);
+    // "create an X/X token, where X is the number of creatures destroyed
+    // this way" sets the created token's base P/T from the prior result.
+    value_field!(crate::effects::SetBasePowerToughnessEffect, power);
+    value_field!(crate::effects::SetBasePowerToughnessEffect, toughness);
 
     if let Some(incubate) = effect.downcast_ref::<crate::effects::IncubateEffect>() {
         visit(&incubate.amount);

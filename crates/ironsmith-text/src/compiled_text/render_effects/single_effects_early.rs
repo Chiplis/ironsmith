@@ -2805,6 +2805,7 @@ pub(super) fn describe_compact_choose_mode_branch(effects: &[Effect]) -> Option<
     let choose = effect.downcast_ref::<crate::effects::ChooseModeEffect>()?;
     describe_endure_mode(choose)
         .or_else(|| describe_tap_or_untap_mode(choose))
+        .or_else(|| describe_add_mana_choice_mode(choose))
         .or_else(|| describe_put_counter_choice_mode(choose))
         .or_else(|| describe_put_or_remove_counter_mode(choose))
 }
@@ -4065,6 +4066,18 @@ pub(crate) fn describe_search_choose_for_each(
         } else {
             format!("{count_text} {}", pluralize_noun_phrase(&filter_text))
         }
+    };
+    // "any number of creature cards with total mana value 6 or less"
+    // (Protean Hulk): the aggregate bound belongs to the searched set.
+    let selection_text = if choose.aggregate_constraint.is_some()
+        && !selection_text.contains(" with total ")
+    {
+        format!(
+            "{selection_text}{}",
+            super::player_and_zone_effects::describe_choice_aggregate_constraint_suffix(choose)
+        )
+    } else {
+        selection_text
     };
     let selection_text = if is_same_name_search(&choose.filter)
         && (!choose.filter.card_types.is_empty()
@@ -6298,6 +6311,40 @@ pub(crate) fn describe_tap_or_untap_mode(
         }
     }
     None
+}
+
+/// "Add {U} or {C}{U}" / "Add {B}{B} or {G}{G}": a choose-one between fixed
+/// mana outputs for you reads as the printed alternative list.
+pub(crate) fn describe_add_mana_choice_mode(
+    choose_mode: &crate::effects::ChooseModeEffect,
+) -> Option<String> {
+    if choose_mode.modes.len() < 2
+        || choose_mode.choose_count != Value::Fixed(1)
+        || choose_mode.min_choose_count != Value::Fixed(1)
+        || choose_mode.allow_repeated_modes
+        || choose_mode.random
+        || !choose_mode.common_prefix_effects.is_empty()
+    {
+        return None;
+    }
+    let mut options = Vec::with_capacity(choose_mode.modes.len());
+    for mode in &choose_mode.modes {
+        let [effect] = mode.effects.as_slice() else {
+            return None;
+        };
+        let add = unwrap_basic_tag_wrappers(effect).downcast_ref::<crate::effects::AddManaEffect>()?;
+        if add.player != PlayerFilter::You || add.mana.is_empty() {
+            return None;
+        }
+        options.push(
+            add.mana
+                .iter()
+                .copied()
+                .map(describe_mana_symbol)
+                .collect::<String>(),
+        );
+    }
+    Some(format!("Add {}", join_with_or(&options)))
 }
 
 pub(crate) fn describe_put_counter_choice_mode(

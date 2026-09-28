@@ -3397,6 +3397,18 @@ pub fn parse_text_to_semantic_document_with_context(
 fn propagate_station_thresholds(lines: &mut [RecognizedLine]) {
     let mut current = None;
     for line in lines.iter_mut() {
+        // A trigger printed under the striation keeps the same threshold
+        // presentation as the row's own trigger, so the renderer can place it
+        // back inside that striation instead of spelling an intervening "if".
+        if let (Some(threshold), RecognizedLine::Triggered(triggered)) = (current, &mut *line)
+            && triggered.chosen_option.is_none()
+            && triggered.presentation.is_none()
+        {
+            triggered.presentation = Some(PresentationLabel::AbilityWord(format!(
+                "{}{threshold}",
+                ironsmith_core::static_ability_model::STATION_THRESHOLD_STATIC_LABEL_PREFIX
+            )));
+        }
         let chosen_option = match line {
             RecognizedLine::Activated(line) => &mut line.chosen_option,
             RecognizedLine::Triggered(line) => &mut line.chosen_option,

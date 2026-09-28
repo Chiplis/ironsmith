@@ -2477,7 +2477,18 @@ fn annotate_effect_sequence_with_env_internal(
             && let Some(gate) = annotated.last()
             && result_gate_surface(&gate.effect).is_some()
         {
-            resolution_env.last_object_tag = gate.in_env.last_object_tag.clone();
+            // Only an object the gated branch itself introduced is hidden
+            // from the fallback. A branch that merely acted on this permanent
+            // ("If you do, put a +1/+1 counter on this creature. Otherwise,
+            // sacrifice it.") leaves the fallback's `it` on that permanent.
+            let branch_introduced_object = matches!(
+                &current_env.last_object_tag,
+                RefState::Known(tag)
+                    if RefState::Known(tag.clone()) != gate.in_env.last_object_tag
+            );
+            if branch_introduced_object {
+                resolution_env.last_object_tag = gate.in_env.last_object_tag.clone();
+            }
             resolution_env.last_player_filter = gate.in_env.last_player_filter.clone();
         }
         resolve_definite_object_references_in_effect(

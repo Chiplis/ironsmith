@@ -1224,6 +1224,57 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
         Value::ColorsOfManaSpentToCastThisSpell => {
             Some("color of mana spent to cast this spell".to_string())
         }
+        // "for each card fewer than three in their hand": the shortfall
+        // max(0, N - count) is lowered as -min(0, count - N).
+        Value::Scaled(inner, -1) => {
+            let Value::Min(left, right) = inner.unhinted() else {
+                return None;
+            };
+            let difference = match (left.unhinted(), right.unhinted()) {
+                (Value::Fixed(0), other) | (other, Value::Fixed(0)) => other,
+                _ => return None,
+            };
+            let Value::Add(count, offset) = difference else {
+                return None;
+            };
+            let (Value::Count(filter), Value::Fixed(offset)) = (count.unhinted(), offset.unhinted())
+            else {
+                return None;
+            };
+            if *offset >= 0 {
+                return None;
+            }
+            let bound = ironsmith_core::cardinal_word(offset.unsigned_abs())
+                .unwrap_or_else(|| (-*offset).to_string());
+            let basis = describe_for_each_count_filter(filter).replace("that player's ", "their ");
+            Some(match basis.split_once(" in ") {
+                Some((noun, location)) => format!("{noun} fewer than {bound} in {location}"),
+                None => format!("{basis} fewer than {bound}"),
+            })
+        }
+        // "for each of that spell's colors"
+        Value::ColorsOf(spec) => {
+            let owner = if let ChooseSpec::Tagged(tag) = spec.base()
+                && tag.as_str() == "triggering"
+            {
+                "that spell's".to_string()
+            } else {
+                describe_possessive_choose_spec(spec)
+            };
+            Some(format!("of {owner} colors"))
+        }
+        // "for each graveyard with seven or more cards in it"
+        Value::CountPlayersWithCardsInGraveyardAtLeast(filter, minimum) => {
+            let minimum =
+                ironsmith_core::cardinal_word(*minimum).unwrap_or_else(|| minimum.to_string());
+            Some(match filter {
+                PlayerFilter::Any => format!("graveyard with {minimum} or more cards in it"),
+                other => format!(
+                    "graveyard of {} with {minimum} or more cards in it",
+                    describe_player_set_filter(other)
+                ),
+            })
+        }
         Value::ManaFromSourceSpentToCastThisSpell {
             source_filter,
             include_source_noun,

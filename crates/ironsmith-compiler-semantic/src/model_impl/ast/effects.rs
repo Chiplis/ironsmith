@@ -4413,6 +4413,25 @@ impl EffectAst {
         Self::subject_verb_top_library_cards(player, count, tag, false)
     }
 
+    /// "Target player looks at the top three cards of their library": the
+    /// subject player both owns the library and is the one who looks, so the
+    /// subject is recorded in the actor role (the viewer of the private look).
+    pub fn subject_verb_player_looks_at_own_top_cards(
+        player: PlayerAst,
+        count: Value,
+        tag: TagRef,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            player,
+            SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
+                count,
+                tag,
+                reveal: false,
+            }),
+        )
+    }
+
     pub fn subject_verb_reveal_top_cards(player: PlayerAst, count: Value, tag: TagRef) -> Self {
         Self::subject_verb_top_library_cards(player, count, tag, true)
     }

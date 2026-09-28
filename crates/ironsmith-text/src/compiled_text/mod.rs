@@ -689,7 +689,26 @@ fn compact_station_threshold_lines(lines: Vec<String>) -> Vec<String> {
         &mut pending_keyword_threshold,
         &mut pending_keywords,
     );
+    // A striation covers every line printed under it until the next one
+    // (CR 702.184), so later abilities of the same threshold continue the
+    // block without repeating the "N+ |" marker.
+    let mut current_threshold: Option<i32> = None;
     compacted
+        .into_iter()
+        .map(|line| {
+            let Some((threshold_text, body)) = line.split_once("+ | ") else {
+                return line;
+            };
+            let Ok(threshold) = threshold_text.trim().parse::<i32>() else {
+                return line;
+            };
+            if current_threshold == Some(threshold) {
+                return capitalize_first(body);
+            }
+            current_threshold = Some(threshold);
+            line
+        })
+        .collect()
 }
 
 fn flush_station_keyword_row(
@@ -810,6 +829,21 @@ fn normalize_scored_compiled_line(line: String) -> String {
     // final three-sentence surface after the earlier merge passes; fold it
     // to the authored reveal-and-put sentence here.
     let line = normalize_common::normalize_search_outside_game_reveal_surface(&line);
+    // A trailing "if" on a targeting instruction ("Destroy target artifact if
+    // its mana value is 2 or less") checks the pending target before the
+    // action happens, so it never reads as the past-tense last-known check
+    // used by a following sentence.
+    let line = line
+        .split(". ")
+        .map(|sentence| {
+            if sentence.contains("target ") && sentence.contains(" if its mana value was ") {
+                sentence.replace(" if its mana value was ", " if its mana value is ")
+            } else {
+                sentence.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(". ");
     // A bare repeat instruction after an optional step loops on taking the
     // option; oracle spells the "If you do," gate.
     let line = if let Some(head) = line

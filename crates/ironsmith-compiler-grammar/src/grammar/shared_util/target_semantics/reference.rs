@@ -244,6 +244,21 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     if matches_surface(&all_words, ANY_OTHER_TARGET_PATTERN) {
         return Ok(TargetAst::AnyOtherTarget(span));
     }
+    // "puts one of them back on top", "exile two of them": a counted pick
+    // from the referenced collection, exactly like "one of those cards".
+    if let [count_word, "of", "them"] = all_words.as_slice()
+        && let Some((count, 1)) = ironsmith_core::parse_cardinal_words(&[*count_word])
+        && count >= 1
+    {
+        let mut count = ChoiceCount::exactly(count as usize);
+        if random_choice {
+            count = count.at_random();
+        }
+        return Ok(wrap_target_count(
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span),
+            Some(count),
+        ));
+    }
     if let Some(reference) = parse_referenced_target_prefix(tokens) {
         let mut filter = parse_object_filter(reference.object_tokens, reference.other)?;
         filter = filter.match_tagged(

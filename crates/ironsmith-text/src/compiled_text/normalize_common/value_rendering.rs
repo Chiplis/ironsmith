@@ -2418,6 +2418,17 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             } else {
                 ""
             };
+            // "Exile one of those cards": a single pick out of a looked-at or
+            // revealed collection.
+            if count.min == 1
+                && count.max == Some(1)
+                && !count.is_random()
+                && let ChooseSpec::Tagged(tag) = inner.base()
+                && (crate::cards::is_sentence_helper_tag(tag.as_str(), "revealed")
+                    || crate::cards::is_sentence_helper_tag(tag.as_str(), "looked"))
+            {
+                return "one of those cards".to_string();
+            }
             if count.is_single() {
                 format!("{inner_text}{random_suffix}")
             } else if let ChooseSpec::Target(target_inner) = inner.as_ref() {

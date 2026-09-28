@@ -2328,6 +2328,12 @@ pub(super) fn describe_looked_battlefield_selection(
 
     match (choose.count.min, choose.count.max) {
         (0, Some(1)) => Some(format!("up to one {card_desc}{aggregate_suffix}")),
+        // "Put a random creature card from among them onto the
+        // battlefield" (Getaway Barrel).
+        (1, Some(1)) if choose.count.random => Some(format!(
+            "{}{aggregate_suffix}",
+            with_indefinite_article(&format!("random {card_desc}"))
+        )),
         (1, Some(1)) => Some(format!(
             "{}{aggregate_suffix}",
             with_indefinite_article(&card_desc)

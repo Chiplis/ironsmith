@@ -397,6 +397,17 @@ pub fn parse_subject_cant_be_blocked_as_long_as_condition_line(
     let Some(parsed) = parse_cant_be_blocked_as_long_as_clause(tokens) else {
         return Ok(None);
     };
+    // "... as long as defending player controls an artifact" and "... the most
+    // creatures" have dedicated blocking-time restrictions; the generic
+    // condition reading yields to them.
+    if defending_player_controlled_card_types_from_condition_tokens(parsed.condition_tokens)
+        .is_some()
+        || anthem_grant_grammar::parse_defending_player_controls_most_creatures_or_tied_condition(
+            parsed.condition_tokens,
+        )
+    {
+        return Ok(None);
+    }
     let subject_tokens = parsed.subject_tokens;
     let condition = parse_static_condition_clause(parsed.condition_tokens)?;
 

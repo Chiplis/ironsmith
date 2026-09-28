@@ -1733,10 +1733,97 @@ pub(super) fn activated_mana_output_amount(
     found.then_some(total)
 }
 
+/// One branch of a spell restriction whose qualifiers are mana value and/or
+/// an {X} in the mana cost: "creature spells with mana value 4 or greater",
+/// "spells with {X} in their mana costs".
+fn describe_mana_usage_x_cost_spell_branch(filter: &ObjectFilter, plural: bool) -> Option<String> {
+    let mut rest = filter.clone();
+    let mana_value = rest.mana_value.take();
+    let has_x = std::mem::take(&mut rest.has_x_in_cost);
+    let no_x = std::mem::take(&mut rest.no_x_in_cost);
+    let card_types = std::mem::take(&mut rest.card_types);
+    rest.union_surface = Default::default();
+    if matches!(rest.zone, Some(Zone::Stack)) {
+        rest.zone = None;
+    }
+    if rest.stack_kind.is_some() {
+        rest.stack_kind = None;
+    }
+    if rest != ObjectFilter::default() || (mana_value.is_none() && !has_x && !no_x) {
+        return None;
+    }
+    let mut phrase = card_types
+        .iter()
+        .map(|card_type| card_type.name().to_ascii_lowercase())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if !phrase.is_empty() {
+        phrase.push(' ');
+    }
+    phrase.push_str(if plural { "spells" } else { "spell" });
+    if let Some(mana_value) = mana_value {
+        let comparison = describe_filter_comparison_clause(&mana_value);
+        let comparison = comparison.strip_prefix("is ").unwrap_or(&comparison);
+        phrase.push_str(&format!(" with mana value {comparison}"));
+    }
+    let (possessive, costs) = if plural {
+        ("their", "costs")
+    } else {
+        ("its", "cost")
+    };
+    if has_x {
+        phrase.push_str(&format!(" with {{X}} in {possessive} mana {costs}"));
+    }
+    if no_x {
+        phrase.push_str(&format!(" without {{X}} in {possessive} mana {costs}"));
+    }
+    Some(phrase)
+}
+
+/// "Spend this mana only to cast spells with mana value 5 or greater or
+/// spells with {X} in their mana costs" (Troyan), and the singular "a
+/// colored spell without {X} in its mana cost" (Titans' Nest).
+fn describe_mana_usage_x_cost_spell_filter(filter: &ObjectFilter) -> Option<String> {
+    if !filter.any_of.is_empty() {
+        let mut rest = filter.clone();
+        let branches = std::mem::take(&mut rest.any_of);
+        rest.union_surface = Default::default();
+        if rest != ObjectFilter::default() {
+            return None;
+        }
+        if !branches
+            .iter()
+            .any(|branch| branch.has_x_in_cost || branch.no_x_in_cost)
+        {
+            return None;
+        }
+        let parts = branches
+            .iter()
+            .map(|branch| describe_mana_usage_x_cost_spell_branch(branch, true))
+            .collect::<Option<Vec<_>>>()?;
+        return Some(join_with_or(&parts));
+    }
+    if filter.no_x_in_cost || filter.has_x_in_cost {
+        let mut rest = filter.clone();
+        rest.no_x_in_cost = false;
+        rest.has_x_in_cost = false;
+        let described = describe_mana_usage_spell_filter_target_with_options(&rest, false)?;
+        if described.contains("{X}") {
+            return None;
+        }
+        let qualifier = if filter.no_x_in_cost { "without" } else { "with" };
+        return Some(format!("{described} {qualifier} {{X}} in its mana cost"));
+    }
+    None
+}
+
 pub(super) fn describe_mana_usage_spell_filter_target_with_options(
     filter: &ObjectFilter,
     pluralize_origin_spell: bool,
 ) -> Option<String> {
+    if let Some(x_cost) = describe_mana_usage_x_cost_spell_filter(filter) {
+        return Some(x_cost);
+    }
     if let Some(special) =
         describe_special_mana_usage_spell_filter_target(filter, pluralize_origin_spell)
     {

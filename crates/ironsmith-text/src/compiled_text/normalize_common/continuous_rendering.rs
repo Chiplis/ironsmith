@@ -4376,6 +4376,42 @@ pub(crate) fn describe_attached_object_type_condition(
         }
     }
 
+    // Supertype or ability predicate on the attached creature ("as long as
+    // equipped creature is legendary" — Champion's Helm; "as long as
+    // equipped creature has defender" — Warmonger's Chariot).
+    let mut bare = filter.clone();
+    if bare.card_types.as_slice() == [CardType::Creature] {
+        bare.card_types.clear();
+    }
+    if matches!(bare.zone, Some(Zone::Battlefield)) {
+        bare.zone = None;
+    }
+    if !bare.supertypes.is_empty() {
+        let mut rest = bare.clone();
+        rest.supertypes.clear();
+        if rest == ObjectFilter::default() {
+            let words = bare
+                .supertypes
+                .iter()
+                .map(|supertype| supertype.to_string().to_ascii_lowercase())
+                .collect::<Vec<_>>()
+                .join(" ");
+            return Some(format!("{subject} is {words}"));
+        }
+    }
+    if !bare.static_abilities.is_empty() || !bare.ability_markers.is_empty() {
+        let mut rest = bare.clone();
+        rest.static_abilities.clear();
+        rest.ability_markers.clear();
+        if rest == ObjectFilter::default() {
+            let description = bare.description();
+            if let Some((_, abilities)) = description.split_once("with ") {
+                let abilities = abilities.replace(" with ", " and ");
+                return Some(format!("{subject} has {abilities}"));
+            }
+        }
+    }
+
     None
 }
 

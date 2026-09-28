@@ -1792,7 +1792,9 @@ fn describe_labeled_static_bundle(abilities: &[Ability], subject: &str) -> Optio
                     .expect("checked station keyword group")
                     .push(keyword);
             } else {
-                station_keywords = None;
+                // The keyword row ends here; the striation's later printed
+                // lines render as their own continuation lines.
+                break;
             }
         }
         bodies.push(render_labeled_static_body(&next_inner, subject));
@@ -1824,6 +1826,8 @@ fn describe_labeled_static_bundle(abilities: &[Ability], subject: &str) -> Optio
                 render_labeled_static_predicates(&predicates)
             )
         }
+    } else if let Some(merged) = merge_shared_have_subject_bodies(&bodies) {
+        merged
     } else {
         render_labeled_static_predicates(&bodies)
     };
@@ -1837,6 +1841,39 @@ fn describe_labeled_static_bundle(abilities: &[Ability], subject: &str) -> Optio
 
     let display_label = explicit_label.unwrap_or(&label);
     Some((format!("{display_label} — {body}"), consumed))
+}
+
+/// "Other artifacts you control have hexproof" + "... have indestructible"
+/// share one subject and verb: "Other artifacts you control have hexproof and
+/// indestructible".
+fn merge_shared_have_subject_bodies(bodies: &[String]) -> Option<String> {
+    if bodies.len() < 2 {
+        return None;
+    }
+    let mut subject: Option<(&str, &str)> = None;
+    let mut tails = Vec::with_capacity(bodies.len());
+    for body in bodies {
+        let body = body.trim().trim_end_matches('.');
+        let (head, verb, tail) = [" have ", " has "].into_iter().find_map(|verb| {
+            body.split_once(verb).map(|(head, tail)| (head, verb, tail))
+        })?;
+        match subject {
+            Some((known_head, known_verb)) if known_head != head || known_verb != verb => {
+                return None;
+            }
+            Some(_) => {}
+            None => subject = Some((head, verb)),
+        }
+        if tail.contains(" and ") || tail.contains(',') {
+            return None;
+        }
+        tails.push(tail.to_string());
+    }
+    let (head, verb) = subject?;
+    Some(format!(
+        "{head}{verb}{}",
+        render_labeled_static_predicates(&tails)
+    ))
 }
 
 const SOURCE_LINE_KEYWORD_GROUP_SENTINEL: &str = "\0ironsmith:source-line-keyword-group:";
@@ -24335,6 +24372,11 @@ pub(crate) fn describe_single_self_replacement_segment(
     {
         return Some(shared_target_text);
     }
+    let replacement_text = describe_same_targets_returned_to_hand_replacement(
+        &segment.default_effects,
+        &branch.replacement_effects,
+    )
+    .unwrap_or(replacement_text);
     let mut replacement =
         rewrite_self_replacement_referent_phrase(&default_text, &replacement_text);
     if condition_text.starts_with("that creature is ")
@@ -34880,6 +34922,99 @@ fn describe_source_line_static_group(
         .or_else(|| {
             describe_source_line_off_battlefield_creature_characteristic_group(members, subject)
         })
+        .or_else(|| describe_source_line_conditional_self_characteristics_group(members))
+}
+
+/// "As long as this creature is tapped, it's a Human Citizen with base power
+/// and toughness 1/1 and can't be blocked" (Futurist Operative): one
+/// condition shared by the source's creature-type setting, its base P/T and
+/// trailing predicates about the same source.
+fn describe_source_line_conditional_self_characteristics_group(
+    members: &[Ability],
+) -> Option<String> {
+    let mut condition: Option<&Condition> = None;
+    let mut subtypes_text: Option<String> = None;
+    let mut base_pt: Option<(i32, i32)> = None;
+    let mut predicates = Vec::new();
+    for member in members {
+        if member.functional_zones.as_slice() != [Zone::Battlefield] {
+            return None;
+        }
+        let AbilityKind::Static(static_ability) = &member.kind else {
+            return None;
+        };
+        let ironsmith_core::StaticAbilityPayload::Conditional {
+            ability: inner,
+            condition: member_condition,
+        } = &static_ability.compiled_model()?.payload
+        else {
+            return None;
+        };
+        match condition {
+            Some(known) if known != member_condition => return None,
+            Some(_) => {}
+            None => condition = Some(member_condition),
+        }
+        match &inner.payload {
+            ironsmith_core::StaticAbilityPayload::SetCardTypes { filter, card_types }
+                if filter.source
+                    && card_types.as_slice() == [CardType::Creature]
+                    && subtypes_text.is_none()
+                    && predicates.is_empty() => {}
+            ironsmith_core::StaticAbilityPayload::SetCreatureSubtypes { filter, subtypes }
+                if filter.source
+                    && !subtypes.is_empty()
+                    && subtypes_text.is_none()
+                    && predicates.is_empty() =>
+            {
+                subtypes_text = Some(
+                    subtypes
+                        .iter()
+                        .map(|subtype| subtype.to_string())
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                );
+            }
+            ironsmith_core::StaticAbilityPayload::SetBasePowerToughness {
+                filter,
+                power,
+                toughness,
+            } if filter.source
+                && subtypes_text.is_some()
+                && base_pt.is_none()
+                && predicates.is_empty() =>
+            {
+                base_pt = Some((*power, *toughness));
+            }
+            _ => {
+                subtypes_text.as_ref()?;
+                let rendered = render_labeled_static_body(
+                    &crate::static_abilities::StaticAbility::from_model(inner.as_ref().clone()),
+                    "it",
+                );
+                let predicate = ["It ", "This creature ", "This permanent "]
+                    .into_iter()
+                    .find_map(|prefix| rendered.strip_prefix(prefix))?;
+                predicates.push(predicate.to_string());
+            }
+        }
+    }
+    let subtypes_text = subtypes_text?;
+    let mut body = format!(
+        "As long as {}, it's {}",
+        describe_condition(condition?),
+        with_indefinite_article(&subtypes_text)
+    );
+    if let Some((power, toughness)) = base_pt {
+        body.push_str(&format!(
+            " with base power and toughness {power}/{toughness}"
+        ));
+    }
+    for predicate in predicates {
+        body.push_str(" and ");
+        body.push_str(&predicate);
+    }
+    Some(body)
 }
 
 /// Rejoin a player restriction and an object keyword grant only when they
@@ -43504,4 +43639,56 @@ mod additive_type_loss_group_tests {
         ));
         assert!(describe_source_line_additive_type_loss_group(&mismatched).is_none());
     }
+}
+
+/// "Adamant — If ..., instead return those cards to your hand and exile
+/// Once and Future": the replacement returns exactly the object targets the
+/// default instructions already declared.
+fn describe_same_targets_returned_to_hand_replacement(
+    default_effects: &[crate::effect::Effect],
+    replacement_effects: &[crate::effect::Effect],
+) -> Option<String> {
+    let [replacement] = replacement_effects else {
+        return None;
+    };
+    let sequence = replacement.downcast_ref::<crate::effects::SequenceEffect>()?;
+    let default_targets = default_effects
+        .iter()
+        .filter_map(|effect| {
+            let effect = unwrap_basic_render_wrapper(effect);
+            effect
+                .downcast_ref::<crate::effects::ReturnFromGraveyardToHandEffect>()
+                .map(|returned| returned.target.clone())
+                .or_else(|| {
+                    effect
+                        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+                        .map(|moved| moved.target.clone())
+                })
+        })
+        .filter(|spec| spec.is_target())
+        .collect::<Vec<_>>();
+    let mut returned = 0usize;
+    for effect in &sequence.effects {
+        let Some(returned_effect) = unwrap_basic_render_wrapper(effect)
+            .downcast_ref::<crate::effects::ReturnFromGraveyardToHandEffect>()
+        else {
+            break;
+        };
+        if !default_targets.contains(&returned_effect.target) {
+            return None;
+        }
+        returned += 1;
+    }
+    if returned < 2 {
+        return None;
+    }
+    let rest = &sequence.effects[returned..];
+    if rest.is_empty() {
+        return Some("return those cards to your hand".to_string());
+    }
+    let rest_text = describe_effect_list(rest);
+    Some(format!(
+        "return those cards to your hand and {}",
+        lowercase_first(rest_text.trim().trim_end_matches('.'))
+    ))
 }

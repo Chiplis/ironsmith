@@ -1478,6 +1478,14 @@ pub(super) fn compile_subject_verb_middle(
             if let Some((_, watcher_choices)) = &leave_watcher_spec {
                 choices.extend(watcher_choices.iter().cloned());
             }
+            // Reference resolution names the exiled object whenever the spec
+            // chooses a fresh object, targeted or not ("exile another creature
+            // you control until ... . When you do, ... the exiled creature's
+            // power"), so the exile must record that tag too.
+            let names_exiled_object = matches!(
+                spec.base(),
+                ChooseSpec::Object(_) | ChooseSpec::ObjectOrPlayer(_, _) | ChooseSpec::SpecificObject(_)
+            );
             if *all && let ChooseSpec::Object(filter) = spec {
                 spec = ChooseSpec::All(filter);
             }
@@ -1488,7 +1496,7 @@ pub(super) fn compile_subject_verb_middle(
                 exile_until = exile_until.with_leave_watcher(watcher);
             }
             let mut effect = Effect::new(exile_until);
-            if spec.is_target() {
+            if spec.is_target() || names_exiled_object {
                 let tag = ctx.next_tag("exiled");
                 effect = effect.tag(tag.clone());
                 ctx.last_object_tag = Some(tag);

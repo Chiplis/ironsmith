@@ -903,6 +903,26 @@ fn rest_complement_producer(earlier: &[crate::effect::Effect]) -> Option<crate::
             if !named {
                 return None;
             }
+            // An instruction that picks some members out of the collection
+            // ("Exile one of those cards") moves only the pick; the rest of
+            // the collection stays where it was put together.
+            let picks_from_collection = |spec: &ChooseSpec| {
+                matches!(
+                    spec,
+                    ChooseSpec::WithCount(picked, _) | ChooseSpec::WithCountValue(picked, _, _)
+                        if matches!(picked.base(), ChooseSpec::Tagged(picked) if picked == tag)
+                )
+            };
+            let mut unwrapped = effect;
+            while let Some(tagged) = unwrapped.downcast_ref::<crate::effects::TaggedEffect>() {
+                unwrapped = &tagged.effect;
+            }
+            if unwrapped
+                .target_spec()
+                .is_some_and(|spec| picks_from_collection(spec.base()) || picks_from_collection(spec))
+            {
+                return None;
+            }
             if let Some(look) = effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()
                 && look.tag == *tag
             {
@@ -1386,39 +1406,14 @@ fn bind_unattach_to_attached_object(program: &mut crate::resolution::ResolutionP
 /// may pay ...": the target is announced whether or not the optional action
 /// is taken, so a later "that creature" must not depend on the optional
 /// action having tagged it. Hoist the May's leading target declaration out of
-/// the May, tagged with the name the later reference uses.
+/// the May, tagged with the name the later reference uses. (An UnlessPays
+/// whose payer or payment names a target declared by its own leading
+/// instruction is left alone: the runtime binds that declaration first.)
 fn hoist_optional_target_declaration(program: &mut crate::resolution::ResolutionProgram) {
     for segment_index in 0..program.segments.len() {
         let mut index = 0;
         while index < program.segments[segment_index].default_effects.len() {
             let effect = program.segments[segment_index].default_effects[index].clone();
-            // "Target enchantment deals damage ... to its controller unless that
-            // player sacrifices it": the payer and the payment name the target,
-            // which the wrapped instructions would only tag after the payment
-            // decision. Declare the tagged target before the unless-wrapper.
-            if let Some(unless) =
-                effect.downcast_ref::<crate::effects::UnlessPaysEffect<crate::effect::Effect>>()
-                && let Some(first) = unless.effects.first()
-                && let Some(tagged) = first.downcast_ref::<crate::effects::TaggedEffect>()
-                && tagged
-                    .effect
-                    .downcast_ref::<crate::effects::TargetOnlyEffect>()
-                    .is_some()
-            {
-                let needle = format!("TagKey({:?})", tagged.tag.as_str());
-                let payment_names_tag = format!("{:?}", unless.player).contains(&needle)
-                    || format!("{:?}", unless.cost).contains(&needle);
-                if payment_names_tag {
-                    let declaration = first.clone();
-                    let mut unless = unless.clone();
-                    unless.effects.remove(0);
-                    let segment = &mut program.segments[segment_index];
-                    segment.default_effects[index] = crate::effect::Effect::new(unless);
-                    segment.default_effects.insert(index, declaration);
-                    index += 2;
-                    continue;
-                }
-            }
             let Some(may) = effect.downcast_ref::<crate::effects::MayEffect<crate::effect::Effect>>()
             else {
                 index += 1;

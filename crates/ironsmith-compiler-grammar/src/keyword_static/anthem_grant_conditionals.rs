@@ -2806,7 +2806,15 @@ pub fn parse_as_long_as_condition_can_attack_as_though_no_defender_line(
     };
 
     let condition = parse_static_condition_clause(shape.condition_tokens)?;
-    let subject = parse_anthem_subject(shape.subject_tokens)?;
+    // "As long as equipped creature has defender, it can attack as though it
+    // didn't have defender" (Warmonger's Chariot): the pronoun names the
+    // attached creature the condition talks about, not the source.
+    let attached_subject_filter =
+        infer_attached_subject_filter_from_condition_tokens(shape.condition_tokens);
+    let subject = parse_anthem_subject_with_attached_fallback(
+        shape.subject_tokens,
+        attached_subject_filter.as_ref(),
+    )?;
     let granted = match subject {
         AnthemSubjectAst::Source => StaticAbilityAst::ConditionalStaticAbility {
             ability: Box::new(StaticAbilityAst::Static(

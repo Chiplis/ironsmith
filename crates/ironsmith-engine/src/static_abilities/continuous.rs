@@ -1871,6 +1871,16 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             let subtype = format!("{:?}", filter.subtypes[0]).to_ascii_lowercase();
             format!("as long as equipped creature is a {subtype}")
         }
+        crate::ConditionExpr::TaggedObjectMatches(tag, filter)
+            if matches!(tag.as_str(), "equipped" | "enchanted")
+                && describe_attached_object_predicate(filter).is_some() =>
+        {
+            format!(
+                "as long as {} creature {}",
+                tag.as_str(),
+                describe_attached_object_predicate(filter).unwrap_or_default()
+            )
+        }
         crate::ConditionExpr::SourceChosenOption(option) => {
             format!("as long as the chosen option is {}", option)
         }
@@ -2431,6 +2441,41 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             crate::runtime_display::describe_condition(condition)
         ),
     }
+}
+
+/// "is legendary" / "has defender": a supertype or ability predicate on the
+/// attached creature ("as long as equipped creature has defender").
+fn describe_attached_object_predicate(filter: &ObjectFilter) -> Option<String> {
+    let mut bare = filter.clone();
+    if bare.card_types.as_slice() == [crate::types::CardType::Creature] {
+        bare.card_types.clear();
+    }
+    if bare.zone == Some(crate::zone::Zone::Battlefield) {
+        bare.zone = None;
+    }
+    bare.union_surface = ObjectFilter::default().union_surface;
+    let mut rest = bare.clone();
+    rest.supertypes.clear();
+    if !bare.supertypes.is_empty() && rest == ObjectFilter::default() {
+        let words = bare
+            .supertypes
+            .iter()
+            .map(|supertype| supertype.to_string().to_ascii_lowercase())
+            .collect::<Vec<_>>()
+            .join(" ");
+        return Some(format!("is {words}"));
+    }
+    let mut rest = bare.clone();
+    rest.static_abilities.clear();
+    rest.ability_markers.clear();
+    if (!bare.static_abilities.is_empty() || !bare.ability_markers.is_empty())
+        && rest == ObjectFilter::default()
+    {
+        let description = bare.description();
+        let (_, abilities) = description.split_once("with ")?;
+        return Some(format!("has {}", abilities.replace(" with ", " and ")));
+    }
+    None
 }
 
 fn describe_same_source_static_condition(condition: &crate::ConditionExpr) -> String {

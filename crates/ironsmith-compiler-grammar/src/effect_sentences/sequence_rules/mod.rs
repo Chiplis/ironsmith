@@ -83,21 +83,26 @@ pub fn try_parse_document_program(
             consumed.first().map(|sentence| sentence.lowered()).unwrap_or_default(),
             "where_x_antecedent",
         );
-        if rebind_it_reference_in_value(&mut where_value, &alias.key) {
-            matched
-                .effects
-                .insert(0, EffectAst::SnapshotLastObjectTag { into: alias });
-        }
+        let rebound = rebind_it_reference_in_value(&mut where_value, &alias.key);
         let clause = consumed
             .iter()
             .flat_map(|sentence| crate::lexer::token_word_refs(sentence.lowered()))
             .collect::<Vec<_>>()
             .join(" ");
+        // Only an X the sentences left unbound takes the procedure-wide
+        // binding; when each sentence already bound its own X there is
+        // nothing to pin.
+        let before = format!("{:?}", matched.effects);
         super::dispatch_entry::replace_unbound_x_in_effects_anywhere(
             &mut matched.effects,
             &where_value,
             &clause,
         )?;
+        if rebound && format!("{:?}", matched.effects) != before {
+            matched
+                .effects
+                .insert(0, EffectAst::SnapshotLastObjectTag { into: alias });
+        }
     }
     Ok(Some(matched))
 }

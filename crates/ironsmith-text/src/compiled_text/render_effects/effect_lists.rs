@@ -12978,6 +12978,12 @@ pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
     {
         return text;
     }
+    if let Some(text) = describe_choose_from_hand_then_reveal(effects) {
+        return text;
+    }
+    if let Some(text) = describe_choose_then_attach_chosen(effects) {
+        return text;
+    }
     if let Some(text) = describe_restricted_player_target_life_loss(effects) {
         return text;
     }
@@ -13969,6 +13975,30 @@ pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
             continue;
         }
         if let Some((compact, consumed)) = describe_sacrifice_chosen_object_list(&filtered[idx..]) {
+            parts.push(compact);
+            idx += consumed;
+            continue;
+        }
+        // "create an X/X ... token, where X is ...": a 0/0 token whose base
+        // power and toughness are then set to the same dynamic value.
+        if idx + 1 < filtered.len()
+            && let Some(compact) = describe_conditional_dynamic_token_branch(&[
+                filtered[idx].clone(),
+                filtered[idx + 1].clone(),
+            ])
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if let Some((compact, consumed)) = describe_player_look_keep_one_rest(&filtered[idx..]) {
+            parts.push(compact);
+            idx += consumed;
+            continue;
+        }
+        if let Some((compact, consumed)) =
+            describe_looked_optional_reveal_to_battlefield(&filtered[idx..])
+        {
             parts.push(compact);
             idx += consumed;
             continue;
@@ -19236,4 +19266,196 @@ mod base_characteristic_choice_tests {
             "{debug}"
         );
     }
+}
+
+/// "You may reveal X black cards in your hand" (Nightshade Assassin) lowers
+/// to a choice of cards from your hand followed by revealing exactly the
+/// chosen cards; it reads as the single reveal instruction.
+fn describe_choose_from_hand_then_reveal(effects: &[Effect]) -> Option<String> {
+    let [choose_effect, reveal_effect] = effects else {
+        return None;
+    };
+    let choose = unwrap_basic_tag_wrappers(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let reveal = unwrap_basic_tag_wrappers(reveal_effect)
+        .downcast_ref::<crate::effects::RevealTaggedEffect>()?;
+    if reveal.tag != choose.tag
+        || choose.is_search
+        || choose.chooser != PlayerFilter::You
+        || choose.zone != Some(Zone::Hand)
+        || choose.filter.zone != Some(Zone::Hand)
+        || choose.filter.owner != Some(PlayerFilter::You)
+        || !choose.filter.tagged_constraints.is_empty()
+    {
+        return None;
+    }
+    let mut display = choose.clone();
+    display.filter.zone = None;
+    display.filter.owner = None;
+    let selection = describe_choose_selection(&display);
+    let selection = if choose.count.dynamic_x {
+        selection
+            .strip_prefix("any number of ")
+            .map(|rest| format!("X {rest}"))
+            .unwrap_or(selection)
+    } else {
+        selection
+    };
+    Some(format!("Reveal {selection} from your hand"))
+}
+
+/// "You may attach an Equipment you control to that creature" (Unexpected
+/// Request) lowers to choosing the Equipment and attaching exactly the chosen
+/// object; it reads as the single attach instruction.
+fn describe_choose_then_attach_chosen(effects: &[Effect]) -> Option<String> {
+    let [choose_effect, attach_effect] = effects else {
+        return None;
+    };
+    let choose = unwrap_basic_tag_wrappers(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let attach = unwrap_basic_tag_wrappers(attach_effect)
+        .downcast_ref::<crate::effects::AttachObjectsEffect>()?;
+    if choose.is_search
+        || choose.chooser != PlayerFilter::You
+        || !choose.count.is_single()
+        || attach.individual_targets
+        || !matches!(attach.objects.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+        || matches!(attach.target.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+    {
+        return None;
+    }
+    let mut display = choose.clone();
+    if display.filter.zone == Some(Zone::Battlefield) {
+        display.filter.zone = None;
+    }
+    Some(format!(
+        "Attach {} to {}",
+        describe_choose_selection(&display),
+        describe_choose_spec(&attach.target)
+    ))
+}
+
+/// "You may reveal a creature card ... from among them and put it onto the
+/// battlefield" (Loot, Exuberant Explorer): an optional single pick from the
+/// looked-at cards, revealed, then moved.
+fn describe_looked_optional_reveal_to_battlefield(effects: &[&Effect]) -> Option<(String, usize)> {
+    let [choose_effect, reveal_effect, move_effect, ..] = effects else {
+        return None;
+    };
+    let choose = unwrap_basic_tag_wrappers(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let reveal = unwrap_basic_tag_wrappers(reveal_effect)
+        .downcast_ref::<crate::effects::RevealTaggedEffect>()?;
+    let for_each = unwrap_basic_tag_wrappers(move_effect)
+        .downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    if choose.is_search
+        || choose.chooser != PlayerFilter::You
+        || choose.count.min != 0
+        || choose.count.max != Some(1)
+        || reveal.tag != choose.tag
+        || for_each.tag != choose.tag
+    {
+        return None;
+    }
+    let [constraint] = choose.filter.tagged_constraints.as_slice() else {
+        return None;
+    };
+    if constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        || !(crate::cards::is_sentence_helper_tag(constraint.tag.as_str(), "looked")
+            || crate::cards::is_sentence_helper_tag(constraint.tag.as_str(), "revealed"))
+    {
+        return None;
+    }
+    let [moved] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let moved = unwrap_basic_tag_wrappers(moved).downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if moved.zone != Zone::Battlefield
+        || !matches!(moved.target.base(), ChooseSpec::Iterated)
+        || moved.enters_tapped
+    {
+        return None;
+    }
+    let mut display = choose.clone();
+    display.filter.tagged_constraints.clear();
+    display.filter.zone = None;
+    display.count.min = 1;
+    let selection = describe_choose_selection(&display);
+    Some((
+        format!("you may reveal {selection} from among them and put it onto the battlefield"),
+        3,
+    ))
+}
+
+/// "Target player looks at the top three cards of their library, puts one of
+/// them back on top of their library, then exiles the rest" (Ashnod's Cylix):
+/// a private look by another player who then partitions the looked cards.
+fn describe_player_look_keep_one_rest(effects: &[&Effect]) -> Option<(String, usize)> {
+    let [look_effect, keep_effect, rest @ ..] = effects else {
+        return None;
+    };
+    let look = unwrap_basic_tag_wrappers(look_effect)
+        .downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    if look.reveal || look.viewer == PlayerFilter::You || look.viewer != look.player {
+        return None;
+    }
+    let keep = unwrap_basic_tag_wrappers(keep_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let (ChooseSpec::WithCount(picked, count) | ChooseSpec::WithCountValue(picked, count, _)) =
+        &keep.target
+    else {
+        return None;
+    };
+    if !matches!(picked.base(), ChooseSpec::Tagged(tag) if *tag == look.tag)
+        || count.min != count.max.unwrap_or(usize::MAX)
+        || keep.zone != Zone::Library
+        || !keep.to_top
+    {
+        return None;
+    }
+    let kept = count.min;
+    let kept_text = format!(
+        "{} of them",
+        number_word(kept as i32).unwrap_or_else(|| kept.to_string())
+    );
+    let (count_text, noun, where_clause) = describe_top_count_noun_and_where_clause(&look.count);
+    let subject = capitalize_first(&describe_player_filter(&look.viewer));
+    let mut text = format!(
+        "{subject} {} at the top {count_text} {noun} of their library{where_clause}, puts {kept_text} back on top of their library",
+        player_verb(&subject, "look", "looks")
+    );
+    // The rest of the looked-at cards.
+    let mut consumed = 2usize;
+    let mut rest_iter = rest.iter();
+    let mut next = rest_iter.next();
+    if let Some(effect) = next
+        && unwrap_basic_tag_wrappers(effect)
+            .downcast_ref::<crate::effects::TagMatchingObjectsEffect>()
+            .is_some()
+    {
+        consumed += 1;
+        next = rest_iter.next();
+    }
+    if let Some(effect) = next
+        && let Some(moved) =
+            unwrap_basic_tag_wrappers(effect).downcast_ref::<crate::effects::MoveToZoneEffect>()
+        && matches!(moved.target.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "rest")
+    {
+        let tail = match moved.zone {
+            Zone::Exile => Some("exiles the rest".to_string()),
+            Zone::Graveyard => Some("puts the rest into their graveyard".to_string()),
+            Zone::Hand => Some("puts the rest into their hand".to_string()),
+            Zone::Library if !moved.to_top => {
+                Some("puts the rest on the bottom of their library".to_string())
+            }
+            _ => None,
+        };
+        if let Some(tail) = tail {
+            text.push_str(&format!(", then {tail}"));
+            consumed += 1;
+        }
+    } else if consumed == 3 {
+        consumed = 2;
+    }
+    Some((text, consumed))
 }
