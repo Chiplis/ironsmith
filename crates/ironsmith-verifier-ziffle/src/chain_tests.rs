@@ -2,14 +2,7 @@ use super::*;
 use serde_json::{Value, json};
 
 fn dispatch(operation: Operation, input: &[u8]) -> Result<Vec<u8>, VerifierError> {
-    match input_deck_count(input)? {
-        2 => execute_for::<2>(operation, input),
-        3 => execute_for::<3>(operation, input),
-        4 => execute_for::<4>(operation, input),
-        5 => execute_for::<5>(operation, input),
-        6 => execute_for::<6>(operation, input),
-        count => Err(unsupported_deck_count(count)),
-    }
+    execute(operation, input_deck_count(input)?, input)
 }
 
 fn call(operation: Operation, input: &Value) -> Result<Value, VerifierError> {
@@ -268,7 +261,7 @@ fn authenticated_reshuffle_rejects_missing_substituted_duplicate_and_tampered_pa
     }
     call(Operation::VerifyShuffle, &second).unwrap();
     assert!(
-        execute_for::<3>(Operation::VerifyShuffle, &encode(&second).unwrap()).is_err(),
+        execute(Operation::VerifyShuffle, 3, &encode(&second).unwrap()).is_err(),
         "bypassing the graph dispatcher cannot mint trusted source handles"
     );
 }

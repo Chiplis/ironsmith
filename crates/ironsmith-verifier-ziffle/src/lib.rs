@@ -1,6 +1,8 @@
 //! Byte-oriented Ziffle proof and verification service.
 
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Compress, Validate};
+use ark_serialize::{
+    CanonicalDeserialize, CanonicalSerialize, Compress, SerializationError, Validate,
+};
 use ark_std::rand::{SeedableRng as ArkSeedableRng, rngs::StdRng as ArkStdRng};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
@@ -269,7 +271,7 @@ struct DeckCountInput {
     deck_count: usize,
 }
 
-/// Read only the routing field so the facade can choose a monomorphization shard.
+/// Read only the routing field so the facade can size the shuffle.
 pub fn input_deck_count(input: &[u8]) -> Result<usize, VerifierError> {
     decode::<DeckCountInput>(input, "ziffle operation").map(|input| input.deck_count)
 }
@@ -279,7 +281,7 @@ pub fn input_deck_count(input: &[u8]) -> Result<usize, VerifierError> {
 pub fn execute_keygen(input: &[u8]) -> Result<Vec<u8>, VerifierError> {
     let input: ZiffleEntropyInput = decode(input, "ziffle keygen")?;
     let mut rng = rng_from_entropy_hex(&input.entropy_hex)?;
-    let shuffle = Shuffle::<60>::default();
+    let shuffle = Shuffle::new(60);
     let (secret_key, public_key, ownership_proof) =
         shuffle.keygen(&mut rng, input.context.as_bytes());
     encode(&ZiffleKeygenOutput {
@@ -290,60 +292,66 @@ pub fn execute_keygen(input: &[u8]) -> Result<Vec<u8>, VerifierError> {
     })
 }
 
-/// Execute one non-keygen operation for one concrete deck size. Concrete
-/// instantiations live in sibling shard crates so rustc can codegen them in
-/// parallel instead of placing all 594 instantiations in one unit.
-pub fn execute_for<const N: usize>(
+pub const MIN_DECK_COUNT: usize = 2;
+pub const MAX_DECK_COUNT: usize = 100;
+
+/// Execute one operation for the deck size the caller routed from the input.
+pub fn execute(
     operation: Operation,
+    deck_count: usize,
     input: &[u8],
 ) -> Result<Vec<u8>, VerifierError> {
+    if !(MIN_DECK_COUNT..=MAX_DECK_COUNT).contains(&deck_count) {
+        return Err(unsupported_deck_count(deck_count));
+    }
+    let n = deck_count;
     match operation {
         Operation::Keygen => execute_keygen(input),
         Operation::BuildShuffleStep => {
             let input: ZiffleBuildShuffleStepInput = decode(input, "ziffle shuffle")?;
-            ensure_deck_count::<N>(input.deck_count)?;
-            let output = build_ziffle_shuffle_step::<N>(input)?;
+            ensure_deck_count(n, input.deck_count)?;
+            let output = build_ziffle_shuffle_step(n, input)?;
             encode(&output)
         }
         Operation::VerifyShuffle => {
             let input: ZiffleVerifyShuffleInput = decode(input, "ziffle verify")?;
-            ensure_deck_count::<N>(input.deck_count)?;
-            let output = verify_ziffle_shuffle::<N>(input)?;
+            ensure_deck_count(n, input.deck_count)?;
+            let output = verify_ziffle_shuffle(n, input)?;
             encode(&output)
         }
         Operation::BuildRevealToken => {
             let input: ZiffleBuildRevealTokenInput = decode(input, "ziffle reveal token")?;
-            ensure_deck_count::<N>(input.deck_count)?;
-            let output = build_ziffle_reveal_token::<N>(input)?;
+            ensure_deck_count(n, input.deck_count)?;
+            let output = build_ziffle_reveal_token(n, input)?;
             encode(&output)
         }
         Operation::BuildRevealTokens => {
             let input: ZiffleBuildRevealTokensInput = decode(input, "ziffle reveal tokens")?;
-            ensure_deck_count::<N>(input.deck_count)?;
-            let output = build_ziffle_reveal_tokens::<N>(input)?;
+            ensure_deck_count(n, input.deck_count)?;
+            let output = build_ziffle_reveal_tokens(n, input)?;
             encode(&output)
         }
         Operation::RevealCard => {
             let input: ZiffleRevealCardInput = decode(input, "ziffle reveal")?;
-            ensure_deck_count::<N>(input.deck_count)?;
-            let output = reveal_ziffle_card::<N>(input)?;
+            ensure_deck_count(n, input.deck_count)?;
+            let output = reveal_ziffle_card(n, input)?;
             encode(&output)
         }
         Operation::RevealCards => {
             let input: ZiffleRevealCardsInput = decode(input, "ziffle reveals")?;
-            ensure_deck_count::<N>(input.deck_count)?;
-            let output = reveal_ziffle_cards::<N>(input)?;
+            ensure_deck_count(n, input.deck_count)?;
+            let output = reveal_ziffle_cards(n, input)?;
             encode(&output)
         }
     }
 }
 
-fn ensure_deck_count<const N: usize>(deck_count: usize) -> Result<(), VerifierError> {
-    if deck_count == N {
+fn ensure_deck_count(n: usize, deck_count: usize) -> Result<(), VerifierError> {
+    if deck_count == n {
         Ok(())
     } else {
         Err(VerifierError::new(format!(
-            "verifier shard mismatch: routed deck size {deck_count} to {N}"
+            "verifier shard mismatch: routed deck size {deck_count} to {n}"
         )))
     }
 }
@@ -357,9 +365,20 @@ fn ziffle_to_hex<T: CanonicalSerialize>(value: &T) -> Result<String, VerifierErr
 }
 
 fn ziffle_from_hex<T: CanonicalDeserialize>(hex: &str, label: &str) -> Result<T, VerifierError> {
+    ziffle_from_hex_with(hex, label, |reader| {
+        T::deserialize_with_mode(reader, Compress::Yes, Validate::Yes)
+    })
+}
+
+/// Decode a deck-sized artifact, whose encoding has no length prefix.
+fn ziffle_from_hex_with<T>(
+    hex: &str,
+    label: &str,
+    decode: impl FnOnce(&mut &[u8]) -> Result<T, SerializationError>,
+) -> Result<T, VerifierError> {
     let bytes = hex_to_vec(hex).map_err(|e| VerifierError::new(format!("invalid {label}: {e}")))?;
     let mut reader = bytes.as_slice();
-    let value = T::deserialize_with_mode(&mut reader, Compress::Yes, Validate::Yes)
+    let value = decode(&mut reader)
         .map_err(|e| VerifierError::new(format!("failed to decode {label}: {e}")))?;
     if !reader.is_empty() {
         return Err(VerifierError::new(format!("trailing bytes in {label}")));
@@ -474,17 +493,18 @@ thread_local! {
     static VERIFIED_CEREMONIES: RefCell<CeremonyCache> = RefCell::new(VecDeque::new());
 }
 
-struct VerifiedCeremony<const N: usize> {
+struct VerifiedCeremony {
     keys: VerifiedPublicKeys,
     aggregate: AggregatePublicKey,
-    deck: Option<Verified<MaskedDeck<N>>>,
-    shuffle: Shuffle<N>,
+    deck: Option<Verified<MaskedDeck>>,
+    shuffle: Shuffle,
     proof_context: Vec<u8>,
     prepared_input: Option<PreparedInput>,
     state_hash: String,
 }
 
-fn ceremony_cache_key<const N: usize>(
+fn ceremony_cache_key(
+    n: usize,
     context: &[u8],
     key_context: &[u8],
     keys: &[ZifflePublicKeyInput],
@@ -495,7 +515,7 @@ fn ceremony_cache_key<const N: usize>(
     // a caller-supplied deck hash as evidence of verification.
     let encoded = encode(&(
         "ironsmith-verified-ziffle-ceremony-v1",
-        N,
+        n,
         context,
         key_context,
         keys,
@@ -505,22 +525,24 @@ fn ceremony_cache_key<const N: usize>(
 }
 
 #[cfg(test)]
-fn verify_ziffle_steps<const N: usize>(
+fn verify_ziffle_steps(
+    n: usize,
     context: &[u8],
     key_context: &[u8],
     keys: &[ZifflePublicKeyInput],
     steps: &[ZiffleShuffleStepInput],
-) -> Result<Rc<VerifiedCeremony<N>>, VerifierError> {
-    verify_ziffle_steps_with_input::<N>(context, key_context, keys, steps, None)
+) -> Result<Rc<VerifiedCeremony>, VerifierError> {
+    verify_ziffle_steps_with_input(n, context, key_context, keys, steps, None)
 }
 
-fn verify_ziffle_steps_with_input<const N: usize>(
+fn verify_ziffle_steps_with_input(
+    n: usize,
     context: &[u8],
     key_context: &[u8],
     keys: &[ZifflePublicKeyInput],
     steps: &[ZiffleShuffleStepInput],
     input_deck: Option<&ZiffleInputDeck>,
-) -> Result<Rc<VerifiedCeremony<N>>, VerifierError> {
+) -> Result<Rc<VerifiedCeremony>, VerifierError> {
     let prepared_input = input_deck.map(chain::prepared_input).transpose()?;
     let proof_context = if let Some(prepared) = &prepared_input {
         encode(&(
@@ -532,23 +554,23 @@ fn verify_ziffle_steps_with_input<const N: usize>(
         context.to_vec()
     };
     let context = proof_context.as_slice();
-    let cache_key = ceremony_cache_key::<N>(context, key_context, keys, steps)?;
+    let cache_key = ceremony_cache_key(n, context, key_context, keys, steps)?;
     if let Some(cached) = VERIFIED_CEREMONIES.with(|cache| {
         let mut cache = cache.borrow_mut();
         let index = cache.iter().position(|(key, _)| *key == cache_key)?;
         let entry = cache.remove(index)?;
-        let verified = Rc::clone(&entry.1).downcast::<VerifiedCeremony<N>>().ok();
+        let verified = Rc::clone(&entry.1).downcast::<VerifiedCeremony>().ok();
         cache.push_back(entry);
         verified
     }) {
         return Ok(cached);
     }
-    let shuffle = Shuffle::<N>::default();
+    let shuffle = Shuffle::new(n);
     let (verified_keys, aggregate) = aggregate_public_key(keys, key_context)?;
     let mut verified_deck = prepared_input
         .as_ref()
         .map(|prepared| {
-            Verified::<MaskedDeck<N>>::from_verified_cards(&prepared.cards).ok_or_else(|| {
+            Verified::<MaskedDeck>::from_verified_cards(&prepared.cards, n).ok_or_else(|| {
                 VerifierError::new(
                     "invalid authenticated input deck length or duplicate ciphertext",
                 )
@@ -566,8 +588,12 @@ fn verify_ziffle_steps_with_input<const N: usize>(
                 step.shuffler
             )));
         }
-        let deck: MaskedDeck<N> = ziffle_from_hex(&step.deck_hex, "ziffle masked deck")?;
-        let proof: ShuffleProof<N> = ziffle_from_hex(&step.proof_hex, "ziffle shuffle proof")?;
+        let deck = ziffle_from_hex_with(&step.deck_hex, "ziffle masked deck", |reader| {
+            MaskedDeck::deserialize_with_len(reader, n, Compress::Yes, Validate::Yes)
+        })?;
+        let proof = ziffle_from_hex_with(&step.proof_hex, "ziffle shuffle proof", |reader| {
+            ShuffleProof::deserialize_with_len(reader, n, Compress::Yes, Validate::Yes)
+        })?;
         verified_deck = Some(if index == 0 && prepared_input.is_none() {
             shuffle
                 .verify_initial_shuffle(aggregate, deck, proof, context)
@@ -604,11 +630,11 @@ fn verify_ziffle_steps_with_input<const N: usize>(
 /// step per roster key, so no partial (or empty) chain can expose parent
 /// ciphertexts selected through `inputDeck.sources` directly. A non-empty
 /// `expected_deck_hash` must be the hash of the final verified step.
-fn complete_ceremony_deck<'a, const N: usize>(
-    ceremony: &'a VerifiedCeremony<N>,
+fn complete_ceremony_deck<'a>(
+    ceremony: &'a VerifiedCeremony,
     steps: &[ZiffleShuffleStepInput],
     expected_deck_hash: &str,
-) -> Result<&'a Verified<MaskedDeck<N>>, VerifierError> {
+) -> Result<&'a Verified<MaskedDeck>, VerifierError> {
     if steps.is_empty() || steps.len() != ceremony.keys.len() {
         return Err(VerifierError::new(
             "ziffle reveal requires a complete shuffle with one step per player",
@@ -632,12 +658,14 @@ fn complete_ceremony_deck<'a, const N: usize>(
     Ok(deck)
 }
 
-fn build_ziffle_shuffle_step<const N: usize>(
+fn build_ziffle_shuffle_step(
+    n: usize,
     input: ZiffleBuildShuffleStepInput,
 ) -> Result<ZiffleShuffleStepOutput, VerifierError> {
     let context = input.context.as_bytes();
     let key_context = ziffle_key_context(&input.key_context, &input.context).as_bytes();
-    let ceremony = verify_ziffle_steps_with_input::<N>(
+    let ceremony = verify_ziffle_steps_with_input(
+        n,
         context,
         key_context,
         &input.keys,
@@ -676,7 +704,8 @@ fn build_ziffle_shuffle_step<const N: usize>(
     })
 }
 
-fn verify_ziffle_shuffle<const N: usize>(
+fn verify_ziffle_shuffle(
+    n: usize,
     input: ZiffleVerifyShuffleInput,
 ) -> Result<ZiffleVerifyShuffleOutput, VerifierError> {
     let context = input.context.as_bytes();
@@ -686,7 +715,8 @@ fn verify_ziffle_shuffle<const N: usize>(
             "ziffle final shuffle must include one step per player",
         ));
     }
-    let ceremony = verify_ziffle_steps_with_input::<N>(
+    let ceremony = verify_ziffle_steps_with_input(
+        n,
         context,
         key_context,
         &input.keys,
@@ -706,7 +736,7 @@ fn verify_ziffle_shuffle<const N: usize>(
     let universe_count = ceremony
         .prepared_input
         .as_ref()
-        .map_or(N, |prepared| prepared.universe_count);
+        .map_or(n, |prepared| prepared.universe_count);
     let root_deck_hash = ceremony.prepared_input.as_ref().map_or_else(
         || deck_hash.clone(),
         |prepared| prepared.root_deck_hash.clone(),
@@ -716,7 +746,7 @@ fn verify_ziffle_shuffle<const N: usize>(
         |prepared| prepared.root_context.clone(),
     );
     chain::export_verified_deck(chain::VerifiedDeckExport {
-        cards: (0..N)
+        cards: (0..n)
             .map(|position| {
                 deck.verified_card(position)
                     .expect("verified deck position")
@@ -727,7 +757,7 @@ fn verify_ziffle_shuffle<const N: usize>(
         universe_count,
         reveal_manifest_card: ceremony.prepared_input.as_ref().map_or_else(
             || {
-                let manifest_shuffle = ceremony.shuffle;
+                let manifest_shuffle = ceremony.shuffle.clone();
                 Rc::new(move |aggregate, card| manifest_shuffle.reveal_card(aggregate, card))
                     as chain::ManifestRevealer
             },
@@ -735,7 +765,7 @@ fn verify_ziffle_shuffle<const N: usize>(
         ),
     });
     Ok(ZiffleVerifyShuffleOutput {
-        deck_count: N,
+        deck_count: n,
         universe_count,
         root_deck_hash,
         root_context,
@@ -745,12 +775,14 @@ fn verify_ziffle_shuffle<const N: usize>(
     })
 }
 
-fn build_ziffle_reveal_token<const N: usize>(
+fn build_ziffle_reveal_token(
+    n: usize,
     input: ZiffleBuildRevealTokenInput,
 ) -> Result<ZiffleRevealTokenOutput, VerifierError> {
     let context = input.context.as_bytes();
     let key_context = ziffle_key_context(&input.key_context, &input.context).as_bytes();
-    let ceremony = verify_ziffle_steps_with_input::<N>(
+    let ceremony = verify_ziffle_steps_with_input(
+        n,
         context,
         key_context,
         &input.keys,
@@ -779,12 +811,14 @@ fn build_ziffle_reveal_token<const N: usize>(
     })
 }
 
-fn build_ziffle_reveal_tokens<const N: usize>(
+fn build_ziffle_reveal_tokens(
+    n: usize,
     input: ZiffleBuildRevealTokensInput,
 ) -> Result<Vec<ZiffleRevealTokenBatchOutput>, VerifierError> {
     let context = input.context.as_bytes();
     let key_context = ziffle_key_context(&input.key_context, &input.context).as_bytes();
-    let ceremony = verify_ziffle_steps_with_input::<N>(
+    let ceremony = verify_ziffle_steps_with_input(
+        n,
         context,
         key_context,
         &input.keys,
@@ -819,8 +853,8 @@ fn build_ziffle_reveal_tokens<const N: usize>(
     Ok(out)
 }
 
-fn reveal_manifest_card<const N: usize>(
-    ceremony: &VerifiedCeremony<N>,
+fn reveal_manifest_card(
+    ceremony: &VerifiedCeremony,
     aggregate: AggregateRevealToken,
     card: MaskedCard,
 ) -> Option<usize> {
@@ -831,12 +865,14 @@ fn reveal_manifest_card<const N: usize>(
     }
 }
 
-fn reveal_ziffle_card<const N: usize>(
+fn reveal_ziffle_card(
+    n: usize,
     input: ZiffleRevealCardInput,
 ) -> Result<ZiffleRevealCardOutput, VerifierError> {
     let context = input.context.as_bytes();
     let key_context = ziffle_key_context(&input.key_context, &input.context).as_bytes();
-    let ceremony = verify_ziffle_steps_with_input::<N>(
+    let ceremony = verify_ziffle_steps_with_input(
+        n,
         context,
         key_context,
         &input.keys,
@@ -879,12 +915,14 @@ fn reveal_ziffle_card<const N: usize>(
     })
 }
 
-fn reveal_ziffle_cards<const N: usize>(
+fn reveal_ziffle_cards(
+    n: usize,
     input: ZiffleRevealCardsInput,
 ) -> Result<Vec<ZiffleRevealCardOutput>, VerifierError> {
     let context = input.context.as_bytes();
     let key_context = ziffle_key_context(&input.key_context, &input.context).as_bytes();
-    let ceremony = verify_ziffle_steps_with_input::<N>(
+    let ceremony = verify_ziffle_steps_with_input(
+        n,
         context,
         key_context,
         &input.keys,
@@ -936,7 +974,7 @@ fn reveal_ziffle_cards<const N: usize>(
 
 pub fn unsupported_deck_count(deck_count: usize) -> VerifierError {
     VerifierError::new(format!(
-        "unsupported ziffle deck size {deck_count}; supported sizes are 2 through 100"
+        "unsupported ziffle deck size {deck_count}; supported sizes are {MIN_DECK_COUNT} through {MAX_DECK_COUNT}"
     ))
 }
 
@@ -947,7 +985,7 @@ mod ziffle_backend_tests {
     #[test]
     fn ziffle_helpers_shuffle_and_reveal_with_four_players() {
         let context = "ironsmith-wasm-ziffle-test".to_string();
-        let shuffle = Shuffle::<10>::default();
+        let shuffle = Shuffle::new(10);
         let mut key_rng =
             rng_from_entropy_hex("00112233445566778899aabbccddeeff").expect("key rng should build");
         let mut keys = Vec::new();
@@ -969,7 +1007,7 @@ mod ziffle_backend_tests {
 
         let mut steps = Vec::new();
         for player in 0..4u8 {
-            let step = build_ziffle_shuffle_step::<10>(ZiffleBuildShuffleStepInput {
+            let step = build_ziffle_shuffle_step(10, ZiffleBuildShuffleStepInput {
                 deck_count: 10,
                 context: context.clone(),
                 key_context: String::new(),
@@ -986,7 +1024,7 @@ mod ziffle_backend_tests {
                 proof_hex: step.proof_hex,
             });
         }
-        let verified = verify_ziffle_shuffle::<10>(ZiffleVerifyShuffleInput {
+        let verified = verify_ziffle_shuffle(10, ZiffleVerifyShuffleInput {
             deck_count: 10,
             context: context.clone(),
             key_context: String::new(),
@@ -999,7 +1037,7 @@ mod ziffle_backend_tests {
 
         let mut tokens = Vec::new();
         for (player, secret_key_hex, public_key_hex) in secrets {
-            let token = build_ziffle_reveal_token::<10>(ZiffleBuildRevealTokenInput {
+            let token = build_ziffle_reveal_token(10, ZiffleBuildRevealTokenInput {
                 deck_count: 10,
                 deck_hash: String::new(),
                 context: context.clone(),
@@ -1020,7 +1058,7 @@ mod ziffle_backend_tests {
                 proof_hex: token.proof_hex,
             });
         }
-        let reveal = reveal_ziffle_card::<10>(ZiffleRevealCardInput {
+        let reveal = reveal_ziffle_card(10, ZiffleRevealCardInput {
             deck_count: 10,
             deck_hash: String::new(),
             context,
@@ -1039,7 +1077,7 @@ mod ziffle_backend_tests {
     fn ziffle_helpers_allow_action_shuffle_context_with_match_keys() {
         let key_context = "ironsmith-wasm-ziffle-match".to_string();
         let shuffle_context = "ironsmith-wasm-ziffle-match:action:7:shuffle:p0".to_string();
-        let shuffle = Shuffle::<10>::default();
+        let shuffle = Shuffle::new(10);
         let mut key_rng =
             rng_from_entropy_hex("abcdef00112233445566778899").expect("key rng should build");
         let mut keys = Vec::new();
@@ -1055,7 +1093,7 @@ mod ziffle_backend_tests {
 
         let mut steps = Vec::new();
         for shuffler in 0..2u8 {
-            let step = build_ziffle_shuffle_step::<10>(ZiffleBuildShuffleStepInput {
+            let step = build_ziffle_shuffle_step(10, ZiffleBuildShuffleStepInput {
                 deck_count: 10,
                 context: shuffle_context.clone(),
                 key_context: key_context.clone(),
@@ -1072,7 +1110,7 @@ mod ziffle_backend_tests {
                 proof_hex: step.proof_hex,
             });
         }
-        let verified = verify_ziffle_shuffle::<10>(ZiffleVerifyShuffleInput {
+        let verified = verify_ziffle_shuffle(10, ZiffleVerifyShuffleInput {
             deck_count: 10,
             context: shuffle_context,
             key_context,
@@ -1090,3 +1128,6 @@ mod cache_tests;
 
 #[cfg(test)]
 mod chain_tests;
+
+#[cfg(test)]
+mod golden_tests;

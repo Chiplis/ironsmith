@@ -17,7 +17,7 @@ fn fixture() -> Fixture {
         keys: Vec::new(),
         steps: Vec::new(),
     };
-    let shuffle = Shuffle::<N>::default();
+    let shuffle = Shuffle::new(N);
     let mut rng = rng_from_entropy_hex("abcdef123456").unwrap();
     let mut secrets = Vec::new();
     for player in 0..2 {
@@ -30,7 +30,7 @@ fn fixture() -> Fixture {
         });
     }
     for shuffler in 0..2 {
-        let step = build_ziffle_shuffle_step::<N>(ZiffleBuildShuffleStepInput {
+        let step = build_ziffle_shuffle_step(N, ZiffleBuildShuffleStepInput {
             deck_count: N,
             context: input.context.clone(),
             key_context: input.key_context.clone(),
@@ -50,8 +50,9 @@ fn fixture() -> Fixture {
     Fixture { input, secrets }
 }
 
-fn verify(input: &ZiffleVerifyShuffleInput) -> Result<Rc<VerifiedCeremony<N>>, VerifierError> {
-    verify_ziffle_steps::<N>(
+fn verify(input: &ZiffleVerifyShuffleInput) -> Result<Rc<VerifiedCeremony>, VerifierError> {
+    verify_ziffle_steps(
+        N,
         input.context.as_bytes(),
         ziffle_key_context(&input.key_context, &input.context).as_bytes(),
         &input.keys,
@@ -59,8 +60,9 @@ fn verify(input: &ZiffleVerifyShuffleInput) -> Result<Rc<VerifiedCeremony<N>>, V
     )
 }
 
-fn key<const M: usize>(input: &ZiffleVerifyShuffleInput) -> [u8; 32] {
-    ceremony_cache_key::<M>(
+fn key(n: usize, input: &ZiffleVerifyShuffleInput) -> [u8; 32] {
+    ceremony_cache_key(
+        n,
         input.context.as_bytes(),
         ziffle_key_context(&input.key_context, &input.context).as_bytes(),
         &input.keys,
@@ -82,7 +84,7 @@ fn reveal_input(fixture: &Fixture) -> ZiffleRevealCardInput {
         .iter()
         .enumerate()
         .map(|(seat, key)| {
-            let token = build_ziffle_reveal_token::<N>(ZiffleBuildRevealTokenInput {
+            let token = build_ziffle_reveal_token(N, ZiffleBuildRevealTokenInput {
                 deck_count: N,
                 deck_hash: String::new(),
                 context: input.context.clone(),
@@ -146,7 +148,7 @@ fn cache_reuses_only_the_exact_verified_public_transcript() {
     add("step proof", |i| corrupt(&mut i.steps[0].proof_hex));
     add("step order", |i| i.steps.reverse());
     for (label, changed) in mutations {
-        assert_ne!(key::<N>(&input), key::<N>(&changed), "{label}");
+        assert_ne!(key(N, &input), key(N, &changed), "{label}");
         let before = VERIFIED_CEREMONIES.with(|cache| cache.borrow().len());
         assert!(
             verify(&changed).is_err(),
@@ -161,15 +163,16 @@ fn cache_reuses_only_the_exact_verified_public_transcript() {
     }
     let mut reordered = input.clone();
     reordered.keys.reverse();
-    assert_ne!(key::<N>(&input), key::<N>(&reordered));
+    assert_ne!(key(N, &input), key(N, &reordered));
     let other = verify(&reordered).unwrap();
     assert!(
         !Rc::ptr_eq(&first, &other),
         "reordered input must verify independently"
     );
-    assert_ne!(key::<N>(&input), key::<5>(&input));
+    assert_ne!(key(N, &input), key(5, &input));
     assert!(
-        verify_ziffle_steps::<5>(
+        verify_ziffle_steps(
+            5,
             input.context.as_bytes(),
             input.key_context.as_bytes(),
             &input.keys,
@@ -179,8 +182,9 @@ fn cache_reuses_only_the_exact_verified_public_transcript() {
     );
     let request = serde_json::json!({"deckCount":5,"context":input.context,"keyContext":input.key_context,"keys":input.keys,"steps":input.steps});
     assert!(
-        execute_for::<N>(
+        execute(
             Operation::VerifyShuffle,
+            N,
             &serde_json::to_vec(&request).unwrap()
         )
         .unwrap_err()
@@ -195,12 +199,12 @@ fn cached_prefixes_still_require_all_final_steps_and_the_expected_shuffler() {
     let mut prefix = fixture.input.clone();
     prefix.steps.truncate(1);
     verify(&prefix).unwrap();
-    assert!(verify_ziffle_shuffle::<N>(prefix.clone()).is_err());
+    assert!(verify_ziffle_shuffle(N, prefix.clone()).is_err());
     prefix.steps.clear();
     assert!(verify(&prefix).unwrap().deck.is_none());
-    assert!(verify_ziffle_shuffle::<N>(prefix.clone()).is_err());
+    assert!(verify_ziffle_shuffle(N, prefix.clone()).is_err());
     assert!(
-        build_ziffle_shuffle_step::<N>(ZiffleBuildShuffleStepInput {
+        build_ziffle_shuffle_step(N, ZiffleBuildShuffleStepInput {
             deck_count: N,
             context: prefix.context,
             key_context: prefix.key_context,
@@ -212,36 +216,36 @@ fn cached_prefixes_still_require_all_final_steps_and_the_expected_shuffler() {
         })
         .is_err()
     );
-    verify_ziffle_shuffle::<N>(fixture.input).unwrap();
+    verify_ziffle_shuffle(N, fixture.input).unwrap();
 }
 
 #[test]
 fn warm_cache_never_bypasses_token_proofs_or_card_positions() {
     let fixture = fixture();
     let good = reveal_input(&fixture);
-    let first = reveal_ziffle_card::<N>(good.clone()).unwrap();
+    let first = reveal_ziffle_card(N, good.clone()).unwrap();
     assert_eq!(
         first.original_slot,
-        reveal_ziffle_card::<N>(good.clone()).unwrap().original_slot
+        reveal_ziffle_card(N, good.clone()).unwrap().original_slot
     );
     let mut invalid = good.clone();
     corrupt(&mut invalid.tokens[0].proof_hex);
-    assert!(reveal_ziffle_card::<N>(invalid).is_err());
+    assert!(reveal_ziffle_card(N, invalid).is_err());
     let mut invalid = good.clone();
     corrupt(&mut invalid.tokens[0].token_hex);
-    assert!(reveal_ziffle_card::<N>(invalid).is_err());
+    assert!(reveal_ziffle_card(N, invalid).is_err());
     let mut invalid = good.clone();
     invalid.tokens.pop();
-    assert!(reveal_ziffle_card::<N>(invalid).is_err());
+    assert!(reveal_ziffle_card(N, invalid).is_err());
     let mut invalid = good.clone();
     invalid.card_position = 1;
     assert!(
-        reveal_ziffle_card::<N>(invalid).is_err(),
+        reveal_ziffle_card(N, invalid).is_err(),
         "tokens belong to position zero"
     );
     let mut invalid = good.clone();
     invalid.card_position = N;
-    assert!(reveal_ziffle_card::<N>(invalid).is_err());
+    assert!(reveal_ziffle_card(N, invalid).is_err());
     let batch = ZiffleRevealCardsInput {
         deck_count: N,
         deck_hash: String::new(),
@@ -264,18 +268,18 @@ fn warm_cache_never_bypasses_token_proofs_or_card_positions() {
             .collect(),
     };
     assert_eq!(
-        reveal_ziffle_cards::<N>(batch.clone()).unwrap()[0].original_slot,
+        reveal_ziffle_cards(N, batch.clone()).unwrap()[0].original_slot,
         first.original_slot
     );
     let mut invalid = batch.clone();
     corrupt(&mut invalid.tokens[0].proof_hex);
-    assert!(reveal_ziffle_cards::<N>(invalid).is_err());
+    assert!(reveal_ziffle_cards(N, invalid).is_err());
     let mut invalid = batch;
     invalid.card_positions = vec![N];
-    assert!(reveal_ziffle_cards::<N>(invalid).is_err());
+    assert!(reveal_ziffle_cards(N, invalid).is_err());
     let input = fixture.input;
     assert!(
-        build_ziffle_reveal_tokens::<N>(ZiffleBuildRevealTokensInput {
+        build_ziffle_reveal_tokens(N, ZiffleBuildRevealTokensInput {
             deck_count: N,
             deck_hash: String::new(),
             context: input.context,
@@ -306,7 +310,8 @@ fn cache_has_one_lru_bound_across_deck_sizes() {
         if index % 2 == 0 {
             verify(&prefix).unwrap();
         } else {
-            verify_ziffle_steps::<5>(
+            verify_ziffle_steps(
+                5,
                 prefix.context.as_bytes(),
                 prefix.key_context.as_bytes(),
                 &prefix.keys,
@@ -323,7 +328,7 @@ fn cache_has_one_lru_bound_across_deck_sizes() {
         cache
             .borrow()
             .iter()
-            .all(|(cached, _)| *cached != key::<N>(&fixture.input))
+            .all(|(cached, _)| *cached != key(N, &fixture.input))
     }));
     let reverified = verify(&fixture.input).unwrap();
     assert!(!Rc::ptr_eq(&oldest, &reverified));

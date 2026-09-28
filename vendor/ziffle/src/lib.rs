@@ -22,7 +22,7 @@
 //! # Main Entry Point
 //!
 //! The [`Shuffle`] struct is the primary interface for using this library. Create an
-//! instance with `Shuffle::<N>::default()` where `N` is the number of cards in your deck.
+//! instance with `Shuffle::new(n)` where `n` is the number of cards in your deck.
 //!
 //! # Example: Three-Player Poker Game
 //!
@@ -30,7 +30,7 @@
 //! use ziffle::{Shuffle, AggregatePublicKey, AggregateRevealToken};
 //!
 //! // Create a standard 52-card deck
-//! let shuffle = Shuffle::<52>::default();
+//! let shuffle = Shuffle::new(52);
 //! let mut rng = ark_std::test_rng(); // DO NOT USE IN PRODUCTION
 //! let ctx = b"poker_game_session_123";
 //!
@@ -116,7 +116,9 @@
 #![no_std]
 #![forbid(clippy::all)]
 
-use core::array;
+extern crate alloc;
+
+use alloc::{vec, vec::Vec};
 
 use ark_ec::{AffineRepr, CurveConfig, CurveGroup, short_weierstrass::SWCurveConfig};
 use ark_ff::{
@@ -147,25 +149,29 @@ struct PedersonCommitment(CurveAffine);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct PedersonWitness(Scalar);
 
-#[derive(Debug, Clone, Copy)]
-struct PedersonCommitKey<const N: usize> {
+// Deck sizes are runtime values: every vector below has exactly the deck's
+// length, and the proof system is instantiated once rather than per size.
+#[derive(Debug, Clone)]
+struct PedersonCommitKey {
     h: CurveProj,
-    gs: [CurveProj; N],
+    gs: Vec<CurveProj>,
 }
 
-impl<const N: usize> Default for PedersonCommitKey<N> {
-    fn default() -> Self {
+impl PedersonCommitKey {
+    fn new(n: usize) -> Self {
         let mut h_drng = StdRng::from_seed(Sha256::digest(PEDERSON_H_PRNG_SEED).into());
         let h = CurveProj::rand(&mut h_drng);
 
         let mut gs_drng = StdRng::from_seed(Sha256::digest(PEDERSON_VECTOR_G_PRNG_SEED).into());
-        let gs = array::from_fn(|_| CurveProj::rand(&mut gs_drng));
+        let gs = (0..n).map(|_| CurveProj::rand(&mut gs_drng)).collect();
 
         Self { h, gs }
     }
-}
 
-impl<const N: usize> PedersonCommitKey<N> {
+    fn len(&self) -> usize {
+        self.gs.len()
+    }
+
     fn commit_with_r(&self, m: Scalar, r: Scalar) -> CurveProj {
         (GENERATOR * m) + (self.h * r)
     }
@@ -178,14 +184,15 @@ impl<const N: usize> PedersonCommitKey<N> {
         )
     }
 
-    fn vector_commit_with_r(&self, ms: &[Scalar; N], r: Scalar) -> CurveProj {
-        (0..N).map(|i| self.gs[i] * ms[i]).sum::<CurveProj>() + (self.h * r)
+    fn vector_commit_with_r(&self, ms: &[Scalar], r: Scalar) -> CurveProj {
+        debug_assert_eq!(ms.len(), self.len());
+        (0..self.len()).map(|i| self.gs[i] * ms[i]).sum::<CurveProj>() + (self.h * r)
     }
 
     fn vector_commit<R: Rng>(
         &self,
         rng: &mut R,
-        ms: &[Scalar; N],
+        ms: &[Scalar],
     ) -> (PedersonCommitment, PedersonWitness) {
         let r = Scalar::rand(rng);
         (
@@ -266,7 +273,7 @@ pub struct SecretKey(Scalar);
 /// ```
 /// use ziffle::Shuffle;
 /// # let mut rng = ark_std::test_rng();
-/// # let shuffle = Shuffle::<10>::default();
+/// # let shuffle = Shuffle::new(10);
 /// # let ctx = b"game";
 ///
 /// let (_, pk, proof) = shuffle.keygen(&mut rng, ctx);
@@ -334,7 +341,7 @@ impl OwnershipProof {
     /// ```
     /// use ziffle::Shuffle;
     /// # let mut rng = ark_std::test_rng();
-    /// # let shuffle = Shuffle::<10>::default();
+    /// # let shuffle = Shuffle::new(10);
     /// # let ctx = b"game";
     ///
     /// let (_, pk, proof) = shuffle.keygen(&mut rng, ctx);
@@ -365,7 +372,7 @@ impl OwnershipProof {
 /// ```
 /// use ziffle::{Shuffle, AggregatePublicKey};
 /// # let mut rng = ark_std::test_rng();
-/// # let shuffle = Shuffle::<10>::default();
+/// # let shuffle = Shuffle::new(10);
 /// # let ctx = b"game";
 ///
 /// let (_, pk1, proof1) = shuffle.keygen(&mut rng, ctx);
@@ -395,7 +402,7 @@ impl AggregatePublicKey {
     /// ```
     /// use ziffle::{Shuffle, AggregatePublicKey};
     /// # let mut rng = ark_std::test_rng();
-    /// # let shuffle = Shuffle::<10>::default();
+    /// # let shuffle = Shuffle::new(10);
     /// # let ctx = b"game";
     /// # let (_, pk1, proof1) = shuffle.keygen(&mut rng, ctx);
     /// # let vpk1 = proof1.verify(pk1, ctx).unwrap();
@@ -518,7 +525,7 @@ pub struct RevealToken(CurveAffine);
 /// ```
 /// use ziffle::{Shuffle, AggregatePublicKey, AggregateRevealToken};
 /// # let mut rng = ark_std::test_rng();
-/// # let shuffle = Shuffle::<10>::default();
+/// # let shuffle = Shuffle::new(10);
 /// # let ctx = b"game";
 /// # let (sk1, pk1, proof1) = shuffle.keygen(&mut rng, ctx);
 /// # let vpk1 = proof1.verify(pk1, ctx).unwrap();
@@ -585,7 +592,7 @@ impl MaskedCard {
     /// ```
     /// use ziffle::{Shuffle, AggregatePublicKey};
     /// # let mut rng = ark_std::test_rng();
-    /// # let shuffle = Shuffle::<10>::default();
+    /// # let shuffle = Shuffle::new(10);
     /// # let ctx = b"game";
     /// # let (sk, pk, proof) = shuffle.keygen(&mut rng, ctx);
     /// # let vpk = proof.verify(pk, ctx).unwrap();
@@ -618,10 +625,35 @@ impl MaskedCard {
 ///
 /// The deck is represented as an array of ElGamal ciphertexts. Cards can only
 /// be accessed from verified decks (obtained after successful shuffle verification).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct MaskedDeck<const N: usize>([Ciphertext; N]);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MaskedDeck(Vec<Ciphertext>);
 
-impl<const N: usize> Verified<MaskedDeck<N>> {
+impl MaskedDeck {
+    /// Number of cards in the deck.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Whether the deck holds no cards.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Deserializes a deck of exactly `len` cards. The encoding carries no
+    /// length prefix, so the caller supplies the agreed deck size.
+    pub fn deserialize_with_len<R: ark_serialize::Read>(
+        reader: R,
+        len: usize,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+    ) -> Result<Self, ark_serialize::SerializationError> {
+        deserialize_elements(reader, len, compress, validate).map(Self)
+    }
+}
+
+impl Verified<MaskedDeck> {
     /// Extract an authenticated ciphertext without granting a way to deserialize
     /// or construct the verification marker. Its manifest identity stays hidden.
     pub fn verified_card(&self, idx: usize) -> Option<Verified<MaskedCard>> {
@@ -632,14 +664,14 @@ impl<const N: usize> Verified<MaskedDeck<N>> {
     /// The caller must additionally enforce its game-specific membership and
     /// single-use rules, as ciphertexts from different reshuffle epochs cannot
     /// be compared for plaintext equality without revealing their identities.
-    pub fn from_verified_cards(cards: &[Verified<MaskedCard>]) -> Option<Self> {
-        if cards.len() != N {
+    pub fn from_verified_cards(cards: &[Verified<MaskedCard>], len: usize) -> Option<Self> {
+        if cards.len() != len {
             return None;
         }
         if cards.iter().enumerate().any(|(index, card)| cards[..index].contains(card)) {
             return None;
         }
-        Some(Verified(MaskedDeck(array::from_fn(|index| cards[index].0.0))))
+        Some(Verified(MaskedDeck(cards.iter().map(|card| card.0.0).collect())))
     }
 
     /// Gets a card from the verified deck by index.
@@ -657,7 +689,7 @@ impl<const N: usize> Verified<MaskedDeck<N>> {
     /// ```
     /// use ziffle::{Shuffle, AggregatePublicKey};
     /// # let mut rng = ark_std::test_rng();
-    /// # let shuffle = Shuffle::<10>::default();
+    /// # let shuffle = Shuffle::new(10);
     /// # let ctx = b"game";
     /// # let (_, pk, proof) = shuffle.keygen(&mut rng, ctx);
     /// # let vpk = proof.verify(pk, ctx).unwrap();
@@ -683,8 +715,8 @@ macro_rules! usize_to_u64 {
     };
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct MultiExpArg<const N: usize> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MultiExpArg {
     // commitments
     c_alpha: PedersonCommitment,
     c_beta: PedersonCommitment,
@@ -692,7 +724,7 @@ struct MultiExpArg<const N: usize> {
     ct_mxp0: (CurveAffine, CurveAffine),
     ct_mxp1: (CurveAffine, CurveAffine),
     // response
-    o_alpha: [Scalar; N],
+    o_alpha: Vec<Scalar>,
     o_r: Scalar,
     beta: Scalar,
     o_beta: Scalar,
@@ -711,27 +743,27 @@ macro_rules! ct_mspp {
     };
 }
 
-struct ProveMultiExpArgInputs<'a, const N: usize> {
-    ck: &'a PedersonCommitKey<N>,
+struct ProveMultiExpArgInputs<'a> {
+    ck: &'a PedersonCommitKey,
     apk: AggregatePublicKey,
-    xpi: &'a [Scalar; N],
+    xpi: &'a [Scalar],
     w_xpi: PedersonWitness,
-    next: &'a [Ciphertext; N],
-    rho: &'a [Scalar; N],
+    next: &'a [Ciphertext],
+    rho: &'a [Scalar],
     ts: Transcript,
 }
 
-struct VerifyMultiExpArgInputs<'a, const N: usize> {
-    ck: &'a PedersonCommitKey<N>,
+struct VerifyMultiExpArgInputs<'a> {
+    ck: &'a PedersonCommitKey,
     apk: AggregatePublicKey,
-    prev: &'a [Ciphertext; N],
-    next: &'a [Ciphertext; N],
+    prev: &'a [Ciphertext],
+    next: &'a [Ciphertext],
     x_base: Scalar,
     c_xpi: PedersonCommitment,
     ts: Transcript,
 }
 
-impl<const N: usize> MultiExpArg<N> {
+impl MultiExpArg {
     const X_DST: &[u8] = b"ziffle/BG12MultiExpArgX/v1";
 
     fn challenge_x(
@@ -760,11 +792,12 @@ impl<const N: usize> MultiExpArg<N> {
             next,
             rho,
             ts,
-        }: ProveMultiExpArgInputs<N>,
+        }: ProveMultiExpArgInputs,
     ) -> Self {
+        let n = ck.len();
         // Step 1: Then we sample a random scalar vector ɑ and scalar β
         // (`alpha` and `beta` resp.) and commit to them
-        let alpha: [Scalar; N] = array::from_fn(|_| Scalar::rand(rng));
+        let alpha: Vec<Scalar> = (0..n).map(|_| Scalar::rand(rng)).collect();
         let beta = Scalar::rand(rng);
         let (c_alpha, PedersonWitness(w_alpha)) = ck.vector_commit(rng, &alpha);
         let (c_beta, PedersonWitness(w_beta)) = ck.commit(rng, beta);
@@ -773,7 +806,7 @@ impl<const N: usize> MultiExpArg<N> {
         // 𝒞mxp0 = ℰ(G·β; τ0)·∏[𝒞'(i)·ɑ(i)] for all i in [0; N-1] where τ0 (`tau0`) is a random scalar.
         let tau0 = Scalar::rand(rng);
         let ct_mxp0 = {
-            let (c1, c2) = ct_mspp!(next, alpha);
+            let (c1, c2) = ct_mspp!(next, &alpha);
             (
                 ((GENERATOR * tau0) + c1).into_affine(),
                 ((GENERATOR * beta) + (pk * tau0) + c2).into_affine(),
@@ -781,7 +814,7 @@ impl<const N: usize> MultiExpArg<N> {
         };
         // 𝒞mxp1 = ℰ(1; ρ_agg)·∏[𝒞'(i)·x^π(i)] for all i in [0; N-1]
         // where ρ_agg = -𝛴[ρ(i)·x^π(i)] for all i in [0; N-1]
-        let rho_agg: Scalar = -(0..N).map(|i| rho[i] * xpi[i]).sum::<Scalar>();
+        let rho_agg: Scalar = -(0..n).map(|i| rho[i] * xpi[i]).sum::<Scalar>();
         let ct_mxp1 = {
             let (c1, c2) = ct_mspp!(next, xpi);
             (
@@ -796,7 +829,7 @@ impl<const N: usize> MultiExpArg<N> {
         // Step 4: compute the openings
         // use the challenge to compute the following witness openings (𝒪) to reveal:
         // 𝒪ɑ = [ɑ(i) + x·x^π(i)] for all i in [0; N-1]
-        let o_alpha: [Scalar; N] = array::from_fn(|i| alpha[i] + (x * xpi[i]));
+        let o_alpha: Vec<Scalar> = (0..n).map(|i| alpha[i] + (x * xpi[i])).collect();
         // 𝒪r = 𝒲 ɑ + x_mxp·𝒲 x^π where 𝒲 ɑ and 𝒲 x^π are the witnesses to commitments to ɑ and x^π
         let o_r: Scalar = w_alpha + (x * w_xpi);
         // τ (`tau`) = τ0 + x·ρ_agg
@@ -826,15 +859,19 @@ impl<const N: usize> MultiExpArg<N> {
             x_base,
             c_xpi: PedersonCommitment(c_xpi),
             ts,
-        }: VerifyMultiExpArgInputs<N>,
+        }: VerifyMultiExpArgInputs,
     ) -> bool {
+        let n = ck.len();
+        if prev.len() != n || next.len() != n || self.o_alpha.len() != n {
+            return false;
+        }
         // Step 1: derive the challenge scalar x_mxp
         let x = Self::challenge_x(ts, self.c_alpha, self.c_beta, self.ct_mxp0, self.ct_mxp1);
 
         // Step 2: check that ∏[𝒞(i)·x^(i + 1)] for all i in [0; N-1] == 𝒞mxp1
         let check1 = || {
-            let xs: [Scalar; N] = array::from_fn(|i| x_base.pow([usize_to_u64!(i + 1)]));
-            let (prod_c1, prod_c2) = ct_mspp!(prev, xs);
+            let xs: Vec<Scalar> = (0..n).map(|i| x_base.pow([usize_to_u64!(i + 1)])).collect();
+            let (prod_c1, prod_c2) = ct_mspp!(prev, &xs);
             let (ct_mxp1_c1, ct_mxp1_c2) = self.ct_mxp1;
             prod_c1.into_affine() == ct_mxp1_c1 && prod_c2.into_affine() == ct_mxp1_c2
         };
@@ -855,7 +892,7 @@ impl<const N: usize> MultiExpArg<N> {
             let (ct_mxp1_c1, ct_mxp1_c2) = self.ct_mxp1;
             let lhs_c1 = ct_mxp0_c1.into_group() + (ct_mxp1_c1.into_group() * x);
             let lhs_c2 = ct_mxp0_c2.into_group() + (ct_mxp1_c2.into_group() * x);
-            let (prod_c1, prod_c2) = ct_mspp!(next, self.o_alpha);
+            let (prod_c1, prod_c2) = ct_mspp!(next, &self.o_alpha);
             let rhs_c1 = (GENERATOR * self.tau) + prod_c1;
             let rhs_c2 = (GENERATOR * self.beta) + (pk * self.tau) + prod_c2;
             lhs_c1.into_affine() == rhs_c1.into_affine()
@@ -866,32 +903,32 @@ impl<const N: usize> MultiExpArg<N> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct SingleValueProductArg<const N: usize> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SingleValueProductArg {
     // commitments
     c_d: PedersonCommitment,
     c_sdelta: PedersonCommitment,
     c_cdelta: PedersonCommitment,
     // response
-    a_tilde: [Scalar; N],
-    b_tilde: [Scalar; N],
+    a_tilde: Vec<Scalar>,
+    b_tilde: Vec<Scalar>,
     r_tilde: Scalar,
     s_tilde: Scalar,
 }
 
-struct ProveSvpArgInputs<'a, const N: usize> {
-    ck: &'a PedersonCommitKey<N>,
+struct ProveSvpArgInputs<'a> {
+    ck: &'a PedersonCommitKey,
     y: Scalar,
     z: Scalar,
-    pi: &'a [Scalar; N],
-    xpi: &'a [Scalar; N],
+    pi: &'a [Scalar],
+    xpi: &'a [Scalar],
     w_pi: PedersonWitness,
     w_xpi: PedersonWitness,
     ts: Transcript,
 }
 
-struct VerifySvpArgInputs<'a, const N: usize> {
-    ck: &'a PedersonCommitKey<N>,
+struct VerifySvpArgInputs<'a> {
+    ck: &'a PedersonCommitKey,
     x_base: Scalar,
     y: Scalar,
     z: Scalar,
@@ -900,7 +937,7 @@ struct VerifySvpArgInputs<'a, const N: usize> {
     ts: Transcript,
 }
 
-impl<const N: usize> SingleValueProductArg<N> {
+impl SingleValueProductArg {
     const X_DST: &[u8] = b"ziffle/BG12ProductArgX/v1";
 
     fn challenge_x(
@@ -928,23 +965,24 @@ impl<const N: usize> SingleValueProductArg<N> {
             w_pi: PedersonWitness(w_pi),
             w_xpi: PedersonWitness(w_xpi),
             ts,
-        }: ProveSvpArgInputs<N>,
+        }: ProveSvpArgInputs,
     ) -> Self {
+        let n = ck.len();
         // Step 1: sample a random scalar vector d and commit to it
-        let d: [Scalar; N] = array::from_fn(|_| Scalar::rand(rng));
+        let d: Vec<Scalar> = (0..n).map(|_| Scalar::rand(rng)).collect();
         let (c_d, PedersonWitness(w_d)) = ck.vector_commit(rng, &d);
 
         // Step 2: create semi-random scalar vector δ (small delta => `sdelta`)
         // NOTE: semi-random because δ[0] == d[0] & δ[N-1] == 0
-        let mut sdelta: [Scalar; N] = [Scalar::zero(); N];
+        let mut sdelta: Vec<Scalar> = vec![Scalar::zero(); n];
         sdelta[0] = d[0];
-        (1..N - 1).for_each(|i| sdelta[i] = Scalar::rand(rng));
+        (1..n - 1).for_each(|i| sdelta[i] = Scalar::rand(rng));
         // Compute [-δ(i)·d(i + 1)] for all i in [0; N-2] and commit to it
         let (c_sdelta, PedersonWitness(w_sdelta)) = {
             // NOTE: we have to use a vec of length N because const generic expressions require nightly
             // Inititalizing the vector with 0 means the last element has no effect when committing.
-            let mut v = [Scalar::zero(); N];
-            (0..N - 1).for_each(|i| v[i] = -sdelta[i] * d[i + 1]);
+            let mut v = vec![Scalar::zero(); n];
+            (0..n - 1).for_each(|i| v[i] = -sdelta[i] * d[i + 1]);
             ck.vector_commit(rng, &v)
         };
 
@@ -952,13 +990,13 @@ impl<const N: usize> SingleValueProductArg<N> {
         // [δ(i + 1) − a(i + 1)·δ(i) − b(i)·d(i + 1)] for all i in [0; N-2] where:
         // a = [y·π(i) + x^π(i) - z]
         // b = [a0, b0·a1, ..., bN-2·aN-1] for all i in [0; N-1], i.e. product progression of a
-        let a: [Scalar; N] = array::from_fn(|i| (y * pi[i]) + xpi[i] - z);
-        let mut b = [Scalar::ONE; N];
+        let a: Vec<Scalar> = (0..n).map(|i| (y * pi[i]) + xpi[i] - z).collect();
+        let mut b = vec![Scalar::ONE; n];
         b[0] = a[0];
-        (1..N).for_each(|i| b[i] = b[i - 1] * a[i]);
+        (1..n).for_each(|i| b[i] = b[i - 1] * a[i]);
         let (c_cdelta, PedersonWitness(w_cdelta)) = {
-            let mut v = [Scalar::zero(); N];
-            (0..N - 1)
+            let mut v = vec![Scalar::zero(); n];
+            (0..n - 1)
                 .for_each(|i| v[i] = sdelta[i + 1] - (a[i + 1] * sdelta[i]) - (b[i] * d[i + 1]));
             ck.vector_commit(rng, &v)
         };
@@ -968,9 +1006,9 @@ impl<const N: usize> SingleValueProductArg<N> {
 
         // Step 5: compute the responses
         // a~ = [x·a(i) + d(i)] for all i in [0; N-1]
-        let a_tilde: [Scalar; N] = array::from_fn(|i| (x * a[i]) + d[i]);
+        let a_tilde: Vec<Scalar> = (0..n).map(|i| (x * a[i]) + d[i]).collect();
         // b~ = [x·b(i) + δ(i)] for all i in [0; N-1]
-        let b_tilde: [Scalar; N] = array::from_fn(|i| (x * b[i]) + sdelta[i]);
+        let b_tilde: Vec<Scalar> = (0..n).map(|i| (x * b[i]) + sdelta[i]).collect();
         // r~ = x·𝒲 a + 𝒲 d where the witness 𝒲 a can be computed from y·𝒲 π + 𝒲 x^π
         let w_a = (y * w_pi) + w_xpi;
         let r_tilde: Scalar = (x * w_a) + w_d;
@@ -999,13 +1037,17 @@ impl<const N: usize> SingleValueProductArg<N> {
             c_pi: PedersonCommitment(c_pi),
             c_xpi: PedersonCommitment(c_xpi),
             ts,
-        }: VerifySvpArgInputs<N>,
+        }: VerifySvpArgInputs,
     ) -> bool {
+        let n = ck.len();
+        if self.a_tilde.len() != n || self.b_tilde.len() != n {
+            return false;
+        }
         // Step 1: derive the challenge scalar x
         let x = Self::challenge_x(ts, self.c_d, self.c_sdelta, self.c_cdelta);
 
         // Step 2: compute the constant vector commit comm([-z; N], 0)
-        let c_mz = ck.vector_commit_with_r(&[-z; N], Scalar::zero());
+        let c_mz = ck.vector_commit_with_r(&vec![-z; n], Scalar::zero());
 
         // Step 3: homomorphically compute comm(a) = comm(y·π(i) + x^π(i)) for all i in [1; N]
         let c_a = (c_pi.into_group() * y) + c_xpi.into_group();
@@ -1022,8 +1064,8 @@ impl<const N: usize> SingleValueProductArg<N> {
             let c_sdelta_cdelta = self.c_sdelta.0.into_group() + (self.c_cdelta.0.into_group() * x);
             // we have to use a vec of length N because const generic expressions require nightly
             // inititalizing the vector with 0 means the last element has no effect when committing
-            let mut v = [Scalar::zero(); N];
-            (0..N - 1).for_each(|i| {
+            let mut v = vec![Scalar::zero(); n];
+            (0..n - 1).for_each(|i| {
                 v[i] = (x * self.b_tilde[i + 1]) - (self.b_tilde[i] * self.a_tilde[i + 1]);
             });
             let c_a_tilde_b_tilde = ck.vector_commit_with_r(&v, self.s_tilde);
@@ -1035,20 +1077,20 @@ impl<const N: usize> SingleValueProductArg<N> {
 
         // Step 7: check b~[N - 1] == x · ∏[y·i + x^i - z] for i in [1; N]
         let check4 = || {
-            let public_prod: Scalar = (1..=N)
+            let public_prod: Scalar = (1..=n)
                 .map(|i| {
                     (y * Scalar::new(usize_to_u64!(i).into())) + (x_base.pow([usize_to_u64!(i)]))
                         - z
                 })
                 .product();
-            self.b_tilde[N - 1] == (x * public_prod)
+            self.b_tilde[n - 1] == (x * public_prod)
         };
 
         check1() && check2() && check3() && check4()
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 /// # BayerGroth 2012 (BG12) Efficient Zero-Knowledge Argument for Correctness of a Shuffle
 ///
 /// <http://www0.cs.ucl.ac.uk/staff/J.Groth/MinimalShuffle.pdf>
@@ -1062,27 +1104,27 @@ impl<const N: usize> SingleValueProductArg<N> {
 ///
 /// # Verification
 ///
-/// To obtain a `Verified<MaskedDeck<N>>` from a shuffle proof, use:
+/// To obtain a `Verified<MaskedDeck>` from a shuffle proof, use:
 /// - [`Shuffle::verify_initial_shuffle`] for the first shuffle
 /// - [`Shuffle::verify_shuffle`] for subsequent shuffles
-pub struct ShuffleProof<const N: usize> {
+pub struct ShuffleProof {
     // commitment to permutations
     c_pi: PedersonCommitment,
     // commitment to vector[x^p[i]] where p are permutations and x is a fiat-shamir challenge
     c_xpi: PedersonCommitment,
     // multi-exponentiation argument of knowledge
-    mexp_arg: MultiExpArg<N>,
+    mexp_arg: MultiExpArg,
     // product argument of knowledge
-    prod_arg: SingleValueProductArg<N>,
+    prod_arg: SingleValueProductArg,
 }
 
-struct ShuffleProofInputs<'a, const N: usize> {
-    ck: &'a PedersonCommitKey<N>,
+struct ShuffleProofInputs<'a> {
+    ck: &'a PedersonCommitKey,
     apk: AggregatePublicKey,
-    perm: &'a [usize; N],
-    prev: &'a [Ciphertext; N],
-    next: &'a [Ciphertext; N],
-    rho: &'a [Scalar; N],
+    perm: &'a [usize],
+    prev: &'a [Ciphertext],
+    next: &'a [Ciphertext],
+    rho: &'a [Scalar],
     ctx: &'a [u8],
 }
 
@@ -1095,14 +1137,14 @@ struct ShuffleProofInputs<'a, const N: usize> {
 // ρ = `rho`
 // 𝒞 = `prev`
 // 𝒞' = `next`
-impl<const N: usize> ShuffleProof<N> {
+impl ShuffleProof {
     const X_DST: &[u8] = b"ziffle/BG12X/v1";
     const YZ_DST: &[u8] = b"ziffle/BG12YZ/v1";
 
     fn challenge_x(
         apk: AggregatePublicKey,
-        prev: &[Ciphertext; N],
-        next: &[Ciphertext; N],
+        prev: &[Ciphertext],
+        next: &[Ciphertext],
         c_pi: PedersonCommitment,
         ctx: &[u8],
     ) -> (Transcript, Scalar) {
@@ -1131,10 +1173,13 @@ impl<const N: usize> ShuffleProof<N> {
             next,
             rho,
             ctx,
-        }: ShuffleProofInputs<N>,
+        }: ShuffleProofInputs,
     ) -> Self {
+        let n = ck.len();
         // Step 1: convert permutation to 1-based scalars and commit to it
-        let pi: [_; N] = array::from_fn(|i| Scalar::new(usize_to_u64!(perm[i] + 1).into()));
+        let pi: Vec<Scalar> = (0..n)
+            .map(|i| Scalar::new(usize_to_u64!(perm[i] + 1).into()))
+            .collect();
         let (c_pi, w_pi) = ck.vector_commit(rng, &pi);
 
         // Step 2: setup the initial transcript and derive challenge x
@@ -1142,7 +1187,7 @@ impl<const N: usize> ShuffleProof<N> {
 
         // Step 3: compute and commit to [x^{π(i) + 1}] for all i in [0; N-1]
         // NOTE: the paper uses 1-based indices but we use 0-based, to avoid x⁰ = 1 we add 1 to π(i)
-        let xpi: [Scalar; N] = array::from_fn(|i| x.pow([usize_to_u64!(perm[i]) + 1]));
+        let xpi: Vec<Scalar> = (0..n).map(|i| x.pow([usize_to_u64!(perm[i]) + 1])).collect();
         let (c_xpi, w_xpi) = ck.vector_commit(rng, &xpi);
 
         // Step 4: update the transcipt with the commitment to c_xpi and derive a challenge scalars y & z
@@ -1192,12 +1237,16 @@ impl<const N: usize> ShuffleProof<N> {
     #[must_use]
     fn verify(
         &self,
-        ck: &PedersonCommitKey<N>,
+        ck: &PedersonCommitKey,
         apk: AggregatePublicKey,
-        prev: &[Ciphertext; N],
-        next: &[Ciphertext; N],
+        prev: &[Ciphertext],
+        next: &[Ciphertext],
         ctx: &[u8],
-    ) -> Option<Verified<MaskedDeck<N>>> {
+    ) -> Option<Verified<MaskedDeck>> {
+        let n = ck.len();
+        if prev.len() != n || next.len() != n {
+            return None;
+        }
         let (ts, x) = Self::challenge_x(apk, prev, next, self.c_pi, ctx);
         let (ts, y, z) = Self::challenge_yz(ts, self.c_xpi);
 
@@ -1225,15 +1274,17 @@ impl<const N: usize> ShuffleProof<N> {
             return None;
         }
 
-        Some(Verified(MaskedDeck(*next)))
+        Some(Verified(MaskedDeck(next.to_vec())))
     }
 }
 
 /// Build a deterministic "open" deck of `N` plaintext cards using a PRNG seeded with a SHA256 hash.
 /// Each card is `s_i · G` where `s_i` is derived deterministically.
-fn open_deck<const N: usize>() -> [CurveAffine; N] {
+fn open_deck(n: usize) -> Vec<CurveAffine> {
     let mut drng = StdRng::from_seed(Sha256::digest(OPEN_CARD_PRNG_SEED).into());
-    array::from_fn(|_| (GENERATOR * Scalar::rand(&mut drng)).into_affine())
+    (0..n)
+        .map(|_| (GENERATOR * Scalar::rand(&mut drng)).into_affine())
+        .collect()
 }
 
 /// applies the differential update
@@ -1249,20 +1300,22 @@ fn remask_card<R: Rng>(
     ((c1.into_affine(), c2.into_affine()), r)
 }
 
-fn shuffle_remask_prove<const N: usize, R: Rng>(
+fn shuffle_remask_prove<R: Rng>(
     rng: &mut R,
-    ck: &PedersonCommitKey<N>,
+    ck: &PedersonCommitKey,
     apk: AggregatePublicKey,
-    prev: &[Ciphertext; N],
+    prev: &[Ciphertext],
     ctx: &[u8],
-) -> (MaskedDeck<N>, ShuffleProof<N>) {
-    let mut perm: [usize; N] = array::from_fn(|idx| idx);
+) -> (MaskedDeck, ShuffleProof) {
+    let n = ck.len();
+    assert_eq!(prev.len(), n, "deck size must match the shuffle");
+    let mut perm: Vec<usize> = (0..n).collect();
     perm.as_mut_slice().shuffle(rng);
 
-    let next = &mut [(CurveAffine::identity(), CurveAffine::identity()); N];
+    let next = &mut vec![(CurveAffine::identity(), CurveAffine::identity()); n];
     // remasked randomness witness vector
-    let rho = &mut [Scalar::zero(); N];
-    (0..N).for_each(|i| {
+    let rho = &mut vec![Scalar::zero(); n];
+    (0..n).for_each(|i| {
         let (c, r) = remask_card(rng, apk, prev[perm[i]]);
         next[i] = c;
         rho[i] = r;
@@ -1306,7 +1359,7 @@ fn shuffle_remask_prove<const N: usize, R: Rng>(
 /// # let mut rng = ark_std::test_rng();
 ///
 /// // Create a 52-card deck
-/// let shuffle = Shuffle::<52>::default();
+/// let shuffle = Shuffle::new(52);
 ///
 /// let ctx = b"my_poker_game";
 ///
@@ -1325,26 +1378,44 @@ fn shuffle_remask_prove<const N: usize, R: Rng>(
 /// let (deck, proof) = shuffle.shuffle_initial_deck(&mut rng, apk, ctx);
 /// let vdeck = shuffle.verify_initial_shuffle(apk, deck, proof, ctx).unwrap();
 /// ```
-#[derive(Debug, Clone, Copy)]
-pub struct Shuffle<const N: usize> {
-    commit_key: PedersonCommitKey<N>,
-    open_deck: [CurveAffine; N],
+#[derive(Debug, Clone)]
+pub struct Shuffle {
+    commit_key: PedersonCommitKey,
+    open_deck: Vec<CurveAffine>,
 }
 
-impl<const N: usize> Default for Shuffle<N> {
-    fn default() -> Self {
+impl Shuffle {
+    /// Creates the shuffle parameters for a deck of `n` cards.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `n > 1`.
+    #[must_use]
+    pub fn new(n: usize) -> Self {
+        assert!(n > 1, "a shuffle needs more than one card");
         Self {
-            commit_key: PedersonCommitKey::default(),
-            open_deck: open_deck(),
+            commit_key: PedersonCommitKey::new(n),
+            open_deck: open_deck(n),
         }
     }
-}
 
-impl<const N: usize> Shuffle<N> {
-    const _N_GREATER_THAN_1: () = assert!(N > 1);
+    /// Number of cards in decks produced and verified by this shuffle.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.open_deck.len()
+    }
 
-    fn initial_deck(&self) -> [Ciphertext; N] {
-        array::from_fn(|i| (CurveAffine::identity(), self.open_deck[i]))
+    /// Always false: a shuffle has more than one card.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.open_deck.is_empty()
+    }
+
+    fn initial_deck(&self) -> Vec<Ciphertext> {
+        self.open_deck
+            .iter()
+            .map(|&card| (CurveAffine::identity(), card))
+            .collect()
     }
 
     /// Generates a new keypair and ownership proof for a player.
@@ -1368,7 +1439,7 @@ impl<const N: usize> Shuffle<N> {
     /// use ziffle::Shuffle;
     /// # let mut rng = ark_std::test_rng();
     ///
-    /// let shuffle = Shuffle::<52>::default();
+    /// let shuffle = Shuffle::new(52);
     /// let ctx = b"game_session_123";
     ///
     /// let (secret_key, public_key, ownership_proof) = shuffle.keygen(&mut rng, ctx);
@@ -1412,7 +1483,7 @@ impl<const N: usize> Shuffle<N> {
     /// use ziffle::{Shuffle, AggregatePublicKey};
     /// # let mut rng = ark_std::test_rng();
     ///
-    /// let shuffle = Shuffle::<10>::default();
+    /// let shuffle = Shuffle::new(10);
     /// let ctx = b"game_session";
     ///
     /// // Two players generate keys
@@ -1436,7 +1507,7 @@ impl<const N: usize> Shuffle<N> {
         rng: &mut R,
         apk: AggregatePublicKey,
         ctx: &[u8],
-    ) -> (MaskedDeck<N>, ShuffleProof<N>) {
+    ) -> (MaskedDeck, ShuffleProof) {
         shuffle_remask_prove(rng, &self.commit_key, apk, &self.initial_deck(), ctx)
     }
 
@@ -1463,7 +1534,7 @@ impl<const N: usize> Shuffle<N> {
     /// ```
     /// use ziffle::{Shuffle, AggregatePublicKey};
     /// # let mut rng = ark_std::test_rng();
-    /// # let shuffle = Shuffle::<10>::default();
+    /// # let shuffle = Shuffle::new(10);
     /// # let ctx = b"game";
     /// # let (_, pk1, proof1) = shuffle.keygen(&mut rng, ctx);
     /// # let vpk1 = proof1.verify(pk1, ctx).unwrap();
@@ -1482,9 +1553,9 @@ impl<const N: usize> Shuffle<N> {
         &self,
         rng: &mut R,
         apk: AggregatePublicKey,
-        prev: &Verified<MaskedDeck<N>>,
+        prev: &Verified<MaskedDeck>,
         ctx: &[u8],
-    ) -> (MaskedDeck<N>, ShuffleProof<N>) {
+    ) -> (MaskedDeck, ShuffleProof) {
         shuffle_remask_prove(rng, &self.commit_key, apk, &prev.0.0, ctx)
     }
 
@@ -1509,7 +1580,7 @@ impl<const N: usize> Shuffle<N> {
     /// ```
     /// use ziffle::{Shuffle, AggregatePublicKey};
     /// # let mut rng = ark_std::test_rng();
-    /// # let shuffle = Shuffle::<10>::default();
+    /// # let shuffle = Shuffle::new(10);
     /// # let ctx = b"game";
     /// # let (_, pk1, proof1) = shuffle.keygen(&mut rng, ctx);
     /// # let vpk1 = proof1.verify(pk1, ctx).unwrap();
@@ -1528,10 +1599,10 @@ impl<const N: usize> Shuffle<N> {
     pub fn verify_initial_shuffle(
         &self,
         apk: AggregatePublicKey,
-        next: MaskedDeck<N>,
-        proof: ShuffleProof<N>,
+        next: MaskedDeck,
+        proof: ShuffleProof,
         ctx: &[u8],
-    ) -> Option<Verified<MaskedDeck<N>>> {
+    ) -> Option<Verified<MaskedDeck>> {
         proof.verify(&self.commit_key, apk, &self.initial_deck(), &next.0, ctx)
     }
 
@@ -1557,7 +1628,7 @@ impl<const N: usize> Shuffle<N> {
     /// ```
     /// use ziffle::{Shuffle, AggregatePublicKey};
     /// # let mut rng = ark_std::test_rng();
-    /// # let shuffle = Shuffle::<10>::default();
+    /// # let shuffle = Shuffle::new(10);
     /// # let ctx = b"game";
     /// # let (_, pk1, proof1) = shuffle.keygen(&mut rng, ctx);
     /// # let vpk1 = proof1.verify(pk1, ctx).unwrap();
@@ -1578,11 +1649,11 @@ impl<const N: usize> Shuffle<N> {
     pub fn verify_shuffle(
         &self,
         apk: AggregatePublicKey,
-        prev: &Verified<MaskedDeck<N>>,
-        next: MaskedDeck<N>,
-        proof: ShuffleProof<N>,
+        prev: &Verified<MaskedDeck>,
+        next: MaskedDeck,
+        proof: ShuffleProof,
         ctx: &[u8],
-    ) -> Option<Verified<MaskedDeck<N>>> {
+    ) -> Option<Verified<MaskedDeck>> {
         proof.verify(&self.commit_key, apk, &prev.0.0, &next.0, ctx)
     }
 
@@ -1607,7 +1678,7 @@ impl<const N: usize> Shuffle<N> {
     /// ```
     /// use ziffle::{Shuffle, AggregatePublicKey, AggregateRevealToken};
     /// # let mut rng = ark_std::test_rng();
-    /// # let shuffle = Shuffle::<10>::default();
+    /// # let shuffle = Shuffle::new(10);
     /// # let ctx = b"game";
     /// # let (sk1, pk1, proof1) = shuffle.keygen(&mut rng, ctx);
     /// # let vpk1 = proof1.verify(pk1, ctx).unwrap();
@@ -1678,20 +1749,6 @@ macro_rules! impl_valid_and_serde_unit {
         }
     };
 
-    ($t:tt< $N:ident >) => {
-        impl<const $N: usize> ark_serialize::Valid for $t<$N> {
-            impl_valid_and_serde_unit!(@impl_check );
-        }
-
-        impl<const $N: usize> ark_serialize::CanonicalSerialize for $t<$N> {
-            impl_valid_and_serde_unit!(@impl_ser );
-        }
-
-        impl<const $N: usize> ark_serialize::CanonicalDeserialize for $t<$N> {
-            impl_valid_and_serde_unit!(@impl_deser);
-        }
-    };
-
     ($t:ty) => {
         impl ark_serialize::Valid for $t {
             impl_valid_and_serde_unit!(@impl_check );
@@ -1711,7 +1768,6 @@ impl_valid_and_serde_unit!(PublicKey);
 impl_valid_and_serde_unit!(SecretKey);
 impl_valid_and_serde_unit!(PedersonCommitment);
 impl_valid_and_serde_unit!(RevealToken);
-impl_valid_and_serde_unit!(MaskedDeck<N>);
 
 // only implement serialize so it can only be constructed from verified public keys
 impl ark_serialize::CanonicalSerialize for AggregatePublicKey {
@@ -1757,20 +1813,6 @@ macro_rules! impl_valid_and_deser {
         }
     };
 
-    ($t:tt< $N:ident > { $($field:ident),+ }) => {
-        impl<const $N: usize> ark_serialize::Valid for $t<$N> {
-            impl_valid_and_deser!(@impl_check $($field),*);
-        }
-
-        impl<const $N: usize> ark_serialize::CanonicalSerialize for $t<$N> {
-            impl_valid_and_deser!(@impl_ser $($field),*);
-        }
-
-        impl<const $N: usize> ark_serialize::CanonicalDeserialize for $t<$N> {
-            impl_valid_and_deser!(@impl_deser $($field),*);
-        }
-    };
-
     ($t:ty { $($field:ident),+ }) => {
         impl ark_serialize::Valid for $t {
             impl_valid_and_deser!(@impl_check $($field),*);
@@ -1786,15 +1828,205 @@ macro_rules! impl_valid_and_deser {
     };
 }
 
-impl_valid_and_deser!(MultiExpArg<N> {
-    c_alpha, c_beta, ct_mxp0, ct_mxp1, o_alpha, o_r, beta, o_beta, tau
-});
-impl_valid_and_deser!(SingleValueProductArg<N> {
-    c_d, c_sdelta, c_cdelta, a_tilde, b_tilde, r_tilde, s_tilde
-});
-impl_valid_and_deser!(ShuffleProof<N> {
-    c_pi, c_xpi, mexp_arg, prod_arg
-});
+// Deck-sized vectors encode exactly like the fixed-size arrays they replace:
+// elements back to back with no length prefix, deserialized unchecked and then
+// batch-validated. The deck size is agreed out of band, so decoding takes it.
+fn serialize_elements<T: CanonicalSerialize, W: ark_serialize::Write>(
+    items: &[T],
+    mut writer: W,
+    compress: ark_serialize::Compress,
+) -> Result<(), ark_serialize::SerializationError> {
+    for item in items {
+        item.serialize_with_mode(&mut writer, compress)?;
+    }
+    Ok(())
+}
+
+fn elements_size<T: CanonicalSerialize>(items: &[T], compress: ark_serialize::Compress) -> usize {
+    items.iter().map(|item| item.serialized_size(compress)).sum()
+}
+
+fn deserialize_elements<T: ark_serialize::CanonicalDeserialize, R: ark_serialize::Read>(
+    mut reader: R,
+    len: usize,
+    compress: ark_serialize::Compress,
+    validate: ark_serialize::Validate,
+) -> Result<Vec<T>, ark_serialize::SerializationError> {
+    let mut items = Vec::with_capacity(len);
+    for _ in 0..len {
+        items.push(T::deserialize_with_mode(
+            &mut reader,
+            compress,
+            ark_serialize::Validate::No,
+        )?);
+    }
+    if let ark_serialize::Validate::Yes = validate {
+        T::batch_check(items.iter())?;
+    }
+    Ok(items)
+}
+
+fn deserialize_field<T: ark_serialize::CanonicalDeserialize, R: ark_serialize::Read>(
+    reader: R,
+    compress: ark_serialize::Compress,
+    validate: ark_serialize::Validate,
+) -> Result<T, ark_serialize::SerializationError> {
+    T::deserialize_with_mode(reader, compress, validate)
+}
+
+impl CanonicalSerialize for MaskedDeck {
+    fn serialize_with_mode<W: ark_serialize::Write>(
+        &self,
+        writer: W,
+        compress: ark_serialize::Compress,
+    ) -> Result<(), ark_serialize::SerializationError> {
+        serialize_elements(&self.0, writer, compress)
+    }
+
+    fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
+        elements_size(&self.0, compress)
+    }
+}
+
+impl CanonicalSerialize for MultiExpArg {
+    fn serialize_with_mode<W: ark_serialize::Write>(
+        &self,
+        mut writer: W,
+        compress: ark_serialize::Compress,
+    ) -> Result<(), ark_serialize::SerializationError> {
+        self.c_alpha.serialize_with_mode(&mut writer, compress)?;
+        self.c_beta.serialize_with_mode(&mut writer, compress)?;
+        self.ct_mxp0.serialize_with_mode(&mut writer, compress)?;
+        self.ct_mxp1.serialize_with_mode(&mut writer, compress)?;
+        serialize_elements(&self.o_alpha, &mut writer, compress)?;
+        self.o_r.serialize_with_mode(&mut writer, compress)?;
+        self.beta.serialize_with_mode(&mut writer, compress)?;
+        self.o_beta.serialize_with_mode(&mut writer, compress)?;
+        self.tau.serialize_with_mode(&mut writer, compress)
+    }
+
+    fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
+        self.c_alpha.serialized_size(compress)
+            + self.c_beta.serialized_size(compress)
+            + self.ct_mxp0.serialized_size(compress)
+            + self.ct_mxp1.serialized_size(compress)
+            + elements_size(&self.o_alpha, compress)
+            + self.o_r.serialized_size(compress)
+            + self.beta.serialized_size(compress)
+            + self.o_beta.serialized_size(compress)
+            + self.tau.serialized_size(compress)
+    }
+}
+
+impl MultiExpArg {
+    fn deserialize_with_len<R: ark_serialize::Read>(
+        mut reader: R,
+        len: usize,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+    ) -> Result<Self, ark_serialize::SerializationError> {
+        Ok(Self {
+            c_alpha: deserialize_field(&mut reader, compress, validate)?,
+            c_beta: deserialize_field(&mut reader, compress, validate)?,
+            ct_mxp0: deserialize_field(&mut reader, compress, validate)?,
+            ct_mxp1: deserialize_field(&mut reader, compress, validate)?,
+            o_alpha: deserialize_elements(&mut reader, len, compress, validate)?,
+            o_r: deserialize_field(&mut reader, compress, validate)?,
+            beta: deserialize_field(&mut reader, compress, validate)?,
+            o_beta: deserialize_field(&mut reader, compress, validate)?,
+            tau: deserialize_field(&mut reader, compress, validate)?,
+        })
+    }
+}
+
+impl CanonicalSerialize for SingleValueProductArg {
+    fn serialize_with_mode<W: ark_serialize::Write>(
+        &self,
+        mut writer: W,
+        compress: ark_serialize::Compress,
+    ) -> Result<(), ark_serialize::SerializationError> {
+        self.c_d.serialize_with_mode(&mut writer, compress)?;
+        self.c_sdelta.serialize_with_mode(&mut writer, compress)?;
+        self.c_cdelta.serialize_with_mode(&mut writer, compress)?;
+        serialize_elements(&self.a_tilde, &mut writer, compress)?;
+        serialize_elements(&self.b_tilde, &mut writer, compress)?;
+        self.r_tilde.serialize_with_mode(&mut writer, compress)?;
+        self.s_tilde.serialize_with_mode(&mut writer, compress)
+    }
+
+    fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
+        self.c_d.serialized_size(compress)
+            + self.c_sdelta.serialized_size(compress)
+            + self.c_cdelta.serialized_size(compress)
+            + elements_size(&self.a_tilde, compress)
+            + elements_size(&self.b_tilde, compress)
+            + self.r_tilde.serialized_size(compress)
+            + self.s_tilde.serialized_size(compress)
+    }
+}
+
+impl SingleValueProductArg {
+    fn deserialize_with_len<R: ark_serialize::Read>(
+        mut reader: R,
+        len: usize,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+    ) -> Result<Self, ark_serialize::SerializationError> {
+        Ok(Self {
+            c_d: deserialize_field(&mut reader, compress, validate)?,
+            c_sdelta: deserialize_field(&mut reader, compress, validate)?,
+            c_cdelta: deserialize_field(&mut reader, compress, validate)?,
+            a_tilde: deserialize_elements(&mut reader, len, compress, validate)?,
+            b_tilde: deserialize_elements(&mut reader, len, compress, validate)?,
+            r_tilde: deserialize_field(&mut reader, compress, validate)?,
+            s_tilde: deserialize_field(&mut reader, compress, validate)?,
+        })
+    }
+}
+
+impl CanonicalSerialize for ShuffleProof {
+    fn serialize_with_mode<W: ark_serialize::Write>(
+        &self,
+        mut writer: W,
+        compress: ark_serialize::Compress,
+    ) -> Result<(), ark_serialize::SerializationError> {
+        self.c_pi.serialize_with_mode(&mut writer, compress)?;
+        self.c_xpi.serialize_with_mode(&mut writer, compress)?;
+        self.mexp_arg.serialize_with_mode(&mut writer, compress)?;
+        self.prod_arg.serialize_with_mode(&mut writer, compress)
+    }
+
+    fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
+        self.c_pi.serialized_size(compress)
+            + self.c_xpi.serialized_size(compress)
+            + self.mexp_arg.serialized_size(compress)
+            + self.prod_arg.serialized_size(compress)
+    }
+}
+
+impl ShuffleProof {
+    /// Deserializes a proof for a deck of exactly `len` cards. The encoding
+    /// carries no length prefix, so the caller supplies the agreed deck size.
+    pub fn deserialize_with_len<R: ark_serialize::Read>(
+        mut reader: R,
+        len: usize,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+    ) -> Result<Self, ark_serialize::SerializationError> {
+        Ok(Self {
+            c_pi: deserialize_field(&mut reader, compress, validate)?,
+            c_xpi: deserialize_field(&mut reader, compress, validate)?,
+            mexp_arg: MultiExpArg::deserialize_with_len(&mut reader, len, compress, validate)?,
+            prod_arg: SingleValueProductArg::deserialize_with_len(
+                &mut reader,
+                len,
+                compress,
+                validate,
+            )?,
+        })
+    }
+}
+
 impl_valid_and_deser!(RevealTokenProof { t_g, t_c1, z });
 impl_valid_and_deser!(OwnershipProof { a, z });
 

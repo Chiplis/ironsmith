@@ -4,7 +4,7 @@ use super::*;
 fn three_way_shuffle() {
     let mut rng = ark_std::test_rng();
 
-    let shuffle = Shuffle::<10>::default();
+    let shuffle = Shuffle::new(10);
 
     let ctx = b"test::three_way_shuffle";
 
@@ -60,7 +60,7 @@ fn serde_roundtrips() {
 
     let mut rng = ark_std::test_rng();
 
-    let shuffle = Shuffle::<10>::default();
+    let shuffle = Shuffle::new(10);
 
     let ctx = b"test::serde_roundtrips";
 
@@ -71,7 +71,7 @@ fn serde_roundtrips() {
 
     let (deck, shfl_proof) = shuffle.shuffle_initial_deck(&mut rng, apk, ctx);
     let vdeck = shuffle
-        .verify_initial_shuffle(apk, deck, shfl_proof, ctx)
+        .verify_initial_shuffle(apk, deck.clone(), shfl_proof.clone(), ctx)
         .unwrap();
 
     let card = vdeck.get(0).unwrap();
@@ -97,14 +97,26 @@ fn serde_roundtrips() {
 
     let mut deck_bytes = [0u8; 1024];
     deck.serialize_compressed(&mut deck_bytes[..]).unwrap();
-    let deck_der = MaskedDeck::<10>::deserialize_compressed(&deck_bytes[..]).unwrap();
+    let deck_der = MaskedDeck::deserialize_with_len(
+        &deck_bytes[..],
+        10,
+        ark_serialize::Compress::Yes,
+        ark_serialize::Validate::Yes,
+    )
+    .unwrap();
     assert_eq!(deck, deck_der);
 
     let mut shfl_proof_bytes = [0u8; 2048];
     shfl_proof
         .serialize_compressed(&mut shfl_proof_bytes[..])
         .unwrap();
-    let shfl_proof_der = ShuffleProof::<10>::deserialize_compressed(&shfl_proof_bytes[..]).unwrap();
+    let shfl_proof_der = ShuffleProof::deserialize_with_len(
+        &shfl_proof_bytes[..],
+        10,
+        ark_serialize::Compress::Yes,
+        ark_serialize::Validate::Yes,
+    )
+    .unwrap();
     assert_eq!(shfl_proof, shfl_proof_der);
 
     let mut reveal_token_bytes = [0u8; 1024];
@@ -127,7 +139,7 @@ fn serde_roundtrips() {
 fn verify_incorrect_public_key_fails() {
     let mut rng = ark_std::test_rng();
 
-    let shuffle = Shuffle::<10>::default();
+    let shuffle = Shuffle::new(10);
 
     let ctx = b"test::verify_incorrect_public_key_fails";
 
@@ -145,7 +157,7 @@ fn verify_incorrect_public_key_fails() {
 fn verify_tampered_reveal_token_fails() {
     let mut rng = ark_std::test_rng();
 
-    let shuffle = Shuffle::<10>::default();
+    let shuffle = Shuffle::new(10);
 
     let ctx = b"test::verify_tampered_reveal_token_fails";
 
@@ -182,7 +194,7 @@ fn verify_tampered_reveal_token_fails() {
 fn verify_tampered_reveal_token_proof_t_g_fails() {
     let mut rng = ark_std::test_rng();
 
-    let shuffle = Shuffle::<10>::default();
+    let shuffle = Shuffle::new(10);
 
     let ctx = b"test::verify_tampered_reveal_token_proof_t_g_fails";
 
@@ -216,7 +228,7 @@ fn verify_tampered_reveal_token_proof_t_g_fails() {
 fn verify_tampered_reveal_token_proof_t_c1_fails() {
     let mut rng = ark_std::test_rng();
 
-    let shuffle = Shuffle::<10>::default();
+    let shuffle = Shuffle::new(10);
 
     let ctx = b"test::verify_tampered_reveal_token_proof_t_c1_fails";
 
@@ -250,7 +262,7 @@ fn verify_tampered_reveal_token_proof_t_c1_fails() {
 fn verify_tampered_reveal_token_proof_z_fails() {
     let mut rng = ark_std::test_rng();
 
-    let shuffle = Shuffle::<10>::default();
+    let shuffle = Shuffle::new(10);
 
     let ctx = b"test::verify_tampered_reveal_token_proof_z_fails";
 
@@ -284,7 +296,7 @@ fn verify_tampered_reveal_token_proof_z_fails() {
 fn verify_reveal_token_wrong_public_key_fails() {
     let mut rng = ark_std::test_rng();
 
-    let shuffle = Shuffle::<10>::default();
+    let shuffle = Shuffle::new(10);
 
     let ctx = b"test::verify_reveal_token_wrong_public_key_fails";
 
@@ -316,7 +328,7 @@ fn verify_reveal_token_wrong_public_key_fails() {
 fn verify_reveal_token_wrong_card_fails() {
     let mut rng = ark_std::test_rng();
 
-    let shuffle = Shuffle::<10>::default();
+    let shuffle = Shuffle::new(10);
 
     let ctx = b"test::verify_reveal_token_wrong_card_fails";
 
@@ -349,7 +361,7 @@ fn verify_reveal_token_wrong_card_fails() {
 fn verify_reveal_token_wrong_context_fails() {
     let mut rng = ark_std::test_rng();
 
-    let shuffle = Shuffle::<10>::default();
+    let shuffle = Shuffle::new(10);
 
     let ctx = b"test::verify_reveal_token_wrong_context_fails";
     let wrong_ctx = b"wrong_context";
@@ -386,7 +398,7 @@ fn verify_reveal_token_wrong_context_fails() {
 fn deck_get_out_of_bounds_returns_none() {
     let mut rng = ark_std::test_rng();
 
-    let shuffle = Shuffle::<10>::default();
+    let shuffle = Shuffle::new(10);
 
     let ctx = b"test::deck_get_out_of_bounds_returns_none";
 
@@ -413,7 +425,7 @@ fn deck_get_out_of_bounds_returns_none() {
 fn reveal_card_with_wrong_aggregate_token_fails() {
     let mut rng = ark_std::test_rng();
 
-    let shuffle = Shuffle::<10>::default();
+    let shuffle = Shuffle::new(10);
 
     let ctx = b"test::reveal_card_with_wrong_aggregate_token_fails";
 
@@ -460,7 +472,7 @@ fn reveal_card_with_wrong_aggregate_token_fails() {
 fn verify_shuffle_with_wrong_context_fails() {
     let mut rng = ark_std::test_rng();
 
-    let shuffle = Shuffle::<10>::default();
+    let shuffle = Shuffle::new(10);
 
     let ctx = b"test::verify_shuffle_with_wrong_context_fails";
     let wrong_ctx = b"wrong_context";
@@ -475,7 +487,7 @@ fn verify_shuffle_with_wrong_context_fails() {
     // Correct context should verify
     assert!(
         shuffle
-            .verify_initial_shuffle(apk, deck, proof, ctx)
+            .verify_initial_shuffle(apk, deck.clone(), proof.clone(), ctx)
             .is_some()
     );
 
@@ -491,7 +503,7 @@ fn verify_shuffle_with_wrong_context_fails() {
 fn reveal_all_cards_in_deck() {
     let mut rng = ark_std::test_rng();
 
-    let shuffle = Shuffle::<10>::default();
+    let shuffle = Shuffle::new(10);
 
     let ctx = b"test::reveal_all_cards_in_deck";
 
@@ -530,12 +542,11 @@ fn reveal_all_cards_in_deck() {
     assert!(revealed_indices.iter().all(Option::is_some));
 }
 
-type TamperFn<const N: usize> =
-    fn(MaskedDeck<N>, ShuffleProof<N>) -> (MaskedDeck<N>, ShuffleProof<N>);
+type TamperFn = fn(MaskedDeck, ShuffleProof) -> (MaskedDeck, ShuffleProof);
 
 macro_rules! tamper_fns {
     ($($name:ident: $body:expr),* $(,)?) => {
-        const TAMPER_FUNCTIONS: &[(&str, TamperFn<10>)] = &[
+        const TAMPER_FUNCTIONS: &[(&str, TamperFn)] = &[
             $(
                 (stringify!($name), $body),
             )*
@@ -662,7 +673,7 @@ tamper_fns! {
 fn verify_tampered_initial_shuffle_fails() {
     let mut rng = ark_std::test_rng();
 
-    let shuffle = Shuffle::<10>::default();
+    let shuffle = Shuffle::new(10);
 
     let ctx = b"test::verify_intitial_shuffle_tampered_fails";
 
@@ -678,12 +689,12 @@ fn verify_tampered_initial_shuffle_fails() {
 
     assert!(
         shuffle
-            .verify_initial_shuffle(apk, valid_deck, valid_proof, ctx)
+            .verify_initial_shuffle(apk, valid_deck.clone(), valid_proof.clone(), ctx)
             .is_some()
     );
 
     for (name, tamper_fn) in TAMPER_FUNCTIONS {
-        let (tampered_deck, tampered_proof) = tamper_fn(valid_deck, valid_proof);
+        let (tampered_deck, tampered_proof) = tamper_fn(valid_deck.clone(), valid_proof.clone());
 
         assert!(
             shuffle
@@ -698,7 +709,7 @@ fn verify_tampered_initial_shuffle_fails() {
 fn verify_tampered_shuffle_fails() {
     let mut rng = ark_std::test_rng();
 
-    let shuffle = Shuffle::<10>::default();
+    let shuffle = Shuffle::new(10);
 
     let ctx = b"test::verify_intitial_shuffle_tampered_fails";
 
@@ -719,12 +730,12 @@ fn verify_tampered_shuffle_fails() {
 
     assert!(
         shuffle
-            .verify_shuffle(apk, &initial_vdeck, deck, proof, ctx)
+            .verify_shuffle(apk, &initial_vdeck, deck.clone(), proof.clone(), ctx)
             .is_some()
     );
 
     for (name, tamper_fn) in TAMPER_FUNCTIONS {
-        let (tampered_deck, tampered_proof) = tamper_fn(deck, proof);
+        let (tampered_deck, tampered_proof) = tamper_fn(deck.clone(), proof.clone());
 
         assert!(
             shuffle

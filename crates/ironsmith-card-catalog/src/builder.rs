@@ -15,7 +15,10 @@ use crate::{
 };
 
 pub const DEFAULT_CHUNK_BYTES: usize = 4 * 1024 * 1024;
-const QUALITY: i32 = 9;
+/// Fast enough for iterative rebuilds; shipped builds pass `MAX_QUALITY`.
+pub const DEFAULT_QUALITY: i32 = 9;
+/// Brotli's densest setting. Decoding cost does not depend on the quality.
+pub const MAX_QUALITY: i32 = 11;
 const WINDOW: i32 = 22;
 
 /// Incremental deterministic builder. Documents are kept verbatim and each
@@ -26,6 +29,7 @@ pub struct BundleBuilder {
     payload: Vec<u8>,
     pending: Vec<u8>,
     chunk_target: usize,
+    quality: i32,
     seen: HashMap<[u8; 32], Vec<Location>>,
     compare_cache: VecDeque<(usize, Vec<u8>)>,
     raw_route_bytes: usize,
@@ -40,11 +44,20 @@ impl BundleBuilder {
     /// Small targets are useful for testing cache eviction without a large
     /// fixture. Large single documents remain whole in a dedicated chunk.
     pub fn with_chunk_target(index_json: &[u8], chunk_target: usize) -> Result<Self, CatalogError> {
+        Self::with_options(index_json, chunk_target, DEFAULT_QUALITY)
+    }
+
+    pub fn with_options(
+        index_json: &[u8],
+        chunk_target: usize,
+        quality: i32,
+    ) -> Result<Self, CatalogError> {
         if chunk_target == 0 || chunk_target > MAX_CHUNK_BYTES {
             return Err(error("invalid chunk target"));
         }
+        check_quality(quality)?;
         check_document(index_json)?;
-        let packed = compress(index_json)?;
+        let packed = compress_with_quality(index_json, quality)?;
         Ok(Self {
             directory: Directory {
                 index: Location {
@@ -62,6 +75,7 @@ impl BundleBuilder {
             payload: packed,
             pending: Vec::new(),
             chunk_target,
+            quality,
             seen: HashMap::new(),
             compare_cache: VecDeque::new(),
             raw_route_bytes: 0,
@@ -120,7 +134,7 @@ impl BundleBuilder {
         if directory.len() > MAX_DIRECTORY_BYTES {
             return Err(error("directory too large"));
         }
-        let compressed = compress(&directory)?;
+        let compressed = compress_with_quality(&directory, self.quality)?;
         let mut result = Vec::with_capacity(16 + compressed.len() + self.payload.len());
         result.extend_from_slice(MAGIC);
         result.extend_from_slice(&(directory.len() as u32).to_le_bytes());
@@ -135,7 +149,7 @@ impl BundleBuilder {
         if self.pending.is_empty() {
             return Ok(());
         }
-        let compressed = compress(&self.pending)?;
+        let compressed = compress_with_quality(&self.pending, self.quality)?;
         self.directory.chunks.push(Chunk {
             o: self.payload.len(),
             n: compressed.len(),
@@ -175,9 +189,24 @@ fn check_document(bytes: &[u8]) -> Result<(), CatalogError> {
     Ok(())
 }
 
+fn check_quality(quality: i32) -> Result<(), CatalogError> {
+    if (0..=MAX_QUALITY).contains(&quality) {
+        Ok(())
+    } else {
+        Err(error(format!(
+            "brotli quality must be 0 through {MAX_QUALITY}"
+        )))
+    }
+}
+
+#[cfg(test)]
 pub(crate) fn compress(bytes: &[u8]) -> Result<Vec<u8>, CatalogError> {
+    compress_with_quality(bytes, DEFAULT_QUALITY)
+}
+
+fn compress_with_quality(bytes: &[u8], quality: i32) -> Result<Vec<u8>, CatalogError> {
     let params = brotli::enc::BrotliEncoderParams {
-        quality: QUALITY,
+        quality,
         lgwin: WINDOW,
         ..Default::default()
     };
@@ -207,6 +236,17 @@ struct Manifest {
 /// the existing output are hashed before accepting a cached build. File mtimes
 /// do not affect output bytes or cache validity.
 pub fn build_directory(cards_dir: &Path, output: &Path) -> Result<BuildStats, CatalogError> {
+    build_directory_with_quality(cards_dir, output, DEFAULT_QUALITY)
+}
+
+/// Like [`build_directory`] at an explicit Brotli quality. The quality is part
+/// of the cache key, so switching it always rebuilds the bundle.
+pub fn build_directory_with_quality(
+    cards_dir: &Path,
+    output: &Path,
+    quality: i32,
+) -> Result<BuildStats, CatalogError> {
+    check_quality(quality)?;
     let mut files: Vec<PathBuf> = fs::read_dir(cards_dir)
         .map_err(|err| error(format!("read {}: {err}", cards_dir.display())))?
         .map(|entry| entry.map(|entry| entry.path()))
@@ -220,7 +260,7 @@ pub fn build_directory(cards_dir: &Path, output: &Path) -> Result<BuildStats, Ca
     {
         return Err(error("cards directory is missing index.json"));
     }
-    let source_digest = source_digest(&files)?;
+    let source_digest = source_digest(&files, quality)?;
     let manifest_path = PathBuf::from(format!("{}.manifest.json", output.display()));
     if let Ok(raw) = fs::read(&manifest_path)
         && let Ok(manifest) = serde_json::from_slice::<Manifest>(&raw)
@@ -235,7 +275,7 @@ pub fn build_directory(cards_dir: &Path, output: &Path) -> Result<BuildStats, Ca
         });
     }
     let index = fs::read(cards_dir.join("index.json")).map_err(|err| error(err.to_string()))?;
-    let mut builder = BundleBuilder::new(&index)?;
+    let mut builder = BundleBuilder::with_options(&index, DEFAULT_CHUNK_BYTES, quality)?;
     for path in files
         .iter()
         .filter(|path| path.file_name().is_none_or(|name| name != "index.json"))
@@ -265,7 +305,7 @@ pub fn build_directory(cards_dir: &Path, output: &Path) -> Result<BuildStats, Ca
     current_files
         .retain(|path| path.extension().is_some_and(|ext| ext == "json") && path.is_file());
     current_files.sort_by(|left, right| left.file_name().cmp(&right.file_name()));
-    if current_files != files || source_digest != self::source_digest(&current_files)? {
+    if current_files != files || source_digest != self::source_digest(&current_files, quality)? {
         return Err(error(
             "card source files changed during catalogue construction; retry the build",
         ));
@@ -290,8 +330,9 @@ pub fn build_directory(cards_dir: &Path, output: &Path) -> Result<BuildStats, Ca
     Ok(stats)
 }
 
-fn source_digest(files: &[PathBuf]) -> Result<String, CatalogError> {
+fn source_digest(files: &[PathBuf], quality: i32) -> Result<String, CatalogError> {
     let mut digest = Sha256::new();
+    digest.update(quality.to_le_bytes());
     digest.update(include_bytes!("builder.rs"));
     digest.update(include_bytes!("lib.rs"));
     digest.update(include_bytes!("../Cargo.toml"));

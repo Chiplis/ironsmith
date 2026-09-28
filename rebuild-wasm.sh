@@ -29,7 +29,7 @@ FRONTEND_SCORES_FILE="${IRONSMITH_FRONTEND_SEMANTIC_SCORES_FILE:-$DEFAULT_FRONTE
 FRONTEND_CARDS_DIR="${IRONSMITH_FRONTEND_CARDS_DIR:-$DEFAULT_FRONTEND_CARDS_DIR}"
 SYNC_SCRYFALL_CARDS="${IRONSMITH_SYNC_SCRYFALL_CARDS:-1}"
 NO_DEFAULT_FEATURES=1
-WASM_OPT_LEVEL="${IRONSMITH_WASM_OPT_LEVEL:--O1}"
+WASM_OPT_LEVEL="${IRONSMITH_WASM_OPT_LEVEL:--Oz}"
 WASM_CARGO_PROFILE="wasm-release"
 ARTIFACT_COMPILER_FINGERPRINT=""
 
@@ -133,7 +133,8 @@ Notes:
   - A fresh checkout needs nothing but cargo, rustup, and python3: the wasm32-unknown-unknown
     target, the pinned wasm-bindgen CLI, the cargo dependency cache, the Scryfall card list,
     the registry DB, and the frontend card assets are all created on the first run.
-  - Cargo builds WASM with the Binaryen-oriented wasm-release profile.
+  - Cargo builds WASM with the fast-to-compile wasm-release profile; --release uses the
+    size-optimized wasm-dist profile (opt-level "z", fat LTO, one codegen unit) instead.
   - Native corpus tools use the optimized release profile.
   - wasm-opt is skipped by default for faster iteration; pass --release to enable it.
   - Scryfall Default Cards are downloaded to $DEFAULT_CARDS_FILE when Scryfall publishes a newer bulk-data updated_at.
@@ -146,7 +147,7 @@ Notes:
   - Default features are "wasm-lean" with crate default features disabled. The full card catalogue is embedded as indexed Brotli chunks in engine_bg.wasm; card definitions, source text, and metadata load locally on demand.
   - The package contains separate engine, compiler, and verifier modules behind one JavaScript facade.
   - Custom-card compilation is always enabled in the engine, including lean builds with default features disabled.
-  - IRONSMITH_WASM_OPT_LEVEL selects the shipped optimizer level (-O1, -O2, -Os, or -Oz; default -O1).
+  - IRONSMITH_WASM_OPT_LEVEL selects the shipped optimizer level (-O1, -O2, -Os, or -Oz; default -Oz).
   - --release uses a pinned, checksum-verified native Binaryen wasm-opt (see scripts/lib/wasm-opt.sh), downloaded once into the tools cache; IRONSMITH_WASM_OPT overrides the binary.
 USAGE
 }
@@ -469,10 +470,12 @@ while [[ $# -gt 0 ]]; do
       ;;
     --dev)
       OPTIMIZE_WASM=0
+      WASM_CARGO_PROFILE="wasm-release"
       shift
       ;;
     --release)
       OPTIMIZE_WASM=1
+      WASM_CARGO_PROFILE="wasm-dist"
       shift
       ;;
     --cards-file)
@@ -634,9 +637,17 @@ fi
 
 report_frontend_card_coverage
 
-EMBEDDED_CARD_CATALOG="$ROOT_DIR/target/embedded-card-catalog.bin"
+# Shipped builds pack the embedded catalogue at Brotli's densest quality; decoding
+# costs the same, only the (cached) encode is slower than the iterative default.
+if [[ "$OPTIMIZE_WASM" -eq 1 ]]; then
+  EMBEDDED_CARD_CATALOG="$ROOT_DIR/target/embedded-card-catalog-dist.bin"
+  CATALOG_QUALITY=11
+else
+  EMBEDDED_CARD_CATALOG="$ROOT_DIR/target/embedded-card-catalog.bin"
+  CATALOG_QUALITY=9
+fi
 cargo run --release -p ironsmith-card-catalog --features build --bin build_card_catalog -- \
-  --cards-dir "$FRONTEND_CARDS_DIR" --output "$EMBEDDED_CARD_CATALOG"
+  --cards-dir "$FRONTEND_CARDS_DIR" --output "$EMBEDDED_CARD_CATALOG" --quality "$CATALOG_QUALITY"
 export IRONSMITH_EMBEDDED_CARD_CATALOG="$EMBEDDED_CARD_CATALOG"
 
 if feature_enabled "generated-registry"; then

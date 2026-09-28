@@ -1,10 +1,33 @@
-//! Parallel composition facade for typed compiled-effect decoding.
+//! Typed compiled-effect decoding, organized by runtime effect family.
+//!
+//! The families are modules of one crate rather than sibling crates so that
+//! each serde instantiation they share (filters, values, conditions, ...) is
+//! compiled once instead of once per family.
 
 use std::any::Any;
 
+use serde::de::DeserializeOwned;
 use serde_json::Value;
 
+mod combat;
+mod composition_a_l;
+mod composition_m_z;
+mod permanent;
+mod player;
+mod resources;
+mod stack_event;
+mod zone_library;
+
 pub type ErasedPayload = Box<dyn Any + Send + Sync>;
+
+fn decode_as<D>(payload: Value) -> Result<ErasedPayload, String>
+where
+    D: DeserializeOwned + Send + Sync + 'static,
+{
+    serde_json::from_value::<D>(payload)
+        .map(|value| Box::new(value) as ErasedPayload)
+        .map_err(|error| error.to_string())
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EffectFamily {
@@ -318,20 +341,14 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
 pub fn decode(kind: &str, payload: Value) -> Result<ErasedPayload, String> {
     let decoded = match family_for_kind(kind) {
         Some(family) => match family {
-            EffectFamily::ZoneLibrary => {
-                ironsmith_runtime_effect_zone_library::decode(kind, payload)
-            }
-            EffectFamily::Player => ironsmith_runtime_effect_player::decode(kind, payload),
-            EffectFamily::Resources => ironsmith_runtime_effect_resources::decode(kind, payload),
-            EffectFamily::Permanent => ironsmith_runtime_effect_permanent::decode(kind, payload),
-            EffectFamily::Combat => ironsmith_runtime_effect_combat::decode(kind, payload),
-            EffectFamily::StackEvent => ironsmith_runtime_effect_stack_event::decode(kind, payload),
-            EffectFamily::CompositionAL => {
-                ironsmith_runtime_effect_composition_a_l::decode(kind, payload)
-            }
-            EffectFamily::CompositionMZ => {
-                ironsmith_runtime_effect_composition_m_z::decode(kind, payload)
-            }
+            EffectFamily::ZoneLibrary => zone_library::decode(kind, payload),
+            EffectFamily::Player => player::decode(kind, payload),
+            EffectFamily::Resources => resources::decode(kind, payload),
+            EffectFamily::Permanent => permanent::decode(kind, payload),
+            EffectFamily::Combat => combat::decode(kind, payload),
+            EffectFamily::StackEvent => stack_event::decode(kind, payload),
+            EffectFamily::CompositionAL => composition_a_l::decode(kind, payload),
+            EffectFamily::CompositionMZ => composition_m_z::decode(kind, payload),
         },
         None => return Err(format!("unknown compiled effect payload kind: {kind}")),
     }?;

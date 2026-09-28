@@ -1,9 +1,8 @@
-//! Shared byte/JavaScript boundary for independently linked verifier shards.
+//! Shared byte/JavaScript boundary for the verifier.
 
-use ironsmith_verifier_ziffle::{Operation, VerifierError, input_deck_count};
+use ironsmith_verifier_ziffle::{Operation, VerifierError};
 use wasm_bindgen::prelude::*;
 
-pub type ShardExecutor = fn(Operation, usize, &[u8]) -> Result<Vec<u8>, VerifierError>;
 pub type VerifierExecutor = fn(Operation, &[u8]) -> Result<Vec<u8>, VerifierError>;
 
 fn input_json(input: JsValue) -> Result<String, JsValue> {
@@ -26,19 +25,6 @@ pub fn execute_verifier(
 ) -> Result<JsValue, JsValue> {
     let json = input_json(input)?;
     let output = executor(operation, json.as_bytes())
-        .map_err(|error| JsValue::from_str(&error.to_string()))?;
-    output_json(output)
-}
-
-pub fn execute_shard(
-    operation: Operation,
-    input: JsValue,
-    executor: ShardExecutor,
-) -> Result<JsValue, JsValue> {
-    let json = input_json(input)?;
-    let deck_count =
-        input_deck_count(json.as_bytes()).map_err(|error| JsValue::from_str(&error.to_string()))?;
-    let output = executor(operation, deck_count, json.as_bytes())
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
     output_json(output)
 }

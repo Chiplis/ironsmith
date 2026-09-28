@@ -1,7 +1,7 @@
 //! Run with `cargo run -p ironsmith-verifier-ziffle --release --example fetch_reveal_benchmark`.
 //! Measures the public byte API for a two-player, 60-card library search.
 
-use ironsmith_verifier_ziffle::{Operation, execute_for, execute_keygen};
+use ironsmith_verifier_ziffle::{Operation, execute, execute_keygen};
 use serde_json::{Value, json};
 use std::time::Instant;
 
@@ -11,7 +11,7 @@ fn timed(label: &str, operation: Operation, input: &Value) -> Value {
     let result = if operation == Operation::Keygen {
         execute_keygen(&bytes)
     } else {
-        execute_for::<60>(operation, &bytes)
+        execute(operation, 60, &bytes)
     }
     .unwrap();
     println!("{label}: {:.3} ms", start.elapsed().as_secs_f64() * 1000.0);

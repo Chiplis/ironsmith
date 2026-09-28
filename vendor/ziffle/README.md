@@ -24,7 +24,7 @@ high-stakes scenario.** Use at your own risk.
 ## Main Entry Point
 
 The `Shuffle` struct is the primary interface for using this library. Create an
-instance with `Shuffle::<N>::default()` where `N` is the number of cards in your deck.
+instance with `Shuffle::new(n)` where `n` is the number of cards in your deck.
 
 ## Example: Three-Player Poker Game
 
@@ -32,7 +32,7 @@ instance with `Shuffle::<N>::default()` where `N` is the number of cards in your
 use ziffle::{Shuffle, AggregatePublicKey, AggregateRevealToken};
 
 // Create a standard 52-card deck
-let shuffle = Shuffle::<52>::default();
+let shuffle = Shuffle::new(52);
 let mut rng = ark_std::test_rng(); // DO NOT USE IN PRODUCTION
 let ctx = b"poker_game_session_123";
 

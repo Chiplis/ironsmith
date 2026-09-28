@@ -1,22 +1,10 @@
 //! Generated typed materializers for the stack-event runtime effect family.
 
-use std::any::Any;
-
 #[allow(unused_imports)]
 use ironsmith_compiled_artifact as wire;
-use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-pub type ErasedPayload = Box<dyn Any + Send + Sync>;
-
-fn decode_as<D>(payload: Value) -> Result<ErasedPayload, String>
-where
-    D: DeserializeOwned + Send + Sync + 'static,
-{
-    serde_json::from_value::<D>(payload)
-        .map(|value| Box::new(value) as ErasedPayload)
-        .map_err(|error| error.to_string())
-}
+use super::{ErasedPayload, decode_as};
 
 pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, String> {
     match kind {

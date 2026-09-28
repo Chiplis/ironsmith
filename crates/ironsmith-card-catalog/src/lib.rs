@@ -201,7 +201,9 @@ pub(crate) fn decompress_exact(data: &[u8], expected: usize) -> Result<Vec<u8>, 
 #[cfg(all(test, feature = "build"))]
 mod tests {
     use super::*;
-    use crate::builder::{BundleBuilder, build_directory, compress};
+    use crate::builder::{
+        BundleBuilder, MAX_QUALITY, build_directory, build_directory_with_quality, compress,
+    };
     use std::fs;
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -387,6 +389,29 @@ mod tests {
         fs::write(cards.join("failed.json"), b"{\"name\":\"changed\"}").unwrap();
         assert!(!build_directory(&cards, &output).unwrap().cached);
         assert_ne!(fs::read(&output).unwrap(), original);
+        let default_quality = fs::read(&output).unwrap();
+        let dense = build_directory_with_quality(&cards, &output, MAX_QUALITY).unwrap();
+        assert!(!dense.cached, "the brotli quality is part of the cache key");
+        let dense_bytes = fs::read(&output).unwrap();
+        let mut dense_catalog = Catalog::from_bytes(&dense_bytes).unwrap();
+        let mut default_catalog = Catalog::from_bytes(&default_quality).unwrap();
+        for route in ["front", "alias", "failed"] {
+            assert_eq!(
+                dense_catalog.route_json(route).unwrap().map(str::to_owned),
+                default_catalog
+                    .route_json(route)
+                    .unwrap()
+                    .map(str::to_owned),
+                "quality changes the encoding, never the documents"
+            );
+        }
+        assert!(
+            build_directory_with_quality(&cards, &output, MAX_QUALITY)
+                .unwrap()
+                .cached
+        );
+        assert!(!build_directory(&cards, &output).unwrap().cached);
+        assert!(build_directory_with_quality(&cards, &output, MAX_QUALITY + 1).is_err());
         fs::remove_dir_all(root).unwrap();
     }
 }
