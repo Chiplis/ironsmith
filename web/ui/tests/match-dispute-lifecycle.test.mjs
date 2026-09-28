@@ -24,7 +24,14 @@ const acceptedClock = () => ({ policy: { initialMs: 1800000 }, playerCount: 2,
   epochStartedAtMs: 100, clockHash: "verified-clock-516", lastSequence: 516 });
 const disputed = () => ({ mode: "disputed", matchStarted: false, lastAppliedSequence: 516,
   matchDisputed: { reason: "Protocol response timeout from Alice; two-player matches require external arbitration." } });
-const helpers = { assertMatchNotDisputed, compactMatchDisputeEvidence, isMatchDisputed };
+// shared.js resolves Vite aliases, so take the real helper from its source.
+const protocolResponseTimeoutClaimFromError = compile(between(source("peer-lobby/shared.js"),
+  "export function protocolResponseTimeoutClaimFromError(", "\nexport ").replace(/^export /, "")
+  + "\nreturn protocolResponseTimeoutClaimFromError;", {});
+// Host-only verified-resync checkpoint capture (crypto-resync.js) has no
+// bearing on dispute handling, so the harness makes it a no-op.
+const helpers = { assertMatchNotDisputed, compactMatchDisputeEvidence, isMatchDisputed,
+  protocolResponseTimeoutClaimFromError, captureResyncReplayCheckpointIfDue() {} };
 
 test("dispute stops the clock effect without erasing locally accepted hash, balance, or sequence; idle still resets", () => {
   const effect = process.env.MATCH_DISPUTE_BASELINE_REF ? "" : between(lobby, "  useEffect(() => {\n    // A dispute", "    let disposed = false;");
@@ -122,6 +129,7 @@ function actionHarness({ pauseAt = null, verified = false } = {}) {
     matchClockObservationExemptSequenceRef: { current: 0 },
     publishCurrentRuntimeState: async () => {}, relaySequencedAction() {}, drainPendingSequencedActions: async () => {},
     isRejectedActionCheatReason: () => false, isUnauthorizedAddCardCommand: () => false,
+    fairRandomRevealLockConflict: () => false, // no random reveal is locked in these scenarios
     summarizePeerCommand: (value) => value, setStatus() {}, console: { error() {} },
     verifySequencedActionAudit: async () => pause("validate"), verifyActionMatchesPendingIntent: async () => ({}),
     verifyActionQuorumForMessage: async () => {}, isActionTimeoutForfeitCommand: () => false,
@@ -139,6 +147,9 @@ function actionHarness({ pauseAt = null, verified = false } = {}) {
     alignShuffleProofsWithRequirements: () => [], applyVerifiedShuffleProofs: async () => {},
     revealLocalZiffleHand: async () => {}, viewedCardsStateHint: (_remote, appliedState) => appliedState,
     verifyCurrentPublicCheckpointHash: async () => {},
+    // The received actions ship no openings, so nothing needs allowing.
+    commandObjectIdsForOpeningAllowList: async () => new Set(), assertAuditOpeningsExpected: async () => {},
+    ziffleDeckHashFromCommitment: (value) => /^ziffle:([^:]+):\d+$/.exec(String(value || ""))?.[1] || "",
 
   };
   const apply = compile(between(validation, "  async function applySequencedActionMessageInner(", "  // Forced reveals") + "return applySequencedActionMessageInner;", context);

@@ -5,13 +5,13 @@ import { buildZiffleInputDeck } from '../src/lib/ziffle-private-epochs.js';
 
 function fixture() {
   const genesis = { owner: 0, deckCount: 8, context: 'match', deckHash: 'root',
-    steps: [{ shuffler: 0, deckHex: 'root', proofHex: 'valid' }] };
+    steps: [{ shuffler: 0, deckHex: 'root', proofHex: 'valid', signature: 'signed' }] };
   const requirement = { id: 'fetch', type: 'verifiable_shuffle', owner: 0, zone: 'library',
     randomCountBefore: 12, beforeOrder: [1, 2, 3, 4], afterOrder: [4, 3, 2, 1],
     inputCommitments: [0, 2, 4, 7].map(position => `ziffle:root:${position}`) };
   const proof = { owner: 0, zone: 'library', requirementId: 'fetch', deckCount: 4,
     context: 'match:action:8:shuffle:fetch:0:library', keyContext: 'match', deckHash: 'new',
-    keys: ['signed-roster'], steps: [{ shuffler: 0, deckHex: 'new', proofHex: 'valid' }],
+    keys: ['signed-roster'], steps: [{ shuffler: 0, deckHex: 'new', proofHex: 'valid', signature: 'signed' }],
     inputDeck: buildZiffleInputDeck([genesis], requirement.inputCommitments) };
   const opening = { type: 'private_open', owner: 0, viewer: 0, zone: 'hand', slot: 3,
     commitment: 'ziffle:new:3', originSlot: 3, originCommitment: 'ziffle:new:3' };

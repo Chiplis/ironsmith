@@ -1,4 +1,5 @@
 import { buildZiffleInputDeck } from "../src/lib/ziffle-private-epochs.js";
+import { signZiffleShuffleStep, ziffleShuffleStepStatement } from "../src/lib/ziffle-step-signatures.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { webcrypto } from "node:crypto";
@@ -8,6 +9,7 @@ import {
   assertResyncActionsExtendLocalTranscript,
   assertCurrentAuditPlayerCount,
   authorizeCryptoMaterialRequestRequirements,
+  cryptoMaterialResponsibleSeat,
   buildActionForkDisputeEvidence,
   buildSignedDisconnectForfeitVote,
   buildSignedProtocolResponseTimeoutVote,
@@ -48,6 +50,11 @@ import {
   verifyPrivateViewDisclosure,
   verifySignedMatchGenesis,
   verifySignedResyncEnvelope,
+  auditMatchInstanceId,
+  deriveMatchSeedFromReveals,
+  genesisAuditChainHash,
+  matchSeedCommitment,
+  verifyActionQuorumVote,
 } from "../src/lib/multiplayer-audit.js";
 
 function cloneTestPayload(value) {
@@ -70,6 +77,112 @@ function malleateP256SignatureHex(signatureHex) {
   const rHex = normalized.slice(0, 64);
   const s = p256SignatureS(normalized);
   return `${rHex}${fixedWidthScalarHex(P256_ORDER - s)}`;
+}
+
+// Tests sign their actions before the fixture builds the match genesis, so
+// they chain from the all-zero placeholder root. Protocol v16 roots the chain
+// in the signed genesis instead: re-chain every action that extends the
+// placeholder, re-signing (and re-voting) only what was validly signed and
+// recomputing only honestly computed state hashes, so any deliberate tamper
+// a test planted survives the rebase.
+const PLACEHOLDER_CHAIN_ROOT = "0".repeat(64);
+
+function testEnvelopeStateFields(audit) {
+  return {
+    matchId: audit.matchId,
+    seq: audit.seq,
+    prevStateHash: audit.prevStateHash,
+    command: audit.command,
+    clock: audit.clock,
+    openings: audit.openings || [],
+    rngReveals: audit.rngReveals || [],
+    shuffleProofs: audit.shuffleProofs || [],
+    privateViewProofs: audit.privateViewProofs || [],
+    publicCheckpointHash: audit.publicCheckpointHash,
+  };
+}
+
+async function testSignatureIsValid(publicKeyHex, payload, signature) {
+  if (!publicKeyHex || !signature) return false;
+  try {
+    return await verifyAuditPayload(await importAuditPublicKey(publicKeyHex, webcrypto), payload, signature, webcrypto);
+  } catch {
+    return false;
+  }
+}
+
+async function rebaseTestActionsOntoGenesis(actions, chainRoot, privatePlayers) {
+  const bySeat = new Map(privatePlayers.map((player) => [Number(player.index), player]));
+  const rebasedHash = new Map([[PLACEHOLDER_CHAIN_ROOT, chainRoot]]);
+  const rebased = [];
+  for (const entry of actions) {
+    const action = cloneTestPayload(entry);
+    const audit = action?.audit;
+    if (!audit || !rebasedHash.has(audit.prevStateHash)) {
+      rebased.push(action);
+      continue;
+    }
+    const original = cloneTestPayload(action);
+    const signer = bySeat.get(Number(audit.signer ?? audit.actor));
+    const signatureWasValid = await testSignatureIsValid(signer?.auditPublicKey,
+      actionEnvelopePayload(original.audit), original.audit.signature);
+    const nextWasHonest = audit.nextStateHash === await auditStateHash(testEnvelopeStateFields(original.audit), webcrypto);
+    audit.prevStateHash = rebasedHash.get(audit.prevStateHash);
+    if (nextWasHonest) {
+      audit.nextStateHash = await auditStateHash(testEnvelopeStateFields(audit), webcrypto);
+      rebasedHash.set(original.audit.nextStateHash, audit.nextStateHash);
+    }
+    if (signatureWasValid) {
+      audit.signature = await signAuditPayload(signer.keyPair, actionEnvelopePayload(audit), webcrypto);
+    }
+    const certificate = audit.quorumCertificate || action.quorumCertificate;
+    if (certificate) {
+      const votes = [];
+      for (const vote of certificate.votes || []) {
+        const voter = bySeat.get(Number(vote?.voter));
+        const voteWasValid = voter && await verifyActionQuorumVote({ vote, action: original,
+          players: privatePlayers }, webcrypto).then(() => true, () => false);
+        votes.push(voteWasValid
+          ? await buildSignedActionQuorumVote({ keyPair: voter.keyPair, action, voter: vote.voter }, webcrypto)
+          : vote);
+      }
+      Object.assign(certificate, {
+        prevStateHash: audit.prevStateHash,
+        nextStateHash: audit.nextStateHash,
+        actionSignature: audit.signature,
+        votes,
+      });
+    }
+    rebased.push(action);
+  }
+  return rebased;
+}
+
+function testSeedNonce(seat) {
+  return (Number(seat) + 1).toString(16).padStart(64, "0");
+}
+
+// Protocol v16 requires every ziffle shuffle step signed by its shuffler's
+// genesis audit key; `signers` holds each seat's `index` and `keyPair`.
+// ECDSA signatures are randomized, but accepted shuffle histories embed the
+// signed steps, so a fixture rebuilt from the same keys must reproduce the
+// same signatures: memoize per key pair and step statement.
+const testStepSignatures = new WeakMap();
+
+async function signTestZiffleCeremony(ceremony, signers) {
+  const keyPairs = new Map(signers.map((signer) => [Number(signer.index), signer.keyPair]));
+  const steps = [];
+  for (const step of ceremony.steps) {
+    const keyPair = keyPairs.get(Number(step.shuffler));
+    if (!testStepSignatures.has(keyPair)) testStepSignatures.set(keyPair, new Map());
+    const memo = testStepSignatures.get(keyPair);
+    const statementKey = canonicalJson(await ziffleShuffleStepStatement(ceremony, steps, step, webcrypto));
+    if (!memo.has(statementKey)) {
+      memo.set(statementKey, await signZiffleShuffleStep(keyPair, ceremony, steps, step, webcrypto));
+    }
+    steps.push({ ...step, signature: memo.get(statementKey) });
+  }
+  return { ...ceremony, steps };
 }
 
 function actionEnvelopePayload(audit) {
@@ -206,22 +319,26 @@ async function buildCurrentProtocolTranscript({
       commanderCount: Number(player.commanderCount || manifest?.commanderCount || 0),
       keyPair,
     };
+    // Seed commit-reveal: each seat commits H(nonce) in its player genesis.
+    entry.seedNonce = testSeedNonce(index);
     entry.playerGenesisSignature = await buildSignedPlayerGenesis({
       keyPair,
       matchId,
       protocolVersion,
       timeoutMs: 300000,
       player: entry,
+      seedCommitment: await matchSeedCommitment(entry.seedNonce, webcrypto),
     }, webcrypto);
     privatePlayers.push(entry);
   }
   const normalizedPlayers = privatePlayers.map((player) => {
     const entry = { ...player };
     delete entry.keyPair;
+    delete entry.seedNonce;
     return entry;
   });
   const ziffleKeys = normalizedPlayers.map((player) => player.ziffleKey);
-  const ziffleCeremonies = normalizedPlayers.map((player) => ({
+  const ziffleCeremonies = await Promise.all(normalizedPlayers.map((player) => signTestZiffleCeremony({
     owner: Number(player.index),
     deckCount: Number(player.deckCount || 0),
     context: matchId,
@@ -233,8 +350,9 @@ async function buildCurrentProtocolTranscript({
       proofHex: `test-proof-${player.index}-${shuffler.index}`,
     })),
     deckHash: `test-ziffle-deck-${player.index}`,
-  }));
+  }, privatePlayers)));
   const host = privatePlayers[0];
+  const seedReveals = privatePlayers.map((player) => ({ seat: player.index, nonce: player.seedNonce }));
   const match = {
     protocolVersion,
     auditMatchId: matchId,
@@ -243,7 +361,8 @@ async function buildCurrentProtocolTranscript({
     format: "normal",
     startingLife: 20,
     openingHandSize: 7,
-    seed: 1,
+    seed: await deriveMatchSeedFromReveals({ matchId, reveals: seedReveals }, webcrypto),
+    seedReveals,
     timeoutMs: 300000,
     initialPublicCheckpointHash,
     matchClockPolicy: {
@@ -261,14 +380,23 @@ async function buildCurrentProtocolTranscript({
     match,
     hostSeat: host.index,
   }, webcrypto);
-  const actionsWithQuorum = await Promise.all(actions.map(async (entry) => {
+  const chainRoot = await genesisAuditChainHash({ matchId, genesisPayloadHash: match.genesis.payloadHash }, webcrypto);
+  // `actions` may be a callback for actions that must bind genesis-derived
+  // values (the chain root, or the match instance id forfeit votes sign).
+  const suppliedActions = typeof actions === "function"
+    ? await actions({ chainRoot, matchInstanceId: auditMatchInstanceId(match), match })
+    : actions;
+  const rebasedActions = await rebaseTestActionsOntoGenesis(suppliedActions, chainRoot, privatePlayers);
+  const actionsWithQuorum = await Promise.all(rebasedActions.map(async (entry) => {
     const action = cloneTestPayload(entry);
     if (!action?.audit || action.audit.quorumCertificate || action.quorumCertificate) {
       return action;
     }
     const threshold = actionQuorumThreshold(privatePlayers.length);
     if (threshold <= 0) return action;
-    const quorumVoters = privatePlayers.slice(0, threshold);
+    // The actor's own vote never counts toward the threshold.
+    const actor = Number(action.audit.actor ?? action.actorIndex ?? 0);
+    const quorumVoters = privatePlayers.filter((player) => Number(player.index) !== actor).slice(0, threshold);
     const votes = await Promise.all(quorumVoters.map((player) =>
       buildSignedActionQuorumVote({
         keyPair: player.keyPair,
@@ -299,7 +427,7 @@ async function buildCurrentProtocolTranscript({
     protocolVersion,
     signatureAlgorithm: "ecdsa-p256-sha256",
     genesis: match.genesis,
-    initialStateHash: "0".repeat(64),
+    initialStateHash: chainRoot,
     initialPublicCheckpointHash,
     privateViewDisclosures,
     actions: actionsWithQuorum,
@@ -580,10 +708,10 @@ test("audit payload signatures are canonical low-S P-256 signatures", async () =
   );
 });
 
-test("action quorum certificates require 2-of-3 or 3-of-4 votes", async () => {
+test("action quorum certificates require a strict majority of the non-actor players", async () => {
   assert.equal(actionQuorumThreshold(2), 0);
   assert.equal(actionQuorumThreshold(3), 2);
-  assert.equal(actionQuorumThreshold(4), 3);
+  assert.equal(actionQuorumThreshold(4), 2);
   assert.throws(() => actionQuorumThreshold(5), /requires 2, 3, or 4 players/);
 
   const keys = await Promise.all([
@@ -623,7 +751,7 @@ test("action quorum certificates require 2-of-3 or 3-of-4 votes", async () => {
     nextStateHash: audit.nextStateHash,
     publicCheckpointHash: audit.publicCheckpointHash,
     actionSignature: audit.signature,
-    threshold: 3,
+    threshold: 2,
     voters: [0, 1, 2],
     votes,
   };
@@ -657,11 +785,11 @@ test("action quorum certificates require 2-of-3 or 3-of-4 votes", async () => {
       action,
       players,
     }, webcrypto),
-    /expected at least 3/,
+    /1 non-actor vote\(s\), expected at least 2/,
   );
 });
 
-test("three-player live transcripts verify with a 2-of-3 action quorum", async () => {
+test("three-player live transcripts need both opponents to co-sign each action", async () => {
   const keys = await Promise.all([
     createAuditSessionKey(webcrypto),
     createAuditSessionKey(webcrypto),
@@ -683,7 +811,7 @@ test("three-player live transcripts verify with a 2-of-3 action quorum", async (
     publicCheckpointHash: "public-checkpoint-after-three-player-action",
   }, webcrypto);
   const action = { seq: 1, actorIndex: 0, command, audit };
-  const votes = await Promise.all([0, 2].map((voter) =>
+  const votes = await Promise.all([1, 2].map((voter) =>
     buildSignedActionQuorumVote({
       keyPair: keys[voter],
       action,
@@ -700,7 +828,7 @@ test("three-player live transcripts verify with a 2-of-3 action quorum", async (
     publicCheckpointHash: audit.publicCheckpointHash,
     actionSignature: audit.signature,
     threshold: 2,
-    voters: [0, 2],
+    voters: [1, 2],
     votes,
   };
 
@@ -856,20 +984,41 @@ test("disconnect timeout policy forfeits require unanimous non-target consent", 
     /signed in the future/,
   );
 
-  const audit = await buildSignedActionEnvelope({
-    keyPair: keys[0],
-    matchId,
-    seq: 1,
-    actor: 0,
-    prevStateHash: "0".repeat(64),
-    command,
-    publicCheckpointHash: "public-checkpoint-after-disconnect-forfeit",
-  }, webcrypto);
   const transcript = await buildCurrentProtocolTranscript({
     matchId,
     players: players.slice(0, 3),
     playerCount: 3,
-    actions: [{ seq: 1, actorIndex: 0, command, audit }],
+    // Forfeit votes in a live transcript sign the match instance id.
+    actions: async ({ matchInstanceId, chainRoot }) => {
+      const instanceVotes = await Promise.all([0, 2].map((voter) =>
+        buildSignedDisconnectForfeitVote({
+          keyPair: keys[voter],
+          matchId: matchInstanceId,
+          basisSequence: 0,
+          forfeitedPlayer: 1,
+          forfeitedPeerId: "peer-1",
+          disconnectTimeoutMs: 60000,
+          disconnectedAtMs: 100000,
+          eligibleAtMs: 160000,
+          signedAtMs: 160500,
+          voter,
+        }, webcrypto)
+      ));
+      const instanceCommand = {
+        ...command,
+        disconnect_certificate: { ...disconnectCertificate, matchId: matchInstanceId, votes: instanceVotes },
+      };
+      const audit = await buildSignedActionEnvelope({
+        keyPair: keys[0],
+        matchId,
+        seq: 1,
+        actor: 0,
+        prevStateHash: chainRoot,
+        command: instanceCommand,
+        publicCheckpointHash: "public-checkpoint-after-disconnect-forfeit",
+      }, webcrypto);
+      return [{ seq: 1, actorIndex: 0, command: instanceCommand, audit }];
+    },
   });
 
   assert.equal((await verifyEnvelopeOnlyTranscript(transcript)).valid, true);
@@ -981,20 +1130,36 @@ test("protocol response timeout forfeits require non-target quorum", async () =>
     /before the response timeout elapsed/,
   );
 
-  const audit = await buildSignedActionEnvelope({
-    keyPair: keys[0],
-    matchId,
-    seq: 1,
-    actor: 0,
-    prevStateHash: "0".repeat(64),
-    command,
-    publicCheckpointHash: "public-checkpoint-after-protocol-timeout",
-  }, webcrypto);
   const transcript = await buildCurrentProtocolTranscript({
     matchId,
     players,
     playerCount: 3,
-    actions: [{ seq: 1, actorIndex: 0, command, audit }],
+    // Forfeit votes in a live transcript sign the match instance id.
+    actions: async ({ matchInstanceId, chainRoot }) => {
+      const instanceVotes = await Promise.all([0, 2].map((voter) =>
+        buildSignedProtocolResponseTimeoutVote({
+          keyPair: keys[voter],
+          ...baseVote,
+          matchId: matchInstanceId,
+          signedAtMs: 160500,
+          voter,
+        }, webcrypto)
+      ));
+      const instanceCommand = {
+        ...command,
+        protocol_timeout_certificate: { ...certificate, matchId: matchInstanceId, votes: instanceVotes },
+      };
+      const audit = await buildSignedActionEnvelope({
+        keyPair: keys[0],
+        matchId,
+        seq: 1,
+        actor: 0,
+        prevStateHash: chainRoot,
+        command: instanceCommand,
+        publicCheckpointHash: "public-checkpoint-after-protocol-timeout",
+      }, webcrypto);
+      return [{ seq: 1, actorIndex: 0, command: instanceCommand, audit }];
+    },
   });
 
   assert.equal((await verifyEnvelopeOnlyTranscript(transcript)).valid, true);
@@ -1078,79 +1243,70 @@ test("live transcript verifier validates action-fork dispute evidence", async ()
   })));
   const firstCommand = { type: "priority_action", action_index: 0 };
   const secondCommand = { type: "priority_action", action_index: 1 };
-  const firstAudit = await buildSignedActionEnvelope({
-    keyPair: keys[0],
-    matchId: "m-action-fork",
-    seq: 1,
-    actor: 0,
-    prevStateHash: "0".repeat(64),
-    command: firstCommand,
-    publicCheckpointHash: "public-checkpoint-first-branch",
-  }, webcrypto);
-  const secondAudit = await buildSignedActionEnvelope({
-    keyPair: keys[2],
-    matchId: "m-action-fork",
-    seq: 1,
-    actor: 2,
-    prevStateHash: "0".repeat(64),
-    command: secondCommand,
-    publicCheckpointHash: "public-checkpoint-second-branch",
-  }, webcrypto);
-  const firstAction = { seq: 1, actorIndex: 0, command: firstCommand, audit: firstAudit };
-  const secondAction = { seq: 1, actorIndex: 2, command: secondCommand, audit: secondAudit };
-  const firstVotes = await Promise.all([0, 1].map((voter) =>
-    buildSignedActionQuorumVote({
-      keyPair: keys[voter],
-      action: firstAction,
-      voter,
-    }, webcrypto)
-  ));
-  const secondVotes = await Promise.all([1, 2].map((voter) =>
-    buildSignedActionQuorumVote({
-      keyPair: keys[voter],
-      action: secondAction,
-      voter,
-    }, webcrypto)
-  ));
-  firstAction.audit.quorumCertificate = {
-    type: "ironsmith-action-quorum-v1",
-    matchId: firstAudit.matchId,
-    seq: firstAudit.seq,
-    actor: firstAudit.actor,
-    prevStateHash: firstAudit.prevStateHash,
-    nextStateHash: firstAudit.nextStateHash,
-    publicCheckpointHash: firstAudit.publicCheckpointHash,
-    actionSignature: firstAudit.signature,
-    threshold: 2,
-    voters: [0, 1],
-    votes: firstVotes,
+  // Two conflicting seq-1 actions, each certified by both of its actor's
+  // opponents: player 1 signed both, so it is the one accused.
+  const buildFork = async (prevStateHash) => {
+    const firstAudit = await buildSignedActionEnvelope({
+      keyPair: keys[0],
+      matchId: "m-action-fork",
+      seq: 1,
+      actor: 0,
+      prevStateHash,
+      command: firstCommand,
+      publicCheckpointHash: "public-checkpoint-first-branch",
+    }, webcrypto);
+    const secondAudit = await buildSignedActionEnvelope({
+      keyPair: keys[2],
+      matchId: "m-action-fork",
+      seq: 1,
+      actor: 2,
+      prevStateHash,
+      command: secondCommand,
+      publicCheckpointHash: "public-checkpoint-second-branch",
+    }, webcrypto);
+    const firstAction = { seq: 1, actorIndex: 0, command: firstCommand, audit: firstAudit };
+    const secondAction = { seq: 1, actorIndex: 2, command: secondCommand, audit: secondAudit };
+    const certify = async (action, voters) => {
+      const votes = await Promise.all(voters.map((voter) =>
+        buildSignedActionQuorumVote({ keyPair: keys[voter], action, voter }, webcrypto)
+      ));
+      action.audit.quorumCertificate = {
+        type: "ironsmith-action-quorum-v1",
+        matchId: action.audit.matchId,
+        seq: action.audit.seq,
+        actor: action.audit.actor,
+        prevStateHash: action.audit.prevStateHash,
+        nextStateHash: action.audit.nextStateHash,
+        publicCheckpointHash: action.audit.publicCheckpointHash,
+        actionSignature: action.audit.signature,
+        threshold: 2,
+        voters,
+        votes,
+      };
+    };
+    await certify(firstAction, [1, 2]);
+    await certify(secondAction, [0, 1]);
+    return {
+      firstAction,
+      dispute: buildActionForkDisputeEvidence({
+        sequence: 1,
+        existingAction: firstAction,
+        conflictingAction: secondAction,
+      }),
+    };
   };
-  secondAction.audit.quorumCertificate = {
-    type: "ironsmith-action-quorum-v1",
-    matchId: secondAudit.matchId,
-    seq: secondAudit.seq,
-    actor: secondAudit.actor,
-    prevStateHash: secondAudit.prevStateHash,
-    nextStateHash: secondAudit.nextStateHash,
-    publicCheckpointHash: secondAudit.publicCheckpointHash,
-    actionSignature: secondAudit.signature,
-    threshold: 2,
-    voters: [1, 2],
-    votes: secondVotes,
-  };
-
-  const dispute = buildActionForkDisputeEvidence({
-    sequence: 1,
-    existingAction: firstAction,
-    conflictingAction: secondAction,
-  });
-  assert.deepEqual(dispute.accusedPlayers, [1]);
+  let dispute = null;
   const transcript = await buildCurrentProtocolTranscript({
     matchId: "m-action-fork",
     players,
     playerCount: 3,
-    actions: [firstAction],
+    actions: async ({ chainRoot }) => {
+      const fork = await buildFork(chainRoot);
+      dispute = fork.dispute;
+      return [fork.firstAction];
+    },
   });
+  assert.deepEqual(dispute.accusedPlayers, [1]);
   transcript.disputes = [dispute];
   transcript.outcome = {
     status: "disputed",
@@ -1292,38 +1448,39 @@ test("action-fork disputes ignore alternate signatures for the same signed paylo
     auditPublicKey: await exportAuditPublicKey(keyPair, webcrypto),
   })));
   const command = { type: "priority_action", action_index: 0 };
-  const audit = await buildSignedActionEnvelope({
-    keyPair: keys[0],
-    matchId: "m-action-same-payload",
-    seq: 1,
-    actor: 0,
-    prevStateHash: "0".repeat(64),
-    command,
-    publicCheckpointHash: "public-checkpoint-same-payload",
-  }, webcrypto);
-  const action = { seq: 1, actorIndex: 0, command, audit };
-  const payload = actionEnvelopePayload(audit);
-  let alternateSignature = audit.signature;
-  for (let attempt = 0; attempt < 8 && alternateSignature === audit.signature; attempt += 1) {
-    alternateSignature = await signAuditPayload(keys[0], payload, webcrypto);
-  }
-  assert.notEqual(alternateSignature, audit.signature);
-
-  const duplicateAction = cloneTestPayload(action);
-  duplicateAction.audit.signature = alternateSignature;
-  const dispute = buildActionForkDisputeEvidence({
-    sequence: 1,
-    existingAction: action,
-    conflictingAction: duplicateAction,
-  });
-  assert.deepEqual(dispute.accusedPlayers, []);
-
+  let dispute = null;
   const transcript = await buildCurrentProtocolTranscript({
     matchId: "m-action-same-payload",
     players,
     playerCount: 2,
-    actions: [action],
+    actions: async ({ chainRoot }) => {
+      const audit = await buildSignedActionEnvelope({
+        keyPair: keys[0],
+        matchId: "m-action-same-payload",
+        seq: 1,
+        actor: 0,
+        prevStateHash: chainRoot,
+        command,
+        publicCheckpointHash: "public-checkpoint-same-payload",
+      }, webcrypto);
+      const action = { seq: 1, actorIndex: 0, command, audit };
+      const payload = actionEnvelopePayload(audit);
+      let alternateSignature = audit.signature;
+      for (let attempt = 0; attempt < 8 && alternateSignature === audit.signature; attempt += 1) {
+        alternateSignature = await signAuditPayload(keys[0], payload, webcrypto);
+      }
+      assert.notEqual(alternateSignature, audit.signature);
+      const duplicateAction = cloneTestPayload(action);
+      duplicateAction.audit.signature = alternateSignature;
+      dispute = buildActionForkDisputeEvidence({
+        sequence: 1,
+        existingAction: action,
+        conflictingAction: duplicateAction,
+      });
+      return [action];
+    },
   });
+  assert.deepEqual(dispute.accusedPlayers, []);
   transcript.disputes = [dispute];
 
   await assert.rejects(
@@ -1544,9 +1701,9 @@ test("live audit transcript verifier checks signed match clock chain", async () 
       actions: [{
         ...transcript.actions[0],
         audit: {
-          ...audit,
+          ...transcript.actions[0].audit,
           clock: {
-            ...audit.clock,
+            ...transcript.actions[0].audit.clock,
             elapsedMs: 0,
           },
         },
@@ -1792,7 +1949,7 @@ test("ziffle public openings must prove shuffled position to committed slot", as
     /reveals a different shuffle slot/,
   );
 
-  const remapShuffleProof = {
+  const remapShuffleProof = await signTestZiffleCeremony({
     type: "ziffle_shuffle",
     requirementId: "shuffle-remap-1",
     owner: 0,
@@ -1806,7 +1963,7 @@ test("ziffle public openings must prove shuffled position to committed slot", as
     deckHash: "remapped-ziffle-deck-0",
     beforeOrder: [42, 77],
     afterOrder: [42, 77],
-  };
+  }, playerKeys.map((keyPair, index) => ({ index, keyPair })));
   const remappedOpeningBase = {
     ...baseOpening,
     objectId: 42,
@@ -2127,7 +2284,7 @@ test("live audit transcript verifier requires actor-signed actions", async () =>
       actions: [
         {
           ...transcript.actions[0],
-          audit: { ...audit, signer: 0 },
+          audit: { ...transcript.actions[0].audit, signer: 0 },
         },
       ],
     }),
@@ -2394,7 +2551,7 @@ test("live audit transcript verifier requires a shuffle-proof verifier", async (
     ownershipProofHex: `shuffle-ziffle-proof-${index}`,
   }));
   const command = { type: "priority_action", action_index: 0 };
-  const shuffleProof = {
+  const shuffleProof = await signTestZiffleCeremony({
     type: "ziffle_shuffle",
     requirementId: "shuffle-1",
     owner: 0,
@@ -2404,11 +2561,15 @@ test("live audit transcript verifier requires a shuffle-proof verifier", async (
     context: "m-shuffle:action:1:shuffle:shuffle-1:0:library",
     keyContext: "m-shuffle",
     keys: ziffleKeys,
-    steps: [],
+    steps: [0, 1].map((shuffler) => ({
+      shuffler,
+      deckHex: `shuffle-deck-${shuffler}`,
+      proofHex: `shuffle-proof-${shuffler}`,
+    })),
     deckHash: "deck-hash",
     beforeOrder: [1001, 1002],
     afterOrder: [1002, 1001],
-  };
+  }, playerKeys.map((keyPair, index) => ({ index, keyPair })));
   const buildTranscriptForProof = async (proof) => {
     const audit = await buildSignedActionEnvelope({
       keyPair: playerKeys[0],
@@ -2556,10 +2717,13 @@ test("match genesis and resync envelopes bind roster and checkpoints", async () 
       protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION,
       timeoutMs: 300000,
       player,
+      seedCommitment: await matchSeedCommitment(testSeedNonce(index), webcrypto),
     }, webcrypto);
     return player;
   }));
   const ziffleKeys = players.map((player) => player.ziffleKey);
+  const seedReveals = players.map((player) => ({ seat: player.index, nonce: testSeedNonce(player.index) }));
+  const signers = playerKeys.map((keyPair, index) => ({ index, keyPair }));
   const match = {
     protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION,
     auditMatchId: "m",
@@ -2568,7 +2732,8 @@ test("match genesis and resync envelopes bind roster and checkpoints", async () 
     format: "normal",
     startingLife: 20,
     openingHandSize: 7,
-    seed: 123,
+    seed: await deriveMatchSeedFromReveals({ matchId: "m", reveals: seedReveals }, webcrypto),
+    seedReveals,
     timeoutMs: 300000,
     matchClockPolicy: {
       type: "per_player_match_clock_v1",
@@ -2579,7 +2744,7 @@ test("match genesis and resync envelopes bind roster and checkpoints", async () 
     players,
     deckAuditManifests: manifests.map(publicDeckManifest),
     ziffleKeys,
-    ziffleCeremonies: players.map((player) => ({
+    ziffleCeremonies: await Promise.all(players.map((player) => signTestZiffleCeremony({
       owner: player.index,
       deckCount: player.deckCount,
       context: "m",
@@ -2591,7 +2756,7 @@ test("match genesis and resync envelopes bind roster and checkpoints", async () 
         proofHex: `proof-${player.index}-${shuffler.index}`,
       })),
       deckHash: `deck-hash-${player.index}`,
-    })),
+    }, signers))),
   };
   match.genesis = await buildSignedMatchGenesis({
     keyPair: hostKey,
@@ -2766,12 +2931,15 @@ test("open decklist match genesis verifies main-deck and sideboard slot openings
         protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION,
         timeoutMs: 300000,
         player,
+        seedCommitment: await matchSeedCommitment(testSeedNonce(index), webcrypto),
       }, webcrypto);
       return player;
     })
   );
   const buildMatch = async (players) => {
     const ziffleKeys = players.map((player) => player.ziffleKey);
+    const seedReveals = players.map((player) => ({ seat: player.index, nonce: testSeedNonce(player.index) }));
+    const signers = playerKeys.map((keyPair, index) => ({ index, keyPair }));
     const match = {
       protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION,
       auditMatchId: matchId,
@@ -2781,7 +2949,8 @@ test("open decklist match genesis verifies main-deck and sideboard slot openings
       openDecklists: true,
       startingLife: 20,
       openingHandSize: 7,
-      seed: 123,
+      seed: await deriveMatchSeedFromReveals({ matchId, reveals: seedReveals }, webcrypto),
+      seedReveals,
       timeoutMs: 300000,
       matchClockPolicy: {
         type: "per_player_match_clock_v1",
@@ -2792,7 +2961,7 @@ test("open decklist match genesis verifies main-deck and sideboard slot openings
       players,
       deckAuditManifests: manifests.map(publicDeckManifest),
       ziffleKeys,
-      ziffleCeremonies: players.map((player) => ({
+      ziffleCeremonies: await Promise.all(players.map((player) => signTestZiffleCeremony({
         owner: player.index,
         deckCount: player.deckCount,
         context: matchId,
@@ -2804,7 +2973,7 @@ test("open decklist match genesis verifies main-deck and sideboard slot openings
           proofHex: `open-proof-${player.index}-${shuffler.index}`,
         })),
         deckHash: `open-deck-hash-${player.index}`,
-      })),
+      }, signers))),
     };
     match.genesis = await buildSignedMatchGenesis({
       keyPair: playerKeys[0],
@@ -2958,14 +3127,19 @@ test('v15 signed audit accepts private subset chains and current-epoch openings 
     deckAuditManifests: [publicDeckManifest(manifest)] });
   const genesis = base.match.ziffleCeremonies[0];
   const keys = base.match.ziffleKeys;
-  const first = { type: 'ziffle_shuffle', requirementId: 'first', owner: 0, zone: 'library', epoch: 1,
+  // Every tampered proof below is re-signed so each case reaches the check it
+  // targets instead of stopping at the shuffle-step signatures.
+  const signers = keyPairs.map((keyPair, index) => ({ index, keyPair }));
+  const unsignedSteps = [0, 1].map(shuffler => ({ shuffler, deckHex: `private-deck-${shuffler}`, proofHex: `private-proof-${shuffler}` }));
+  const sign = proof => signTestZiffleCeremony({ ...proof, steps: proof.steps.map(({ signature, ...step }) => step) }, signers);
+  const first = await sign({ type: 'ziffle_shuffle', requirementId: 'first', owner: 0, zone: 'library', epoch: 1,
     deckCount: 4, context: `${matchId}:action:1:shuffle:first:0:library`, keyContext: matchId,
-    deckHash: 'private-first', keys, steps: [],
-    inputDeck: buildZiffleInputDeck([genesis], [0, 2, 4, 7].map(position => `ziffle:${genesis.deckHash}:${position}`)) };
-  const second = { type: 'ziffle_shuffle', requirementId: 'second', owner: 0, zone: 'library', epoch: 2,
+    deckHash: 'private-first', keys, steps: unsignedSteps,
+    inputDeck: buildZiffleInputDeck([genesis], [0, 2, 4, 7].map(position => `ziffle:${genesis.deckHash}:${position}`)) });
+  const second = await sign({ type: 'ziffle_shuffle', requirementId: 'second', owner: 0, zone: 'library', epoch: 2,
     deckCount: 3, context: `${matchId}:action:2:shuffle:second:0:library`, keyContext: matchId,
-    deckHash: 'private-second', keys, steps: [],
-    inputDeck: buildZiffleInputDeck([genesis, first], ['ziffle:private-first:0', 'ziffle:private-first:2', `ziffle:${genesis.deckHash}:1`]) };
+    deckHash: 'private-second', keys, steps: unsignedSteps,
+    inputDeck: buildZiffleInputDeck([genesis, first], ['ziffle:private-first:0', 'ziffle:private-first:2', `ziffle:${genesis.deckHash}:1`]) });
   const plainOpening = { ...await buildDeckSlotOpening({ manifest, slot: 7 }, webcrypto),
     position: 1, positionCommitment: 'ziffle:private-second:1',
     originPosition: 1, originPositionCommitment: 'ziffle:private-second:1', timing: 'post' };
@@ -3040,10 +3214,10 @@ test('v15 signed audit accepts private subset chains and current-epoch openings 
     await assert.rejects(verifyEnvelopeOnlyTranscript(await build([first, second], staleAnchor), options), /origin across a private shuffle/);
     const wrongHistory = structuredClone(second);
     wrongHistory.inputDeck.epochs[0].steps[0].deckHex = 'different-signed-owner-root';
-    await assert.rejects(verifyEnvelopeOnlyTranscript(await build([first, wrongHistory], opening), options), /accepted signed transcript/);
+    await assert.rejects(verifyEnvelopeOnlyTranscript(await build([first, await sign(wrongHistory)], opening), options), /accepted signed transcript/);
     const consumedSource = structuredClone(second);
     consumedSource.inputDeck.sources[0] = { epoch: 0, position: 0 };
-    await assert.rejects(verifyEnvelopeOnlyTranscript(await build([first, consumedSource], opening), options), /already consumed/);
+    await assert.rejects(verifyEnvelopeOnlyTranscript(await build([first, await sign(consumedSource)], opening), options), /already consumed/);
     const alteredOpening = structuredClone(opening);
     alteredOpening.ziffleReveal.inputDeck = structuredClone(second.inputDeck);
     alteredOpening.ziffleReveal.inputDeck.epochs[0].steps[0].proofHex = 'another-history';
@@ -3054,7 +3228,27 @@ test('v15 signed audit accepts private subset chains and current-epoch openings 
   }
   const legacy = { ...first, beforeOrder: [1, 2, 3, 4], afterOrder: [4, 3, 2, 1] };
   delete legacy.inputDeck;
-  await assert.rejects(verifyEnvelopeOnlyTranscript(await build([legacy]), {
+  await assert.rejects(verifyEnvelopeOnlyTranscript(await build([await sign(legacy)]), {
     verifyShuffleProof: async proof => verifiedRoot(proof),
   }), /linked legacy shuffle/);
+});
+
+test("private views of a face-down exiled card its owner may not see are produced by the viewer", () => {
+  // Bob (1) exiled Alice's (0) card face down with Gonti: Alice does not know it.
+  const blind = { id: "private_open:0:face_down_exile:5:212", type: "private_open", owner: 0, viewer: 1,
+    zone: "face_down_exile", slot: 5, objectId: 212, commitment: "commitment-5", ownerBlind: true };
+  const window = { id: "private_view:1:0:face_down_exile:1", type: "private_view_window", owner: 0, viewer: 1,
+    zone: "face_down_exile", count: 1, ownerBlind: true };
+  assert.equal(cryptoMaterialResponsibleSeat(blind), 1);
+  assert.equal(cryptoMaterialResponsibleSeat(window), 1);
+  // Alice exiled it herself (Kheru Mind-Eater from her hand): she knows it.
+  const known = { ...blind, ownerBlind: undefined };
+  assert.equal(cryptoMaterialResponsibleSeat(known), 0);
+  assert.equal(cryptoMaterialResponsibleSeat({ ...blind, type: "public_open", viewer: undefined }), 0);
+
+  // Alice's engine never asks herself for it, and refuses to answer a request for it.
+  assert.deepEqual(authorizeCryptoMaterialRequestRequirements({
+    localSeat: 0, requestedRequirements: [], previewedRequirements: [blind, window] }), []);
+  assert.deepEqual(authorizeCryptoMaterialRequestRequirements({
+    localSeat: 1, requestedRequirements: [blind], previewedRequirements: [blind, window] }), [blind]);
 });

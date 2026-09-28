@@ -1302,7 +1302,12 @@ export function usePeerLobbyValidation(base, servicesRef) {
     return null;
   }
 
-  async function authorizedZiffleRevealPositionsForOwner(owner, deckHash) {
+  // Positions of `owner`'s hidden cards that `requester` may reopen from the
+  // visible state alone. The owner may reopen what it may look at; any other
+  // requester only cards outside the library the rules let it see (a card it
+  // exiled face down from the owner's library with Gonti, Praetor's Grasp...).
+  async function authorizedZiffleRevealPositionsForOwner(owner, deckHash, requester = owner) {
+    const requesterIsOwner = Number(requester) === Number(owner);
     const currentGame = gameRef.current;
     if (!currentGame || typeof currentGame.exportSyncCheckpoint !== "function") {
       return new Set();
@@ -1342,12 +1347,12 @@ export function usePeerLobbyValidation(base, servicesRef) {
     // an opponent exiled face down (Gonti, Praetor's Grasp) or a face-down
     // permanent it owns but does not control. Ask the engine's view rules;
     // without that export, fail closed for these zones.
-    const ownerMayView = async (objectId) => {
+    const requesterMayView = async (objectId) => {
       if (typeof currentGame.hiddenObjectViewableBy !== "function") return false;
       const numeric = Number(objectId);
       if (!Number.isSafeInteger(numeric) || numeric <= 0) return false;
       try {
-        return Boolean(await currentGame.hiddenObjectViewableBy(wasmObjectIdArg(numeric), Number(owner)));
+        return Boolean(await currentGame.hiddenObjectViewableBy(wasmObjectIdArg(numeric), Number(requester)));
       } catch {
         return false;
       }
@@ -1370,6 +1375,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
       }
     };
     for (const player of checkpoint?.players || []) {
+      if (!requesterIsOwner) break;
       if (Number(player?.id ?? player?.index) !== Number(owner)) continue;
       collectZoneObjectIds(player, "hand");
       collectZoneObjectIds(player, "graveyard");
@@ -1380,7 +1386,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
       const object = objectsById.get(Number(objectId));
       const hidden = object?.hiddenCard || object?.hidden_card || null;
       if (!hidden || Number(hidden.owner) !== Number(owner)) continue;
-      if (!await ownerMayView(objectId)) continue;
+      if (!await requesterMayView(objectId)) continue;
       addMetadataPosition({
         objectId: Number(objectId),
         owner: hidden.owner,
@@ -1399,7 +1405,8 @@ export function usePeerLobbyValidation(base, servicesRef) {
     // comes from this engine's own state and the game is over for that seat,
     // so revealing those positions is harmless.
     if (
-      disclosureDueForPlayer(stateRef.current, owner)
+      requesterIsOwner
+      && disclosureDueForPlayer(stateRef.current, owner)
       && typeof currentGame.endOfMatchDisclosureRequirements === "function"
     ) {
       try {
@@ -1411,13 +1418,15 @@ export function usePeerLobbyValidation(base, servicesRef) {
         // No disclosure positions: the visible-state rules below still apply.
       }
     }
-    const blockedZones = new Set(["library", "outside_game"]);
+    const blockedZones = new Set(requesterIsOwner
+      ? ["library", "outside_game"]
+      : ["library", "outside_game", "hand"]);
     for (const object of checkpoint?.objects || []) {
       const hidden = object?.hiddenCard || object?.hidden_card || null;
       if (!hidden || Number(hidden.owner) !== Number(owner)) continue;
       const zone = String(object?.zone || hidden.zone || "");
       if (blockedZones.has(zone)) continue;
-      if (!await ownerMayView(object?.id)) continue;
+      if (!await requesterMayView(object?.id)) continue;
       addMetadataPosition({
         objectId: Number(object?.id),
         owner: hidden.owner,
@@ -1432,13 +1441,15 @@ export function usePeerLobbyValidation(base, servicesRef) {
     return positions;
   }
 
-  async function waitForAuthorizedZiffleRevealPositions(owner, deckHash, requestedPositions, timeoutMs = 10000) {
+  async function waitForAuthorizedZiffleRevealPositions(
+    owner, deckHash, requestedPositions, timeoutMs = 10000, requester = owner
+  ) {
     const needed = new Set((requestedPositions || []).map((position) => Number(position)));
     const started = Date.now();
-    let allowed = await authorizedZiffleRevealPositionsForOwner(owner, deckHash);
+    let allowed = await authorizedZiffleRevealPositionsForOwner(owner, deckHash, requester);
     while ([...needed].some((position) => !allowed.has(position)) && Date.now() - started < timeoutMs) {
       await sleep(50);
-      allowed = await authorizedZiffleRevealPositionsForOwner(owner, deckHash);
+      allowed = await authorizedZiffleRevealPositionsForOwner(owner, deckHash, requester);
     }
     return allowed;
   }
@@ -1876,19 +1887,18 @@ export function usePeerLobbyValidation(base, servicesRef) {
       );
       if (authorizedByMetadata && debug) debug.reason = "authorized_by_stored_requirement_metadata";
       if (authorizedByMetadata) return true;
-      // The visible-state fallback derives positions from zones the OWNER is
-      // entitled to open; never extend it to other requesters.
-      if (Number(requester) === Number(owner)) {
-        const authorizedByVisibleState = await waitForAuthorizedZiffleRevealPositions(
-          owner,
-          String(ceremony?.deckHash || ""),
-          positions,
-          2000
-        );
-        if ([...positions].every((position) => authorizedByVisibleState.has(Number(position)))) {
-          if (debug) debug.reason = "authorized_by_visible_current_hidden_zone_state";
-          return true;
-        }
+      // The visible-state fallback derives positions from what the requester
+      // may look at under the rules (see authorizedZiffleRevealPositionsForOwner).
+      const authorizedByVisibleState = await waitForAuthorizedZiffleRevealPositions(
+        owner,
+        String(ceremony?.deckHash || ""),
+        positions,
+        2000,
+        requester
+      );
+      if ([...positions].every((position) => authorizedByVisibleState.has(Number(position)))) {
+        if (debug) debug.reason = "authorized_by_visible_current_hidden_zone_state";
+        return true;
       }
       return reject("stored_requirements_do_not_authorize_positions");
     }
@@ -1977,17 +1987,16 @@ export function usePeerLobbyValidation(base, servicesRef) {
     if (authorizedByMetadata && debug) debug.reason = "authorized_by_requirement_metadata";
     if (authorizedByMetadata) return true;
 
-    if (Number(requester) === Number(owner)) {
-      const authorizedByVisibleState = await waitForAuthorizedZiffleRevealPositions(
-        owner,
-        String(ceremony?.deckHash || ""),
-        positions,
-        2000
-      );
-      if ([...positions].every((position) => authorizedByVisibleState.has(Number(position)))) {
-        if (debug) debug.reason = "authorized_by_visible_current_hidden_zone_state";
-        return true;
-      }
+    const authorizedByVisibleState = await waitForAuthorizedZiffleRevealPositions(
+      owner,
+      String(ceremony?.deckHash || ""),
+      positions,
+      2000,
+      requester
+    );
+    if ([...positions].every((position) => authorizedByVisibleState.has(Number(position)))) {
+      if (debug) debug.reason = "authorized_by_visible_current_hidden_zone_state";
+      return true;
     }
     return reject("requirements_do_not_authorize_positions");
   }
@@ -2209,16 +2218,19 @@ export function usePeerLobbyValidation(base, servicesRef) {
           ceremony,
           actionAuthorizationDebug
         );
-      // The visible-state fallback only applies to the deck owner re-opening
-      // positions it is already entitled to; other requesters must carry an
-      // explicit authorization.
+      // The visible-state fallback only reopens positions the requester is
+      // already entitled to look at (the owner's own known cards, or another
+      // player's face-down exiled card it may look at); anything else must
+      // carry an explicit authorization.
       const allowedPositions =
-        (authorizedByCryptoRequest || authorizedByAction || Number(requester) !== requestedOwner)
+        (authorizedByCryptoRequest || authorizedByAction)
           ? new Set()
           : await waitForAuthorizedZiffleRevealPositions(
             requestedOwner,
             String(ceremony.deckHash || ""),
-            cardPositions
+            cardPositions,
+            10000,
+            requester
           );
       for (const position of cardPositions) {
         if (
@@ -3964,6 +3976,105 @@ export function usePeerLobbyValidation(base, servicesRef) {
     }
   }
 
+  // After a foreign checkpoint import: another player's hidden cards this seat
+  // may look at (a card it exiled face down with Gonti or Praetor's Grasp, a
+  // face-down permanent it controls) lost their identities with the redacted
+  // checkpoint. Reopen each from its immutable ziffle anchor with everyone's
+  // reveal tokens; the responders authorize them from their own view rules
+  // (authorizedZiffleRevealPositionsForOwner with this seat as requester).
+  // Best effort: a card that cannot be reopened stays closed.
+  async function revealViewableForeignHiddenCards(payload, checkpoint, localIndex) {
+    const currentGame = gameRef.current;
+    if (typeof currentGame?.hiddenObjectViewableBy !== "function") return;
+    const groups = new Map();
+    for (const object of checkpoint?.objects || []) {
+      const hidden = object?.hiddenCard || object?.hidden_card || null;
+      const zone = String(object?.zone || hidden?.zone || "");
+      const objectId = Number(object?.id);
+      if (!hidden || Number(hidden.owner) === Number(localIndex)) continue;
+      if (["library", "outside_game", "hand"].includes(zone)) continue;
+      if (!Number.isSafeInteger(objectId) || objectId <= 0) continue;
+      if (!isHiddenViewedCardName(object?.name)) continue;
+      try {
+        if (!await currentGame.hiddenObjectViewableBy(wasmObjectIdArg(objectId), Number(localIndex))) continue;
+      } catch {
+        continue;
+      }
+      const owner = Number(hidden.owner);
+      const origin = ziffleOriginAnchorFromMetadata(hidden);
+      const publicCommitment = String(hidden.publicCommitment ?? hidden.public_commitment ?? "");
+      const hiddenCommitment = String(hidden.commitment || "");
+      const anchor = origin
+        ? { position: origin.originPosition, positionCommitment: origin.originPositionCommitment }
+        : ziffleDeckHashFromCommitment(publicCommitment)
+          ? {
+            position: hidden.publicSlot ?? hidden.public_slot ?? zifflePositionFromCommitment(publicCommitment),
+            positionCommitment: publicCommitment,
+          }
+          : ziffleDeckHashFromCommitment(hiddenCommitment)
+            ? { position: hidden.slot, positionCommitment: hiddenCommitment }
+            : null;
+      const position = Number(anchor?.position);
+      if (!anchor || !Number.isSafeInteger(position) || position < 0) continue;
+      const ceremony = ziffleCeremonyForOwner(owner, { payload, commitment: anchor.positionCommitment });
+      if (!ceremony) continue;
+      const groupKey = [owner, String(ceremony.context || ""), String(ceremony.deckHash || "")].join(":");
+      if (!groups.has(groupKey)) groups.set(groupKey, { owner, ceremony, entries: [] });
+      groups.get(groupKey).entries.push({ objectId, position, positionCommitment: anchor.positionCommitment });
+    }
+    for (const { owner, ceremony, entries } of groups.values()) {
+      const manifest = privateDeckManifestForOwner(owner, payload?.auditMatchId);
+      if (!manifest) continue;
+      try {
+        const positions = [...new Set(entries.map((entry) => entry.position))];
+        const revealOptions = { includeCeremonyInRevealRequest: true };
+        const tokens = await collectZiffleRevealTokensBatch(ceremony, positions, revealOptions);
+        const reveals = await currentGame.ziffleRevealCards({
+          deckCount: Number(ceremony.deckCount),
+          context: String(ceremony.context || ""),
+          keyContext: ziffleKeyContextForCeremony(ceremony),
+          keys: cloneMultiplayerPayload(ceremony.keys || []),
+          steps: cloneMultiplayerPayload(ceremony.steps || []),
+          ...ziffleInputDeckFields(ceremony),
+          cardPositions: positions,
+          tokens,
+        });
+        const revealByPosition = new Map((Array.isArray(reveals) ? reveals : []).map((reveal) => [
+          Number(reveal.cardPosition),
+          Number(reveal.originalSlot),
+        ]));
+        for (const entry of entries) {
+          const resolved = await resolveCommittedZiffleRevealSlot({
+            owner,
+            ceremony,
+            shuffleOriginalSlot: revealByPosition.get(entry.position),
+            shuffleOriginalSlotIsVerified: true,
+            position: entry.position,
+            objectId: entry.objectId,
+            manifest,
+            payload,
+            options: revealOptions,
+          });
+          if (!resolved) continue;
+          const originalSlot = Number(resolved.slot);
+          const secret = (manifest.slotSecrets || []).find((candidate) => Number(candidate.slot) === originalSlot);
+          if (!secret) continue;
+          await currentGame.revealHiddenPosition({
+            owner,
+            objectId: entry.objectId,
+            position: entry.position,
+            originalSlot,
+            cardName: String(resolved.card || secret.card || ""),
+            positionCommitment: entry.positionCommitment,
+            commitment: secret.commitment,
+          });
+        }
+      } catch (err) {
+        console.warn("[ironsmith] could not reopen a viewable opponent card after resync", err);
+      }
+    }
+  }
+
 	  async function revealLocalZiffleHandInner(payload = matchStartPayloadRef.current, options = {}) {
     if (!payload?.ziffleCeremonies?.length && liveZiffleCeremoniesRef.current.size === 0) return;
     const currentGame = gameRef.current;
@@ -4046,6 +4157,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
           // Not viewable by this seat: leave it closed.
         }
       }
+      await revealViewableForeignHiddenCards(payload, checkpoint, localIndex);
       if (handIds.size === 0) return;
     }
 	    if (handIds.size === 0) {

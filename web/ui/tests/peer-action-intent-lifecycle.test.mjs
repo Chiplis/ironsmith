@@ -46,6 +46,10 @@ function harness() {
     playerForProtocolResponseTimeout: () => ({ peerId: 'host', name: 'Alice' }),
     submitProtocolResponseTimeoutClaim: async claim => claims.push(claim),
     emitSyncFailureNotice() {}, setStatus() {}, toErrorMessage: error => error.message,
+    // No fair-random reveal is locked to another intent in these scenarios.
+    servicesRef: { current: { fairRandomRevealLockConflict: () => false } },
+    // Protocol-wait bookkeeping (timeout voters' local observations).
+    protocolWaitObservationsRef: { current: new Map() }, PROTOCOL_WAIT_MAX_OBSERVATIONS: 512,
   };
   vm.createContext(context);
   const names = [
@@ -56,6 +60,7 @@ function harness() {
     'shouldReplacePendingActionIntentEvidence', 'pendingActionIntentHardTimeoutEvidence',
     'schedulePendingActionIntentTimeout', 'observedMatchClockElapsedForIntent',
     'rememberPendingActionIntent', 'handlePendingActionIntentTimeout',
+    'rememberActionIntentObservation', 'pruneProtocolWaitObservations',
   ];
   vm.runInContext(names.map(implementation).join('\n'), context);
   const evidence = timeout => ({ requestType: 'action_intent_progress', requestId: `progress-${timeout}`,

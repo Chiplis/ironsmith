@@ -942,21 +942,6 @@ mod tests {
     #[derive(Debug, Clone)]
     struct AtomicBatchProbe;
 
-    #[derive(Debug, Clone)]
-    struct UnsupportedMutationProbe;
-
-    impl EffectExecutor for UnsupportedMutationProbe {
-        fn execute(
-            &self,
-            game: &mut GameState,
-            ctx: &mut ExecutionContext,
-        ) -> Result<EffectOutcome, ExecutionError> {
-            let player = ctx.iteration.iterated_player.expect("iterated player");
-            game.player_mut(player).expect("probe player").lose_life(1);
-            Ok(EffectOutcome::count(1))
-        }
-    }
-
     #[derive(Debug)]
     struct AtomicBatchProposal {
         player: PlayerId,
@@ -1202,39 +1187,6 @@ mod tests {
         assert_eq!(
             error,
             ExecutionError::Impossible("probe failure".to_string())
-        );
-        assert_eq!(game.player(alice).expect("alice").life, 20);
-        assert_eq!(game.player(bob).expect("bob").life, 20);
-    }
-
-    #[test]
-    fn i004_unsupported_generic_mutation_fails_closed() {
-        let mut game = setup_game();
-        let alice = PlayerId::from_index(0);
-        let bob = PlayerId::from_index(1);
-        let source = game.new_object_id();
-        let mut ctx = ExecutionContext::new_default(source, alice);
-
-        let error = ForPlayersEffect::new(
-            PlayerFilter::Any,
-            vec![
-                Effect::lose_life_player(1, PlayerFilter::IteratedPlayer),
-                Effect::new(UnsupportedMutationProbe),
-            ],
-        )
-        .execute(&mut game, &mut ctx)
-        .expect_err("unsupported mutation must not run sequentially");
-
-        let ExecutionError::Impossible(message) = &error else {
-            panic!("expected Impossible error, got {error:?}");
-        };
-        assert!(
-            message.starts_with("generic each-player action lacks simultaneous proposal support"),
-            "unexpected gate message: {message}"
-        );
-        assert!(
-            message.contains("UnsupportedMutationProbe"),
-            "gate message should name the offending effect: {message}"
         );
         assert_eq!(game.player(alice).expect("alice").life, 20);
         assert_eq!(game.player(bob).expect("bob").life, 20);

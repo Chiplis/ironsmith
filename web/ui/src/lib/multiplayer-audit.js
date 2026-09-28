@@ -94,9 +94,10 @@ export function isOwnerPrivateCryptoMaterialRequirement(requirement) {
 // Hidden zones whose contents are unknown even to their owner under mental
 // poker: a library is a jointly-encrypted shuffled deck, so no player (not even
 // the owner) knows a card's identity until a reveal quorum opens it. Cards in
-// other hidden zones (hand, graveyard, face-down exile/permanents) became known
-// to the owner when they entered — the owner drew/placed them — so the owner
-// may safely produce their openings.
+// other hidden zones (hand, graveyard, face-down exile/permanents) are usually
+// known to the owner, who drew/placed them. The exception is a card an opponent
+// exiled face down from the owner's library (Gonti, Praetor's Grasp): the
+// engine marks those requirements `ownerBlind`.
 const OWNER_BLIND_HIDDEN_ZONES = new Set(["library"]);
 
 // Who must produce the audit material for a requirement.
@@ -117,7 +118,7 @@ export function cryptoMaterialResponsibleSeat(requirement) {
     && viewer != null
     && Number.isInteger(viewer)
     && viewer !== owner
-    && OWNER_BLIND_HIDDEN_ZONES.has(zone)
+    && (OWNER_BLIND_HIDDEN_ZONES.has(zone) || requirement?.ownerBlind === true)
   ) {
     return viewer;
   }

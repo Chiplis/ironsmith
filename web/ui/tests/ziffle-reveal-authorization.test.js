@@ -162,6 +162,29 @@ test('owner visible-state authorization exposes hand origins and excludes unrela
   assert.deepEqual([...(await h.visiblePositions(0, 'other'))], []);
 });
 
+test('visible-state authorization follows face-down exile look permission, not ownership', async () => {
+  // Alice (0) owns both cards. Bob (1) exiled 212 face down with Gonti and may
+  // look at it; 211 is in Alice's hand.
+  const checkpoint = { players: [{ id: 0, hand: [211] }], exile: [212], objects: [
+    { id: 211, zone: 'hand', name: 'Hidden Card', hiddenCard: { owner: 0, slot: 4, commitment: 'original-4',
+      originSlot: 23, originCommitment: commitment(23) } },
+    { id: 212, zone: 'exile', name: 'Hidden Card', hiddenCard: { owner: 0, slot: 5, commitment: 'original-5',
+      originSlot: 31, originCommitment: commitment(31) } },
+  ] };
+  const h = authorizationHarness({ checkpoint, viewable: (id, viewer) => id === 212 ? viewer === 1 : viewer === 0 });
+  assert.deepEqual([...(await h.visiblePositions(0, 'deck', 1))], [31], 'the entitled viewer may reopen the exiled card');
+  assert.deepEqual([...(await h.visiblePositions(0, 'deck'))], [23], 'the owner may not reopen a card it may not look at');
+  const stranger = authorizationHarness({ checkpoint, viewable: (id, viewer) => id === 211 && viewer === 0 });
+  assert.deepEqual([...(await stranger.visiblePositions(0, 'deck', 1))], [], 'no look permission, no tokens');
+});
+
+test('a non-owner requester reaches the visible-state fallback only with its own view rights', async () => {
+  const h = authorizationHarness({ previewError: true, visible: [2], visibleToOthers: [7] });
+  h.message.actionAuthorization.requesterIndex = 1;
+  assert.equal(await h.authorize(h.message, 1, 0, [7], ceremony), true);
+  assert.equal(await h.authorize(h.message, 1, 0, [2], ceremony), false);
+});
+
 test('search and mulligan previews authorize exact genesis anchors, never window counts', async () => {
   const requirements = [8, 19, 23].map((origin, index) => opening(index, { commitment: commitment(index, 'fetch'),
     originSlot: origin, originCommitment: commitment(origin) }));

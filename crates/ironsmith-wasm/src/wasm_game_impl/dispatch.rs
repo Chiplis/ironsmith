@@ -2456,29 +2456,11 @@ impl WasmGame {
     /// a face-down permanent it owns but does not control.
     #[wasm_bindgen(js_name = hiddenObjectViewableBy)]
     pub fn hidden_object_viewable_by(&self, object_id: u64, viewer: u8) -> bool {
-        let id = ObjectId::from_raw(object_id);
-        let Some(object) = self.game.object(id) else {
-            return false;
-        };
-        let viewer = PlayerId::from_index(viewer);
-        if self.game.player(viewer).is_none() {
-            return false;
-        }
-        match object.zone {
-            Zone::OutsideGame => viewer == object.owner,
-            Zone::Hand => {
-                viewer == object.owner || viewer == self.game.controlling_player_for(object.owner)
-            }
-            Zone::Library => false,
-            Zone::Battlefield if self.game.is_face_down(id) => {
-                let controller = self.game.controller_of(object);
-                viewer == controller || viewer == self.game.controlling_player_for(controller)
-            }
-            Zone::Exile if self.game.is_face_down(id) => {
-                self.game.can_player_look_at_face_down_exiled_card(id, viewer)
-            }
-            _ => true,
-        }
+        crate::hidden_object_viewable_by_player(
+            &self.game,
+            ObjectId::from_raw(object_id),
+            PlayerId::from_index(viewer),
+        )
     }
 
     #[wasm_bindgen(js_name = exportHiddenCardOpening)]

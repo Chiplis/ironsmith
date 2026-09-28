@@ -7,13 +7,13 @@ import { buildZiffleInputDeck } from '../src/lib/ziffle-private-epochs.js';
 // a coin result exposes a shuffle; only that output authorizes the reveal.
 function fixture({ invalid = false, install = false } = {}) {
   const genesis = { owner: 0, deckCount: 2, context: 'match', deckHash: 'root',
-    steps: [{ shuffler: 0, deckHex: 'root', proofHex: 'valid' }] };
+    steps: [{ shuffler: 0, deckHex: 'root', proofHex: 'valid', signature: 'signed' }] };
   const random = { id: 'coin', type: 'fair_random', count: 1 };
   const requirement = { id: 'coin-shuffle', type: 'verifiable_shuffle', owner: 0, zone: 'library',
     randomCountBefore: 13, inputCommitments: ['ziffle:root:0', 'ziffle:root:1'] };
   const proof = { owner: 0, zone: 'library', requirementId: requirement.id, deckCount: 2,
     context: 'match:action:8:shuffle:coin-shuffle:0:library', keyContext: 'match', deckHash: 'new',
-    keys: ['signed-roster'], steps: [{ shuffler: 0, deckHex: 'new', proofHex: 'valid' }],
+    keys: ['signed-roster'], steps: [{ shuffler: 0, deckHex: 'new', proofHex: 'valid', signature: 'signed' }],
     inputDeck: buildZiffleInputDeck([genesis], requirement.inputCommitments) };
   const opening = { type: 'private_open', owner: 0, viewer: 0, zone: 'hand', slot: 1,
     commitment: 'ziffle:new:1', originSlot: 1, originCommitment: 'ziffle:new:1' };
@@ -85,12 +85,12 @@ test('signed action audit randomness uses the same authenticated preview path', 
 
 test('same-epoch public openings converge when revealing one card exposes the next requirement', async () => {
   const genesis = { owner: 0, deckCount: 2, context: 'match', deckHash: 'root',
-    steps: [{ shuffler: 0, deckHex: 'root', proofHex: 'valid' }] };
+    steps: [{ shuffler: 0, deckHex: 'root', proofHex: 'valid', signature: 'signed' }] };
   const requirement = { id: 'shuffle', type: 'verifiable_shuffle', owner: 0, zone: 'library',
     randomCountBefore: 13, inputCommitments: ['ziffle:root:0', 'ziffle:root:1'] };
   const proof = { owner: 0, zone: 'library', requirementId: requirement.id, deckCount: 2,
     context: 'match:action:8:shuffle:shuffle:0:library', keyContext: 'match', deckHash: 'new',
-    keys: ['signed-roster'], steps: [{ shuffler: 0, deckHex: 'new', proofHex: 'valid' }],
+    keys: ['signed-roster'], steps: [{ shuffler: 0, deckHex: 'new', proofHex: 'valid', signature: 'signed' }],
     inputDeck: buildZiffleInputDeck([genesis], requirement.inputCommitments) };
   const publicRequirement = position => ({ type: 'public_open', owner: 0, zone: 'library',
     publicSlot: position, publicCommitment: `ziffle:new:${position}` });

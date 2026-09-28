@@ -580,6 +580,11 @@ pub(crate) struct CryptoRequirementView {
     random_count_before: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     random_count_after: Option<u64>,
+    /// A private view of a card its owner may not look at (an opponent's
+    /// Gonti or Praetor's Grasp exiled it face down): the viewer, not the
+    /// owner, must produce the opening.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    owner_blind: bool,
 }
 
 impl CryptoRequirementView {
@@ -622,6 +627,7 @@ impl CryptoRequirementView {
             after_order: None,
             random_count_before: None,
             random_count_after: None,
+            owner_blind: false,
         }
     }
 }
@@ -1254,6 +1260,36 @@ fn stack_revealed_view(game: &GameState) -> Option<ActiveViewedCards> {
     None
 }
 
+/// Whether the rules let `viewer` look at `id` in its current zone
+/// (CR 406.3 / 708.5 / 722.4), independent of ownership: an owner may not
+/// look at its own card an opponent exiled face down (Gonti, Praetor's
+/// Grasp), nor at a face-down permanent it owns but does not control.
+pub(crate) fn hidden_object_viewable_by_player(
+    game: &GameState,
+    id: ObjectId,
+    viewer: PlayerId,
+) -> bool {
+    let Some(object) = game.object(id) else {
+        return false;
+    };
+    if game.player(viewer).is_none() {
+        return false;
+    }
+    match object.zone {
+        Zone::OutsideGame => viewer == object.owner,
+        Zone::Hand => viewer == object.owner || viewer == game.controlling_player_for(object.owner),
+        Zone::Library => false,
+        Zone::Battlefield if game.is_face_down(id) => {
+            let controller = game.controller_of(object);
+            viewer == controller || viewer == game.controlling_player_for(controller)
+        }
+        Zone::Exile if game.is_face_down(id) => {
+            game.can_player_look_at_face_down_exiled_card(id, viewer)
+        }
+        _ => true,
+    }
+}
+
 fn zone_crypto_kind(zone: Zone) -> &'static str {
     match zone {
         Zone::Library => "library",
@@ -1405,6 +1441,7 @@ fn push_hidden_move_requirements(
         after_order: None,
         random_count_before: None,
         random_count_after: None,
+        owner_blind: false,
     };
     push_requirement_unique(requirements, seen, moved);
 
@@ -1553,6 +1590,7 @@ fn push_hidden_order_update_requirement(
             after_order: Some(after_ids),
             random_count_before: None,
             random_count_after: None,
+            owner_blind: false,
         },
     );
 }
@@ -1884,6 +1922,7 @@ impl WasmGame {
                             after_order: Some(after_shuffle_order.iter().map(|id| id.0).collect()),
                             random_count_before: Some(random_count_before),
                             random_count_after: Some(random_count_after),
+                            owner_blind: false,
                         },
                     );
                 }
@@ -1950,6 +1989,7 @@ impl WasmGame {
                             after_order: None,
                             random_count_before: Some(random_count_before),
                             random_count_after: Some(random_count_after),
+                            owner_blind: false,
                         },
                     );
                 }
@@ -2009,6 +2049,16 @@ impl WasmGame {
 
         for view in audit_views {
             let count = view.cards.len().min(u16::MAX as usize) as u16;
+            // Library peeks are owner-blind by construction (the frontend
+            // routes them by zone). A face-down exiled card is owner-blind only
+            // when the rules deny its owner a look, so ask the view rules.
+            let owner_blind = !view.public
+                && view.viewer != view.subject
+                && view.zone == Zone::Exile
+                && view.cards.iter().enumerate().any(|(index, &object_id)| {
+                    let resolved = view.resolved_object_id(&self.game, index, object_id);
+                    !hidden_object_viewable_by_player(&self.game, resolved, view.subject)
+                });
             let view_requirement = CryptoRequirementView {
                 timing: None,
                 id: format!(
@@ -2045,6 +2095,7 @@ impl WasmGame {
                 after_order: None,
                 random_count_before: None,
                 random_count_after: None,
+                owner_blind,
             };
             push_requirement_unique(&mut requirements, &mut seen, view_requirement);
 
@@ -2059,21 +2110,21 @@ impl WasmGame {
                 else {
                     continue;
                 };
-                push_requirement_unique(
-                    &mut requirements,
-                    &mut seen,
-                    CryptoRequirementView::hidden_open(
-                        if view.public {
-                            "public_open"
-                        } else {
-                            "private_open"
-                        },
-                        card,
-                        (!view.public).then_some(view.viewer),
-                        if view.public { "public" } else { "viewer" },
-                        &view.description,
-                    ),
+                let mut opening = CryptoRequirementView::hidden_open(
+                    if view.public {
+                        "public_open"
+                    } else {
+                        "private_open"
+                    },
+                    card,
+                    (!view.public).then_some(view.viewer),
+                    if view.public { "public" } else { "viewer" },
+                    &view.description,
                 );
+                // One producer per view: the window's proof lists the
+                // openings the same seat built.
+                opening.owner_blind = owner_blind;
+                push_requirement_unique(&mut requirements, &mut seen, opening);
             }
         }
 
@@ -2123,6 +2174,7 @@ impl WasmGame {
                     after_order: Some(after_shuffle_order.iter().map(|id| id.0).collect()),
                     random_count_before: Some(before.random_count),
                     random_count_after: Some(after.random_count),
+                    owner_blind: false,
                 },
             );
         }
@@ -2165,6 +2217,7 @@ impl WasmGame {
                     after_order: None,
                     random_count_before: Some(before.random_count),
                     random_count_after: Some(after.random_count),
+                    owner_blind: false,
                 },
             );
         }
@@ -5839,6 +5892,83 @@ mod native_tests {
                 && requirement.object_id == Some(hidden_exiled.0)
                 && requirement.commitment.as_deref() == Some("alice-exile-decision-commitment")
         }));
+    }
+
+    fn private_face_down_exile_view_requirements(
+        owner_may_look: bool,
+    ) -> Vec<CryptoRequirementView> {
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        // Bob exiled Alice's card face down (Gonti, Praetor's Grasp).
+        let exiled = wasm.game.create_hidden_card_placeholder(
+            alice,
+            Zone::Exile,
+            0,
+            "alice-face-down-exile-commitment".to_string(),
+        );
+        wasm.game.set_face_down(exiled);
+        wasm.game.grant_face_down_exile_view(exiled, bob);
+        if owner_may_look {
+            wasm.game.grant_face_down_exile_view(exiled, alice);
+        }
+        let ctx = DecisionContext::Boolean(
+            ironsmith::decisions::context::BooleanContext::new(
+                bob,
+                Some(ObjectId::from_raw(77)),
+                "Cast the exiled card?",
+            )
+            .with_hidden_card_view(
+                vec![exiled],
+                DecisionHiddenCardVisibility::PrivateToDecisionPlayer,
+                "Look at the face-down exiled card",
+            ),
+        );
+        let before = wasm.capture_crypto_audit_state();
+        let mut replay = WasmReplayDecisionMaker::new(&[]);
+        replay.capture_once_for_game(&wasm.game, ctx);
+        let (_pending, viewed_cards, audit_views) = replay.finish();
+        wasm.active_viewed_cards = viewed_cards;
+        wasm.active_audit_viewed_cards = audit_views;
+        wasm.update_crypto_requirements_from(before);
+        wasm.last_crypto_requirements
+            .iter()
+            .filter(|requirement| {
+                matches!(
+                    requirement.requirement_type.as_str(),
+                    "private_view_window" | "private_open"
+                ) && requirement.owner == alice.index() as u8
+                    && requirement.viewer == Some(bob.index() as u8)
+                    && requirement.zone == "face_down_exile"
+            })
+            .cloned()
+            .collect()
+    }
+
+    #[test]
+    fn private_view_of_card_owner_may_not_look_at_is_owner_blind() {
+        let requirements = private_face_down_exile_view_requirements(false);
+        for kind in ["private_view_window", "private_open"] {
+            let requirement = requirements
+                .iter()
+                .find(|requirement| requirement.requirement_type == kind)
+                .unwrap_or_else(|| panic!("missing {kind} for the viewer"));
+            assert!(requirement.owner_blind, "{kind} must route to the viewer");
+            let json = serde_json::to_value(requirement).expect("requirement serializes");
+            assert_eq!(json["ownerBlind"], serde_json::Value::Bool(true));
+        }
+    }
+
+    #[test]
+    fn private_view_of_card_owner_may_look_at_stays_owner_produced() {
+        let requirements = private_face_down_exile_view_requirements(true);
+        assert!(!requirements.is_empty());
+        for requirement in &requirements {
+            assert!(!requirement.owner_blind);
+            let json = serde_json::to_value(requirement).expect("requirement serializes");
+            assert!(json.get("ownerBlind").is_none());
+        }
     }
 
     #[test]

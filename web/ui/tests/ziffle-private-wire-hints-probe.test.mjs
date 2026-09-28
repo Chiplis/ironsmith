@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { collectZiffleRevealTokenGroups } from '../src/lib/ziffle-reveal-token-collection.js';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
@@ -248,6 +248,10 @@ test('private scry knowledge is omitted from later fetch token requests', { time
   const evidence = { scenario: 'Marsh Flats shuffle, Serum Visions draw/scry2 keep both, Polluted Delta search',
     knownPrivateRequirements: known, requestedPositions: outbound.cardPositions, outboundPayload: outbound,
     trace: result.trace };
-  writeFileSync(new URL('../../../reports/player-mcp/zkp-private-shuffles-2026-09-27/private-wire-hints-after.json', import.meta.url), JSON.stringify(evidence, null, 2));
+  // Opt-in evidence dump (e.g. for a player-mcp report); the assertions above are the test.
+  if (process.env.ZIFFLE_WIRE_HINTS_EVIDENCE) {
+    mkdirSync(path.dirname(process.env.ZIFFLE_WIRE_HINTS_EVIDENCE), { recursive: true });
+    writeFileSync(process.env.ZIFFLE_WIRE_HINTS_EVIDENCE, JSON.stringify(evidence, null, 2));
+  }
   console.log(JSON.stringify({ privateKnowledgeRetainedLocally: known.map(({ card, slot, publicSlot, id }) => ({ card, slot, publicSlot, id })), requestedPositions: outbound.cardPositions.length }));
 });
