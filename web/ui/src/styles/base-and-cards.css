@@ -1943,7 +1943,7 @@
 }
 
 .battlefield-counter-chip > .battlefield-counter-icon {
-  left: clamp(3px, calc(var(--bf-card-height, 96px) * 0.04), 5px);
+  left: clamp(4px, calc(var(--bf-card-height, 96px) * 0.045), 6px);
   top: 50%;
   width: clamp(8px, calc(var(--bf-card-height, 96px) * 0.1), 12px);
   height: clamp(8px, calc(var(--bf-card-height, 96px) * 0.1), 12px);
@@ -1964,16 +1964,25 @@
   text-shadow:
     0 1px 0 #06111d,
     0 0 4px var(--counter-accent, rgba(189, 232, 255, 0.62));
-  transform: translateX(-1px);
+  transform: translateX(-2px);
 }
 
 .battlefield-counter-chip > .battlefield-counter-symbol {
-  left: clamp(3px, calc(var(--bf-card-height, 96px) * 0.04), 5px);
+  left: clamp(4px, calc(var(--bf-card-height, 96px) * 0.045), 6px);
   top: 50%;
   margin: 0;
   color: #f5fbff;
   font-size: clamp(10px, calc(var(--bf-card-height, 96px) * 0.11), 14px);
   transform: translateY(-50%);
+}
+
+.battlefield-counter-chip > .battlefield-counter-symbol--power {
+  font-size: clamp(10px, calc(var(--bf-card-height, 96px) * 0.105), 13px);
+  font-weight: 900;
+  line-height: 1;
+  text-shadow:
+    0 1px 0 #06111d,
+    0 0 3px var(--counter-accent, rgba(189, 232, 255, 0.62));
 }
 
 .game-card:hover .battlefield-counter-chip,
