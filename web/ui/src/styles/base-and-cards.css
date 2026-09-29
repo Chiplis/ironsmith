@@ -1192,7 +1192,7 @@
 @media (min-width: 900px) {
   .game-card.field-card:not(.battlefield-token-card):not(.battlefield-arena-card) {
     --battlefield-card-scale: 1.15;
-    --battlefield-card-y: -6px;
+    --battlefield-card-y: -10px;
     transform-origin: center top;
   }
 }
@@ -1739,12 +1739,12 @@
 /* Charge counters use one compact asymmetric molded silhouette: a circular
    left shoulder flowing into a short rectangular number panel. */
 .battlefield-counter-chip--shape-charge {
-  width: clamp(40px, calc(var(--bf-card-width, 124px) * 0.32), 50px);
-  height: clamp(22px, calc(var(--bf-card-height, 96px) * 0.23), 28px);
+  width: clamp(36px, calc(var(--bf-card-width, 124px) * 0.3), 46px);
+  height: clamp(18px, calc(var(--bf-card-height, 96px) * 0.18), 23px);
   min-height: 0;
   flex: 0 0 auto;
   padding: 0 clamp(5px, calc(var(--bf-card-width, 124px) * 0.04), 8px)
-    0 clamp(16px, calc(var(--bf-card-width, 124px) * 0.14), 22px);
+    0 clamp(14px, calc(var(--bf-card-width, 124px) * 0.11), 18px);
   border: 0;
   border-radius: 0;
   background: transparent !important;
@@ -1781,10 +1781,10 @@
 
 .battlefield-counter-chip--shape-charge > .battlefield-counter-icon {
   position: absolute;
-  left: clamp(4px, calc(var(--bf-card-height, 96px) * 0.055), 7px);
+  left: clamp(3px, calc(var(--bf-card-height, 96px) * 0.04), 5px);
   top: 50%;
-  width: clamp(9px, calc(var(--bf-card-height, 96px) * 0.12), 14px);
-  height: clamp(9px, calc(var(--bf-card-height, 96px) * 0.12), 14px);
+  width: clamp(8px, calc(var(--bf-card-height, 96px) * 0.1), 12px);
+  height: clamp(8px, calc(var(--bf-card-height, 96px) * 0.1), 12px);
   margin: 0;
   transform: translateY(-50%);
 }
@@ -1792,7 +1792,7 @@
 .battlefield-counter-chip--shape-charge > .battlefield-counter-amount {
   margin-left: auto;
   padding-right: clamp(1px, calc(var(--bf-card-width, 124px) * 0.025), 4px);
-  font-size: clamp(9px, calc(var(--bf-card-width, 124px) * 0.075), 15px);
+  font-size: clamp(8px, calc(var(--bf-card-width, 124px) * 0.065), 13px);
   color: #f5fbff;
   text-shadow:
     0 1px 0 #06111d,
