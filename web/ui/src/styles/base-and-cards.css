@@ -1790,10 +1790,14 @@
 }
 
 .battlefield-counter-chip--shape-charge > .battlefield-counter-amount {
-  margin-left: auto;
-  padding-right: clamp(1px, calc(var(--bf-card-width, 124px) * 0.025), 4px);
+  position: absolute;
+  right: clamp(2px, calc(var(--bf-card-width, 124px) * 0.018), 3px);
+  margin-left: 0;
+  padding-right: 0;
   font-size: clamp(8px, calc(var(--bf-card-width, 124px) * 0.065), 13px);
   color: #f5fbff;
+  letter-spacing: -0.07em;
+  transform: translateX(-1px);
   text-shadow:
     0 1px 0 #06111d,
     0 0 4px rgba(189, 232, 255, 0.62);

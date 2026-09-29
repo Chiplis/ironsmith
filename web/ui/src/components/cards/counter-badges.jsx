@@ -48,16 +48,16 @@ function abbreviateCounterKind(rawKind) {
 function counterPalette(rawKind) {
   const displayLabel = counterDisplayLabel(rawKind);
   if (displayLabel?.startsWith("+")) {
-    return { accent: "#67d79a", holder: "#236e46", fill: "#164c2f", stroke: "#aef0ca" };
+    return { accent: "#e7c76d", holder: "#876a1e", fill: "#5b4510", stroke: "#ffe8a8" };
   }
   if (displayLabel?.startsWith("-")) {
-    return { accent: "#df6d83", holder: "#7a2339", fill: "#551626", stroke: "#ffb0c1" };
+    return { accent: "#e59a5a", holder: "#8a471c", fill: "#642f12", stroke: "#ffd0a0" };
   }
   switch (rawKind) {
     case "Plus One Plus One":
-      return { accent: "#67d79a", holder: "#236e46", fill: "#164c2f", stroke: "#aef0ca" };
+      return { accent: "#e7c76d", holder: "#876a1e", fill: "#5b4510", stroke: "#ffe8a8" };
     case "Minus One Minus One":
-      return { accent: "#df6d83", holder: "#7a2339", fill: "#551626", stroke: "#ffb0c1" };
+      return { accent: "#e59a5a", holder: "#8a471c", fill: "#642f12", stroke: "#ffd0a0" };
     case "Lore":
       return { accent: "#e1bd73", holder: "#765015", fill: "#5c3e0f", stroke: "#f8dba2" };
     case "Loyalty":
