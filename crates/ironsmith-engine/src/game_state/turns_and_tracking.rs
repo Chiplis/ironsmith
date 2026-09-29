@@ -1239,6 +1239,47 @@ impl GameState {
         self.turn_store.forecast_revealed_hand_cards.clear();
     }
 
+    /// How many turns `player` has taken this game, counting the current one
+    /// ("your first, second, or third turn of the game").
+    pub fn turns_taken_by(&self, player: PlayerId) -> u32 {
+        if self.turn_store.turns_taken.is_empty() {
+            return self.estimated_turns_taken_by(player);
+        }
+        self.turn_store
+            .turns_taken
+            .get(&player)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// Before any turn change is recorded (the game's first turn, or a
+    /// scenario that starts mid-game), assume an even rotation that has
+    /// reached the current turn number.
+    fn estimated_turns_taken_by(&self, player: PlayerId) -> u32 {
+        let seats = (self.turn_store.turn_order.len() as u32).max(1);
+        let turn_number = self.turn.turn_number.max(1);
+        if self.turn_players().contains(&player) {
+            turn_number.div_ceil(seats)
+        } else {
+            (turn_number - 1).div_ceil(seats)
+        }
+    }
+
+    /// Anchor the per-player count to the estimate the first time the turn
+    /// changes, so the turn that is ending is counted.
+    fn seed_turns_taken(&mut self) {
+        if !self.turn_store.turns_taken.is_empty() {
+            return;
+        }
+        let seeded = self
+            .turn_store
+            .turn_order
+            .iter()
+            .map(|&player| (player, self.estimated_turns_taken_by(player)))
+            .collect();
+        self.turn_store.turns_taken = seeded;
+    }
+
     /// The player whose position in turn order the next normal turn is
     /// counted from (CR 500.7): the active player, unless the current turn is
     /// an extra turn, in which case the player of the last normal turn.
@@ -1307,6 +1348,7 @@ impl GameState {
     ) {
         let completed_turn_players = self.turn_players();
         let completed_turn_players_for_durations = completed_turn_players.clone();
+        self.seed_turns_taken();
         // CR 500.7: an extra turn is inserted after the turn that created it;
         // normal turn order resumes from the last normal turn's player.
         let turn_order_anchor = self.normal_turn_order_anchor();
@@ -1381,6 +1423,9 @@ impl GameState {
         self.turn.active_player = next_player;
         self.turn.priority_player = Some(next_player);
         self.turn.turn_number += 1;
+        for player in self.turn_players() {
+            *self.turn_store.turns_taken.entry(player).or_insert(0) += 1;
+        }
         // CR 723.1: controlling a turn lasts through every cleanup step.
         // Expire it only when the next actual (non-skipped) turn begins.
         let new_turn = self.turn.turn_number;

@@ -802,6 +802,9 @@ pub struct TurnStore {
     /// normal rotation resumes from this player, not from whoever took the
     /// extra turn. Only consulted while `current_turn_is_extra` is set.
     pub normal_turn_anchor: Option<PlayerId>,
+    /// Turns each player has taken this game, counting the current one.
+    /// Empty until the first turn change; see [`GameState::turns_taken_by`].
+    pub turns_taken: BTreeMap<PlayerId, u32>,
     /// Extra turns queued up (Time Walk, etc.).
     /// Players take these turns in order after the current turn ends.
     pub extra_turns: Vec<PlayerId>,

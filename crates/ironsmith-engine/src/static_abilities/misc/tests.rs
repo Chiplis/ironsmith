@@ -1311,20 +1311,22 @@ fn test_enters_with_counters_if_condition_matches_when_permanent_left_battlefiel
     );
 }
 
-#[test]
-fn test_enters_tapped_unless_first_three_turns_does_not_match_on_your_turn_three() {
+/// Whether Starting Town's "enters tapped unless it's your first, second, or
+/// third turn of the game" replacement applies to `player` on the game's
+/// `turn_number`-th turn, reached by advancing turns from turn 1.
+fn first_three_turns_replacement_applies(turn_number: u32, player: PlayerId) -> bool {
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    while game.turn.turn_number < turn_number {
+        game.next_turn();
+    }
+    assert_eq!(game.turn.active_player, player, "turn {turn_number} owner");
     let source = ObjectId::from_raw(77);
-    let alice = PlayerId::from_index(0);
-    game.turn.active_player = alice;
-    game.turn.turn_number = 3;
-
     let ability = EntersTappedUnlessCondition::new(
         Condition::YourFirstTurnsOfTheGameOrFewer(3),
         "it's your first second or third turn of the game".to_string(),
     );
     let replacement = ability
-        .generate_replacement_effect(source, alice)
+        .generate_replacement_effect(source, player)
         .expect("conditional enters-tapped replacement should create replacement");
     let matcher = replacement
         .matcher
@@ -1337,46 +1339,23 @@ fn test_enters_tapped_unless_first_three_turns_does_not_match_on_your_turn_three
         crate::events::cause::EventCause::effect(),
         None,
     );
-    let ctx = EventContext::for_replacement_effect(alice, source, &game);
-
-    assert!(
-        !matcher.matches_event(&event, &ctx),
-        "replacement should not apply during one of your first three turns"
-    );
+    let ctx = EventContext::for_replacement_effect(player, source, &game);
+    matcher.matches_event(&event, &ctx)
 }
 
 #[test]
-fn test_enters_tapped_unless_first_three_turns_matches_on_your_turn_four() {
-    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
-    let source = ObjectId::from_raw(78);
+fn test_enters_tapped_unless_first_three_turns_counts_your_own_turns() {
     let alice = PlayerId::from_index(0);
-    game.turn.active_player = alice;
-    game.turn.turn_number = 4;
-
-    let ability = EntersTappedUnlessCondition::new(
-        Condition::YourFirstTurnsOfTheGameOrFewer(3),
-        "it's your first second or third turn of the game".to_string(),
-    );
-    let replacement = ability
-        .generate_replacement_effect(source, alice)
-        .expect("conditional enters-tapped replacement should create replacement");
-    let matcher = replacement
-        .matcher
-        .as_ref()
-        .expect("conditional enters-tapped replacement must have matcher");
-    let event = ZoneChangeEvent::with_cause(
-        source,
-        Zone::Stack,
-        Zone::Battlefield,
-        crate::events::cause::EventCause::effect(),
-        None,
-    );
-    let ctx = EventContext::for_replacement_effect(alice, source, &game);
-
-    assert!(
-        matcher.matches_event(&event, &ctx),
-        "replacement should apply after your first three turns"
-    );
+    let bob = PlayerId::from_index(1);
+    // Alice is on the play: game turns 1, 3, 5 are her first three.
+    assert!(!first_three_turns_replacement_applies(1, alice));
+    assert!(!first_three_turns_replacement_applies(5, alice));
+    assert!(first_three_turns_replacement_applies(7, alice));
+    // Bob is on the draw: game turns 2, 4, 6 are his first three.
+    assert!(!first_three_turns_replacement_applies(2, bob));
+    assert!(!first_three_turns_replacement_applies(4, bob));
+    assert!(!first_three_turns_replacement_applies(6, bob));
+    assert!(first_three_turns_replacement_applies(8, bob));
 }
 
 #[test]

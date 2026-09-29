@@ -522,6 +522,9 @@ struct SyncRulesState {
     /// Extra turns scheduled after a player's next turn: (player, creation turn).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     extra_turns_after_next_turn: Vec<(u8, u32)>,
+    /// Turns each player has taken this game, as `(player, count)`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    turns_taken: Vec<(u8, u32)>,
     #[serde(default)]
     current_turn_is_extra: bool,
     #[serde(default)]
@@ -2916,6 +2919,13 @@ impl WasmGame {
                 .iter()
                 .map(|(player, turn)| (player.0, *turn))
                 .collect(),
+            turns_taken: self
+                .game
+                .turn_store
+                .turns_taken
+                .iter()
+                .map(|(player, count)| (player.0, *count))
+                .collect(),
             current_turn_is_extra: self.game.turn_store.current_turn_is_extra,
             normal_turn_anchor: self
                 .game
@@ -3216,6 +3226,11 @@ impl WasmGame {
             .extra_turns_after_next_turn
             .iter()
             .map(|(player, turn)| (PlayerId::from_index(*player), *turn))
+            .collect();
+        self.game.turn_store.turns_taken = rules
+            .turns_taken
+            .iter()
+            .map(|(player, count)| (PlayerId::from_index(*player), *count))
             .collect();
         self.game.turn_store.current_turn_is_extra = rules.current_turn_is_extra;
         self.game.turn_store.normal_turn_anchor =

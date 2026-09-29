@@ -5309,7 +5309,8 @@ fn evaluate_condition_in_context(
             && game.turn.phase == crate::game_state::Phase::Ending),
         Condition::SourceIsRenowned => Ok(game.is_renowned(shared.source)),
         Condition::YourFirstTurnsOfTheGameOrFewer(count) => {
-            Ok(game.is_active_player(shared.controller) && game.turn.turn_number <= *count)
+            Ok(game.is_active_player(shared.controller)
+                && game.turns_taken_by(shared.controller) <= *count)
         }
         Condition::CreatureDiedThisTurn => Ok(game
             .turn_store
