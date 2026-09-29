@@ -832,6 +832,10 @@ pub fn apply_exile_subject_owner_context(filter: &mut ObjectFilter, subject: Opt
         return;
     }
     match filter.owner {
+        // "For each opponent, you put ... from that player's graveyard": a
+        // third-person "that player"/"their" never names an explicit "you"
+        // subject, so it keeps its own antecedent.
+        Some(PlayerFilter::IteratedPlayer) if owner_filter == PlayerFilter::You => {}
         Some(PlayerFilter::Target(_)) | Some(PlayerFilter::IteratedPlayer) | None => {
             filter.owner = Some(owner_filter);
         }

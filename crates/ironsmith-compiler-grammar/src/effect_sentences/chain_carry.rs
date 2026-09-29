@@ -2328,7 +2328,7 @@ pub use chain_carry_reference_programs::{
     normalize_source_references_with_context, parse_effect_chain_with_subject_verb_primitives,
     parse_leading_player_may_lexed, parse_may_have_any_number_tagged_phase_out_lexed,
     player_ast_from_filter_for_carry, player_owner_filter_from_target_for_carry,
-    target_is_generic_token_filter,
+    release_offered_leading_discard_actor, target_is_generic_token_filter,
 };
 use chain_carry_reference_programs::{
     bind_it_metric_to_explicit_target, bind_source_exiled_effect,

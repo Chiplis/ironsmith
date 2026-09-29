@@ -1828,7 +1828,10 @@ export function usePeerLobbyValidation(base, servicesRef) {
     return currentSequence;
   }
 
-  async function ziffleRevealAuthorizedByAction(message, requester, owner, positions, ceremony, debug = null) {
+  // `disclosure`, when given, receives the in-flight intent whose previewed
+  // requirements authorized the positions; the caller must lock it before
+  // releasing any token.
+  async function ziffleRevealAuthorizedByAction(message, requester, owner, positions, ceremony, debug = null, disclosure = null) {
     const auth = message?.actionAuthorization;
     const reject = (reason) => {
       if (debug) debug.reason = reason;
@@ -1941,7 +1944,10 @@ export function usePeerLobbyValidation(base, servicesRef) {
           matchId: currentAuditMatchId(),
           seq: sequence,
           actorIndex: auth.actorIndex,
-          prevStateHash: auth.prevStateHash || auditStateHashRef.current || INITIAL_AUDIT_STATE_HASH,
+          // Bound to the local chain head, not a requester-claimed hash: an
+          // intent that could never apply must not release anything, and the
+          // disclosure lock below is keyed by this hash.
+          prevStateHash: auditStateHashRef.current || INITIAL_AUDIT_STATE_HASH,
           preActionPublicCheckpointHash,
           command: auth.command,
         });
@@ -1970,6 +1976,19 @@ export function usePeerLobbyValidation(base, servicesRef) {
         .map(compactCryptoRequirementForDiagnostics)
         .filter(Boolean);
     }
+    // Tokens released on the strength of this not-yet-applied action pin the
+    // sequence to its command (see fairRandomRevealLockKey), so the requester
+    // cannot peek and then cancel or substitute a different action.
+    const disclosureIntent = {
+      matchId: currentAuditMatchId(),
+      seq: sequence,
+      actorIndex: auth.actorIndex ?? liveState?.decision?.player,
+      prevStateHash: auditStateHashRef.current || INITIAL_AUDIT_STATE_HASH,
+      command: auth.command,
+    };
+    if (fairRandomRevealLockConflict(disclosureIntent)) {
+      return reject("conflicts_with_disclosed_action_intent");
+    }
     if (ziffleRequirementsAuthorizeRevealPositions(
       previewedRequirements,
       requester,
@@ -1979,13 +1998,17 @@ export function usePeerLobbyValidation(base, servicesRef) {
       sequence
     )) {
       if (debug) debug.reason = "authorized_by_previewed_requirements";
+      if (disclosure) disclosure.intent = disclosureIntent;
       return true;
     }
     const authorizedByMetadata = await ziffleRequirementsAuthorizeRevealPositionsByMetadata(
       previewedRequirements, requester, owner, positions, ceremony, true
     );
     if (authorizedByMetadata && debug) debug.reason = "authorized_by_requirement_metadata";
-    if (authorizedByMetadata) return true;
+    if (authorizedByMetadata) {
+      if (disclosure) disclosure.intent = disclosureIntent;
+      return true;
+    }
 
     const authorizedByVisibleState = await waitForAuthorizedZiffleRevealPositions(
       owner,
@@ -2208,6 +2231,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
         cardPositions,
         ceremony
       );
+      const actionDisclosure = {};
       const authorizedByAction = authorizedByCryptoRequest
         ? false
         : await ziffleRevealAuthorizedByAction(
@@ -2216,7 +2240,8 @@ export function usePeerLobbyValidation(base, servicesRef) {
           requestedOwner,
           cardPositions,
           ceremony,
-          actionAuthorizationDebug
+          actionAuthorizationDebug,
+          actionDisclosure
         );
       // The visible-state fallback only reopens positions the requester is
       // already entitled to look at (the owner's own known cards, or another
@@ -2259,6 +2284,10 @@ export function usePeerLobbyValidation(base, servicesRef) {
             requestedAtMs: Date.now(),
           })
         );
+      }
+      if (authorizedByAction && actionDisclosure.intent) {
+        // Pin the sequence before any token leaves this peer.
+        lockFairRandomRevealIntent(actionDisclosure.intent);
       }
       setStatus(`Generating hidden-card reveal payloads for ${cardPositions.length} card${cardPositions.length === 1 ? "" : "s"}`);
       const tokens = await timePeerSyncPhase(
@@ -3145,12 +3174,15 @@ export function usePeerLobbyValidation(base, servicesRef) {
     );
   }
 
-  // Once this peer reveals its fair-random nonce for (match, seq, actor,
-  // pre-state), the actor has seen the outcome. The action at that sequence
-  // is then pinned to the command of the revealed intent: a cancel does not
-  // release it, a different command cannot re-roll with fresh nonces, and a
-  // different (cheap) action cannot be substituted. Cancels before any reveal
-  // stay free, since commitments alone disclose nothing.
+  // Once this peer discloses anything for an in-flight action at (match, seq,
+  // actor, pre-state) -- its fair-random nonce, or ziffle reveal tokens the
+  // action's previewed requirements authorized -- the actor has learned
+  // something it cannot un-learn. The action at that sequence is then pinned
+  // to the command of the disclosed intent: a cancel does not release it, a
+  // different command cannot re-roll with fresh nonces, and a different
+  // (cheap) action cannot be substituted after peeking. The only permitted
+  // outcomes are completing that command or a forfeit. Cancels before any
+  // disclosure stay free, since commitments alone disclose nothing.
   function fairRandomRevealLockKey({ matchId, seq, actorIndex, prevStateHash } = {}) {
     return [
       "fair-random-intent",
@@ -3164,7 +3196,17 @@ export function usePeerLobbyValidation(base, servicesRef) {
   function fairRandomRevealLockConflict(intent = {}) {
     const locked = rngRevealCommitSetLocksRef.current.get(fairRandomRevealLockKey(intent));
     if (!locked) return false;
+    if (isForfeitCommandForDisclosureLock(intent.command, intent.actorIndex)) return false;
     return locked !== canonicalMultiplayerPayload(intent.command || {});
+  }
+
+  function isForfeitCommandForDisclosureLock(command, actorIndex) {
+    if (!command || typeof command !== "object") return false;
+    return isSelfForfeitCommand(command, actorIndex)
+      || isActionTimeoutForfeitCommand(command)
+      || isDisconnectTimeoutForfeitCommand(command)
+      || isProtocolResponseTimeoutForfeitCommand(command)
+      || isWitnessForfeitCommand(command);
   }
 
   function lockFairRandomRevealIntent(intent = {}) {

@@ -3746,6 +3746,7 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
             count, ..
         })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { amount: count })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { amount: count, .. })
         | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount: count })
         | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayLife { amount: count })
         | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount: count })
@@ -4527,6 +4528,7 @@ fn resolve_effect_result_values_in_fields(
                 count: amount,
             })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { amount })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { amount, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Discover { count: amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fateseal { count: amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Populate {
@@ -4651,7 +4653,6 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction {
                 ..
             })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { .. })
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects { .. })
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTarget { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Bolster { .. })

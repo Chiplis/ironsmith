@@ -212,6 +212,17 @@ impl Transcript {
         Self(Sha256::digest(user_ctx).into())
     }
 
+    /// Transcript length prefixes are fixed 4-byte big-endian integers so the
+    /// Fiat-Shamir challenge does not depend on the target's pointer width
+    /// (encoding `usize` directly gave wasm32 and 64-bit hosts different
+    /// transcripts for the same proof). Four bytes match what wasm32 browser
+    /// clients have always produced.
+    fn length_prefix(len: usize) -> [u8; 4] {
+        u32::try_from(len)
+            .expect("transcript field length fits in u32")
+            .to_be_bytes()
+    }
+
     fn update_with_serialized<T: CanonicalSerialize>(h: &mut Sha256, label: &str, t: &T) {
         let mut serialize_buffer = [0u8; Self::SERIALIZE_BUFFER_SIZE];
         let serialized_size = t.compressed_size();
@@ -222,14 +233,14 @@ impl Transcript {
         );
         t.serialize_compressed(&mut serialize_buffer[..serialized_size])
             .expect("infallible serialization");
-        h.update(serialized_size.to_be_bytes());
+        h.update(Self::length_prefix(serialized_size));
         h.update(&serialize_buffer[..serialized_size]);
     }
 
     fn append<T: CanonicalSerialize>(self, label: &str, t: &T) -> Self {
         let mut h = Sha256::new();
         h.update(self.0);
-        h.update(label.len().to_be_bytes());
+        h.update(Self::length_prefix(label.len()));
         h.update(label.as_bytes());
         Self::update_with_serialized(&mut h, label, t);
         Self(h.finalize().into())
@@ -238,11 +249,11 @@ impl Transcript {
     fn append_vec<T: CanonicalSerialize>(self, label: &str, v: &[T]) -> Self {
         let mut h = Sha256::new();
         h.update(self.0);
-        h.update(label.len().to_be_bytes());
+        h.update(Self::length_prefix(label.len()));
         h.update(label.as_bytes());
 
         for (i, t) in v.iter().enumerate() {
-            h.update(i.to_be_bytes());
+            h.update(Self::length_prefix(i));
             Self::update_with_serialized(&mut h, label, t);
         }
 

@@ -3051,6 +3051,18 @@ pub fn stage_owned_triggered_effects_for_lowering(
             {
                 true
             }
+            // "if its mana value is ..." / "if the amount of mana spent to
+            // cast that spell is ...": a value read of the pronoun names the
+            // trigger's event object just like a predicate on it.
+            PredicateAst::ValueComparison { left, right, .. } => {
+                crate::tag_support::value_references_tag(
+                    left,
+                    crate::tag::CompilerReferenceTag::It.as_str(),
+                ) || crate::tag_support::value_references_tag(
+                    right,
+                    crate::tag::CompilerReferenceTag::It.as_str(),
+                )
+            }
             PredicateAst::Not(inner) => predicate_uses_implicit_object_reference(inner),
             PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
                 predicate_uses_implicit_object_reference(left)

@@ -374,10 +374,52 @@ pub fn parse_unattach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErr
         });
     }
 
+    // "unattach an Equipment from a creature you control": the host is an
+    // independent selection (the later "that creature" antecedent), and the
+    // detached object must be attached to that host.
+    if let Some(from_idx) = object_tokens.iter().position(|token| token.is_word("from"))
+        && from_idx > 0
+        && from_idx + 1 < object_tokens.len()
+    {
+        let mut attachment = parse_target_phrase(&object_tokens[..from_idx])?;
+        let mut host = parse_target_phrase(&object_tokens[from_idx + 1..])?;
+        if let Some(attachment_filter) = target_object_filter_mut(&mut attachment)
+            && let Some(host_filter) = target_object_filter_mut(&mut host)
+        {
+            if host_filter.with_attached_object.is_none() {
+                let mut required = attachment_filter.clone();
+                required.zone = None;
+                host_filter.with_attached_object = Some(Box::new(required));
+            }
+            attachment_filter
+                .tagged_constraints
+                .push(TaggedObjectConstraint {
+                    tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                    relation: TaggedOpbjectRelation::AttachedToTaggedObject,
+                });
+            return Ok(EffectAst::Sequence {
+                effects: vec![
+                    EffectAst::subject_verb_target_only(host),
+                    EffectAst::subject_verb_unattach(attachment),
+                ],
+            });
+        }
+    }
+
     let object = parse_attached_object_reference(&object_tokens)
         .map(Ok)
         .unwrap_or_else(|| parse_target_phrase(&object_tokens))?;
     Ok(EffectAst::subject_verb_unattach(object))
+}
+
+fn target_object_filter_mut(target: &mut TargetAst) -> Option<&mut ObjectFilter> {
+    match target {
+        TargetAst::Object(filter, _, _) => Some(filter),
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+            target_object_filter_mut(inner)
+        }
+        _ => None,
+    }
 }
 
 pub fn damage_clause_has_terminal_unpreventable_rider(tokens: &[OwnedLexToken]) -> bool {

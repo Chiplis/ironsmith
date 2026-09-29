@@ -38,9 +38,12 @@ opponents' hands, and enforce the rules. Ironsmith has no such server. In
   so any peer can confirm it was done honestly without learning anything
   secret.
 
-A modified client can't draw a card it didn't draw, stack its deck, peek at
-your hand, or get an illegal play accepted. Any attempt is rejected, and the
-signed evidence can be replayed by anyone. The full explanation is in
+The protocol is designed so that a modified client can't draw a card it
+didn't draw, stack its deck, peek at your hand, or get an illegal play
+accepted: honest browsers reject the attempt, and the signed evidence can be
+replayed by anyone. It hasn't had an independent security review yet, so treat
+it as strong protection for casual and community play rather than a proven
+guarantee (see [Honest limits](#honest-limits)). The full explanation is in
 [Verified mode and tournaments](#verified-mode-and-tournaments-an-introduction-to-zero-knowledge-play).
 
 ---
@@ -431,7 +434,9 @@ over a network with no dealer. Ironsmith's answer, using the
    player allowed to see it. Other players can confirm the card came from the
    right position without learning what it is. Browsers refuse to hand over
    reveal material for a card the current action doesn't entitle anyone to
-   see, so a modified client can't ask to peek.
+   see. Once they do hand it over for an action that hasn't been played yet,
+   that turn is locked to that exact action: cancelling it and playing
+   something else after seeing the card is rejected.
 5. **Mid-game shuffles work the same way.** Fetch lands, tutors, and other
    "then shuffle" effects must each carry their own shuffle proof.
 
@@ -547,6 +552,10 @@ Verified mode is strong, but it has limits, and they're listed here:
 - It relies on browser cryptography (WebCrypto), on the ziffle library (which
   has **not** been independently audited), and on the rules engine. A rules bug
   is a bug that every honest player's engine agrees on, not a cheat.
+- The zero-knowledge proofs cover shuffles and reveals, not the whole game.
+  Everything around them (who may see a card and when, timeouts, the match
+  clock) is enforced by the multiplayer protocol, which hasn't been
+  independently reviewed either.
 - **Nothing can force a player to keep playing.** A player who closes the tab
   can't be made to continue, but they can be timed out and forfeited with a
   signed certificate.

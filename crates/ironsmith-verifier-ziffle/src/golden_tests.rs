@@ -156,8 +156,10 @@ fn every_operation_reproduces_the_golden_transcript() {
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect();
+    // Ziffle's Fiat-Shamir length prefixes are fixed u32 big-endian, so this
+    // digest is the same on native hosts and wasm32 browser clients.
     assert_eq!(
         digest,
-        "c959015410d1c6647f4cb86d70196cc408cc6aa60056ec1016757627aba87702"
+        "9ddb1019978b5ebd5e55a6c141de731c796f9169611620fd4ec256ae6b06405f"
     );
 }

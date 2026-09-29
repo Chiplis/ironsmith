@@ -890,14 +890,6 @@ pub fn resolve_it_tag(
             }
             return Ok(resolved);
         }
-        if saw_it_constraint
-            && identity_is_unqualified
-            && let Some(player_filter) = refs.known_last_player_filter().cloned()
-        {
-            resolved.zone = Some(Zone::Hand);
-            resolved.owner = Some(as_followup_player_alias(player_filter));
-            return Ok(resolved);
-        }
         if saw_it_constraint && identity_is_unqualified {
             resolved.source = true;
             return Ok(resolved);
@@ -1025,6 +1017,28 @@ pub fn watch_tag_from_filter(filter: &ObjectFilter) -> Option<TagKey> {
     tag
 }
 
+/// The bare pronoun subject of an attack/block restriction ("they can't
+/// attack you this combat") whose only antecedent is a player names that
+/// player's creatures: a player is not an object that can attack or block.
+fn resolve_combat_actor_it_tag(
+    filter: &ObjectFilter,
+    refs: &ReferenceEnv,
+) -> Result<ObjectFilter, CardTextError> {
+    let mut identity = filter.clone();
+    identity.source_surface = None;
+    let bare_it = identity == ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
+    if bare_it
+        && refs.known_last_object_tag().is_none()
+        && !refs.has_source_object_antecedent()
+        && let Some(player) = refs.known_last_player_filter().cloned()
+    {
+        let mut creatures = ObjectFilter::creature();
+        creatures.controller = Some(as_followup_player_alias(player));
+        return Ok(creatures);
+    }
+    resolve_it_tag(filter, refs)
+}
+
 pub fn resolve_restriction_it_tag(
     restriction: &Restriction,
     refs: &ReferenceEnv,
@@ -1082,18 +1096,22 @@ pub fn resolve_restriction_it_tag(
         Restriction::BecomeMonarch(player) => {
             Restriction::BecomeMonarch(resolve_contextual_player_filter(player, refs)?)
         }
-        Restriction::Attack(filter) => Restriction::attack(resolve_it_tag(filter, refs)?),
+        Restriction::Attack(filter) => {
+            Restriction::attack(resolve_combat_actor_it_tag(filter, refs)?)
+        }
         Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, player } => {
             Restriction::attack_player_or_planeswalkers_controlled_by(
-                resolve_it_tag(attackers, refs)?,
+                resolve_combat_actor_it_tag(attackers, refs)?,
                 resolve_contextual_player_filter(player, refs)?,
             )
         }
         Restriction::AttackPlayer { attackers, player } => Restriction::attack_player(
-            resolve_it_tag(attackers, refs)?,
+            resolve_combat_actor_it_tag(attackers, refs)?,
             resolve_contextual_player_filter(player, refs)?,
         ),
-        Restriction::Block(filter) => Restriction::block(resolve_it_tag(filter, refs)?),
+        Restriction::Block(filter) => {
+            Restriction::block(resolve_combat_actor_it_tag(filter, refs)?)
+        }
         Restriction::BlockSpecificAttacker { blockers, attacker } => {
             Restriction::block_specific_attacker(
                 resolve_it_tag(blockers, refs)?,
@@ -1225,14 +1243,6 @@ fn resolve_choose_spec_it_tag_preserving_selection(
             }
             if refs.has_source_object_antecedent() {
                 return Ok(ChooseSpec::Source);
-            }
-            if let Some(player_filter) = refs.known_last_player_filter().cloned() {
-                let filter = ObjectFilter {
-                    zone: Some(Zone::Hand),
-                    owner: Some(as_followup_player_alias(player_filter)),
-                    ..Default::default()
-                };
-                return Ok(ChooseSpec::Object(filter));
             }
             Ok(ChooseSpec::Source)
         }

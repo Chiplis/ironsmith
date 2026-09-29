@@ -921,8 +921,17 @@ pub(super) fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
         let mut for_each_words = Vec::with_capacity(filter_words.len() + 2);
         for_each_words.extend(["for", "each"]);
         for_each_words.extend(filter_words.iter().copied());
-        if let Some((value @ Value::PendingPriorEffectMetric(_), used)) =
+        // Drawn/destroyed metrics carry a "this way" surface hint; the typed
+        // producer link is the hinted value's payload. Revealed cards stay on
+        // the tagged-object path: "reveal until" producers export a tag, not
+        // prior-effect memory.
+        if let Some((value, used)) =
             super::super::count_shapes::parse_for_each_count_value_words(&for_each_words)
+            && matches!(
+                value.unhinted(),
+                Value::PendingPriorEffectMetric(query)
+                    if query.action != Some(ironsmith_core::PriorEffectAction::Revealed)
+            )
             && used == for_each_words.len()
         {
             return Some((value, filter_end));

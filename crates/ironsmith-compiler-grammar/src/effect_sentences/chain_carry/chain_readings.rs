@@ -1014,6 +1014,9 @@ fn read_player_may(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, CardText
         } else {
             parse_effect_chain_lexed(&stripped)?
         };
+        if player != PlayerAst::You {
+            release_offered_leading_discard_actor(&stripped, &mut effects);
+        }
         for effect in &mut effects {
             bind_implicit_player_context(effect, player);
         }

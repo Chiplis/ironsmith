@@ -17,6 +17,8 @@ pub enum ForEachParticipantScope {
     OpponentExceptDefending,
     /// "each of that player's opponents" / "each opponent of that player"
     OpponentOfThatPlayer,
+    /// "each of its controller's opponents" / "each opponent of its controller"
+    OpponentOfItsController,
     Player,
     PlayerExceptYou,
     PlayerExceptTarget,
@@ -222,6 +224,19 @@ pub fn parse_participant_clause_shape(
             inner_tokens: trim(rest),
         });
     }
+    if let Some((_, rest)) = primitives::parse_prefix(
+        tokens,
+        alt((
+            primitives::phrase(&["each", "of", "its", "controller's", "opponents"]),
+            primitives::phrase(&["each", "of", "its", "controllers", "opponents"]),
+        )),
+    ) {
+        return Some(ForEachParticipantClauseShape {
+            scope: ForEachParticipantScope::OpponentOfItsController,
+            participant_is_actor: true,
+            inner_tokens: trim(rest),
+        });
+    }
     if let Some((_, rest)) = primitives::parse_prefix(tokens, opponent_prefix) {
         let mut scope = ForEachParticipantScope::Opponent;
         let mut inner_tokens = trim(rest);
@@ -235,6 +250,12 @@ pub fn parse_participant_clause_shape(
             primitives::parse_prefix(inner_tokens, primitives::phrase(&["of", "that", "player"]))
         {
             scope = ForEachParticipantScope::OpponentOfThatPlayer;
+            inner_tokens = trim(rest);
+        } else if let Some((_, rest)) = primitives::parse_prefix(
+            inner_tokens,
+            primitives::phrase(&["of", "its", "controller"]),
+        ) {
+            scope = ForEachParticipantScope::OpponentOfItsController;
             inner_tokens = trim(rest);
         }
         return Some(ForEachParticipantClauseShape {

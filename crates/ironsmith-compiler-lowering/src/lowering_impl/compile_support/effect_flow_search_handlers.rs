@@ -321,6 +321,18 @@ fn scope_may_decider_search_effect(
         return Effect::new(choose);
     }
 
+    // "<player> may search their library ...": the player offered the
+    // search is the one who searches their own library.
+    if !matches!(decider, PlayerFilter::You)
+        && let Some(search) = effect.downcast_ref::<crate::effects::SearchLibraryEffect>()
+        && search.chooser == PlayerFilter::You
+        && &search.player == decider
+    {
+        let mut search = search.clone();
+        search.chooser = decider.clone();
+        return Effect::new(search);
+    }
+
     effect.clone()
 }
 

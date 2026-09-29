@@ -1316,7 +1316,8 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Incubate { amount, .. }) => {
             Some(amount)
         }
-        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { amount }) => {
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { amount })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { amount, .. }) => {
             Some(amount)
         }
         SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount })
@@ -1402,7 +1403,6 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects { .. })
         | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTarget { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction { .. })
-        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Bolster { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Support { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Adapt { .. })
@@ -2189,13 +2189,23 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
                 CharacteristicActionAst::BecomeBasePtCreature {
                     power, toughness, ..
                 },
-            )
-            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
+            ) => {
+                value_references_tag(power, crate::tag::CompilerReferenceTag::It.as_str())
+                    || value_references_tag(
+                        toughness,
+                        crate::tag::CompilerReferenceTag::It.as_str(),
+                    )
+            }
+            // "Those creatures get +1/+1": the affected set itself can name
+            // the prior instruction's result, not only the P/T values.
+            SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
+                filter,
                 power,
                 toughness,
                 ..
             }) => {
-                value_references_tag(power, crate::tag::CompilerReferenceTag::It.as_str())
+                filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
+                    || value_references_tag(power, crate::tag::CompilerReferenceTag::It.as_str())
                     || value_references_tag(
                         toughness,
                         crate::tag::CompilerReferenceTag::It.as_str(),
@@ -2285,9 +2295,25 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
                         target_references_tag(target, crate::tag::CompilerReferenceTag::It.as_str())
                     })
             }
-            action => subject_verb_action_value(action).is_some_and(|value| {
-                value_references_tag(value, crate::tag::CompilerReferenceTag::It.as_str())
-            }),
+            // Exchange-control filters lower as a fresh target set and are
+            // never reference-resolved, so they cannot consume a prior
+            // instruction's result tag.
+            SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeControl { .. }) => false,
+            // A mass action whose affected set is "those creatures" names
+            // the previous instruction's result through its filter. "... this
+            // way" sets bind through their typed prior-action machinery
+            // instead, so they do not demand a fresh result tag here.
+            action => {
+                effect_tagged_filter(effect).is_some_and(|filter| {
+                    filter.union_surface.prior_effect_action().is_none()
+                        && filter_references_tag(
+                            filter,
+                            crate::tag::CompilerReferenceTag::It.as_str(),
+                        )
+                }) || subject_verb_action_value(action).is_some_and(|value| {
+                    value_references_tag(value, crate::tag::CompilerReferenceTag::It.as_str())
+                })
+            }
         },
         EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,

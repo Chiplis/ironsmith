@@ -93,6 +93,22 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
                 Some(player.clone())
             }
         }
+        // "Whenever a source an opponent controls deals damage to you, that
+        // player ...": the damaged player is you, so the only other player
+        // the event names is the source's controller.
+        TriggerSpec::DealsDamageToPlayer { source, player, .. }
+        | TriggerSpec::DealsNoncombatDamageToPlayer { source, player, .. }
+        | TriggerSpec::DealsCombatDamageToPlayer { source, player }
+            if *player == PlayerFilter::You
+                && source
+                    .controller
+                    .as_ref()
+                    .is_some_and(|controller| *controller != PlayerFilter::You) =>
+        {
+            Some(PlayerFilter::AliasedControllerOf(ObjectRef::tagged(
+                crate::tag::CompilerReferenceTag::TriggeringSource.bind(),
+            )))
+        }
         TriggerSpec::ThisDealsDamageToPlayer { .. }
         | TriggerSpec::DealsDamageToPlayer { .. }
         | TriggerSpec::DealsExactDamageToObjectOrPlayer { .. }
@@ -146,6 +162,18 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
                 .is_some() =>
         {
             Some(PlayerFilter::Defending)
+        }
+        // "Whenever an opponent attacks with creatures, ... that opponent":
+        // the attacking player is the only player the event names.
+        TriggerSpec::AttacksOneOrMore(filter)
+            if filter
+                .controller
+                .as_ref()
+                .is_some_and(|controller| *controller != PlayerFilter::You) =>
+        {
+            Some(PlayerFilter::AliasedControllerOf(ObjectRef::tagged(
+                crate::tag::CompilerReferenceTag::Triggering.bind(),
+            )))
         }
         TriggerSpec::AttacksYouOrPlaneswalkerYouControl(_)
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_) => {

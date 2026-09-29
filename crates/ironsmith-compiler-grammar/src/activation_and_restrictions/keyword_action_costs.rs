@@ -442,6 +442,24 @@ fn parse_payment_clause_as_effects(
         )]));
     }
 
+    // "you may have each other player gain 5 life rather than pay ...":
+    // the causative "have" introduces the paying action's own subject. The
+    // clause after it is an ordinary player-subject sentence, so parse it
+    // without the causative verb (which would otherwise hide the subject
+    // and fall back to the payer).
+    let causative_subject = trimmed.len() > 2
+        && trimmed.first().is_some_and(|token| token.is_word("have"))
+        && trimmed.get(1).is_some_and(|token| {
+            token.is_any_word(&[
+                "each", "an", "a", "target", "that", "another", "any", "all", "other",
+            ])
+        });
+    let trimmed = if causative_subject {
+        trimmed[1..].to_vec()
+    } else {
+        trimmed
+    };
+
     let ast = match parse_effect_sentences_lexed(&trimmed) {
         Ok(ast) => ast,
         Err(_) => return Ok(None),

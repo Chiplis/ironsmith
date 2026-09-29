@@ -354,6 +354,60 @@ pub(super) fn compile_put_counters_action(
     if let Some(target_count) = target_count {
         spec = with_target_count_preserving_value(spec, *target_count);
     }
+    // "They put two +1/+1 counters on a creature they control": an untargeted
+    // object choice belongs to the clause's actor. When that actor is another
+    // player, make the selection theirs (as for "sacrifices a permanent of
+    // their choice"); the choice selects nothing when no object qualifies.
+    if !spec.is_target()
+        && !matches!(
+            subject_verb.subject.player,
+            PlayerAst::Implicit | PlayerAst::You
+        )
+    {
+        let chosen = match &spec {
+            ChooseSpec::WithCount(inner, choice_count) => match inner.as_ref() {
+                ChooseSpec::Object(filter) => Some((filter.clone(), *choice_count)),
+                _ => None,
+            },
+            ChooseSpec::Object(filter) => Some((filter.clone(), ChoiceCount::exactly(1))),
+            _ => None,
+        };
+        if let Some((mut filter, choice_count)) = chosen {
+            let subject = resolve_subject_verb_subject(
+                subject_verb_role(subject_verb.subject.role),
+                subject_verb.subject.player,
+                ctx,
+                true,
+                true,
+                true,
+            )?;
+            let chooser = subject.clone_player_filter();
+            if !is_you_player_filter(&chooser) {
+                subject.apply_player_refs_to_filter(&mut filter, ctx);
+                let tag = ctx.next_tag("counters");
+                let choose = crate::effects::ChooseObjectsEffect::new(
+                    filter,
+                    choice_count,
+                    chooser,
+                    tag.clone(),
+                )
+                .in_zone(Zone::Battlefield);
+                let mut put_counters = crate::effects::PutCountersEffect::new(
+                    *counter_type,
+                    resolved_count,
+                    ChooseSpec::Tagged(tag.clone()),
+                );
+                if *distributed {
+                    put_counters = put_counters.with_distributed(true);
+                }
+                ctx.last_object_tag = Some(tag);
+                return Ok((
+                    vec![Effect::new(choose), Effect::new(put_counters)],
+                    subject.into_choices(),
+                ));
+            }
+        }
+    }
     let mut put_counters =
         crate::effects::PutCountersEffect::new(*counter_type, resolved_count, spec.clone());
     if count.has_surface_hint(ironsmith_core::ValueSurfaceHint::BlightKeywordAction) {
@@ -1336,7 +1390,26 @@ pub(super) fn compile_subject_verb_late(
             filter,
         }) => {
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-            let resolved_count = resolve_value_it_tag(count, &current_reference_env(ctx))?;
+            // "put a number of +1/+1 counters on each other creature you
+            // control equal to that creature's toughness": with no outer
+            // object antecedent, the pronoun in the amount names the object
+            // this per-object fanout is currently visiting.
+            let outer_env = current_reference_env(ctx);
+            let count_env = if outer_env.known_last_object_tag().is_none()
+                && crate::tag_support::value_references_tag(
+                    count,
+                    crate::tag::CompilerReferenceTag::It.as_str(),
+                ) {
+                let mut env = outer_env.clone();
+                env.last_object_tag = crate::model::reference_state::RefState::Known(
+                    crate::tag::CompilerReferenceTag::It.bind().into(),
+                );
+                env.iterated_object = true;
+                env
+            } else {
+                outer_env
+            };
+            let resolved_count = resolve_value_it_tag(count, &count_env)?;
             let mut effect = Effect::for_each(
                 resolved_filter,
                 vec![Effect::put_counters(

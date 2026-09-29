@@ -244,8 +244,15 @@ pub fn parse_subject_words(words: &[&str]) -> SubjectAst {
     if is_that_player_or_object_controller(slice) {
         return SubjectAst::Player(PlayerAst::ThatPlayerOrTargetController);
     }
-    if prefix_one_of(slice, &[&["they"], &["that", "player"], &["the", "player"]])
-        || prefix_one_of(slice, &[&["the", "voter"], &["voter"]])
+    if prefix_one_of(
+        slice,
+        &[
+            &["they"],
+            &["that", "player"],
+            &["that", "opponent"],
+            &["the", "player"],
+        ],
+    ) || prefix_one_of(slice, &[&["the", "voter"], &["voter"]])
     {
         return SubjectAst::Player(PlayerAst::That);
     }
@@ -260,7 +267,10 @@ pub fn parse_subject_words(words: &[&str]) -> SubjectAst {
     ) {
         return SubjectAst::Player(PlayerAst::Chosen);
     }
-    if prefix_one_of(slice, &[&["that", "players"], &["their"]]) {
+    if prefix_one_of(
+        slice,
+        &[&["that", "players"], &["that", "opponents"], &["their"]],
+    ) {
         return SubjectAst::Player(PlayerAst::That);
     }
     if prefix_one_of(

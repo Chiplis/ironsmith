@@ -2,6 +2,7 @@ use crate::cards::builders::ObjectChoiceEffectAst;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::LifeResourceActionAst;
 use crate::cards::builders::ZoneMoveActionAst;
+use crate::cards::builders::CounterActionAst;
 use crate::cards::builders::LibraryActionAst;
 fn subject_verb_player_resource_effect(
     role: SubjectVerbRoleAst,
@@ -78,16 +79,32 @@ pub fn parse_effect_with_verb(
             // Prefer zone moves like "... onto the battlefield" over counter placement because
             // "counter(s)" may appear in subordinate clauses (e.g. "mana value equal to the number
             // of charge counters on this artifact").
+            // "They put two +1/+1 counters on a creature they control": the
+            // authored player subject is the actor who makes any untargeted
+            // object choice.
+            let parse_put_counters_with_subject = |tokens: &[OwnedLexToken]| {
+                let mut effect = parse_put_counters(tokens)?;
+                if let Some(player) = extract_subject_player(subject)
+                    && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        subject: counter_subject,
+                        action: SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { .. }),
+                    }) = &mut effect
+                    && counter_subject.player == PlayerAst::Implicit
+                {
+                    counter_subject.player = player;
+                }
+                Ok::<_, CardTextError>(effect)
+            };
             if has_onto || has_from_into_zone_move {
                 if let Ok(effect) = parse_put_into_hand(tokens, subject) {
                     Ok(effect)
                 } else if has_counter_words {
-                    parse_put_counters(tokens)
+                    parse_put_counters_with_subject(tokens)
                 } else {
                     parse_put_into_hand(tokens, subject)
                 }
             } else if has_counter_words {
-                parse_put_counters(tokens)
+                parse_put_counters_with_subject(tokens)
             } else {
                 parse_put_into_hand(tokens, subject)
             }

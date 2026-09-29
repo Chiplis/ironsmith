@@ -1128,6 +1128,33 @@ pub(super) fn normalize_imperative_create_player(effect: &mut EffectAst) -> bool
     false
 }
 
+/// The chain grammar reads a leading bare `discard` as the controller's
+/// imperative. When the chain is the body of another player's offer
+/// ("<player> may discard a card"), the omitted actor is that player, so
+/// return the leading discard to the offer's implicit subject.
+pub fn release_offered_leading_discard_actor(
+    body_tokens: &[OwnedLexToken],
+    effects: &mut [EffectAst],
+) {
+    if !body_tokens
+        .first()
+        .is_some_and(|token| token.is_word("discard"))
+    {
+        return;
+    }
+    if let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        subject,
+        action:
+            SubjectVerbActionAst::ZoneMoves(
+                ZoneMoveActionAst::Discard { .. } | ZoneMoveActionAst::DiscardHand,
+            ),
+    })) = effects.first_mut()
+        && subject.player == PlayerAst::You
+    {
+        subject.player = PlayerAst::Implicit;
+    }
+}
+
 pub fn bind_implicit_player_context(effect: &mut EffectAst, player: PlayerAst) {
     match effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {

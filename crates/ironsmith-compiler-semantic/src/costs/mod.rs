@@ -130,6 +130,14 @@ fn is_payment_effect(effect: &crate::effect::Effect) -> bool {
     {
         return true;
     }
+    // "have each other player gain 5 life": the per-player body is the payment.
+    if let Some(for_players) =
+        effect.downcast_ref::<effects::ForPlayersEffect<crate::effect::Effect>>()
+        && !for_players.effects.is_empty()
+        && for_players.effects.iter().all(is_payment_effect)
+    {
+        return true;
+    }
     if let Some(may) = effect.downcast_ref::<effects::MayEffect<crate::effect::Effect>>()
         && may.effects.iter().all(is_payment_effect)
     {

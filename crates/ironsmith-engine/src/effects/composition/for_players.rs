@@ -398,9 +398,33 @@ fn apply_player_tagged_object_partition(
     }
 }
 
+/// "you may have each other player gain 5 life rather than pay this spell's
+/// mana cost": a per-player body made only of cost-executable effects is
+/// itself payable. Each participant's part is checked when it is executed,
+/// because the iterated player is bound only inside the loop.
+impl crate::effects::CostExecutableEffect for ForPlayersEffect {
+    fn can_execute_as_cost(
+        &self,
+        _game: &GameState,
+        _source: crate::ids::ObjectId,
+        _controller: PlayerId,
+    ) -> Result<(), crate::effects::CostValidationError> {
+        Ok(())
+    }
+}
+
 impl EffectExecutor for ForPlayersEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
+    }
+
+    fn as_cost_executable(&self) -> Option<&dyn crate::effects::CostExecutableEffect> {
+        (!self.effects.is_empty()
+            && self
+                .effects
+                .iter()
+                .all(|effect| effect.0.as_cost_executable().is_some()))
+        .then_some(self as &dyn crate::effects::CostExecutableEffect)
     }
 
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {

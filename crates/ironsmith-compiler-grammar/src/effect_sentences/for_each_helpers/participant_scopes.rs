@@ -9,6 +9,7 @@ pub(super) fn opponent_filter(scope: ForEachParticipantScope) -> Option<PlayerFi
             PlayerFilter::Defending,
         )),
         ForEachParticipantScope::OpponentOfThatPlayer
+        | ForEachParticipantScope::OpponentOfItsController
         | ForEachParticipantScope::Player
         | ForEachParticipantScope::PlayerExceptYou
         | ForEachParticipantScope::PlayerExceptTarget
@@ -39,6 +40,11 @@ pub(super) fn player_filter(scope: ForEachParticipantScope) -> Option<PlayerFilt
         ForEachParticipantScope::OpponentOfThatPlayer => Some(PlayerFilter::OpponentOf(Box::new(
             PlayerFilter::IteratedPlayer,
         ))),
+        ForEachParticipantScope::OpponentOfItsController => Some(PlayerFilter::OpponentOf(
+            Box::new(PlayerFilter::ControllerOf(ObjectRef::tagged(
+                crate::tag::CompilerReferenceTag::It.bind(),
+            ))),
+        )),
         ForEachParticipantScope::Opponent | ForEachParticipantScope::OpponentExceptDefending => {
             None
         }

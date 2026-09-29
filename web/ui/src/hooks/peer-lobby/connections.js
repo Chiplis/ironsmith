@@ -82,6 +82,7 @@ import {
   assertZiffleOpeningOriginMatchesMetadata,
 } from "./shared.js";
 import { recordPeerRtt } from "../../lib/action-diagnostics.js";
+import { MAX_ZIFFLE_REVEAL_TOKEN_TIMEOUT_MS } from "../../lib/ziffle-timeouts.js";
 import { buildZiffleRuntimeManifest } from "../../lib/ziffle-runtime-manifest.js";
 import { checkPeerGenesisAck, genesisRosterPlayers, genesisSeedCommitmentFor, localGenesisAck } from "./genesis-binding.js";
 
@@ -900,6 +901,12 @@ export function usePeerLobbyConnections(base, servicesRef) {
   const PROTOCOL_WAIT_MAX_FORWARD_BYTES = 256 * 1024;
   const PROTOCOL_WAIT_NOTICE_DISPATCH_GRACE_MS = 3000;
   const PROTOCOL_WAIT_VOTE_DEFER_MAX_MS = 10000;
+  // Upper bound on the timeout a requester may declare for one wait; the
+  // largest legitimate request is a full-deck reveal-token batch.
+  const PROTOCOL_WAIT_MAX_RESPONSE_TIMEOUT_MS = Math.max(
+    PROTOCOL_RESPONSE_TIMEOUT_MS,
+    MAX_ZIFFLE_REVEAL_TOKEN_TIMEOUT_MS
+  );
   const PROTOCOL_WAIT_REQUEST_ANSWERERS = {
     crypto_material_request: "answerCryptoMaterialRequest",
     ziffle_reveal_token_request: "answerZiffleRevealTokenRequest",
@@ -924,6 +931,35 @@ export function usePeerLobbyConnections(base, servicesRef) {
       requestPayloadHash: String(notice.requestPayloadHash || ""),
       responseTimeoutMs: Math.max(1, Math.floor(Number(notice.responseTimeoutMs || PROTOCOL_RESPONSE_TIMEOUT_MS))),
     };
+  }
+
+  // A signed notice alone is only the requester's claim that it is waiting.
+  // It earns clock-pause credit (and shields the requester from intent
+  // timeouts) only when the request itself is known to be real: its payload
+  // matched the signed hash and was deliverable to the target, or the target
+  // answered it (the signed answer proves receipt, which covers requests too
+  // large to forward in the notice).
+  function protocolWaitIsSubstantiated(entry) {
+    if (!entry || entry.placeholder) return false;
+    if (entry.answerStatus) return true;
+    return Boolean(entry.requestPayload) && entry.deliverable !== false;
+  }
+
+  function protocolWaitCreditTimeoutMs(entry) {
+    const declared = Math.floor(Number(entry?.responseTimeoutMs || PROTOCOL_RESPONSE_TIMEOUT_MS));
+    return Math.min(
+      PROTOCOL_WAIT_MAX_RESPONSE_TIMEOUT_MS,
+      Math.max(1, Number.isFinite(declared) ? declared : PROTOCOL_RESPONSE_TIMEOUT_MS)
+    );
+  }
+
+  // Past its (bounded) deadline an unanswered wait stops counting: the
+  // requester should have claimed a protocol timeout against the target.
+  function protocolWaitExpired(entry, nowMonoMs = nowMonotonicMs()) {
+    if (!entry || entry.answerStatus) return false;
+    const observedAt = Number(entry.observedAtMonoMs);
+    if (!Number.isFinite(observedAt)) return true;
+    return Number(nowMonoMs) >= observedAt + protocolWaitCreditTimeoutMs(entry);
   }
 
   function protocolWaitAnswerPayload(answer = {}) {
@@ -977,6 +1013,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
       requestHandled: Boolean(existing?.requestHandled),
       requestPayload: extra.requestPayload || existing?.requestPayload || null,
       local: Boolean(extra.local),
+      deliverable: extra.deliverable !== false,
     };
     map.set(key, entry);
     pruneProtocolWaitObservations();
@@ -1052,10 +1089,12 @@ export function usePeerLobbyConnections(base, servicesRef) {
       requestPayloadHash,
       responseTimeoutMs: claim.responseTimeoutMs,
     });
-    const entry = recordProtocolWaitObservation(notice, { requestPayload, local: true });
+    // Peers only credit a wait whose payload they received (or that the
+    // target answered), so the requester's own view applies the same rule.
+    const deliverable = payloadSizeBytes(requestPayload) <= PROTOCOL_WAIT_MAX_FORWARD_BYTES;
+    const entry = recordProtocolWaitObservation(notice, { requestPayload, local: true, deliverable });
     const { keyPair } = await ensureAuditIdentity();
     const signature = await signAuditPayload(keyPair, notice);
-    const deliverable = payloadSizeBytes(requestPayload) <= PROTOCOL_WAIT_MAX_FORWARD_BYTES;
     broadcastProtocolWaitMessage({
       type: "protocol_wait_notice",
       protocolVersion: PROTOCOL_VERSION,
@@ -1258,6 +1297,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
       if (String(entry.matchId || "") !== matchId) continue;
       if (Number(entry.requester) !== Number(requester)) continue;
       if (Number(entry.basisSequence) !== Number(basisSequence || 0)) continue;
+      if (!protocolWaitIsSubstantiated(entry) || protocolWaitExpired(entry)) continue;
       out.push(entry);
     }
     return out;
@@ -1278,8 +1318,14 @@ export function usePeerLobbyConnections(base, servicesRef) {
       if (String(entry.matchId || "") !== matchId) continue;
       if (Number(entry.requester) !== Number(requester) || Number(entry.target) === Number(requester)) continue;
       if (Number(entry.basisSequence) !== basis) continue;
-      const start = Math.max(since, Number(entry.observedAtMonoMs ?? now));
-      const end = Math.min(now, Number(entry.answeredAtMonoMs ?? now));
+      if (!protocolWaitIsSubstantiated(entry)) continue;
+      const observedAt = Number(entry.observedAtMonoMs ?? now);
+      const start = Math.max(since, observedAt);
+      const end = Math.min(
+        now,
+        Number(entry.answeredAtMonoMs ?? now),
+        observedAt + protocolWaitCreditTimeoutMs(entry)
+      );
       if (end > start) intervals.push([start, end]);
     }
     intervals.sort((left, right) => left[0] - right[0]);
@@ -3598,6 +3644,10 @@ export function usePeerLobbyConnections(base, servicesRef) {
       throw new Error("Action intent cancel is not signed by the intent's actor");
     }
     const key = actionIntentKey(verifiedIntent);
+    // A cancel only drops the pending record. If this peer already disclosed
+    // hidden material for the intent, the disclosure lock (validation.js
+    // fairRandomRevealLockKey) survives it and still pins the sequence to the
+    // intent's command, so peeking and then substituting another action fails.
     rememberIgnoredActionIntentKey(key, String(message.reason || "action_intent_cancel"));
     markActionIntentObservationCancelled(key, message.senderIndex);
     const hadPending = pendingActionIntentsRef.current.has(key);

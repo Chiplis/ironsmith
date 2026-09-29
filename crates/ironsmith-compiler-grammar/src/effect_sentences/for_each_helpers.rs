@@ -20,7 +20,7 @@ use super::super::util::{
     comparison_to_value_comparison_operator, parse_for_each_count_value_words, parse_target_phrase,
     replace_unbound_x_with_value, value_contains_unbound_x,
 };
-use super::chain_carry::bind_implicit_player_context;
+use super::chain_carry::{bind_implicit_player_context, release_offered_leading_discard_actor};
 use super::chain_carry::{parse_effect_chain, parse_effect_chain_inner, remove_first_word};
 use super::conditionals::parse_for_each_doesnt_control_lose_game;
 use super::dispatch_entry::replace_unbound_x_in_effects_anywhere;
@@ -627,8 +627,14 @@ fn parse_maybe_effects(
     if !for_each_shapes::contains_may(tokens) {
         return parse_body(tokens);
     }
+    // "For each opponent, you may put ...": an authored "you" names the
+    // player offered the option; the iterated participant is only the key.
+    let offered_to_you = tokens.len() > 2 && tokens[0].is_word("you") && tokens[1].is_word("may");
     let stripped = remove_first_word(tokens);
     let mut effects = parse_body(&stripped)?;
+    // The quantified participant, not the controller, is the actor of a
+    // bare `may discard`.
+    release_offered_leading_discard_actor(&stripped, &mut effects);
     if scope_may_to_that_player {
         // The quantified wrapper supplies the actor. Keep the inner Oracle
         // imperative in its base-verb form (`copy`, `choose`, ...), then bind
@@ -639,6 +645,14 @@ fn parse_maybe_effects(
         for effect in &mut effects {
             bind_implicit_player_context(effect, PlayerAst::That);
         }
+    }
+    if offered_to_you {
+        return Ok(vec![EffectAst::Permissions(
+            PermissionEffectAst::MayByPlayer {
+                player: PlayerAst::You,
+                effects,
+            },
+        )]);
     }
     Ok(vec![EffectAst::Permissions(PermissionEffectAst::May {
         effects,

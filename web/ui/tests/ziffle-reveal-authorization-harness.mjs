@@ -56,6 +56,7 @@ export function authorizationHarness({ requirements = [], stored = [], checkpoin
     shuffleProofMatchesRequirement: (proof, requirement) => proof.requirementId === requirement.id,
     verifiedShuffleProofsRef: { current: new Set() }, nowMonotonicMs: () => 0, recordZiffleShufflePerf: () => {},
     ziffleActionRevealLocksRef: { current: new Map() },
+    fairRandomRevealLockConflict: () => false,
     currentHiddenCardMetadataForObject: async id => metadata(id),
     wasmObjectIdArg: value => value,
     gameRef: { current: { exportSyncCheckpoint: async () => checkpoint,
