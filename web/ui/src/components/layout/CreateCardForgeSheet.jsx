@@ -10,6 +10,7 @@ import {
   setCompiledCardNames,
   setCustomCardArtUrls,
 } from "@/lib/scryfall";
+import { counterDisplayLabel } from "@/lib/mana-assets";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -73,65 +74,48 @@ function blankDraft() {
   };
 }
 
-// These cards intentionally use the compiler's existing "enters with"
-// grammar.  The forge can therefore exercise the real counter snapshot path
-// without adding a test-only mutation to the engine.
-const COUNTER_LAB_PRESETS = [
-  {
-    id: "plus-one",
-    label: "+1/+1",
-    counter: { kind: "Plus One Plus One", amount: 1 },
-    name: "Counter Lab Plus One",
-    cardTypes: ["Creature"],
-    power: "2",
-    toughness: "2",
-    oracleText: "This creature enters with one +1/+1 counter on it.",
-  },
-  {
-    id: "minus-one",
-    label: "-1/-1",
-    counter: { kind: "Minus One Minus One", amount: 1 },
-    name: "Counter Lab Minus One",
-    cardTypes: ["Creature"],
-    power: "2",
-    toughness: "2",
-    oracleText: "This creature enters with one -1/-1 counter on it.",
-  },
-  {
-    id: "charge",
-    label: "charge",
-    counter: { kind: "Charge", amount: 3 },
-    name: "Counter Lab Charge",
-    cardTypes: ["Artifact"],
-    oracleText: "This artifact enters with three charge counters on it.",
-  },
-  {
-    id: "time",
-    label: "time",
-    counter: { kind: "Time", amount: 3 },
-    name: "Counter Lab Time",
-    cardTypes: ["Artifact"],
-    oracleText: "This artifact enters with three time counters on it.",
-  },
-  {
-    id: "stun",
-    label: "stun",
-    counter: { kind: "Stun", amount: 2 },
-    name: "Counter Lab Stun",
-    cardTypes: ["Creature"],
-    power: "3",
-    toughness: "3",
-    oracleText: "This creature enters with two stun counters on it.",
-  },
-  {
-    id: "lore",
-    label: "lore",
-    counter: { kind: "Lore", amount: 1 },
-    name: "Counter Lab Lore",
-    cardTypes: ["Enchantment"],
-    oracleText: "This enchantment enters with one lore counter on it.",
-  },
+// Keep this list aligned with the engine's CounterType enum. The showcase
+// uses direct counter seeding, so it can inspect every supported badge without
+// changing card rules or requiring a bespoke oracle-text sentence per type.
+const COUNTER_LAB_COUNTER_KINDS = [
+  "Plus One Plus One", "Minus One Minus One", "+1/+0", "+0/+1", "+1/+2", "+2/+2",
+  "-0/-1", "-0/-2", "-2/-1", "-2/-2", "Deathtouch", "Decayed", "Double Strike",
+  "First Strike", "Flying", "Haste", "Hexproof", "Indestructible", "Lifelink", "Menace",
+  "Reach", "Trample", "Vigilance", "Loyalty", "Charge", "Age", "Aim", "Arrow",
+  "Awakening", "Blood", "Brain", "Bounty", "Brick", "Corpse", "Credit", "Crystal",
+  "Cube", "Currency", "Death", "Defense", "Depletion", "Despair", "Devotion", "Divinity",
+  "Doom", "Dream", "Echo", "Egg", "Energy", "Enlightened", "Eon", "Experience",
+  "Eyeball", "Fade", "Fate", "Feather", "Filibuster", "Finality", "Flame", "Flood",
+  "Foreshadow", "Fungus", "Fuse", "Gem", "Glyph", "Gold", "Growth", "Hatchling",
+  "Healing", "Hit", "Hoofprint", "Hour", "Hunger", "Ice", "Incarnation", "Infection",
+  "Intervention", "Isolation", "Javelin", "Ki", "Keyword", "Knowledge", "Level", "Lore",
+  "Luck", "Magnet", "Manifestation", "Mannequin", "Matrix", "Mine", "Mining", "Mire",
+  "Music", "Muster", "Net", "Night", "Oil", "Omen", "Ore", "Page", "Pain",
+  "Paralyzation", "Petal", "Petrification", "Phylactery", "Pin", "Plague", "Plot", "Polyp",
+  "Poison", "Pressure", "Prey", "Pupa", "Quest", "Rad", "Scream", "Shield", "Silver",
+  "Sleep", "Slime", "Slumber", "Soot", "Soul", "Spore", "Storage", "Strife", "Study",
+  "Stun", "Void", "Task", "Theft", "Tide", "Time", "Tower", "Training", "Trap",
+  "Treasure", "Unity", "Velocity", "Verse", "Vitality", "Volatile", "Voyage", "Wage",
+  "Winch", "Wind", "Wish",
 ];
+
+function counterLabLabel(kind) {
+  return counterDisplayLabel(kind)
+    || String(kind).replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+}
+
+const COUNTER_LAB_PRESETS = COUNTER_LAB_COUNTER_KINDS.map((kind, index) => {
+  const label = counterLabLabel(kind);
+  const slug = label.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
+  return {
+    id: `counter-lab-${index}-${slug}`,
+    label,
+    counter: { kind, amount: 1 },
+    name: `Counter Lab ${label}`,
+    cardTypes: ["Artifact"],
+    oracleText: "",
+  };
+});
 
 function counterLabDraft(preset) {
   const face = blankFace(preset.name);
@@ -646,10 +630,12 @@ export default function CreateCardForgeSheet({
               playerIndex: selectedPlayer,
               counterSeed: preset.counter,
               // Reuse the placement selector so the showcase can exercise
-              // counters on cards that start in the graveyard or exile too.
+              // counters in every visible zone without authoring one rule
+              // sentence per counter kind.
               zoneName: zone,
-              // The counter-bearing static abilities must resolve on entry.
-              skipTriggers: false,
+              // This is an explicit visual lab: seed the same runtime counter
+              // snapshot directly and leave normal card rules untouched.
+              skipTriggers: true,
             });
             created.push(preset.label);
           } catch (error) {
