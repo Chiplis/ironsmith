@@ -800,6 +800,8 @@ impl SyncObligationFilterContext {
                 .map(|(id, outcome)| (ironsmith::effect::EffectId(id), outcome))
                 .collect(),
             stack_entry: self.stack_entry.map(ObjectId::from_raw),
+            // Transient: only bound while a filter compares a candidate.
+            filter_candidate_players: None,
         })
     }
 }

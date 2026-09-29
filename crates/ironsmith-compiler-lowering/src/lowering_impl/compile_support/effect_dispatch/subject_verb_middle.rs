@@ -380,16 +380,21 @@ pub(super) fn compile_target_only_action(
     Ok((vec![effect], choices))
 }
 
+/// Whether `spec` is the bare pronoun `it` ("its power"). Only the pronoun
+/// names the object this clause acts on; a demonstrative or participle
+/// reference ("that spell's", "that artifact's", "the sacrificed creature's")
+/// keeps its own antecedent even though it is spelled with the same `it` tag.
 fn spec_is_it_tag(spec: &ChooseSpec) -> bool {
-    matches!(
-        spec.base(),
-        ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
-    ) || (matches!(spec.base(), ChooseSpec::Source)
-        && matches!(
-            spec.source_reference_surface(),
-            Some(crate::target::SourceReferenceSurface::ThisPermanentType(text))
-                if text.eq_ignore_ascii_case("it")
-        ))
+    let names_pronoun = matches!(
+        spec.source_reference_surface(),
+        Some(crate::target::SourceReferenceSurface::ThisPermanentType(text))
+            if text.eq_ignore_ascii_case("it")
+    );
+    names_pronoun
+        && (matches!(
+            spec.base(),
+            ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+        ) || matches!(spec.base(), ChooseSpec::Source))
 }
 
 /// Whether a value reads a characteristic of the pronoun `it` ("its power").
@@ -471,6 +476,7 @@ pub(super) fn compile_pump_action(
     ) || matches!(target, TargetAst::Source(..));
     let bind_it_to_target = !target_is_pronoun
         && (value_names_it_characteristic(power) || value_names_it_characteristic(toughness));
+    let pump_reference_env = current_reference_env(ctx);
     let resolved_power = resolve_value_it_tag(power, &current_reference_env(ctx))?;
     let resolved_toughness = resolve_value_it_tag(toughness, &current_reference_env(ctx))?;
     // The condition is bound before the closure, which cannot carry an error.
@@ -478,13 +484,28 @@ pub(super) fn compile_pump_action(
         .as_ref()
         .map(crate::lowering_support::resolve_intervening_if_without_trigger)
         .transpose()?;
+    let newest_antecedent = ctx.last_object_tag.clone();
     compile_tagged_effect_for_target(target, ctx, "pumped", |spec| {
         let source_reference_surface = spec.source_reference_surface().cloned();
-        let (power, toughness) = if bind_it_to_target {
-            (
-                bind_it_characteristic_to_spec(power, &spec),
-                bind_it_characteristic_to_spec(toughness, &spec),
-            )
+        // A definite description whose noun skipped past the newest object
+        // antecedent ("... reveal a nonland card. That creature gets +X/-X,
+        // where X is that card's mana value") leaves the value's own
+        // reference on that newest antecedent.
+        let target_skipped_newest_antecedent = matches!(
+            spec.base(),
+            ChooseSpec::Tagged(tag) if newest_antecedent.as_ref().is_some_and(|newest| {
+                newest != tag
+                    && ironsmith_compiler_resolve::reference_helpers::is_noun_restricted_object_result_tag(newest)
+            })
+        );
+        let (power, toughness) = if bind_it_to_target && !target_skipped_newest_antecedent {
+            // Any other `it`-spelled reference in the same value keeps its
+            // ordinary antecedent.
+            let bind = |value: &Value| {
+                let bound = bind_it_characteristic_to_spec(value, &spec);
+                resolve_value_it_tag(&bound, &pump_reference_env).unwrap_or(bound)
+            };
+            (bind(power), bind(toughness))
         } else {
             (resolved_power.clone(), resolved_toughness.clone())
         };
@@ -1497,7 +1518,7 @@ pub(super) fn compile_subject_verb_middle(
             }
             let mut effect = Effect::new(exile_until);
             if spec.is_target() || names_exiled_object {
-                let tag = ctx.next_tag("exiled");
+                let tag = reserved_or_next_object_tag(ctx, "exiled");
                 effect = effect.tag(tag.clone());
                 ctx.last_object_tag = Some(tag);
             }
@@ -1845,9 +1866,21 @@ pub(super) fn compile_subject_verb_middle(
                     Some(crate::effects::LibraryPlacementOrder::Random)
                 }
                 Some(crate::cards::builders::LibraryBottomOrderAst::ChooserChooses) => {
+                    // "<player> puts them on top of their library in any
+                    // order": the player performing the move orders the
+                    // cards unless the text names another chooser.
+                    let order_chooser = if matches!(*library_order_chooser, PlayerAst::Implicit)
+                        && !matches!(
+                            player,
+                            PlayerAst::Implicit | PlayerAst::Target | PlayerAst::TargetOpponent
+                        ) {
+                        player
+                    } else {
+                        *library_order_chooser
+                    };
                     Some(crate::effects::LibraryPlacementOrder::ChosenBy(
                         resolve_non_target_player_filter(
-                            *library_order_chooser,
+                            order_chooser,
                             &current_reference_env(ctx),
                         )?,
                     ))
@@ -2044,16 +2077,19 @@ pub(super) fn compile_subject_verb_middle(
                     choices,
                 )));
             }
-            if matches!(
-                spec.base(),
-                ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
-            ) && let Some(tag) = ctx.last_exiled_collection_tag.clone()
+            if !explicitly_counted_source_collection
+                && matches!(
+                    spec.base(),
+                    ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
+                )
+                && let Some(tag) = ctx.last_exiled_collection_tag.clone()
             {
                 // A captured exile reference only denotes the object still in exile.
                 spec = ChooseSpec::All(ObjectFilter::exact_tagged(tag).in_zone(Zone::Exile));
             }
             if *zone != Zone::Battlefield
                 && !explicitly_counted_source_collection
+                && !spec.is_target()
                 && let ChooseSpec::Object(filter) = spec.base()
                 && filter.zone == Some(Zone::Exile)
                 && filter.tagged_constraints.iter().any(|constraint| {
@@ -2074,7 +2110,10 @@ pub(super) fn compile_subject_verb_middle(
                 }
                 spec = ChooseSpec::All(filter);
             }
+            // `a card exiled with this Saga` chooses one of the linked cards;
+            // only an uncounted reference moves the whole linked collection.
             if *zone != Zone::Battlefield
+                && !explicitly_counted_source_collection
                 && matches!(
                     spec.base(),
                     ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
@@ -2869,6 +2908,7 @@ pub(super) fn compile_subject_verb_middle(
             tapped,
             enters_with_counters,
             enters_under_your_control,
+            enters_under_player,
         }) => {
             let (chooser_filter, chooser_choices) = if matches!(*chooser, PlayerAst::Implicit) {
                 // An omitted search actor is always the resolving spell or
@@ -2988,7 +3028,20 @@ pub(super) fn compile_subject_verb_middle(
                     // Default: the found card stays under the control of the
                     // player whose library was searched. An authored "under
                     // your control" hands it to the searcher instead.
-                    let entry_controller = if *enters_under_your_control {
+                    let entry_controller = if let Some(controller) = enters_under_player {
+                        let controller = LoweredSubject::resolve_affected_player(
+                            *controller,
+                            ctx,
+                            true,
+                            true,
+                            false,
+                        )?;
+                        let filter = controller.clone_player_filter();
+                        for choice in controller.into_choices() {
+                            push_choice(&mut choices, choice);
+                        }
+                        filter
+                    } else if *enters_under_your_control {
                         PlayerFilter::You
                     } else {
                         player_filter.clone()
@@ -3600,7 +3653,17 @@ pub(super) fn compile_subject_verb_middle(
             };
             effect = effect.with_mode(compiled_mode);
 
-            let effect = tag_object_target_effect(Effect::new(effect), &spec, ctx, "retargeted");
+            // Retargeting an already-tagged stack object (a copy) keeps that
+            // object as the antecedent; reference annotation mints no result
+            // tag for it, so minting one here would shift later ordinals.
+            let effect = if let ChooseSpec::Tagged(tag) = spec.base() {
+                if ctx.auto_tag_object_targets {
+                    ctx.last_object_tag = Some(tag.clone());
+                }
+                Effect::new(effect)
+            } else {
+                tag_object_target_effect(Effect::new(effect), &spec, ctx, "retargeted")
+            };
             Ok((vec![effect], choices))
         }
         _ => return Ok(None),

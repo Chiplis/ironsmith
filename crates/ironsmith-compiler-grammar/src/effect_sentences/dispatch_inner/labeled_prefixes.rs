@@ -142,7 +142,13 @@ fn parse_effect_sentence_inner_lexed_unstacked(
     Ok(effects)
 }
 
-fn lower_matching_spell_cost_reduction_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+pub(crate) fn lower_matching_spell_cost_reduction_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    // "If they do, spells they cast this turn cost ..." is a result envelope
+    // around the modifier; the leading-result reading owns the envelope and
+    // reads only the consequence, so the prefix never joins the spell filter.
+    if crate::grammar::structure::split_leading_result_prefix_lexed(tokens).is_some() {
+        return None;
+    }
     let shape =
         effect_grammar::labeled_dispatch::parse_matching_spell_cost_reduction_shape(tokens)?;
     let mut reduction = shape.reduction;
@@ -152,6 +158,17 @@ fn lower_matching_spell_cost_reduction_sentence(tokens: &[OwnedLexToken]) -> Opt
         reduction = where_value;
     }
 
+    if shape.increase {
+        return (!matches!(reduction, Value::X)).then(|| {
+            EffectAst::subject_verb_increase_matching_spell_cost(
+                shape.player,
+                shape.filter,
+                reduction,
+                shape.duration,
+                shape.next_spell,
+            )
+        });
+    }
     if let Some(mana_reduction) = shape.next_spell_mana_reduction {
         Some(EffectAst::subject_verb_reduce_next_spell_cost_this_turn(
             shape.player,

@@ -85,6 +85,12 @@ pub enum ExistentialConditionTail<'a> {
         counter_type: CounterType,
     },
     SourceInGraveyard,
+    /// `there are exactly three tide counters on this enchantment`: the
+    /// counted objects are counters on the source, not objects of the
+    /// source's type.
+    CountersOnSource {
+        counter_type: Option<CounterType>,
+    },
     Generic {
         filter_tokens: &'a [OwnedLexToken],
     },
@@ -294,6 +300,8 @@ pub fn parse_existential_condition_shape(
         }
     } else if parse_source_in_graveyard_condition(filter_tokens) {
         ExistentialConditionTail::SourceInGraveyard
+    } else if let Some(counter_type) = parse_counters_on_source_tail(filter_tokens) {
+        ExistentialConditionTail::CountersOnSource { counter_type }
     } else {
         ExistentialConditionTail::Generic { filter_tokens }
     };
@@ -756,6 +764,27 @@ fn parse_counter_among_tail(tokens: &[OwnedLexToken]) -> Option<(CounterType, &[
     let descriptor = TokenWordView::new(&tokens[..counter_token]);
     let word = descriptor.get(descriptor.len().checked_sub(1)?)?;
     Some((filters::parse_counter_type_word(word)?, filter_tokens))
+}
+
+/// `[kind] counter(s) on (it | this <noun>)`. Returns the optional counter
+/// kind when the whole tail names counters on the source.
+fn parse_counters_on_source_tail(tokens: &[OwnedLexToken]) -> Option<Option<CounterType>> {
+    let (counter_token, _, holder) = primitives::find_prefix(tokens, || {
+        (
+            alt((primitives::kw("counter"), primitives::kw("counters"))),
+            primitives::kw("on"),
+        )
+            .void()
+    })?;
+    if holder.is_empty() || !is_source_condition_subject(holder) {
+        return None;
+    }
+    if counter_token == 0 {
+        return Some(None);
+    }
+    Some(Some(filters::parse_counter_type_from_tokens(
+        &tokens[..counter_token],
+    )?))
 }
 
 fn is_source_condition_subject(tokens: &[OwnedLexToken]) -> bool {

@@ -692,6 +692,29 @@ fn replace_names_with_map(
             })
     }
 
+    /// "Target Assembly-Worker creature" on a card named Assembly-Worker: a
+    /// name spelled as a subtype between a selecting word and a type noun
+    /// describes a class of objects, not this object.
+    fn is_subtype_descriptor_usage(bytes: &[u8], idx: usize, len: usize) -> bool {
+        previous_word(bytes, idx).is_some_and(|word| {
+            matches!(word, b"target" | b"other" | b"another" | b"each" | b"all")
+        }) && next_word(bytes, idx + len).is_some_and(|word| {
+            matches!(
+                word,
+                b"creature"
+                    | b"creatures"
+                    | b"card"
+                    | b"cards"
+                    | b"permanent"
+                    | b"permanents"
+                    | b"token"
+                    | b"tokens"
+                    | b"spell"
+                    | b"spells"
+            )
+        })
+    }
+
     let lower = line.to_ascii_lowercase();
     let bytes = lower.as_bytes();
     let full_bytes = full_name.text.as_bytes();
@@ -715,6 +738,7 @@ fn replace_names_with_map(
             && !appears_to_be_created_token_name(bytes, idx, full_bytes.len())
             && !within_vote_choice_clause(bytes, line_tokens, idx)
             && !is_indefinite_become_descriptor(bytes, idx)
+            && !is_subtype_descriptor_usage(bytes, idx, full_bytes.len())
             && !(preserve_source_surfaces
                 && should_preserve_source_surface_context(
                     bytes,

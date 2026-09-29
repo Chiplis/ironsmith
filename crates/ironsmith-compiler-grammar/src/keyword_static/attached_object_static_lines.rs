@@ -1457,6 +1457,26 @@ pub fn parse_attached_cant_attack_or_block_line(
         ));
         return Ok(Some(restriction));
     }
+    // "Enchanted creature can't block as long as <condition>": the suffix is
+    // the grant's condition, never an object the restriction names.
+    // "can't be blocked as long as" belongs to
+    // `parse_subject_cant_be_blocked_as_long_as_condition_line`.
+    if let attached_grammar::AttachedConditionSuffix::Clause {
+        ability_tokens,
+        condition_tokens,
+    } = attached_grammar::split_attached_condition_suffix_tokens(tokens)
+        && !ability_tokens
+            .windows(2)
+            .any(|pair| pair[0].is_word("be") && pair[1].is_word("blocked"))
+        && let Some(mut restriction) = parse_attached_cant_attack_or_block_line(&ability_tokens)?
+        && let StaticAbilityAst::AttachedStaticAbilityGrant { condition, .. } = &mut restriction
+        && condition.is_none()
+    {
+        *condition = Some(bind_condition_to_attached_object(
+            parse_static_condition_clause(&condition_tokens)?,
+        ));
+        return Ok(Some(restriction));
+    }
     if let Some((subject, actions)) =
         attached_grammar::parse_attached_action_restriction_list_tokens(tokens).filter(|_| {
             attached_grammar::parse_attached_combat_restriction_tokens(tokens).is_none()

@@ -577,6 +577,9 @@ mod chain_entry_readings;
 fn parse_effect_chain_lexed_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effect) = matching_spell_cost_modifier_chain(tokens) {
+        return Ok(vec![effect]);
+    }
     let input = chain_entry_readings::ChainEntry {
         tokens,
         read_by_cache: Default::default(),
@@ -1285,6 +1288,22 @@ pub fn append_missing_coordinated_return_discard_tail(
     Ok(())
 }
 
+/// A whole chain that is one "spells <player> cast(s) this turn cost {N}
+/// less/more to cast" sentence is a resolving, turn-scoped spell-cost
+/// modifier. Result consequences ("If they do, spells they cast this turn
+/// cost {2} more to cast") reach the chain parser directly, where the clause
+/// splitter would otherwise read `cost` as a static ability of the source.
+fn matching_spell_cost_modifier_chain(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    // A coordinated chain ("..., then spells you cast ...") has another
+    // action the single-sentence modifier reading would swallow.
+    if tokens.iter().any(|token| token.is_word("then")) {
+        return None;
+    }
+    super::dispatch_inner::lower_matching_spell_cost_reduction_sentence(
+        crate::util::trim_edge_punctuation_tokens(tokens),
+    )
+}
+
 pub fn parse_effect_chain_inner_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
@@ -1313,6 +1332,9 @@ fn parse_effect_chain_inner_lexed_unstacked(
         {
             return parse_effect_chain_inner_lexed_unstacked(tokens, false);
         }
+    }
+    if let Some(effect) = matching_spell_cost_modifier_chain(tokens) {
+        return Ok(vec![effect]);
     }
     let input = inner_chain_readings::InnerChain {
         tokens,

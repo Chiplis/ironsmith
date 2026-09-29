@@ -173,6 +173,41 @@ pub fn parse_equal_to_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Option
     )
 }
 
+/// Inside an object-filter comparison ("target creature with mana value less
+/// than or equal to the number of cards in its controller's graveyard"), the
+/// possessive "its" names the candidate object being filtered, not the source.
+/// The standalone value reader binds that graveyard to the source controller
+/// ("you"); rebind it to the candidate's controller here.
+fn bind_candidate_controller_graveyard_count(operand: Value, operand_words: &[&str]) -> Value {
+    let names_candidate_controller_graveyard = operand_words.windows(3).any(|window| {
+        matches!(
+            window,
+            ["its", "controller" | "controllers" | "controller's", "graveyard"]
+        )
+    });
+    if !names_candidate_controller_graveyard {
+        return operand;
+    }
+    fn rebind(value: &mut Value) -> bool {
+        match value {
+            Value::SurfaceHinted { value, .. } => rebind(value),
+            Value::Count(filter) | Value::CountScaled(filter, _)
+                if filter.zone == Some(crate::zone::Zone::Graveyard)
+                    && filter.owner == Some(PlayerFilter::You) =>
+            {
+                filter.owner = Some(PlayerFilter::ControllerOf(
+                    crate::filter::ObjectRef::FilterCandidate,
+                ));
+                true
+            }
+            _ => false,
+        }
+    }
+    let mut operand = operand;
+    rebind(&mut operand);
+    operand
+}
+
 pub fn parse_filter_comparison_tokens(
     axis: &str,
     tokens: &[&str],
@@ -294,6 +329,8 @@ pub fn parse_filter_comparison_tokens(
                     clause_words.join(" ")
                 ))
             })?;
+        let operand =
+            bind_candidate_controller_graveyard_count(operand, &operand_words[..used]);
         let operand = if starts_explicit_ordered_comparison(tokens, operator)
             && !matches!(operand.unhinted(), Value::Fixed(_))
         {

@@ -3983,6 +3983,7 @@ fn filter_applicability_cacheable(filter: &ObjectFilter, layer: Layer) -> bool {
 
 fn filter_reads_ability_characteristics(filter: &ObjectFilter) -> bool {
     filter.has_tap_activated_ability
+        || filter.has_non_mana_activated_ability
         || filter.no_abilities
         || !filter.static_abilities.is_empty()
         || !filter.excluded_static_abilities.is_empty()
@@ -4675,6 +4676,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.in_combat_with_source
         || filter.in_combat_with.is_some()
         || filter.entered_since_your_last_turn_ended
+        || filter.controlled_continuously_since_turn_began.is_some()
         || filter.didnt_enter_battlefield_this_turn
         || filter.entered_battlefield_this_turn
         || filter.entered_battlefield_controller.is_some()

@@ -418,7 +418,18 @@ fn normalize_modal_ast(modal: ParsedModalAst) -> Result<NormalizedModalAst, Card
 
     let mut modes = Vec::with_capacity(modal.modes.len());
     for mode in modal.modes {
-        let prepared = stage_effects_for_lowering(&mode.effects_ast, ReferenceImports::default())?;
+        // A triggered mode's pronouns ("• Put a +1/+1 counter on that
+        // creature", "• It gains double strike") name the trigger's event
+        // object exactly like an unmoded trigger body does.
+        let prepared = if let Some(trigger) = modal.header.trigger.as_ref() {
+            stage_effects_with_trigger_context_for_lowering(
+                Some(trigger),
+                &mode.effects_ast,
+                ReferenceImports::default(),
+            )?
+        } else {
+            stage_effects_for_lowering(&mode.effects_ast, ReferenceImports::default())?
+        };
         modes.push(NormalizedModalModeAst {
             info: mode.info,
             description: mode.description,

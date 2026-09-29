@@ -95,5 +95,7 @@ pub enum StackActionAst {
         reduction: Value,
         duration: Until,
         next_only: bool,
+        /// "... cost {N} more to cast": `reduction` is an increase instead.
+        increase: bool,
     },
 }

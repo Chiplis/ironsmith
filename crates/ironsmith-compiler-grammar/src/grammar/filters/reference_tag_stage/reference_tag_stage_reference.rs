@@ -500,6 +500,7 @@ pub(in super::super) fn parse_object_filter_inner(
 
     let mut all_words = non_article_word_refs(&all_words_with_articles);
     let has_tap_activated_ability = has_tap_activated_ability_phrase(&all_words);
+    let has_non_mana_activated_ability = has_non_mana_activated_ability_phrase(&all_words);
     if parse_phrase_whole(
         &non_article_parser_word_refs(&base_tokens),
         ACTIVATED_ABILITY_WORDS,
@@ -551,7 +552,7 @@ pub(in super::super) fn parse_object_filter_inner(
         filter.any_of = vec![ObjectFilter::activated_ability(), triggered];
     } else if (parse_phrase_anywhere(&ability_words, &["activated", "ability"]).is_some()
         || parse_phrase_anywhere(&ability_words, &["activated", "abilities"]).is_some())
-        && (!has_tap_activated_ability
+        && (!(has_tap_activated_ability || has_non_mana_activated_ability)
             || crate::word_primitives::parse_any_sequence_prefix(
                 &ability_words,
                 &[&["activated", "ability"], &["activated", "abilities"]],
@@ -741,6 +742,8 @@ pub(in super::super) fn parse_object_filter_inner(
     let _ = try_apply_target_choice_attribution_reference(&mut filter, &mut all_words);
 
     let _ = try_apply_entered_since_your_last_turn_ended_clause(&mut filter, &mut all_words);
+
+    let _ = try_apply_controlled_continuously_since_turn_began_clause(&mut filter, &mut all_words);
 
     strip_object_filter_face_state_words(&mut filter, &mut all_words);
 
@@ -1084,6 +1087,9 @@ pub(in super::super) fn parse_object_filter_inner(
 
     if has_tap_activated_ability {
         filter.has_tap_activated_ability = true;
+    }
+    if has_non_mana_activated_ability {
+        filter.has_non_mana_activated_ability = true;
     }
 
     let mut referenced_zones = Vec::new();
@@ -1553,6 +1559,21 @@ pub(in super::super) fn parse_object_filter_inner(
             &negated_phrase,
         )
         .is_some()
+        {
+            filter.didnt_attack_this_turn = true;
+            filter.attacked_this_turn = false;
+        }
+    }
+    // A terminal "that didn't attack" (Total War) is evaluated during the
+    // declare-attackers event of the current turn, so it is the same
+    // turn-history predicate as "didn't attack this turn".
+    {
+        let segment_words = non_article_parser_word_refs(&segment_tokens);
+        let len = segment_words.len();
+        if len >= 3
+            && segment_words[len - 3] == "that"
+            && matches!(segment_words[len - 2], "didn't" | "didnt")
+            && segment_words[len - 1] == "attack"
         {
             filter.didnt_attack_this_turn = true;
             filter.attacked_this_turn = false;

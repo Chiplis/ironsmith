@@ -2033,6 +2033,23 @@ fn parse_static_ability_ast_line_lexed_unstacked(
             return parse_static_ability_ast_line_lexed_unstacked(&visible);
         }
     }
+    // A named (non-keyword) ability label before a leading static condition
+    // ("Chef's Knife — During your turn, this creature has ...") is flavor:
+    // left in place it hides the condition prefix from every condition-aware
+    // reading, so the condition is dropped and the subject misread.
+    if let Some((label_tokens, body_tokens)) = split_em_dash_label_prefix_tokens(tokens)
+        && !label_tokens.is_empty()
+        && !body_tokens.is_empty()
+        && super::grammar::document_shapes::parse_label_prefix_kind_tokens(label_tokens).is_none()
+        && label_tokens.iter().all(|token| token.as_word().is_some())
+        && {
+            let body_words = parser_token_word_refs(body_tokens);
+            matches!(body_words.first(), Some(&"during"))
+                || matches!(body_words.get(..3), Some(["as", "long", "as"]))
+        }
+    {
+        return parse_static_ability_ast_line_lexed_unstacked(body_tokens);
+    }
     if let Some(abilities) = parse_conditional_source_characteristics_and_predicate_line(tokens)? {
         return Ok(Some(abilities));
     }
@@ -4023,6 +4040,13 @@ pub fn parse_choose_named_options_as_enters_line(
         || parse_choose_land_type_phrase_words(choice_words) == Some(choice_words.len())
         || parse_choose_creature_type_phrase_words(choice_words)?
             .is_some_and(|(consumed, _)| consumed == choice_words.len())
+        // "choose a card type other than creature or land" is one card-type
+        // choice with excluded options, not two named alternatives.
+        || (crate::word_primitives::sequence_occurs(choice_words, &["card", "type"])
+            && super::activation_and_restrictions::parse_choose_card_type_phrase_words(
+                choice_words,
+            )?
+            .is_some_and(|(consumed, _)| consumed == choice_words.len()))
     {
         return Ok(None);
     }

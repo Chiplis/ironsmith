@@ -3,7 +3,9 @@
 use crate::ability::{Ability, AbilityKind, TriggeredAbility};
 use crate::cards::{CardDefinition, CardDefinitionBuilder};
 use crate::effect::{Condition, Effect};
-use crate::filter::{Comparison, ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+use crate::filter::{
+    Comparison, ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation,
+};
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::object::CounterType;
@@ -46,7 +48,10 @@ pub fn wicked_role_token_definition() -> CardDefinition {
     .with_ability(
         Ability::triggered(
             Trigger::this_dies(),
-            vec![Effect::for_each_opponent(vec![Effect::lose_life(1)])],
+            vec![Effect::for_each_opponent(vec![Effect::lose_life_player(
+                1,
+                PlayerFilter::IteratedPlayer,
+            )])],
         )
         ,
     )

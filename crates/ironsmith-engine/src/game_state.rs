@@ -1993,6 +1993,9 @@ pub struct TemporarySpellCostReductionEffectInstance {
     pub reduction: crate::mana::ManaCost,
     pub generic_reduction: Option<crate::effect::Value>,
     pub applies_to_all_matching_this_turn: bool,
+    /// The generic amount is a cost increase ("... cost {N} more to cast")
+    /// rather than a reduction.
+    pub increases_cost: bool,
     pub duration: crate::effect::Until,
     pub remaining_uses: u32,
     pub expires_end_of_turn: u32,
@@ -5033,6 +5036,7 @@ impl GameState {
             || filter.in_combat_with_source
             || filter.in_combat_with.is_some()
             || filter.entered_since_your_last_turn_ended
+            || filter.controlled_continuously_since_turn_began.is_some()
             || filter.didnt_enter_battlefield_this_turn
             || filter.entered_battlefield_this_turn
             || filter.entered_graveyard_this_turn
@@ -5784,6 +5788,7 @@ impl GameState {
                 reduction,
                 generic_reduction: None,
                 applies_to_all_matching_this_turn: false,
+                increases_cost: false,
                 duration,
                 remaining_uses,
                 expires_end_of_turn: self.turn.turn_number,
@@ -5850,6 +5855,39 @@ impl GameState {
                 reduction: crate::mana::ManaCost::new(),
                 generic_reduction: Some(generic_reduction),
                 applies_to_all_matching_this_turn,
+                increases_cost: false,
+                duration,
+                remaining_uses,
+                expires_end_of_turn: self.turn.turn_number,
+            },
+        );
+    }
+
+    /// Register a turn-scoped generic cost increase for spells `player`
+    /// casts ("spells they cast this turn cost {2} more to cast"). The rule
+    /// lives in the effect store, independent of the object that created it.
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_temporary_generic_spell_cost_increase_until(
+        &mut self,
+        player: PlayerId,
+        source: ObjectId,
+        duration_controller: PlayerId,
+        filter: crate::target::ObjectFilter,
+        generic_increase: crate::effect::Value,
+        remaining_uses: u32,
+        applies_to_all_matching_this_turn: bool,
+        duration: crate::effect::Until,
+    ) {
+        self.effect_store.temporary_spell_cost_reductions.push(
+            TemporarySpellCostReductionEffectInstance {
+                player,
+                source,
+                duration_controller,
+                filter,
+                reduction: crate::mana::ManaCost::new(),
+                generic_reduction: Some(generic_increase),
+                applies_to_all_matching_this_turn,
+                increases_cost: true,
                 duration,
                 remaining_uses,
                 expires_end_of_turn: self.turn.turn_number,

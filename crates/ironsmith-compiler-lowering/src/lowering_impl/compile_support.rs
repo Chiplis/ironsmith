@@ -195,6 +195,11 @@ pub fn compile_annotated_effects_with_context(
 
     while idx < annotated.effects.len() {
         let current = &annotated.effects[idx];
+        let mut id_gen = ctx.id_gen_context();
+        if id_gen.next_tag_id < current.tag_id_floor {
+            id_gen.next_tag_id = current.tag_id_floor;
+            ctx.apply_id_gen_context(id_gen);
+        }
         apply_local_reference_env_for_effect(ctx, &current.in_env, &current.effect);
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:

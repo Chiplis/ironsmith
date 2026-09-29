@@ -537,6 +537,83 @@ pub(super) fn try_apply_entered_since_your_last_turn_ended_clause(
     true
 }
 
+/// Reads "[that] (the|that) [active] player (has|hasn't|didn't) control(led)
+/// continuously since the beginning of the turn" at the start of `words`.
+/// Returns the consumed length, the polarity (`true` for "has controlled"),
+/// and whether the player is named as the active player.
+fn parse_controlled_continuously_since_turn_began_words(
+    words: &[&str],
+) -> Option<(usize, bool, bool)> {
+    // Articles are usually already stripped from filter words, so "the" is
+    // optional everywhere; "that" may be a relative pronoun, a demonstrative,
+    // or both ("that that player").
+    let mut idx = 0usize;
+    while idx < 2 && matches!(words.get(idx), Some(&"the" | &"that")) {
+        idx += 1;
+    }
+    let active = words.get(idx) == Some(&"active");
+    if active {
+        idx += 1;
+    }
+    if words.get(idx) != Some(&"player") {
+        return None;
+    }
+    idx += 1;
+    let positive = match words.get(idx..) {
+        Some(["has", "not", ..]) | Some(["did", "not", ..]) => {
+            idx += 2;
+            false
+        }
+        Some(["hasn't" | "hasnt" | "didn't" | "didnt", ..]) => {
+            idx += 1;
+            false
+        }
+        Some(["has", ..]) => {
+            idx += 1;
+            true
+        }
+        _ => return None,
+    };
+    let verb = words.get(idx)?;
+    if !matches!(*verb, "controlled" | "control") {
+        return None;
+    }
+    idx += 1;
+    const TAIL: &[&str] = &["continuously", "since", "beginning", "of", "turn"];
+    for expected in TAIL {
+        if words.get(idx) == Some(&"the") {
+            idx += 1;
+        }
+        if words.get(idx) != Some(expected) {
+            return None;
+        }
+        idx += 1;
+    }
+    Some((idx, positive, active))
+}
+
+/// CR 302.6: "... the active player has controlled continuously since the
+/// beginning of the turn" is the summoning-sickness relation, not a player
+/// reference or disposable surface text.
+pub(super) fn try_apply_controlled_continuously_since_turn_began_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+) -> bool {
+    let Some((start, (consumed, positive, active))) = (0..all_words.len()).find_map(|start| {
+        parse_controlled_continuously_since_turn_began_words(&all_words[start..])
+            .map(|parsed| (start, parsed))
+    }) else {
+        return false;
+    };
+    filter.controlled_continuously_since_turn_began = Some(positive);
+    filter.zone = Some(Zone::Battlefield);
+    if active && filter.controller.is_none() {
+        filter.controller = Some(PlayerFilter::Active);
+    }
+    all_words.drain(start..start + consumed);
+    true
+}
+
 pub(super) fn strip_object_filter_face_state_words(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&str>,

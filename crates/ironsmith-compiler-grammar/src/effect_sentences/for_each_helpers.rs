@@ -467,6 +467,38 @@ pub fn parse_get_modifier_values_with_tail_for_subject(
     Ok((out_power, out_toughness, shape.duration, shape.condition))
 }
 
+/// "Each opponent may create a token that's a copy of ...": the offered
+/// participant, not the controller, creates (and controls) the copy. The
+/// stripped imperative body reads its actor as "you"; release it so the
+/// quantified participant binds instead.
+fn release_offered_leading_token_copy_actor(
+    body_tokens: &[OwnedLexToken],
+    effects: &mut [EffectAst],
+) {
+    if !body_tokens
+        .first()
+        .is_some_and(|token| token.is_word("create"))
+    {
+        return;
+    }
+    if let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        subject,
+        action:
+            SubjectVerbActionAst::Tokens(
+                TokenActionAst::CreateTokenCopy { player, .. }
+                | TokenActionAst::CreateTokenCopyFromSource { player, .. },
+            ),
+    })) = effects.first_mut()
+    {
+        if subject.player == PlayerAst::You {
+            subject.player = PlayerAst::Implicit;
+        }
+        if *player == PlayerAst::You {
+            *player = PlayerAst::Implicit;
+        }
+    }
+}
+
 pub fn force_implicit_token_controller_you(effects: &mut [EffectAst]) {
     for effect in effects {
         match effect {
@@ -635,6 +667,9 @@ fn parse_maybe_effects(
     // The quantified participant, not the controller, is the actor of a
     // bare `may discard`.
     release_offered_leading_discard_actor(&stripped, &mut effects);
+    if scope_may_to_that_player {
+        release_offered_leading_token_copy_actor(&stripped, &mut effects);
+    }
     if scope_may_to_that_player {
         // The quantified wrapper supplies the actor. Keep the inner Oracle
         // imperative in its base-verb form (`copy`, `choose`, ...), then bind

@@ -313,8 +313,25 @@ fn parse_granted_composable_event_trigger(
         return Ok(None);
     }
     let effect_tokens = trim_lexed_commas(&ability_tokens[split_idx + 1..]);
-    let effects = if let Some(effect) =
-        super::super::clause_primitives::parse_anaphoric_object_deals_damage_clause(effect_tokens)?
+    // "it deals 1 damage to target player or planeswalker and you gain 1
+    // life" is a damage clause coordinated with a second player-subject
+    // clause. The single-clause damage reader would read the whole tail as
+    // the damage recipient (dropping the second clause), so leave it to the
+    // coordinated effect-chain parser below.
+    let effect_words = crate::lexer::token_word_refs(effect_tokens);
+    let coordinates_player_subject_clause = crate::word_primitives::any_sequence_occurs(
+        &effect_words,
+        &[
+            &["and", "you"],
+            &["and", "its", "controller"],
+            &["and", "that", "player"],
+        ],
+    );
+    let effects = if !coordinates_player_subject_clause
+        && let Some(effect) =
+            super::super::clause_primitives::parse_anaphoric_object_deals_damage_clause(
+                effect_tokens,
+            )?
     {
         vec![effect]
     } else if let Some(effects) = super::super::parse_complete_create_statement(effect_tokens)? {

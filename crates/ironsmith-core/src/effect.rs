@@ -3743,9 +3743,19 @@ pub struct GrantNextSpellCostReductionEffect {
     /// its cost reduced.
     #[cfg_attr(feature = "serde", serde(default))]
     pub without_paying_mana_cost: bool,
+    /// "... cost {N} more to cast": the registered generic amount is added
+    /// to matching spells' costs instead of subtracted from them.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub increases_cost: bool,
 }
 
 impl GrantNextSpellCostReductionEffect {
+    /// Turn the generic modifier into a cost increase ("... cost {N} more").
+    pub fn increasing_cost(mut self) -> Self {
+        self.increases_cost = true;
+        self
+    }
+
     pub fn next_matching_without_paying_mana_cost_this_turn(
         player: PlayerFilter,
         filter: ObjectFilter,
@@ -3769,6 +3779,7 @@ impl GrantNextSpellCostReductionEffect {
             applies_to_all_matching_this_turn: false,
             duration: Until::EndOfTurn,
             without_paying_mana_cost: false,
+            increases_cost: false,
         }
     }
 
@@ -3785,6 +3796,7 @@ impl GrantNextSpellCostReductionEffect {
             applies_to_all_matching_this_turn: true,
             duration: Until::EndOfTurn,
             without_paying_mana_cost: false,
+            increases_cost: false,
         }
     }
 
@@ -3801,6 +3813,7 @@ impl GrantNextSpellCostReductionEffect {
             applies_to_all_matching_this_turn: false,
             duration: Until::EndOfTurn,
             without_paying_mana_cost: false,
+            increases_cost: false,
         }
     }
 
@@ -3818,6 +3831,7 @@ impl GrantNextSpellCostReductionEffect {
             applies_to_all_matching_this_turn: true,
             duration,
             without_paying_mana_cost: false,
+            increases_cost: false,
         }
     }
 }

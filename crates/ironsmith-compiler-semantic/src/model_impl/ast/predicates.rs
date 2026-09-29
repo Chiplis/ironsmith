@@ -256,6 +256,20 @@ pub enum TurnHistoryPredicateAst {
     TriggeringAbilityIsManaAbility,
 }
 
+/// Whether a compared value measures the source object itself ("the number
+/// of charge counters on this artifact", "this creature's power").
+fn value_measures_source_object(value: &Value) -> bool {
+    match value {
+        Value::SurfaceHinted { value, .. } => value_measures_source_object(value),
+        Value::CountersOnSource(_) | Value::SourcePower | Value::SourceToughness => true,
+        Value::CountersOn(spec, _)
+        | Value::PowerOf(spec)
+        | Value::ToughnessOf(spec)
+        | Value::ManaValueOf(spec) => matches!(spec.base(), ChooseSpec::Source),
+        _ => false,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum PredicateReferenceAntecedent {
     SourceObject,
@@ -318,6 +332,15 @@ impl PredicateAst {
                 | TurnHistoryPredicateAst::SourceEnteredBattlefieldThisTurn { .. }
                 | TurnHistoryPredicateAst::SourceAttackedThisTurn { .. },
             ) => Some(PredicateReferenceAntecedent::SourceObject),
+            // "if this artifact has fewer than three charge counters on it":
+            // a comparison whose subject is the source names the source as
+            // the clause's object antecedent, exactly like the typed
+            // source-state predicates above.
+            PredicateAst::ValueComparison { left, .. }
+                if value_measures_source_object(left) =>
+            {
+                Some(PredicateReferenceAntecedent::SourceObject)
+            }
             PredicateAst::And(left, right) | PredicateAst::Or(left, right) => left
                 .reference_antecedent()
                 .or_else(|| right.reference_antecedent()),

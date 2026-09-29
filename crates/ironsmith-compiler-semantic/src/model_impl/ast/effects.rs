@@ -2856,8 +2856,24 @@ impl EffectAst {
                 tapped,
                 enters_with_counters: Vec::new(),
                 enters_under_your_control,
+                enters_under_player: None,
             }),
         )
+    }
+
+    pub fn with_search_battlefield_controller(mut self, controller: PlayerAst) -> Self {
+        if let Self::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
+                    enters_under_player,
+                    ..
+                }),
+            ..
+        }) = &mut self
+        {
+            *enters_under_player = Some(controller);
+        }
+        self
     }
 
     pub fn with_search_zones(mut self, zones: Vec<Zone>) -> Self {
@@ -3835,9 +3851,17 @@ impl EffectAst {
     }
 
     pub fn subject_verb_dont_lose_this_mana_as_steps_and_phases_end_this_turn() -> Self {
+        Self::subject_verb_dont_lose_this_mana_as_steps_and_phases_end_this_turn_by(
+            PlayerAst::Implicit,
+        )
+    }
+
+    pub fn subject_verb_dont_lose_this_mana_as_steps_and_phases_end_this_turn_by(
+        player: PlayerAst,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
-            PlayerAst::Implicit,
+            player,
             SubjectVerbActionAst::Mana(ManaActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn),
         )
     }
@@ -4224,6 +4248,29 @@ impl EffectAst {
                 reduction,
                 duration,
                 next_only: false,
+                increase: false,
+            }),
+        )
+    }
+
+    /// "Spells <player> cast(s) this turn cost {N} more to cast" (or, with
+    /// `next_only`, the next such spell): a resolving, turn-scoped increase.
+    pub fn subject_verb_increase_matching_spell_cost(
+        player: PlayerAst,
+        filter: ObjectFilter,
+        increase: Value,
+        duration: Until,
+        next_only: bool,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::Stack(StackActionAst::ReduceMatchingSpellCostThisTurn {
+                filter,
+                reduction: increase,
+                duration,
+                next_only,
+                increase: true,
             }),
         )
     }
@@ -4241,6 +4288,7 @@ impl EffectAst {
                 reduction,
                 duration: Until::EndOfTurn,
                 next_only: true,
+                increase: false,
             }),
         )
     }

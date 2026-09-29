@@ -215,6 +215,11 @@ pub enum ObjectRef {
     Target,
     Specific(ObjectId),
     Tagged(TagKey),
+    /// The candidate object an enclosing object filter is currently
+    /// evaluating, for comparison operands relative to that candidate
+    /// ("with mana value less than or equal to the number of cards in its
+    /// controller's graveyard"). Only resolvable while matching that filter.
+    FilterCandidate,
 }
 
 impl ObjectRef {
@@ -1784,6 +1789,42 @@ pub enum Comparison {
 }
 
 impl Comparison {
+    /// Whether the right-hand operand counts objects relative to the
+    /// candidate being filtered ([`ObjectRef::FilterCandidate`]).
+    pub fn references_filter_candidate(&self) -> bool {
+        fn player_is_candidate_relative(player: Option<&PlayerFilter>) -> bool {
+            matches!(
+                player,
+                Some(
+                    PlayerFilter::ControllerOf(ObjectRef::FilterCandidate)
+                        | PlayerFilter::OwnerOf(ObjectRef::FilterCandidate)
+                )
+            )
+        }
+        fn value_is_candidate_relative(value: &Value) -> bool {
+            match value {
+                Value::SurfaceHinted { value, .. } => value_is_candidate_relative(value),
+                Value::Count(filter) | Value::CountScaled(filter, _) => {
+                    player_is_candidate_relative(filter.owner.as_ref())
+                        || player_is_candidate_relative(filter.controller.as_ref())
+                }
+                Value::Add(left, right) => {
+                    value_is_candidate_relative(left) || value_is_candidate_relative(right)
+                }
+                _ => false,
+            }
+        }
+        match self {
+            Self::EqualExpr(value)
+            | Self::NotEqualExpr(value)
+            | Self::LessThanExpr(value)
+            | Self::LessThanOrEqualExpr(value)
+            | Self::GreaterThanExpr(value)
+            | Self::GreaterThanOrEqualExpr(value) => value_is_candidate_relative(value),
+            _ => false,
+        }
+    }
+
     pub fn satisfies(&self, value: i32) -> bool {
         match self {
             Self::Equal(n) => value == *n,
@@ -2042,6 +2083,13 @@ pub struct ObjectFilter {
     /// spells select a creature and then affect the creatures fighting it.
     pub in_combat_with: Option<ObjectRef>,
     pub entered_since_your_last_turn_ended: bool,
+    /// `Some(true)` requires a permanent its controller has controlled
+    /// continuously since the beginning of the turn; `Some(false)` requires
+    /// one they haven't. This is the summoning-sickness notion of CR 302.6
+    /// ("non-Wall creature the active player has controlled continuously
+    /// since the beginning of the turn").
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub controlled_continuously_since_turn_began: Option<bool>,
     /// Requires an object that has not entered the battlefield during the
     /// current turn.
     pub didnt_enter_battlefield_this_turn: bool,
@@ -2110,6 +2158,11 @@ pub struct ObjectFilter {
     /// or color-characteristic constraint.
     pub could_produce_mana: Vec<ManaSymbol>,
     pub has_tap_activated_ability: bool,
+    /// Requires an object with at least one activated ability that isn't a
+    /// mana ability ("a land with an activated ability that isn't a mana
+    /// ability").
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub has_non_mana_activated_ability: bool,
     pub no_abilities: bool,
     pub no_x_in_cost: bool,
     pub has_x_in_cost: bool,
@@ -2797,6 +2850,7 @@ impl ObjectFilter {
             || self.has_phyrexian_mana_symbol
             || !self.could_produce_mana.is_empty()
             || self.has_tap_activated_ability
+            || self.has_non_mana_activated_ability
             || self.no_abilities
             || self.no_x_in_cost
             || self.has_x_in_cost
@@ -4526,7 +4580,7 @@ impl ObjectFilter {
                 ObjectRef::Target => "target creature",
                 ObjectRef::Specific(_) => "that creature",
                 ObjectRef::Tagged(tag) if tag.as_str() == "blocking" => "the blocking creature",
-                ObjectRef::Tagged(_) => "one of those creatures",
+                ObjectRef::Tagged(_) | ObjectRef::FilterCandidate => "one of those creatures",
             };
             post_noun_qualifiers.push(format!("blocked by {blocker_text} this turn"));
         }
@@ -4644,7 +4698,7 @@ impl ObjectFilter {
                 ObjectRef::Target => "target creature",
                 ObjectRef::Specific(_) => "that creature",
                 ObjectRef::Tagged(tag) if tag.as_str() == "blocking" => "the blocking creature",
-                ObjectRef::Tagged(_) => "that creature",
+                ObjectRef::Tagged(_) | ObjectRef::FilterCandidate => "that creature",
             };
             post_noun_qualifiers.push(if self.blocking {
                 format!("blocking {reference}")
@@ -4667,6 +4721,17 @@ impl ObjectFilter {
         }
         if self.entered_since_your_last_turn_ended {
             post_noun_qualifiers.push("that entered since your last turn ended".to_string());
+        }
+        match self.controlled_continuously_since_turn_began {
+            Some(true) => post_noun_qualifiers.push(
+                "that its controller has controlled continuously since the beginning of the turn"
+                    .to_string(),
+            ),
+            Some(false) => post_noun_qualifiers.push(
+                "that its controller hasn't controlled continuously since the beginning of the turn"
+                    .to_string(),
+            ),
+            None => {}
         }
         if self.didnt_enter_battlefield_this_turn && !self.didnt_attack_this_turn {
             post_noun_qualifiers.push("that didn't enter this turn".to_string());
@@ -5355,6 +5420,9 @@ impl ObjectFilter {
         if self.has_tap_activated_ability {
             parts.push("that has an activated ability with {T} in its cost".to_string());
         }
+        if self.has_non_mana_activated_ability {
+            parts.push("with an activated ability that isn't a mana ability".to_string());
+        }
 
         let has_source_exiled_constraint = self.tagged_constraints.iter().any(|constraint| {
             constraint.relation == TaggedOpbjectRelation::IsTaggedObject
@@ -5670,7 +5738,9 @@ impl ObjectFilter {
                     "that spell"
                 }
                 ObjectRef::Tagged(tag) if tag.as_str().contains("copied") => "the copy",
-                ObjectRef::Tagged(_) | ObjectRef::Specific(_) => "that object",
+                ObjectRef::Tagged(_) | ObjectRef::Specific(_) | ObjectRef::FilterCandidate => {
+                    "that object"
+                }
             };
             parts.push(format!("{stack_text} could target"));
         }
@@ -6630,9 +6700,9 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
             format!("{base}'s")
         }
         PlayerFilter::AliasedTarget(_) => "that player's".to_string(),
-        PlayerFilter::ControllerOf(ObjectRef::Tagged(_) | ObjectRef::Target) => {
-            "its controller's".to_string()
-        }
+        PlayerFilter::ControllerOf(
+            ObjectRef::Tagged(_) | ObjectRef::Target | ObjectRef::FilterCandidate,
+        ) => "its controller's".to_string(),
         PlayerFilter::OwnerOf(ObjectRef::Tagged(_) | ObjectRef::Target) => {
             "its owner's".to_string()
         }

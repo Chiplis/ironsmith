@@ -196,6 +196,7 @@ fn filter_supports_chars_class_dedup(filter: &ObjectFilter) -> bool {
         && !filter.is_commander
         && !filter.noncommander
         && !filter.has_tap_activated_ability
+        && !filter.has_non_mana_activated_ability
         && !filter.no_abilities
         && filter.ability_markers.is_empty()
         && filter.excluded_ability_markers.is_empty()
@@ -679,6 +680,7 @@ fn evaluate_value(
                 tagged_players: std::collections::HashMap::new(),
                 effect_outcomes: std::collections::HashMap::new(),
                 stack_entry: None,
+                filter_candidate_players: None,
                 players_in_range: game.range_players_for_source(effect_controller, Some(source)),
             };
             let mut total = 0i32;
@@ -717,6 +719,7 @@ fn evaluate_value(
                 tagged_players: std::collections::HashMap::new(),
                 effect_outcomes: std::collections::HashMap::new(),
                 stack_entry: None,
+                filter_candidate_players: None,
                 players_in_range: game.range_players_for_source(effect_controller, Some(source)),
             };
             let mut total = 0i32;
@@ -2629,6 +2632,7 @@ fn filter_uses_color_characteristics(filter: &ObjectFilter) -> bool {
 
 fn filter_uses_ability_characteristics(filter: &ObjectFilter) -> bool {
     filter.has_tap_activated_ability
+        || filter.has_non_mana_activated_ability
         || filter.no_abilities
         || !filter.static_abilities.is_empty()
         || !filter.excluded_static_abilities.is_empty()

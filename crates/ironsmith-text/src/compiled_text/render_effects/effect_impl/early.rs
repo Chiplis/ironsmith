@@ -1515,6 +1515,26 @@
         if choose_card_type.options.is_empty() {
             return format!("{chooser} {choose_verb} a card type");
         }
+        // "a card type other than creature (or land)": options are every card
+        // type except a few.
+        let all_card_types = crate::effects::ChooseCardTypeEffect::all_card_types();
+        let excluded = all_card_types
+            .iter()
+            .filter(|card_type| !choose_card_type.options.contains(card_type))
+            .map(|card_type| card_type.to_string().to_ascii_lowercase())
+            .collect::<Vec<_>>();
+        if !excluded.is_empty()
+            && excluded.len() <= 2
+            && choose_card_type
+                .options
+                .iter()
+                .all(|card_type| all_card_types.contains(card_type))
+        {
+            return format!(
+                "{chooser} {choose_verb} a card type other than {}",
+                join_with_or(&excluded)
+            );
+        }
         let options = choose_card_type
             .options
             .iter()
@@ -6487,6 +6507,9 @@
         return match retain.player {
             PlayerFilter::You => {
                 "Until end of turn, you don't lose this mana as steps and phases end".to_string()
+            }
+            PlayerFilter::IteratedPlayer => {
+                "Until end of turn, they don't lose this mana as steps and phases end".to_string()
             }
             _ => "Until end of turn, mana doesn't empty as steps and phases end".to_string(),
         };

@@ -95,6 +95,48 @@ impl ObjectTargetDiscriminator {
     pub fn matches_filter(&self, filter: &ObjectFilter) -> bool {
         self == &Self::from_filter(filter)
     }
+
+    /// Whether a definite description ("that creature") can name this slot:
+    /// every characteristic the description states agrees with the slot,
+    /// while characteristics it leaves unstated ("that creature" after
+    /// "target creature you don't control") do not disqualify it.
+    pub fn is_described_by(&self, filter: &ObjectFilter) -> bool {
+        let reference = Self::from_filter(filter);
+        let unstated = Self::from_filter(&ObjectFilter::default());
+        macro_rules! agrees {
+            ($($field:ident),* $(,)?) => {
+                true $(&& (reference.$field == unstated.$field || reference.$field == self.$field))*
+            };
+        }
+        agrees!(
+            zone,
+            controller,
+            owner,
+            card_types,
+            all_card_types,
+            excluded_card_types,
+            subtypes,
+            all_subtypes,
+            excluded_subtypes,
+            supertypes,
+            excluded_supertypes,
+            colors,
+            required_colors,
+            colorless,
+            multicolored,
+            monocolored,
+            token,
+            nontoken,
+            tapped,
+            untapped,
+            attacking,
+            blocking,
+            power,
+            toughness,
+            mana_value,
+            name,
+        )
+    }
 }
 
 impl ObjectTargetBinding {
@@ -525,6 +567,13 @@ pub struct AnnotatedEffect {
     pub out_env: ReferenceEnv,
     pub assigned_effect_id: Option<EffectId>,
     pub auto_tag_object_targets: bool,
+    /// The tag ordinal annotation had reached before this effect. Ordinals
+    /// below it are spent (persisted discard/return results, earlier
+    /// predictions); lowering starts the effect from here so a nested
+    /// re-annotation of its body ("you may exile ...", "for each of them,
+    /// create ...") predicts the same result names the outer annotation
+    /// already handed to later references.
+    pub tag_id_floor: u32,
 }
 
 #[derive(Debug, Clone)]

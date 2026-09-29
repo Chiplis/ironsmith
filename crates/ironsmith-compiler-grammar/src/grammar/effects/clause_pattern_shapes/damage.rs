@@ -328,6 +328,10 @@ fn classify_damage_source(tokens: &[OwnedLexToken]) -> Option<DamageSourceShape<
             source_tokens: tokens,
         });
     }
+    // `this creature` names the source itself, not every object of its type.
+    if crate::util::is_source_reference_words(&crate::lexer::token_word_refs(tokens)) {
+        return Some(DamageSourceShape::Target(tokens));
+    }
     damage_source_filter(tokens).map(DamageSourceShape::Filter)
 }
 

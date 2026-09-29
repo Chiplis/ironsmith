@@ -791,6 +791,17 @@ pub(super) fn abilities_have_tap_activated_ability(abilities: &[crate::ability::
     })
 }
 
+pub(super) fn abilities_have_non_mana_activated_ability(
+    abilities: &[crate::ability::Ability],
+) -> bool {
+    use crate::ability::AbilityKind;
+
+    abilities.iter().any(|ability| match &ability.kind {
+        AbilityKind::Activated(activated) => !activated.is_mana_ability(),
+        _ => false,
+    })
+}
+
 pub(super) fn snapshot_has_static_ability_id(
     snapshot: &crate::snapshot::ObjectSnapshot,
     ability_id: StaticAbilityId,

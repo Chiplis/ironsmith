@@ -8,6 +8,18 @@ use crate::cards::builders::PermissionEffectAst;
 use crate::cards::builders::StackActionAst;
 use crate::cards::builders::VoteEffectAst;
 
+/// Rebind the actor of an action offered with "any player/opponent may" to the
+/// player currently deciding the sequential offer. The broad offer quantifier
+/// (or an implicit actor) is not itself a player who can act.
+fn bind_offer_participant_subject(effect: &mut EffectAst, offer_player: PlayerAst) {
+    if let EffectAst::SubjectVerb(subject_verb) = effect
+        && (subject_verb.subject.player == offer_player
+            || matches!(subject_verb.subject.player, PlayerAst::Implicit))
+    {
+        subject_verb.subject.player = PlayerAst::That;
+    }
+}
+
 fn normalize_unless_cost_for_payer(cost: crate::cost::TotalCost) -> crate::cost::TotalCost {
     cost.try_map(|component| {
         let component = match component {
@@ -639,6 +651,31 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             {
                 return Ok(Some(compiled));
             }
+            // "Any player may <verb>" / "any opponent may <verb>" is a
+            // turn-order offer (CR 101.4) whose actor is whichever player
+            // accepts, not a single choice made by an arbitrary player (which
+            // would resolve to the controller). Lower it through the
+            // sequential offer, binding the offered action to the deciding
+            // player.
+            if matches!(player, PlayerAst::Any | PlayerAst::Opponent) {
+                let players = if matches!(player, PlayerAst::Opponent) {
+                    PlayerFilter::Opponent
+                } else {
+                    PlayerFilter::Any
+                };
+                let mut offered = effects.clone();
+                for effect in &mut offered {
+                    bind_offer_participant_subject(effect, *player);
+                }
+                return compile_effect(
+                    &EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay {
+                        players,
+                        effects: offered,
+                    }),
+                    ctx,
+                )
+                .map(Some);
+            }
             let saved_last_object_tag = ctx.last_object_tag.clone();
             let saved_last_player_filter = ctx.last_player_filter.clone();
             if matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
@@ -880,16 +917,32 @@ pub(super) fn try_compile_flow_and_iteration_effect(
 
             let previous_last_player_filter = ctx.last_player_filter.clone();
             let (inner_effects, inner_choices) = compile_effects(effects, ctx)?;
-            let (alt_effects, alt_choices) = compile_effects(alternative, ctx)?;
             // In `destroy/counter target ... unless its controller ...`, the
             // possessive refers to the target declared by this same primary
             // action. A trigger setup tag may still be the ambient
             // `last_object_tag`; do not let that unrelated antecedent steal
             // the decision from the actual target's controller.
+            let mut unless_player_choices = Vec::new();
             let player_filter = if matches!(player, PlayerAst::ItsController)
                 && inner_choices.iter().any(ChooseSpec::is_target)
             {
                 PlayerFilter::ControllerOf(crate::target::ObjectRef::Target)
+            } else if matches!(player, PlayerAst::Target | PlayerAst::TargetOpponent)
+                && resolve_unless_player_filter(
+                    *player,
+                    &current_reference_env(ctx),
+                    previous_last_player_filter.clone(),
+                )
+                .is_err()
+            {
+                // "... unless target opponent has ..." introduces the
+                // unless-player as this clause's own target; declare it here
+                // so the alternative can refer back to it.
+                let subject =
+                    LoweredSubject::resolve_affected_player(*player, ctx, true, true, false)?;
+                let filter = subject.clone_player_filter();
+                unless_player_choices = subject.into_choices();
+                filter
             } else {
                 unless_payer_before_consequence(
                     resolve_unless_player_filter(
@@ -903,6 +956,22 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             if !matches!(*player, PlayerAst::Implicit) {
                 ctx.last_player_filter = Some(player_filter.clone());
             }
+            // The alternative ("unless they discard a card") is performed by
+            // the deciding player, so its pronoun actor resolves against the
+            // unless-player rather than whatever the consequence referenced
+            // last.
+            let (alt_effects, alt_choices) = if matches!(*player, PlayerAst::Implicit) {
+                compile_effects(alternative, ctx)?
+            } else {
+                // The unless-player was introduced (and, if targeted, declared)
+                // by this clause; the alternative refers back to it.
+                let unless_player_filter = ctx.last_player_filter.clone();
+                ctx.last_player_filter =
+                    Some(as_followup_player_alias(player_filter.clone()));
+                let compiled = compile_effects(alternative, ctx);
+                ctx.last_player_filter = unless_player_filter;
+                compiled?
+            };
             // The alternative ("unless they pay X life") is performed by the
             // deciding player before the consequence exists; a payer bound to
             // the consequence's sacrifice result names that same player.
@@ -939,6 +1008,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 Effect::unless_action(inner_effects, alt_effects, player_filter)
             };
             let mut choices = inner_choices;
+            choices.extend(unless_player_choices);
             choices.extend(alt_choices);
             (vec![effect], choices)
         }

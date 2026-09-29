@@ -3851,25 +3851,25 @@ pub fn player_filter_matches_with_context(
             ObjectRef::Specific(object_id) => game
                 .object(*object_id)
                 .is_some_and(|obj| player == game.controller_of(obj)),
-            ObjectRef::Target | ObjectRef::Tagged(_) => false, // Can't resolve at trigger-check time
+            ObjectRef::Target | ObjectRef::Tagged(_) | ObjectRef::FilterCandidate => false, // Can't resolve at trigger-check time
         },
         PlayerFilter::OwnerOf(obj_ref) => match obj_ref {
             ObjectRef::Specific(object_id) => game
                 .object(*object_id)
                 .is_some_and(|obj| player == obj.owner),
-            ObjectRef::Target | ObjectRef::Tagged(_) => false, // Can't resolve at trigger-check time
+            ObjectRef::Target | ObjectRef::Tagged(_) | ObjectRef::FilterCandidate => false, // Can't resolve at trigger-check time
         },
         PlayerFilter::AliasedControllerOf(obj_ref) => match obj_ref {
             ObjectRef::Specific(object_id) => game
                 .object(*object_id)
                 .is_some_and(|obj| player == game.controller_of(obj)),
-            ObjectRef::Target | ObjectRef::Tagged(_) => false,
+            ObjectRef::Target | ObjectRef::Tagged(_) | ObjectRef::FilterCandidate => false,
         },
         PlayerFilter::AliasedOwnerOf(obj_ref) => match obj_ref {
             ObjectRef::Specific(object_id) => game
                 .object(*object_id)
                 .is_some_and(|obj| player == obj.owner),
-            ObjectRef::Target | ObjectRef::Tagged(_) => false,
+            ObjectRef::Target | ObjectRef::Tagged(_) | ObjectRef::FilterCandidate => false,
         },
         PlayerFilter::Active => game.is_active_player(player),
         PlayerFilter::Defending => defending_player == Some(player),

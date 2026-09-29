@@ -2837,12 +2837,14 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 && !filter.blocked
                 && !filter.unblocked
                 && !filter.entered_since_your_last_turn_ended
+                && filter.controlled_continuously_since_turn_began.is_none()
                 && filter.power.is_none()
                 && filter.toughness.is_none()
                 && filter.mana_value.is_none()
                 && filter.mana_value_eq_counters_on_source.is_none()
                 && !filter.has_mana_cost
                 && !filter.has_tap_activated_ability
+                && !filter.has_non_mana_activated_ability
                 && !filter.no_abilities
                 && !filter.no_x_in_cost
                 && !filter.has_x_in_cost
@@ -3010,12 +3012,14 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     && !filter.blocked
                     && !filter.unblocked
                     && !filter.entered_since_your_last_turn_ended
+                    && filter.controlled_continuously_since_turn_began.is_none()
                     && filter.power.is_none()
                     && filter.toughness.is_none()
                     && filter.mana_value.is_none()
                     && filter.mana_value_eq_counters_on_source.is_none()
                     && !filter.has_mana_cost
                     && !filter.has_tap_activated_ability
+                    && !filter.has_non_mana_activated_ability
                     && !filter.no_abilities
                     && !filter.no_x_in_cost
                     && !filter.has_x_in_cost

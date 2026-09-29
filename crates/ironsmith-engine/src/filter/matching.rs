@@ -69,6 +69,14 @@ pub(super) fn matches_subject(
     if filter.entered_since_your_last_turn_ended && !game.is_summoning_sick(subject.object_id()) {
         return false;
     }
+    // CR 302.6: the summoning-sickness flag records that the permanent's
+    // controller hasn't controlled it continuously since their most recent
+    // turn began.
+    if let Some(required) = filter.controlled_continuously_since_turn_began
+        && game.is_summoning_sick(subject.object_id()) == required
+    {
+        return false;
+    }
 
     if filter.didnt_enter_battlefield_this_turn
         && game
@@ -1062,7 +1070,18 @@ pub(super) fn matches_subject(
     // Mana value check
     if let Some(mv_cmp) = &filter.mana_value {
         let mv = subject.mana_value();
-        if !mv_cmp.satisfies_with_context(mv, game, ctx, stack_entry) {
+        let satisfied = if mv_cmp.references_filter_candidate() {
+            // The operand is relative to this candidate ("cards in its
+            // controller's graveyard"), so bind the candidate's players.
+            let owner = subject.owner();
+            let controller = subject.controller(game).unwrap_or(owner);
+            let mut candidate_ctx = ctx.clone();
+            candidate_ctx.filter_candidate_players = Some((controller, owner));
+            mv_cmp.satisfies_with_context(mv, game, &candidate_ctx, stack_entry)
+        } else {
+            mv_cmp.satisfies_with_context(mv, game, ctx, stack_entry)
+        };
+        if !satisfied {
             return false;
         }
     }

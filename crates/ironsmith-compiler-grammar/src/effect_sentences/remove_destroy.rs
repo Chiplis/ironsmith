@@ -55,11 +55,22 @@ pub fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                     false,
                 ));
             }
-            let target = if source_like_target {
+            let pronoun_target = crate::lexer::token_word_refs(target_tokens) == ["it"];
+            let target = if pronoun_target {
+                // "remove all -1/-1 counters from it": the pronoun names the
+                // latest object antecedent (falling back to the source only
+                // when there is none), not unconditionally the source.
+                TargetAst::Tagged(
+                    crate::tag::CompilerReferenceTag::It.bind(),
+                    span_from_tokens(target_tokens),
+                )
+            } else if source_like_target {
                 TargetAst::Source(span_from_tokens(target_tokens))
             } else {
                 parse_target_phrase(target_tokens)?
             };
+            // A non-source holder's count is rebound to the resolved holder
+            // when the removal is lowered.
             let amount = match (&target, counter_type) {
                 (TargetAst::Source(_), Some(counter_type)) => Value::CountersOnSource(counter_type),
                 (TargetAst::Source(_), None) => {
@@ -287,7 +298,7 @@ fn lower_destroy_all_shape(shape: shapes::DestroyAllShape<'_>) -> Result<EffectA
                 }
                 Err(error) => return Err(error),
             };
-            apply_except_filter_exclusions(&mut filter, &exception_filter);
+            apply_except_filter_exclusions(&mut filter, &exception_filter)?;
             Ok(EffectAst::subject_verb_destroy_all(filter))
         }
         shapes::DestroyAllShape::ChosenColor { filter_tokens } => {
@@ -658,9 +669,43 @@ fn target_is_anaphoric_battlefield_object(target: &TargetAst) -> bool {
     }
 }
 
-pub fn apply_except_filter_exclusions(base: &mut ObjectFilter, exception: &ObjectFilter) {
+pub fn apply_except_filter_exclusions(
+    base: &mut ObjectFilter,
+    exception: &ObjectFilter,
+) -> Result<(), CardTextError> {
+    // "except for creatures the player hasn't controlled continuously since
+    // the beginning of the turn": the exception restates the base noun and
+    // narrows it with one relative qualifier. Since every candidate already
+    // has the base's types, excluding (type AND qualifier) is excluding the
+    // qualifier alone.
+    if let Some(polarity) = exception.controlled_continuously_since_turn_began {
+        let restates_base_noun = exception
+            .card_types
+            .iter()
+            .all(|card_type| base.card_types.contains(card_type))
+            && exception.subtypes.is_empty()
+            && exception.all_card_types.is_empty();
+        let mut residual = exception.clone();
+        residual.controlled_continuously_since_turn_began = None;
+        residual.card_types.clear();
+        residual.zone = None;
+        residual.union_surface = Default::default();
+        if !restates_base_noun
+            || residual != ObjectFilter::default()
+            || base
+                .controlled_continuously_since_turn_began
+                .is_some_and(|existing| existing == polarity)
+        {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported qualified destroy-all exception (exception: '{}')",
+                exception.description()
+            )));
+        }
+        base.controlled_continuously_since_turn_began = Some(!polarity);
+        return Ok(());
+    }
     for branch in &exception.any_of {
-        apply_except_filter_exclusions(base, branch);
+        apply_except_filter_exclusions(base, branch)?;
     }
     // A proper-name self-reference in an exception denotes the source object,
     // not every permanent that happens to share its name. Preserve that as the
@@ -698,6 +743,29 @@ pub fn apply_except_filter_exclusions(base: &mut ObjectFilter, exception: &Objec
     if exception.token {
         base.nontoken = true;
     }
+    // Everything above transports a single exclusion per field. Any other
+    // predicate on the exception would be silently dropped (or, worse, turn
+    // "except for creatures <qualifier>" into "noncreature"), so refuse it.
+    let mut residual = exception.clone();
+    residual.any_of.clear();
+    residual.source = false;
+    residual.source_surface = None;
+    residual.name = None;
+    residual.card_types.clear();
+    residual.all_card_types.clear();
+    residual.subtypes.clear();
+    residual.is_commander = false;
+    residual.token = false;
+    residual.zone = None;
+    residual.union_surface = Default::default();
+    residual.name_surface = Default::default();
+    if residual != ObjectFilter::default() {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported destroy-all exception qualifier (exception: '{}')",
+            exception.description()
+        )));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

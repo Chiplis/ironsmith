@@ -3033,6 +3033,27 @@ pub fn parse_static_condition_clause(
                         display: Some(display.clone()),
                     });
                 }
+                ExistentialConditionTail::CountersOnSource { counter_type } => {
+                    let Some(counter_type) = counter_type else {
+                        let Some((operator, value)) =
+                            crate::util::comparison_to_value_comparison_operator(shape.comparison)
+                        else {
+                            return Err(CardTextError::ParseError(format!(
+                                "unsupported total-counter comparison (clause: '{display}')"
+                            )));
+                        };
+                        return Ok(PredicateAst::ValueComparison {
+                            left: Value::CountersOn(Box::new(ChooseSpec::Source), None),
+                            operator,
+                            right: Value::Fixed(value),
+                        });
+                    };
+                    return Ok(PredicateAst::CountComparison {
+                        count: AnthemCountExpression::CountersOnSource(counter_type),
+                        comparison: shape.comparison,
+                        display: Some(display.clone()),
+                    });
+                }
                 ExistentialConditionTail::Generic { filter_tokens } => {
                     if filter_tokens.is_empty() {
                         return Err(CardTextError::ParseError(format!(

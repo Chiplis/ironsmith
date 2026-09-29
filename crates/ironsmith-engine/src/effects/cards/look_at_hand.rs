@@ -100,6 +100,18 @@ impl EffectExecutor for LookAtHandEffect {
                     true,
                 );
             } else {
+                // Record exactly the looked-at cards so a following "exile
+                // those cards" acts on this set. The set lives only in this
+                // resolution's context: it is shown to the looking player
+                // alone and never marked publicly revealed.
+                for card_id in cards.iter().copied() {
+                    if let Some(object) = game.object(card_id) {
+                        ctx.tag_object(
+                            crate::tag::LOOKED_AT_HAND_TAG,
+                            crate::snapshot::ObjectSnapshot::from_object(object, game),
+                        );
+                    }
+                }
                 let view_ctx =
                     ViewCardsContext::look_at_hand(ctx.controller, player_id, Some(ctx.source));
                 ctx.decision_maker

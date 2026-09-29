@@ -1672,6 +1672,7 @@ fn resolve_controller_of(
     object_ref: &ObjectRef,
 ) -> Result<PlayerId, ExecutionError> {
     match object_ref {
+        ObjectRef::FilterCandidate => Err(ExecutionError::InvalidTarget),
         ObjectRef::Target => {
             let target_id = find_target_object(&ctx.targets)?;
             if let Some(obj) = game.object(target_id) {
@@ -1762,6 +1763,7 @@ fn resolve_owner_of(
     object_ref: &ObjectRef,
 ) -> Result<PlayerId, ExecutionError> {
     match object_ref {
+        ObjectRef::FilterCandidate => Err(ExecutionError::InvalidTarget),
         ObjectRef::Target => {
             let target_id = find_target_object(&ctx.targets)?;
             if let Some(obj) = game.object(target_id) {

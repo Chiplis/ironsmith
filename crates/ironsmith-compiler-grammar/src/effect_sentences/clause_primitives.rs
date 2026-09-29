@@ -1432,7 +1432,27 @@ pub fn parse_deal_damage_equal_to_power_clause(
     let Some(shape) = clause_shapes::parse_power_damage_shape(tokens)? else {
         return Ok(None);
     };
-    let source_result = if shape.source_is_tagged {
+    let demonstrative_source_words = TokenWordView::new(shape.source_tokens).to_word_refs();
+    let source_result = if shape.source_is_tagged
+        && crate::word_primitives::parse_any_sequence_complete(
+            &demonstrative_source_words,
+            &[&["that", "creature"], &["that", "permanent"], &["that", "card"]],
+        )
+    {
+        // "That creature deals damage equal to its power to this creature"
+        // (Karplusan Yeti): a typed demonstrative names the latest object
+        // antecedent, never a repeat of the previous clause's damage source
+        // the way the bare pronoun `it` can.
+        let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
+        filter.source_surface = Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+            demonstrative_source_words.join(" "),
+        ));
+        Ok(TargetAst::Object(
+            filter,
+            None,
+            span_from_tokens(shape.source_tokens),
+        ))
+    } else if shape.source_is_tagged {
         Ok(TargetAst::Tagged(
             crate::tag::CompilerReferenceTag::It.bind(),
             span_from_tokens(shape.source_tokens),

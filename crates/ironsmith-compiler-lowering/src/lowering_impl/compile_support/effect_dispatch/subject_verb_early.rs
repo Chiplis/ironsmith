@@ -958,6 +958,18 @@ pub(super) fn compile_subject_verb_early(
 
             Ok((vec![move_rest], Vec::new()))
         }
+        SubjectVerbActionAst::Mana(ManaActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn)
+            if !matches!(player, PlayerAst::Implicit | PlayerAst::You) =>
+        {
+            // "They don't lose this mana ..." names the player who added it
+            // (for example the upkeep player in "that player adds ..."), not
+            // the ability's controller.
+            compile_player_role_effect(role, player, ctx, false, false, false, |subject| {
+                Effect::new(crate::effects::RetainManaUntilEndOfTurnEffect::new(
+                    subject.into_player_filter(),
+                ))
+            })
+        }
         SubjectVerbActionAst::Mana(ManaActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn) => {
             Ok((
                 vec![Effect::new(

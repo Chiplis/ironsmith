@@ -258,6 +258,9 @@ pub struct EffectLoweringContext {
     /// While compiling one annotated effect: the object-result tag reference
     /// annotation predicted it leaves behind (`Some(None)` = no object).
     annotated_result_prediction: Option<Option<TagKey>>,
+    /// Result tags this context minted from its own counter. A reservation
+    /// whose name is already among them belongs to another producer.
+    minted_result_tags: Vec<TagKey>,
 }
 
 impl Default for EffectLoweringContext {
@@ -287,6 +290,7 @@ impl EffectLoweringContext {
             frame: LoweringFrame::default(),
             reserved_object_result_tag: None,
             annotated_result_prediction: None,
+            minted_result_tags: Vec::new(),
         }
     }
 
@@ -296,6 +300,7 @@ impl EffectLoweringContext {
             frame,
             reserved_object_result_tag: None,
             annotated_result_prediction: None,
+            minted_result_tags: Vec::new(),
         }
     }
 
@@ -304,7 +309,20 @@ impl EffectLoweringContext {
     }
 
     pub fn apply_id_gen_context(&mut self, id_gen: IdGenContext) {
+        let minted_from = self.ids.id_gen_context().next_tag_id;
+        let minted_until = id_gen.next_tag_id;
         self.ids.apply_id_gen_context(id_gen);
+        // A nested lowering context that minted the reserved ordinal already
+        // used its name; adopting the reservation afterwards would give two
+        // producers the same result tag.
+        if self
+            .reserved_object_result_tag
+            .as_ref()
+            .and_then(trailing_ordinal)
+            .is_some_and(|ordinal| (minted_from..minted_until).contains(&ordinal))
+        {
+            self.reserved_object_result_tag = None;
+        }
     }
 
     pub fn lowering_frame(&self) -> LoweringFrame {
@@ -344,8 +362,23 @@ impl EffectLoweringContext {
         self.ids.next_effect_id()
     }
 
+    /// Mint the result tag for a producer of `prefix` objects. Reference
+    /// annotation already chose the key that later clauses of the same
+    /// sequence read ("return that card", "those tokens"); a producer of the
+    /// same kind adopts that reservation instead of minting an independent
+    /// ordinal that can drift from it.
     pub fn next_tag(&mut self, prefix: &str) -> TagKey {
-        self.ids.next_tag(prefix)
+        // When annotation predicted that this effect leaves the incoming
+        // antecedent in place, the reservation is that existing tag, not a
+        // result name for a new producer.
+        if !self.annotation_predicts_no_new_object_result()
+            && let Some(tag) = self.take_reserved_object_result_tag(prefix)
+        {
+            return tag;
+        }
+        let tag = self.ids.next_tag(prefix);
+        self.minted_result_tags.push(tag.clone());
+        tag
     }
 
     pub fn reserve_object_result_tag(&mut self, tag: Option<TagKey>) {
@@ -368,23 +401,27 @@ impl EffectLoweringContext {
     }
 
     pub fn take_reserved_object_result_tag(&mut self, prefix: &str) -> Option<TagKey> {
-        let prefix = format!("{prefix}_");
+        let prefix_with_sep = format!("{prefix}_");
+        // Annotation mints helper-shaped keys for some producers (`exiled`,
+        // `looked`, `chosen`, `revealed`; see `generated_result_tag`). Match
+        // those by purpose too, or lowering re-mints a different ordinal than
+        // the one later references were annotated against.
         let tag = self
             .reserved_object_result_tag
             .as_ref()
-            .is_some_and(|tag| tag.as_str().starts_with(&prefix))
+            .is_some_and(|tag| {
+                (tag.as_str().starts_with(&prefix_with_sep)
+                    || crate::tag::is_sentence_helper_tag(tag, prefix))
+                    && !self.minted_result_tags.contains(tag)
+            })
             .then(|| self.reserved_object_result_tag.take())
             .flatten()?;
+        self.minted_result_tags.push(tag.clone());
         // Annotation already spent this ordinal on the reserved tag. Keep the
         // lowering counter past it, so a nested re-annotation (a "may" body)
         // allocates the same later tags the outer annotation predicted
         // (Chain of Vapor's "they" names the sacrifice's result tag).
-        let digits = tag
-            .as_str()
-            .rsplit(|ch: char| !ch.is_ascii_digit())
-            .next()
-            .unwrap_or("");
-        if let Ok(ordinal) = digits.parse::<u32>() {
+        if let Some(ordinal) = trailing_ordinal(&tag) {
             let mut id_gen = self.ids.id_gen_context();
             if id_gen.next_tag_id <= ordinal {
                 id_gen.next_tag_id = ordinal + 1;
@@ -393,4 +430,13 @@ impl EffectLoweringContext {
         }
         Some(tag)
     }
+}
+
+/// The generated ordinal at the end of a result tag (`moved_2`,
+/// `__sentence_helper_exiled_l0_s0_e1`).
+fn trailing_ordinal(tag: &TagKey) -> Option<u32> {
+    tag.as_str()
+        .rsplit(|ch: char| !ch.is_ascii_digit())
+        .next()
+        .and_then(|digits| digits.parse::<u32>().ok())
 }

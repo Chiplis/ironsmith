@@ -359,7 +359,10 @@ pub fn wicked_role_token_definition() -> CardDefinition {
         )))
         .with_ability(crate::ability::Ability::triggered(
             crate::triggers::Trigger::this_dies(),
-            vec![Effect::for_each_opponent(vec![Effect::lose_life(1)])],
+            vec![Effect::for_each_opponent(vec![Effect::lose_life_player(
+                1,
+                PlayerFilter::IteratedPlayer,
+            )])],
         ))
         .build()
 }

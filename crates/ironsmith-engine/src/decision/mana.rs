@@ -5273,7 +5273,11 @@ pub(crate) fn collect_spell_cost_modifiers(
             if let Some(generic_reduction) = &effect.generic_reduction {
                 let amount = resolve_cost_modifier_value(game, player, spell, generic_reduction);
                 if amount > 0 {
-                    total_reduction = total_reduction.saturating_add(amount);
+                    if effect.increases_cost {
+                        total_increase = total_increase.saturating_add(amount);
+                    } else {
+                        total_reduction = total_reduction.saturating_add(amount);
+                    }
                 }
             }
             reduction_pips.extend(effect.reduction.pips().iter().cloned());

@@ -109,6 +109,9 @@ pub enum ZoneMoveActionAst {
         /// enters under the SEARCHED player's control, which is only correct
         /// when you searched your own library.
         enters_under_your_control: bool,
+        /// An explicit other player named by the put clause ("… onto the
+        /// battlefield tapped under target player's control").
+        enters_under_player: Option<PlayerAst>,
     },
     SearchLibrarySlotsToHand {
         slots: Vec<SearchLibrarySlotAst>,

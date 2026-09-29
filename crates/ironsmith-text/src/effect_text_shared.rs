@@ -72,6 +72,8 @@ pub fn is_implicit_reference_tag(tag: &str) -> bool {
             | crate::tag::MANIFEST_DREAD_GRAVEYARD_TAG
             | crate::tag::SOURCE_EXILED_TAG
             | "other_attacker"
+            // The copy a copy effect just created ("the copy", "it").
+            | "__copied_stack_object__"
             | "blocking"
             | "blocked"
             | "searched_face_down" // "<verbed>_this_way" helper tags back-reference an object the same

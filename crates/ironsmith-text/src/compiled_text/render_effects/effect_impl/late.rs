@@ -5444,6 +5444,11 @@
     {
         let player_text = describe_player_filter(&grant_next_spell_cost_reduction.player);
         let spell_text = describe_cast_limit_spell_filter(&grant_next_spell_cost_reduction.filter);
+        let direction = if grant_next_spell_cost_reduction.increases_cost {
+            "more"
+        } else {
+            "less"
+        };
         let player_suffix = format!(" cast by {player_text}");
         let cast_by_text = grant_next_spell_cost_reduction
             .filter
@@ -5525,11 +5530,12 @@
                         plural_spell_text
                     };
                 return format!(
-                    "{} {} {} cost {} less to cast {}{}",
+                    "{} {} {} cost {} {} to cast {}{}",
                     plural_spell_text,
                     caster_text,
                     player_verb(&caster_text, "cast", "casts"),
                     reduction,
+                    direction,
                     duration_text,
                     where_suffix,
                 );
@@ -5538,13 +5544,13 @@
                 && grant_next_spell_cost_reduction.filter.zone.is_none()
             {
                 return format!(
-                    "{} cost {} less to cast {}{}",
-                    plural_spell_text, reduction, duration_text, where_suffix,
+                    "{} cost {} {} to cast {}{}",
+                    plural_spell_text, reduction, direction, duration_text, where_suffix,
                 );
             }
             return format!(
-                "{} {} cost {} less to cast{}",
-                plural_spell_text, duration_text, reduction, where_suffix,
+                "{} {} cost {} {} to cast{}",
+                plural_spell_text, duration_text, reduction, direction, where_suffix,
             );
         }
         let duration_text = match grant_next_spell_cost_reduction.duration {
@@ -5582,11 +5588,12 @@
                 )
             });
         return format!(
-            "The next {} {} cast {} costs {} less to cast{}",
+            "The next {} {} cast {} costs {} {} to cast{}",
             spell_text,
             player_text,
             duration_text,
             reduction,
+            direction,
             where_suffix,
         );
     }

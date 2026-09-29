@@ -104,6 +104,18 @@ pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<TagKey> 
     } {
         return Some((crate::tag::CompilerReferenceTag::Blocking.bind()).into());
     }
+    // "Whenever this creature blocks two or more creatures, it gains first
+    // strike": a plural block has no singular blocked-creature antecedent, so
+    // a following `it` names the blocking source.
+    if matches!(
+        trigger,
+        TriggerSpec::ThisBlocksObject {
+            min_blocked_objects: Some(_),
+            ..
+        }
+    ) {
+        return None;
+    }
     if matches!(
         trigger,
         TriggerSpec::ThisBlocksObject { .. } | TriggerSpec::BlocksObjectWithLesserPower { .. }

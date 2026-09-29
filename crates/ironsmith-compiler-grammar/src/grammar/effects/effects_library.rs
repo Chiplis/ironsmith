@@ -774,6 +774,12 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             ),
         ]
     };
+    if effect_routing.enters_under_target_player_control {
+        effects = effects
+            .into_iter()
+            .map(|effect| effect.with_search_battlefield_controller(PlayerAst::Target))
+            .collect();
+    }
 
     if let Some(discard_followup) = discard_before_shuffle_followup {
         let discard_tokens =

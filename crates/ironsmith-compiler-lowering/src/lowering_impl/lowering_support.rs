@@ -2854,6 +2854,12 @@ fn trigger_has_source_attack_antecedent(trigger: &TriggerSpec) -> bool {
         TriggerSpec::WithIntro { trigger, .. } => trigger_has_source_attack_antecedent(trigger),
         TriggerSpec::ThisAttacks | TriggerSpec::ThisAttacksAndIsntBlocked => true,
         TriggerSpec::Attacks(filter) | TriggerSpec::AttacksAndIsntBlocked(filter) => filter.source,
+        // A plural block ("blocks two or more creatures") leaves the blocking
+        // source as the only singular antecedent.
+        TriggerSpec::ThisBlocksObject {
+            min_blocked_objects: Some(_),
+            ..
+        } => true,
         _ => false,
     }
 }
@@ -4702,7 +4708,7 @@ pub(crate) fn lower_compiler_static_ability_core(
         crate::model::CompilerStaticAbilityPayloadCore::EnterAsCopyAsEnters { spec, display } => {
             let mut added_abilities = Vec::with_capacity(spec.added_abilities.len());
             for ability in spec.added_abilities {
-                added_abilities.push(lower_compiler_ability_core(ability, None)?);
+                added_abilities.push(lower_compiler_ability_core_in_own_trigger_context(ability)?);
             }
             Ok(StaticAbility {
                 id,
@@ -5005,6 +5011,38 @@ pub(crate) fn lower_compiler_ability_core(
     Ok(Ability {
         kind,
         functional_zones,
+    })
+}
+
+/// Lower a recognized ability whose triggered effects were stored as raw
+/// effect ASTs (a quoted ability added by a copy exception: "except ... it has
+/// \"When this creature becomes the target of a spell or ability, sacrifice
+/// it.\""). Its pronouns bind against its own trigger, exactly as a printed
+/// triggered ability's do, instead of lowering with no references in scope
+/// (where "sacrifice it" would degrade to "sacrifice a permanent").
+fn lower_compiler_ability_core_in_own_trigger_context(
+    mut ability: crate::model::CompilerAbilityCore,
+) -> Result<Ability, CardTextError> {
+    let crate::model::CompilerAbilityKindCore::Triggered(triggered) = &mut ability.kind else {
+        return lower_compiler_ability_core(ability, None);
+    };
+    let [segment] = triggered.effects.segments.as_slice() else {
+        return lower_compiler_ability_core(ability, None);
+    };
+    if !triggered.choices.is_empty()
+        || !segment.self_replacements.is_empty()
+        || segment.default_effects.is_empty()
+    {
+        return lower_compiler_ability_core(ability, None);
+    }
+    let effects_ast = segment.default_effects.clone();
+    let trigger_spec = Box::new(triggered.trigger.clone());
+    triggered.effects = ironsmith_core::ResolutionProgram::default();
+    lower_parsed_ability(ParsedAbility {
+        ability: Box::new(ability),
+        effects_ast: Some(effects_ast),
+        reference_imports: ReferenceImports::default(),
+        trigger_spec: Some(trigger_spec),
     })
 }
 

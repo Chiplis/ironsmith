@@ -1251,6 +1251,16 @@ pub fn parse_negated_object_restriction_clause(
             if remainder_words.len() > payload_words =>
         {
             let attacker_tokens = trim_commas(&remainder_tokens[payload_words..]);
+            // "can't block as long as <condition>" is a conditional plain
+            // block restriction, not a restriction naming an attacker.
+            if crate::word_primitives::parse_sequence_complete(
+                crate::lexer::token_word_refs(&attacker_tokens)
+                    .get(..3)
+                    .unwrap_or_default(),
+                &["as", "long", "as"],
+            ) {
+                return Ok(None);
+            }
             let attacker_filter = parse_and_or_disjunction_filter(&attacker_tokens)?
                 .or(parse_subject_object_filter(&attacker_tokens)?)
                 .or_else(|| {

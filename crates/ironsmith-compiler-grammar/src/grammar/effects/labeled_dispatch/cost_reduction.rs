@@ -19,6 +19,9 @@ pub struct MatchingSpellCostReductionShape<'a> {
     pub duration: Until,
     pub next_spell: bool,
     pub next_spell_mana_reduction: Option<ManaCost>,
+    /// "... cost {N} more to cast": the amount increases matching spells'
+    /// costs instead of reducing them.
+    pub increase: bool,
 }
 
 pub fn parse_matching_spell_cost_reduction_shape(
@@ -31,10 +34,15 @@ pub fn parse_matching_spell_cost_reduction_shape(
     let (cost_token_idx, _, _) = primitives::find_prefix(tokens, || primitives::kw("cost").void())
         .or_else(|| primitives::find_prefix(tokens, || primitives::kw("costs").void()))?;
     let (less_token_idx, _, after_less) =
-        primitives::find_prefix(tokens, || primitives::kw("less").void())?;
+        primitives::find_prefix(tokens, || primitives::kw("less").void())
+            .or_else(|| primitives::find_prefix(tokens, || primitives::kw("more").void()))?;
+    let increase = tokens[less_token_idx].is_word("more");
 
     let has_you_cast = common::present(&words, &["you", "cast"]);
-    let has_that_player_casts = common::present(&words, &["that", "player", "casts"]);
+    // "If they do, spells they cast this turn ..." names the same relative
+    // player as "spells that player casts this turn".
+    let has_that_player_casts = common::present(&words, &["that", "player", "casts"])
+        || common::present(&words, &["spells", "they", "cast"]);
     let has_chosen_name = common::present(&words, &["with", "chosen", "name"])
         || common::present(&words, &["with", "the", "chosen", "name"]);
     let has_this_turn_duration = common::present(&words, &["this", "turn"]);
@@ -109,7 +117,7 @@ pub fn parse_matching_spell_cost_reduction_shape(
     }
 
     let next_spell = common::prefix(&words, &["the", "next"]);
-    let next_spell_mana_reduction = if next_spell {
+    let next_spell_mana_reduction = if next_spell && !increase {
         leaf::parse_leaf_fixed_mana_cost_prefix_tokens(reduction_tokens)
             .filter(|parsed| parsed.consumed == reduction_tokens.len())
             .map(|parsed| parsed.cost)
@@ -128,6 +136,7 @@ pub fn parse_matching_spell_cost_reduction_shape(
         },
         next_spell,
         next_spell_mana_reduction,
+        increase,
     })
 }
 

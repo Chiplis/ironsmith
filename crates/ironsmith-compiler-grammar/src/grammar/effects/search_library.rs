@@ -416,6 +416,8 @@ pub struct SearchLibraryEffectRouting {
     /// the battlefield under your control"). Searching another player's library
     /// otherwise leaves the card under ITS owner's control.
     pub enters_under_your_control: bool,
+    /// "… onto the battlefield under target player's control".
+    pub enters_under_target_player_control: bool,
     pub library_position_from_top: Option<Value>,
     pub result_reference_surface: crate::effect::SearchResultReferenceSurface,
     pub search_top_in_any_order_surface: bool,
@@ -1184,6 +1186,16 @@ pub fn derive_search_library_effect_routing_lexed(
     let enters_under_your_control = put_clause_words.as_ref().is_some_and(|words| {
         crate::word_primitives::sequence_occurs(words, &["under", "your", "control"])
     });
+    let enters_under_target_player_control = destination == Zone::Battlefield
+        && put_clause_words.as_ref().is_some_and(|words| {
+            crate::word_primitives::sequence_occurs(
+                words,
+                &["under", "target", "player's", "control"],
+            ) || crate::word_primitives::sequence_occurs(
+                words,
+                &["under", "target", "players", "control"],
+            )
+        });
 
     SearchLibraryEffectRouting {
         destination,
@@ -1197,6 +1209,7 @@ pub fn derive_search_library_effect_routing_lexed(
         has_tapped_modifier,
         battlefield_entry_counters,
         enters_under_your_control,
+        enters_under_target_player_control,
         library_position_from_top: put_clause_words
             .as_ref()
             .and_then(|words| search_library_put_position_from_top_words(words)),

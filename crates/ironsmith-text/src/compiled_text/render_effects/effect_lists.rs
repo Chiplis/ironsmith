@@ -10922,7 +10922,9 @@ fn describe_tagged_blocked_set_tap_then_next_untap(effects: &[Effect]) -> Option
         crate::filter::ObjectRef::Tagged(tag) if tag.as_str() == "blocking" => {
             "the blocking creature"
         }
-        crate::filter::ObjectRef::Tagged(_) => "one of those creatures",
+        crate::filter::ObjectRef::Tagged(_) | crate::filter::ObjectRef::FilterCandidate => {
+            "one of those creatures"
+        }
     };
     Some(format!(
         "Tap each creature that was blocked by {blocker} this turn and it doesn't untap during its controller's next untap step"

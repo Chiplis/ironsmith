@@ -7,6 +7,7 @@ use super::*;
 pub(super) fn propagate_trailing_shared_card_zone_scope(
     branches: &mut [ObjectFilter],
     repeated_card_noun_surface: bool,
+    elided_card_noun_arms: &[bool],
 ) {
     let Some((last, preceding)) = branches.split_last_mut() else {
         return;
@@ -16,10 +17,12 @@ pub(super) fn propagate_trailing_shared_card_zone_scope(
     };
     if zone == Zone::Battlefield
         || !last.has_explicit_card_noun()
-        || !preceding.iter().all(|branch| {
+        || !preceding.iter().enumerate().all(|(index, branch)| {
             matches!(branch.zone, None | Some(Zone::Battlefield))
                 && branch.controller.is_none()
-                && (branch.has_explicit_card_noun() || repeated_card_noun_surface)
+                && (branch.has_explicit_card_noun()
+                    || repeated_card_noun_surface
+                    || elided_card_noun_arms.get(index).copied().unwrap_or(false))
         })
     {
         return;

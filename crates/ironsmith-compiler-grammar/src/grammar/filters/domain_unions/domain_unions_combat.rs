@@ -31,7 +31,11 @@ pub(super) fn contains_attacking_player_or_planeswalker_relation(tokens: &[Owned
 /// the partner characteristics.
 pub(super) fn contains_historical_block_partner_relation(tokens: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(tokens).word_refs();
-    crate::word_primitives::sequence_occurs(&words, &["blocked", "or", "was", "blocked", "by"])
+    (crate::word_primitives::sequence_occurs(&words, &["blocked", "or", "was", "blocked", "by"])
+        || crate::word_primitives::sequence_occurs(
+            &words,
+            &["blocked", "or", "were", "blocked", "by"],
+        ))
         && crate::word_primitives::sequence_occurs(&words, &["this", "turn"])
 }
 

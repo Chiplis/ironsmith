@@ -838,6 +838,14 @@ fn resolve_it_animation_to_source(effect: &mut EffectAst) -> bool {
         | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceToTarget {
             target,
             ..
+        })
+        // "if this artifact has fewer than three charge counters on it, put a
+        // charge counter on it": the counter holder is the same source the
+        // condition just named.
+        | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target, .. })
+        | SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters {
+            target,
+            ..
         }) = &mut subject_verb.action
     {
         resolve_it_animation_target_to_source(target);

@@ -231,6 +231,7 @@ pub enum CompilerReferenceTag {
     PriorExiledCard,
     ExiledThisWay,
     RevealedThisWay,
+    LookedAtHand,
     SourceObject,
     Exploited,
     Exploiter,
@@ -344,6 +345,10 @@ pub enum CompilerReferenceTag {
     PluralAntecedentCards,
     TappedThisWayGroup,
     OtherAttacker,
+    /// Parse-time alias for the object antecedent that the latest object
+    /// producer superseded. A definite description whose noun cannot name the
+    /// newest result ("create a token and exile that card") reads it.
+    PriorObjectAntecedent,
 }
 
 impl CompilerReferenceTag {
@@ -354,6 +359,7 @@ impl CompilerReferenceTag {
             Self::PriorExiledCard => "__prior_exiled_card__",
             Self::ExiledThisWay => "__exiled_this_way__",
             Self::RevealedThisWay => "__revealed_this_way__",
+            Self::LookedAtHand => "__looked_at_hand__",
             Self::SourceObject => "__source_object__",
             Self::Exploited => "exploited",
             Self::Exploiter => "exploiter",
@@ -467,6 +473,7 @@ impl CompilerReferenceTag {
             Self::PluralAntecedentCards => "plural_antecedent_cards",
             Self::TappedThisWayGroup => "tapped_this_way_group",
             Self::OtherAttacker => "other_attacker",
+            Self::PriorObjectAntecedent => "__prior_object_antecedent__",
         }
     }
 
@@ -535,7 +542,8 @@ impl CompilerReferenceTag {
             | Self::ControllerConsultRevealed
             | Self::ControllerConsultMatched
             | Self::DrawnRevealedCard
-            | Self::HideawayLooked => (R::Revealed, D::Card),
+            | Self::HideawayLooked
+            | Self::LookedAtHand => (R::Revealed, D::Card),
             Self::Searched
             | Self::SearchedOutsideGame
             | Self::SearchedMultiZone

@@ -1216,7 +1216,7 @@ pub(super) fn compile_subject_verb_late(
                     effect = effect.tag(tag.clone());
                     ctx.last_object_tag = Some(tag.clone());
                 } else if spec.is_target() {
-                    let tag = ctx.next_tag("exiled");
+                    let tag = reserved_or_next_object_tag(ctx, "exiled");
                     effect = effect.tag(tag.clone());
                     ctx.last_object_tag = Some(tag);
                 } else if choose_spec_targets_object(&spec)
@@ -1268,7 +1268,7 @@ pub(super) fn compile_subject_verb_late(
                         effect = effect.tag(tag);
                     }
                 } else {
-                    let tag = ctx.next_tag("exiled");
+                    let tag = reserved_or_next_object_tag(ctx, "exiled");
                     effect = effect.tag(tag.clone());
                     ctx.last_exiled_collection_tag = Some(tag.clone());
                     ctx.last_exiled_collection_is_plural = true;
@@ -1300,6 +1300,7 @@ pub(super) fn compile_subject_verb_late(
                 },
                 _ => {}
             }
+            crate::reference_helpers::remember_looked_at_hand(&mut ctx.snapshot_tag_aliases);
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::Stack(StackActionAst::Counter { target }) => {
@@ -2269,6 +2270,7 @@ pub(super) fn compile_subject_verb_late(
             reduction,
             duration,
             next_only,
+            increase,
         }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, false, false, true)?;
             let mut player_filter = subject.into_player_filter();
@@ -2280,7 +2282,7 @@ pub(super) fn compile_subject_verb_late(
                     &last_player_filter,
                 );
             }
-            let reduction_effect = if *next_only {
+            let mut reduction_effect = if *next_only {
                 crate::effects::GrantNextSpellCostReductionEffect::next_matching_this_turn(
                     player_filter,
                     resolved_filter,
@@ -2294,6 +2296,9 @@ pub(super) fn compile_subject_verb_late(
                     duration.clone(),
                 )
             };
+            if *increase {
+                reduction_effect = reduction_effect.increasing_cost();
+            }
             Ok((vec![Effect::new(reduction_effect)], Vec::new()))
         }
         SubjectVerbActionAst::Grants(GrantActionAst::GrantNextSpellAbilityThisTurn {
@@ -2766,7 +2771,7 @@ fn lower_actor_chosen_exile_target(
     let mut prelude = subject.target_prelude();
     let (filter_prelude, mut choices) = target_context_prelude_for_filter(&resolved_filter);
     prelude.extend(filter_prelude);
-    let tag = ctx.next_tag("exiled");
+    let tag = reserved_or_next_object_tag(ctx, "exiled");
     let tag_key: TagKey = tag.as_str().into();
     ctx.last_object_tag = Some(tag.clone());
     ctx.last_player_filter = Some(chooser.clone());

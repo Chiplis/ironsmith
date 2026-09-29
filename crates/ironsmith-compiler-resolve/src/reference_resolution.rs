@@ -38,7 +38,8 @@ use super::effect_ast_traversal::{
     for_each_nested_effect_vec_mut, for_each_nested_effects, try_for_each_nested_effects_mut,
 };
 use super::reference_helpers::{
-    as_followup_player_alias, choose_spec_targets_object, is_sacrificed_object_reference_tag,
+    as_followup_player_alias, choose_spec_targets_object, is_noun_restricted_object_result_tag,
+    is_sacrificed_object_reference_tag,
     is_you_player_filter, object_filter_as_tagged_reference, player_filter_from_object_filter,
     resolve_it_tag, resolve_non_target_player_filter, resolve_target_spec_with_choices,
 };
@@ -744,6 +745,79 @@ fn resolve_definite_object_references_in_effect(
     });
 }
 
+/// A definite object reference ("destroy that creature") whose ordinary
+/// last-object antecedent was cleared by an intervening source instruction
+/// ("sacrifice this enchantment. If you do, ...") would otherwise fall back
+/// to the source. Bind it to the unique recorded object of the same kind
+/// (an explicit target or the trigger's event object) instead.
+fn resolve_orphaned_definite_object_references_in_effect(
+    effect: &mut EffectAst,
+    bindings: &[ObjectTargetBinding],
+) {
+    if bindings.is_empty() {
+        return;
+    }
+    if let EffectAst::SubjectVerb(subject_verb) = effect {
+        match &mut subject_verb.action {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { target, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { target, .. })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap { target })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Untap { target })
+            | SubjectVerbActionAst::Control(ControlActionAst::GainControl { target, .. }) => {
+                resolve_orphaned_definite_object_target(target, bindings);
+            }
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fight {
+                creature1,
+                creature2,
+                ..
+            }) => {
+                resolve_orphaned_definite_object_target(creature1, bindings);
+                resolve_orphaned_definite_object_target(creature2, bindings);
+            }
+            _ => {}
+        }
+    }
+    crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+        for effect in nested {
+            resolve_orphaned_definite_object_references_in_effect(effect, bindings);
+        }
+    });
+}
+
+fn resolve_orphaned_definite_object_target(
+    target: &mut TargetAst,
+    bindings: &[ObjectTargetBinding],
+) {
+    match target {
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, ..) => {
+            resolve_orphaned_definite_object_target(inner, bindings);
+        }
+        TargetAst::Object(filter, explicit_target_span, reference_span)
+            if explicit_target_span.is_none()
+                && reference_span.is_some()
+                && !filter.source
+                && filter.tagged_constraints.iter().all(|constraint| {
+                    constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                        && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                }) =>
+        {
+            let mut matching = bindings
+                .iter()
+                .filter(|binding| binding.discriminator.is_described_by(filter));
+            let (Some(binding), None) = (matching.next(), matching.next()) else {
+                return;
+            };
+            *target = TargetAst::Tagged(
+                ironsmith_compiler_semantic::tag::TagRef::of(binding.tag.clone()),
+                *reference_span,
+            );
+        }
+        _ => {}
+    }
+}
+
 fn maybe_tag_value_object_target(
     value: &Value,
     frame: &mut ReferenceFrame,
@@ -1007,8 +1081,17 @@ fn advance_reference_frame_for_effect(
                 | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllCombatDamageFromSource { source, .. }) => {
                     maybe_tag_target(source, frame, id_gen, "targeted")?;
                 }
-                SubjectVerbActionAst::Stack(StackActionAst::RetargetStackObject { .. }) => {
-                    if frame.auto_tag_object_targets {
+                SubjectVerbActionAst::Stack(StackActionAst::RetargetStackObject {
+                    target, ..
+                }) => {
+                    // Choosing new targets leaves the stack object itself in
+                    // place: a following "it"/"the copy" still names the
+                    // already-tagged object ("copy it. You may choose new
+                    // targets for the copy. If it's a permanent spell, ...").
+                    let retargets_tagged_object = matches!(target, TargetAst::Tagged(..));
+                    if retargets_tagged_object {
+                        maybe_tag_target(target, frame, id_gen, "retargeted")?;
+                    } else if frame.auto_tag_object_targets {
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "retargeted"));
                     }
                 }
@@ -1194,6 +1277,9 @@ fn advance_reference_frame_for_effect(
                     // spell/permanent tag into a hand-card selection.
                     frame.last_object_tag = None;
                     frame.source_object_antecedent = false;
+                    // An unqualified plural back-reference ("exile those
+                    // cards") names exactly the looked-at cards.
+                    crate::reference_helpers::remember_looked_at_hand(&mut frame.snapshot_tag_aliases);
                 }
                 SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTarget { target }) => {
                     maybe_tag_target(target, frame, id_gen, "targeted")?;
@@ -1334,7 +1420,9 @@ fn advance_reference_frame_for_effect(
                     target,
                     follow_up_effects: _,
                 }) => {
-                    maybe_tag_target(target, frame, id_gen, "returned")?;
+                    // Same result prefix lowering tags the regeneration with,
+                    // so lowering adopts this reservation.
+                    maybe_tag_target(target, frame, id_gen, "regenerated")?;
                 }
                 SubjectVerbActionAst::KeywordActions(KeywordActionAst::RegenerateAll { filter }) => {
                     track_player_from_object_filter(filter, frame);
@@ -2419,6 +2507,7 @@ fn annotate_effect_sequence_with_env_internal(
     let imported_exile_cost_tag_index = cost_tag_index_from_env(&current_env, "exile_cost_");
 
     while let Some(mut effect) = effects.next() {
+        let tag_id_floor = id_gen.next_tag_id;
         let in_env = current_env.clone();
         // In a trailing condition such as "put the exiled card ... if it's a
         // creature card", `it` names the explicit action subject, not the
@@ -2495,6 +2584,12 @@ fn annotate_effect_sequence_with_env_internal(
             &mut effect,
             &resolution_env.recent_object_target_bindings,
         );
+        if resolution_env.known_last_object_tag().is_none() {
+            resolve_orphaned_definite_object_references_in_effect(
+                &mut effect,
+                &resolution_env.recent_object_target_bindings,
+            );
+        }
         let mut resolution_state = effect_reference_resolution_state(&resolution_env);
         resolution_state.last_sacrifice_cost_tag_index = resolution_state
             .last_sacrifice_cost_tag_index
@@ -2700,6 +2795,7 @@ fn annotate_effect_sequence_with_env_internal(
             out_env,
             assigned_effect_id,
             auto_tag_object_targets: auto_tag_object_targets_for_env,
+            tag_id_floor,
         });
     }
 
@@ -4240,6 +4336,28 @@ fn resolve_effect_sequence_references_with_state_in_place(
     Ok(())
 }
 
+/// Whether a condition tests the current object antecedent ("if it's a
+/// land card", "if that spell's mana value is 5 or greater").
+fn predicate_reads_object_antecedent(predicate: &PredicateAst, env: &ReferenceEnv) -> bool {
+    match predicate {
+        PredicateAst::ItIsLandCard
+        | PredicateAst::ItIsSoulbondPaired
+        | PredicateAst::ItMatches(_)
+        | PredicateAst::ItMatchedLastKnown(_) => true,
+        PredicateAst::Not(inner) => predicate_reads_object_antecedent(inner, env),
+        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
+            predicate_reads_object_antecedent(left, env)
+                || predicate_reads_object_antecedent(right, env)
+        }
+        _ => {
+            predicate_references_tag(predicate, crate::tag::CompilerReferenceTag::It.as_str())
+                || env
+                    .known_last_object_tag()
+                    .is_some_and(|tag| predicate_references_tag(predicate, tag.as_str()))
+        }
+    }
+}
+
 fn advance_reference_env_for_effect(
     effect: &EffectAst,
     env: &ReferenceEnv,
@@ -4278,13 +4396,22 @@ fn advance_reference_env_for_effect(
                 // A followup can name the objects affected by the optional
                 // branch. Its fresh result tag denotes an empty set when the
                 // branch does not execute, never the ambient source object.
+                //
+                // A branch gated on the current antecedent itself ("If it's a
+                // creature card, create a token. If it's a land card, ...")
+                // is one row of a classification of that antecedent. The next
+                // row's "it" still names the classified object, never the
+                // result of an earlier row.
                 let exports_branch_result = auto_tag_object_targets
+                    && !predicate_reads_object_antecedent(predicate, env)
                     && true_sequence.final_env.last_object_tag != env.last_object_tag
                     && matches!(true_sequence.final_env.last_object_tag, RefState::Known(_));
                 return Ok(ReferenceEnv {
                     last_value_comparison: env.last_value_comparison.clone(),
                     last_object_tag: if exports_branch_result {
                         true_sequence.final_env.last_object_tag.clone()
+                    } else if predicate_reads_object_antecedent(predicate, env) {
+                        env.last_object_tag.clone()
                     } else {
                         RefState::join(
                             &true_sequence.final_env.last_object_tag,
@@ -4394,11 +4521,18 @@ fn advance_reference_env_for_effect(
                 id_gen,
             )?;
             let mut out_env = nested.final_env;
-            if matches!(predicate, IfResultPredicate::Value(_)) {
-                // Numeric result rows are mutually exclusive siblings. Keep
-                // references created inside one row available throughout that
-                // row, but do not let them become the antecedent for the next
-                // row in the table.
+            if matches!(
+                predicate,
+                IfResultPredicate::Value(_)
+                    | IfResultPredicate::PriorEffectResult(_)
+                    | IfResultPredicate::AffectedObjectMatchesCardType { .. }
+            ) {
+                // Numeric result rows, and rows classifying what the prior
+                // action produced ("If a land card is milled this way, ...
+                // If a creature card is milled this way, ..."), are mutually
+                // exclusive siblings. Keep references created inside one row
+                // available throughout that row, but do not let them become
+                // the antecedent for the next row in the table.
                 out_env.last_object_tag = env.last_object_tag.clone();
                 out_env.snapshot_tag_aliases = env.snapshot_tag_aliases.clone();
                 out_env.last_it_choice_is_set = env.last_it_choice_is_set;
@@ -4434,9 +4568,30 @@ fn advance_reference_env_for_effect(
                 config.force_auto_tag_object_targets && !suppress_force_auto_tag_object_targets,
             );
             advance_reference_frame_for_effect(effect, id_gen, &mut frame)?;
+            remember_superseded_object_antecedent(env, &mut frame);
             Ok(ReferenceEnv::from_frame(&frame))
         }
     }
+}
+
+/// When a producer whose results a definite description may be unable to
+/// name (new tokens; cards revealed, looked at, milled, or discarded) becomes
+/// the newest object antecedent, keep the antecedent it superseded reachable.
+/// "Create a Zombie token and exile that card" and "reveal the top card ...
+/// to that creature" still describe the earlier object.
+fn remember_superseded_object_antecedent(env: &ReferenceEnv, frame: &mut ReferenceFrame) {
+    let (Some(previous), Some(current)) = (env.known_last_object_tag(), &frame.last_object_tag)
+    else {
+        return;
+    };
+    if previous == current || !is_noun_restricted_object_result_tag(current) {
+        return;
+    }
+    let alias = crate::tag::CompilerReferenceTag::PriorObjectAntecedent.key();
+    frame
+        .snapshot_tag_aliases
+        .retain(|(existing, _)| existing != &alias);
+    frame.snapshot_tag_aliases.push((alias, previous.clone()));
 }
 
 fn resolve_effect_result_values_in_fields(

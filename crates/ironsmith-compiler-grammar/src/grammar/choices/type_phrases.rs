@@ -115,9 +115,59 @@ pub fn parse_choice_card_type_phrase_words(words: &[&str]) -> Option<ChoiceCardT
     let mut input: primitives::WordSliceInput<'_> = words;
     crate::grammar::primitives::take_leaf(&mut input, parse_choose_prefix)?;
 
+    // "a noncreature card type": every card type except the negated one.
+    let mut negated_probe = input;
+    if let Ok(word) = take_word(&mut negated_probe)
+        && let Some(negated) = word.strip_prefix("non")
+        && let Ok(excluded) = leaf::parse_leaf_card_type_complete(negated)
+        && parse_word_phrase(&mut negated_probe, &["card", "type"]).is_ok()
+    {
+        input = negated_probe;
+        return Some(ChoiceCardTypePhrase {
+            consumed: words.len().saturating_sub(input.len()),
+            options: card_types_other_than(&[excluded]),
+        });
+    }
+
     let mut generic_probe = input;
     if parse_word_phrase(&mut generic_probe, &["card", "type"]).is_ok() {
         input = generic_probe;
+        // "a card type other than creature (or land)".
+        let mut exclusion_probe = input;
+        if parse_word_phrase(&mut exclusion_probe, &["other", "than"]).is_ok() {
+            let mut excluded = Vec::new();
+            loop {
+                let mut connector_probe = exclusion_probe;
+                if !excluded.is_empty()
+                    && alt((
+                        primitives::word_slice_exact("or"),
+                        primitives::word_slice_exact("and"),
+                        primitives::word_slice_exact(","),
+                    ))
+                    .parse_next(&mut connector_probe)
+                    .is_ok()
+                {
+                    exclusion_probe = connector_probe;
+                    continue;
+                }
+                let mut type_probe = exclusion_probe;
+                let Ok(word) = take_word(&mut type_probe) else {
+                    break;
+                };
+                let Ok(card_type) = leaf::parse_leaf_card_type_complete(word) else {
+                    break;
+                };
+                crate::slice_primitives::push_unique(&mut excluded, card_type);
+                exclusion_probe = type_probe;
+            }
+            if !excluded.is_empty() {
+                input = exclusion_probe;
+                return Some(ChoiceCardTypePhrase {
+                    consumed: words.len().saturating_sub(input.len()),
+                    options: card_types_other_than(&excluded),
+                });
+            }
+        }
         return Some(ChoiceCardTypePhrase {
             consumed: words.len().saturating_sub(input.len()),
             options: Vec::new(),
@@ -181,6 +231,14 @@ pub fn parse_choice_card_type_phrase_words(words: &[&str]) -> Option<ChoiceCardT
         consumed: words.len().saturating_sub(input.len()),
         options,
     })
+}
+
+fn card_types_other_than(excluded: &[CardType]) -> Vec<CardType> {
+    crate::effects::ChooseCardTypeEffect::all_card_types()
+        .iter()
+        .copied()
+        .filter(|card_type| !excluded.contains(card_type))
+        .collect()
 }
 
 pub fn parse_choice_player_phrase_words(words: &[&str]) -> Option<ChoiceSimpleTypePhrase> {

@@ -338,8 +338,12 @@ fn causative_recipient_filter(player: PlayerAst) -> Option<PlayerFilter> {
         PlayerAst::You | PlayerAst::Implicit => PlayerFilter::You,
         PlayerAst::Any => PlayerFilter::Any,
         PlayerAst::Opponent => PlayerFilter::Opponent,
-        PlayerAst::Target => PlayerFilter::target_player(),
-        PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
+        // "unless target player has <source> deal N damage to them": "them"
+        // is the already-declared unless-player, not a second target.
+        PlayerAst::Target => PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Any)),
+        PlayerAst::TargetOpponent => {
+            PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Opponent))
+        }
         PlayerAst::That => PlayerFilter::IteratedPlayer,
         PlayerAst::ItsController => PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target),
         PlayerAst::ItsOwner => PlayerFilter::OwnerOf(crate::filter::ObjectRef::Target),
@@ -972,6 +976,21 @@ pub fn try_build_unless(
     if let Ok(mut alternative) = parse_effect_chain(action_clause.tokens())
         && !alternative.is_empty()
     {
+        // The action slice had its player subject stripped ("unless they
+        // discard a card" -> "discard a card"), so the imperative reader
+        // attributes it to "you". That actor is the unless-player, not the
+        // ability's controller. A causative "unless they have you ..." keeps
+        // its authored "you".
+        let causative = matches!(action_words.first().copied(), Some("have" | "has"));
+        if !causative && !matches!(player, PlayerAst::You | PlayerAst::Implicit) {
+            for effect in &mut alternative {
+                if let EffectAst::SubjectVerb(subject_verb) = effect
+                    && subject_verb.subject.player == PlayerAst::You
+                {
+                    subject_verb.subject.player = player;
+                }
+            }
+        }
         for effect in &mut alternative {
             bind_unless_player_context(effect, player);
         }

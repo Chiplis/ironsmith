@@ -431,6 +431,7 @@ pub(crate) trait TailMatchSubject: TaggedConstraintSubject {
     fn tail_has_static_ability_id(&self, ability_id: StaticAbilityId) -> bool;
     fn tail_has_ability_marker(&self, marker: &str) -> bool;
     fn tail_has_tap_activated_ability(&self) -> bool;
+    fn tail_has_non_mana_activated_ability(&self) -> bool;
     fn tail_is_commander(&self, game: &crate::game_state::GameState) -> bool;
 }
 
@@ -528,6 +529,10 @@ impl TailMatchSubject for Object {
 
     fn tail_has_tap_activated_ability(&self) -> bool {
         object_has_tap_activated_ability(self)
+    }
+
+    fn tail_has_non_mana_activated_ability(&self) -> bool {
+        abilities_have_non_mana_activated_ability(&self.abilities)
     }
 
     fn tail_is_commander(&self, game: &crate::game_state::GameState) -> bool {
@@ -649,6 +654,10 @@ impl TailMatchSubject for LayeredSubject<'_> {
         abilities_have_tap_activated_ability(&self.chars.abilities)
     }
 
+    fn tail_has_non_mana_activated_ability(&self) -> bool {
+        abilities_have_non_mana_activated_ability(&self.chars.abilities)
+    }
+
     fn tail_is_commander(&self, game: &crate::game_state::GameState) -> bool {
         game.is_commander(self.object.id)
     }
@@ -749,6 +758,10 @@ impl TailMatchSubject for ObjectSnapshot {
 
     fn tail_has_tap_activated_ability(&self) -> bool {
         snapshot_has_tap_activated_ability(self)
+    }
+
+    fn tail_has_non_mana_activated_ability(&self) -> bool {
+        abilities_have_non_mana_activated_ability(&self.abilities)
     }
 
     fn tail_is_commander(&self, _game: &crate::game_state::GameState) -> bool {
@@ -1376,6 +1389,11 @@ pub struct FilterContext {
     /// source's object id, so this picks which stack object the source's
     /// characteristics are matched on behalf of.
     pub stack_entry: Option<ObjectId>,
+
+    /// Controller and owner of the candidate object an enclosing filter is
+    /// comparing against a candidate-relative operand
+    /// ([`ObjectRef::FilterCandidate`]).
+    pub filter_candidate_players: Option<(PlayerId, PlayerId)>,
 }
 
 impl FilterContext {
@@ -2097,6 +2115,7 @@ fn resolve_player_filter_object_ref<'a>(
             .tagged_objects
             .get(tag)
             .and_then(|snapshots| snapshots.first()),
+        ObjectRef::FilterCandidate => None,
     }
 }
 
@@ -2112,6 +2131,7 @@ fn resolve_object_ref_id(object_ref: &ObjectRef, ctx: &FilterContext) -> Option<
             .get(tag)
             .and_then(|snapshots| snapshots.first())
             .map(|snapshot| snapshot.object_id),
+        ObjectRef::FilterCandidate => None,
     }
 }
 
@@ -2133,6 +2153,7 @@ fn resolve_object_ref_ids(object_ref: &ObjectRef, ctx: &FilterContext) -> Vec<Ob
                     .collect()
             })
             .unwrap_or_default(),
+        ObjectRef::FilterCandidate => Vec::new(),
     }
 }
 
@@ -2419,6 +2440,12 @@ impl PlayerFilterExt for PlayerFilter {
                     .unwrap_or(inner.as_ref());
                 ctx.target_players.contains(&player) && inner.matches_player(player, ctx)
             }
+            PlayerFilter::ControllerOf(ObjectRef::FilterCandidate) => ctx
+                .filter_candidate_players
+                .is_some_and(|(controller, _)| controller == player),
+            PlayerFilter::OwnerOf(ObjectRef::FilterCandidate) => ctx
+                .filter_candidate_players
+                .is_some_and(|(_, owner)| owner == player),
             PlayerFilter::ControllerOf(object_ref) => {
                 resolve_player_filter_object_ref(object_ref, ctx)
                     .is_some_and(|snapshot| snapshot.controller == player)
@@ -2994,6 +3021,11 @@ impl ObjectFilterExt for ObjectFilter {
         }
 
         if self.has_tap_activated_ability && !subject.tail_has_tap_activated_ability() {
+            return false;
+        }
+        if self.has_non_mana_activated_ability
+            && !subject.tail_has_non_mana_activated_ability()
+        {
             return false;
         }
         if !self.could_produce_mana.is_empty()
@@ -4127,7 +4159,7 @@ impl ObjectFilterExt for ObjectFilter {
                 ObjectRef::Target => "target creature",
                 ObjectRef::Specific(_) => "that creature",
                 ObjectRef::Tagged(tag) if tag.as_str() == "blocking" => "the blocking creature",
-                ObjectRef::Tagged(_) => "one of those creatures",
+                ObjectRef::Tagged(_) | ObjectRef::FilterCandidate => "one of those creatures",
             };
             post_noun_qualifiers.push(format!("blocked by {blocker_text} this turn"));
         }
@@ -4290,7 +4322,7 @@ impl ObjectFilterExt for ObjectFilter {
                 ObjectRef::Target => "target creature",
                 ObjectRef::Specific(_) => "that creature",
                 ObjectRef::Tagged(tag) if tag.as_str() == "blocking" => "the blocking creature",
-                ObjectRef::Tagged(_) => "that creature",
+                ObjectRef::Tagged(_) | ObjectRef::FilterCandidate => "that creature",
             };
             post_noun_qualifiers.push(if self.blocking {
                 format!("blocking {reference}")
@@ -4313,6 +4345,17 @@ impl ObjectFilterExt for ObjectFilter {
         }
         if self.entered_since_your_last_turn_ended {
             post_noun_qualifiers.push("that entered since your last turn ended".to_string());
+        }
+        match self.controlled_continuously_since_turn_began {
+            Some(true) => post_noun_qualifiers.push(
+                "that its controller has controlled continuously since the beginning of the turn"
+                    .to_string(),
+            ),
+            Some(false) => post_noun_qualifiers.push(
+                "that its controller hasn't controlled continuously since the beginning of the turn"
+                    .to_string(),
+            ),
+            None => {}
         }
         if self.didnt_enter_battlefield_this_turn && !self.didnt_attack_this_turn {
             post_noun_qualifiers.push("that didn't enter this turn".to_string());
@@ -4889,6 +4932,9 @@ impl ObjectFilterExt for ObjectFilter {
         if self.has_tap_activated_ability {
             parts.push("that has an activated ability with {T} in its cost".to_string());
         }
+        if self.has_non_mana_activated_ability {
+            parts.push("with an activated ability that isn't a mana ability".to_string());
+        }
 
         let has_source_exiled_constraint = self.tagged_constraints.iter().any(|constraint| {
             constraint.relation == TaggedOpbjectRelation::IsTaggedObject
@@ -5167,7 +5213,9 @@ impl ObjectFilterExt for ObjectFilter {
                     "that spell"
                 }
                 ObjectRef::Tagged(tag) if tag.as_str().contains("copied") => "the copy",
-                ObjectRef::Tagged(_) | ObjectRef::Specific(_) => "that object",
+                ObjectRef::Tagged(_) | ObjectRef::Specific(_) | ObjectRef::FilterCandidate => {
+                    "that object"
+                }
             };
             parts.push(format!("{stack_text} could target"));
         }

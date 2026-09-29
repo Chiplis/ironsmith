@@ -53,20 +53,38 @@ impl EffectExecutor for GrantNextSpellCostReductionEffect {
                 .transpose()?
                 .unwrap_or(0)
                 .max(0);
+            let remaining_uses = if self.applies_to_all_matching_this_turn {
+                u32::MAX
+            } else {
+                1
+            };
             for player in players {
                 let mut filter = self.filter.clone();
                 lock_target_player_filters_for_player(&mut filter, player);
+                // The registered rule outlives this resolution, so a relative
+                // "that player" in the spell filter must name the player it
+                // meant now, not whoever is iterated when a spell is cast.
+                lock_iterated_player_filters(&mut filter, ctx.iteration.iterated_player);
+                if self.increases_cost {
+                    game.add_temporary_generic_spell_cost_increase_until(
+                        player,
+                        ctx.source,
+                        ctx.controller,
+                        filter,
+                        crate::effect::Value::Fixed(amount),
+                        remaining_uses,
+                        self.applies_to_all_matching_this_turn,
+                        self.duration.clone(),
+                    );
+                    continue;
+                }
                 game.add_temporary_generic_spell_cost_reduction_until(
                     player,
                     ctx.source,
                     ctx.controller,
                     filter,
                     crate::effect::Value::Fixed(amount),
-                    if self.applies_to_all_matching_this_turn {
-                        u32::MAX
-                    } else {
-                        1
-                    },
+                    remaining_uses,
                     self.applies_to_all_matching_this_turn,
                     self.duration.clone(),
                 );
@@ -75,6 +93,7 @@ impl EffectExecutor for GrantNextSpellCostReductionEffect {
             for player in players {
                 let mut filter = self.filter.clone();
                 lock_target_player_filters_for_player(&mut filter, player);
+                lock_iterated_player_filters(&mut filter, ctx.iteration.iterated_player);
                 game.add_temporary_spell_cost_reduction_until(
                     player,
                     ctx.source,
@@ -123,6 +142,31 @@ fn lock_target_player_filters_for_player(
     }
     for nested in &mut filter.any_of {
         lock_target_player_filters_for_player(nested, player);
+    }
+}
+
+/// Replace each `IteratedPlayer` reference in the filter's player facets with
+/// the concrete player iterated at resolution time.
+fn lock_iterated_player_filters(filter: &mut crate::target::ObjectFilter, iterated: Option<PlayerId>) {
+    let Some(iterated) = iterated else {
+        return;
+    };
+    for player_filter in [
+        filter.controller.as_mut(),
+        filter.owner.as_mut(),
+        filter.cast_by.as_mut(),
+        filter.targets_player.as_mut(),
+        filter.targets_only_player.as_mut(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if matches!(player_filter, crate::target::PlayerFilter::IteratedPlayer) {
+            *player_filter = crate::target::PlayerFilter::Specific(iterated);
+        }
+    }
+    for nested in &mut filter.any_of {
+        lock_iterated_player_filters(nested, Some(iterated));
     }
 }
 

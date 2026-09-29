@@ -14,6 +14,59 @@ pub fn is_sacrificed_object_reference_tag(tag: &str) -> bool {
         || tag.starts_with("__sentence_helper_sacrificed")
 }
 
+/// A result tag naming newly created tokens.
+fn is_created_token_result_tag(tag: &str) -> bool {
+    tag.starts_with("created_")
+}
+
+/// A result tag naming cards seen or moved outside the battlefield (revealed,
+/// looked at, milled, discarded) rather than permanents.
+fn is_off_battlefield_card_result_tag(tag: &str) -> bool {
+    tag.starts_with("milled_")
+        || tag.starts_with("discarded_")
+        || tag.starts_with("__sentence_helper_revealed")
+        || tag.starts_with("__sentence_helper_looked")
+        || tag.starts_with("__sentence_helper_consult_match")
+}
+
+/// Object results that some definite descriptions cannot name: a token is
+/// never "that card" or "that spell", and a revealed or milled card is never
+/// "that creature".
+pub fn is_noun_restricted_object_result_tag(tag: &TagKey) -> bool {
+    is_created_token_result_tag(tag.as_str()) || is_off_battlefield_card_result_tag(tag.as_str())
+}
+
+/// Whether the head noun of a definite `it` description ("that card",
+/// "that creature") excludes the kind of object `tag` names.
+fn definite_noun_excludes_antecedent(filter: &ObjectFilter, tag: &TagKey) -> bool {
+    use crate::types::CardType;
+    if is_created_token_result_tag(tag.as_str()) {
+        return filter.has_explicit_card_noun()
+            || filter.zone == Some(Zone::Stack)
+            || filter.stack_kind.is_some();
+    }
+    if is_off_battlefield_card_result_tag(tag.as_str()) {
+        let is_permanent_type = |card_type: &CardType| {
+            matches!(
+                card_type,
+                CardType::Creature
+                    | CardType::Artifact
+                    | CardType::Enchantment
+                    | CardType::Land
+                    | CardType::Planeswalker
+                    | CardType::Battle
+            )
+        };
+        return !filter.has_explicit_card_noun()
+            && filter.zone.is_none_or(|zone| zone == Zone::Battlefield)
+            && (filter.card_types.iter().any(is_permanent_type)
+                || filter
+                    .explicit_card_type_noun()
+                    .is_some_and(|card_type| is_permanent_type(&card_type)));
+    }
+    false
+}
+
 fn is_exiled_collection_reference_tag(tag: &str) -> bool {
     tag == "exiled" || tag.starts_with("exiled_") || tag.starts_with("__sentence_helper_exiled")
 }
@@ -890,6 +943,16 @@ pub fn resolve_it_tag(
             }
             return Ok(resolved);
         }
+        if saw_it_constraint
+            && identity_is_unqualified
+            && let Some(tag) = looked_at_hand_antecedent(refs)
+        {
+            resolved.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+                tag,
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            });
+            return Ok(resolved);
+        }
         if saw_it_constraint && identity_is_unqualified {
             resolved.source = true;
             return Ok(resolved);
@@ -907,6 +970,16 @@ pub fn resolve_it_tag(
         ));
     };
 
+    let tag = if definite_noun_excludes_antecedent(filter, tag)
+        && let Some((_, prior)) = refs.snapshot_tag_aliases.iter().find(|(alias, _)| {
+            alias == &crate::tag::CompilerReferenceTag::PriorObjectAntecedent.key()
+        })
+        && !definite_noun_excludes_antecedent(filter, prior)
+    {
+        prior
+    } else {
+        tag
+    };
     for constraint in &mut resolved.tagged_constraints {
         if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
             constraint.tag = tag.clone();
@@ -927,6 +1000,34 @@ fn clear_redundant_live_combat_role_for_event_tag(filter: &mut ObjectFilter) {
             _ => {}
         }
     }
+}
+
+/// Records a private look at a player's hand as the antecedent of a later
+/// unqualified back-reference ("look at target opponent's hand and exile
+/// those cards"). The runtime look tags exactly the looked-at cards under
+/// `LOOKED_AT_HAND_TAG`.
+///
+/// The look deliberately leaves `last_object_tag` empty so a qualified
+/// selection ("choose a nonland card from it") keeps resolving to that
+/// player's hand; this identity alias is consulted only where an unqualified
+/// pronoun would otherwise fall back to the source object.
+pub fn remember_looked_at_hand(aliases: &mut Vec<(TagKey, TagKey)>) {
+    let tag: TagKey = (crate::tag::CompilerReferenceTag::LookedAtHand.bind()).into();
+    aliases.retain(|(alias, _)| alias != &tag);
+    aliases.push((tag.clone(), tag));
+}
+
+/// The looked-at hand, when it is the live antecedent of an unqualified
+/// pronoun (no object reference or source antecedent since the look).
+fn looked_at_hand_antecedent(refs: &ReferenceEnv) -> Option<TagKey> {
+    if refs.known_last_object_tag().is_some() || refs.has_source_object_antecedent() {
+        return None;
+    }
+    let key = crate::tag::CompilerReferenceTag::LookedAtHand.as_str();
+    refs.snapshot_tag_aliases
+        .iter()
+        .find(|(alias, _)| alias.as_str() == key)
+        .map(|(_, concrete)| concrete.clone())
 }
 
 pub fn resolve_it_tag_key(tag: &TagKey, refs: &ReferenceEnv) -> Result<TagKey, CardTextError> {
@@ -1243,6 +1344,9 @@ fn resolve_choose_spec_it_tag_preserving_selection(
             }
             if refs.has_source_object_antecedent() {
                 return Ok(ChooseSpec::Source);
+            }
+            if let Some(tag) = looked_at_hand_antecedent(refs) {
+                return Ok(ChooseSpec::Tagged(tag));
             }
             Ok(ChooseSpec::Source)
         }

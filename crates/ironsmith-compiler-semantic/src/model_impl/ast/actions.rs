@@ -1855,9 +1855,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 tapped,
                 enters_with_counters,
                 enters_under_your_control,
+                enters_under_player,
             }) => f
                 .debug_struct("SearchLibrary")
                 .field("enters_under_your_control", enters_under_your_control)
+                .field("enters_under_player", enters_under_player)
                 .field("filter", filter)
                 .field("search_zones", search_zones)
                 .field("destination", destination)
@@ -2486,12 +2488,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 reduction,
                 duration,
                 next_only,
+                increase,
             }) => f
                 .debug_struct("ReduceMatchingSpellCostThisTurn")
                 .field("filter", filter)
                 .field("reduction", reduction)
                 .field("duration", duration)
                 .field("next_only", next_only)
+                .field("increase", increase)
                 .finish(),
             Self::Grants(GrantActionAst::GrantNextSpellAbilityThisTurn { filter, ability }) => f
                 .debug_struct("GrantNextSpellAbilityThisTurn")

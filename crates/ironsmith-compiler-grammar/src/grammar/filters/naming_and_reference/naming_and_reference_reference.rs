@@ -197,15 +197,17 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         }
         if let Some(exiled_with_idx) = find_phrase_start(all_words, EXILED_WITH_PHRASE) {
             let mut reference_end = exiled_with_idx + 2;
+            let mut has_reference_head = false;
             if all_words
                 .get(reference_end)
                 .is_some_and(|word| word_is_any(word, REFERENCE_HEAD_WORDS))
             {
                 reference_end += 1;
+                has_reference_head = true;
             }
             if all_words
                 .get(reference_end)
-                .is_some_and(|word| word_is_any(word, REFERENCE_OBJECT_NOUN_WORDS))
+                .is_some_and(|word| is_exiled_with_reference_noun(word, has_reference_head))
             {
                 reference_end += 1;
             }
@@ -233,15 +235,17 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         let segment_words = segment_words_view.to_word_refs();
         if let Some(exiled_with_idx) = find_phrase_start(&segment_words, EXILED_WITH_PHRASE) {
             let mut reference_end_word = exiled_with_idx + EXILED_WITH_PHRASE.len();
+            let mut has_reference_head = false;
             if segment_words
                 .get(reference_end_word)
                 .is_some_and(|word| word_is_any(word, REFERENCE_HEAD_WORDS))
             {
                 reference_end_word += 1;
+                has_reference_head = true;
             }
             if segment_words
                 .get(reference_end_word)
-                .is_some_and(|word| word_is_any(word, REFERENCE_OBJECT_NOUN_WORDS))
+                .is_some_and(|word| is_exiled_with_reference_noun(word, has_reference_head))
             {
                 reference_end_word += 1;
             }
@@ -543,4 +547,12 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         source_linked_exile_reference,
         early_return: false,
     }
+}
+
+/// The noun naming the source in `exiled with this <noun>`. After a reference
+/// head the source may be named by its subtype (`this Saga`, `this
+/// Vehicle`); that subtype names the source, not the exiled card.
+fn is_exiled_with_reference_noun(word: &str, has_reference_head: bool) -> bool {
+    word_is_any(word, REFERENCE_OBJECT_NOUN_WORDS)
+        || (has_reference_head && crate::util::parse_subtype_word(word).is_some())
 }

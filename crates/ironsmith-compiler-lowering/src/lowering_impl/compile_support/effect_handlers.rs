@@ -1556,18 +1556,9 @@ pub(super) fn try_compile_stack_and_condition_effect(
             (vec![effect], Vec::new())
         }
         EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects }) => {
-            let conditional = EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-                predicate: predicate.clone(),
-                if_true: effects.clone(),
-                if_false: Vec::new(),
-            });
-            let Some((mut compiled, choices)) =
-                try_compile_stack_and_condition_effect(&conditional, ctx)?
-            else {
-                return Err(CardTextError::ParseError(
-                    "failed to lower trailing-if condition".to_string(),
-                ));
-            };
+            let predicate = predicate.clone();
+            let (mut compiled, choices) =
+                compile_conditional_ast(&predicate, effects, &[], true, ctx)?;
             let Some(lowered_conditional_effect) = compiled.pop() else {
                 return Err(CardTextError::ParseError(
                     "trailing-if condition lowered without an effect".to_string(),
@@ -1591,18 +1582,9 @@ pub(super) fn try_compile_stack_and_condition_effect(
             (compiled, choices)
         }
         EffectAst::Conditionals(ConditionalEffectAst::TrailingUnless { predicate, effects }) => {
-            let conditional = EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-                predicate: PredicateAst::Not(Box::new(predicate.clone())),
-                if_true: effects.clone(),
-                if_false: Vec::new(),
-            });
-            let Some((mut compiled, choices)) =
-                try_compile_stack_and_condition_effect(&conditional, ctx)?
-            else {
-                return Err(CardTextError::ParseError(
-                    "failed to lower trailing-unless condition".to_string(),
-                ));
-            };
+            let predicate = PredicateAst::Not(Box::new(predicate.clone()));
+            let (mut compiled, choices) =
+                compile_conditional_ast(&predicate, effects, &[], true, ctx)?;
             let Some(lowered_conditional_effect) = compiled.pop() else {
                 return Err(CardTextError::ParseError(
                     "trailing-unless condition lowered without an effect".to_string(),
@@ -1629,139 +1611,167 @@ pub(super) fn try_compile_stack_and_condition_effect(
             predicate,
             if_true,
             if_false,
-        }) => {
-            let mut effective_if_true = if_true.clone();
-            if let Some(antecedent) = predicate_object_filter_antecedent(predicate) {
-                bind_condition_antecedent_in_effects(
-                    &mut effective_if_true,
-                    &antecedent,
-                    ConditionAntecedentBinding::IncludeRandomWithCountObjects,
-                );
-            }
-            bind_random_count_condition_antecedent_in_effects(&mut effective_if_true, predicate);
-            if let Some(counter_type) = predicate_source_counter_antecedent(predicate) {
-                bind_condition_counter_antecedent_in_effects(&mut effective_if_true, counter_type);
-            }
-            let saved_last_tag = ctx.last_object_tag.clone();
-            // The predicate is evaluated before either branch runs, so it
-            // reads the player context from before the branches.
-            let saved_last_player = ctx.last_player_filter.clone();
-            let saved_source_object_antecedent = ctx.source_object_antecedent;
-            ctx.source_object_antecedent |= predicate.establishes_source_object_antecedent();
-            let (true_effects, true_choices) = compile_effects(&effective_if_true, ctx)?;
-            let true_last_tag = ctx.last_object_tag.clone();
-            ctx.last_object_tag = saved_last_tag.clone();
-            ctx.source_object_antecedent =
-                saved_source_object_antecedent || predicate.establishes_source_object_antecedent();
-            let (false_effects, false_choices) = compile_effects(if_false, ctx)?;
-            ctx.source_object_antecedent = saved_source_object_antecedent;
-            let predicate_references_it = predicate_uses_implicit_object_reference(predicate)
-                || predicate_references_tag(
-                    predicate,
-                    crate::tag::CompilerReferenceTag::It.as_str(),
-                );
-
-            let antecedent_choice = if saved_last_tag.is_none() && predicate_references_it {
-                let mut antecedent_choice = None;
-                for choice in true_choices.iter().chain(false_choices.iter()) {
-                    if choice.is_target() && choose_spec_targets_object(choice) {
-                        antecedent_choice = Some(choice.clone());
-                        break;
-                    }
-                }
-                antecedent_choice
-            } else {
-                None
-            };
-
-            let mut condition_reference_tag = saved_last_tag.clone();
-            let mut prelude = Vec::new();
-            if condition_reference_tag.is_none()
-                && let Some(choice) = antecedent_choice.clone()
-            {
-                let tag = if let Some(existing) = tagged_alias_for_choice(&true_effects, &choice) {
-                    existing
-                } else {
-                    ctx.next_tag("targeted")
-                };
-                prelude.push(
-                    Effect::new(crate::effects::TargetOnlyEffect::new(choice)).tag(tag.clone()),
-                );
-                condition_reference_tag = Some(tag);
-            }
-
-            let original_last_tag = ctx.last_object_tag.clone();
-            ctx.last_object_tag = condition_reference_tag.clone().or(saved_last_tag.clone());
-            let original_source_object_antecedent = ctx.source_object_antecedent;
-            if ctx.last_object_tag.is_none()
-                && antecedent_choice.is_none()
-                && predicate_uses_implicit_object_reference(predicate)
-            {
-                ctx.source_object_antecedent = true;
-            }
-            // A predicate naming the declared target player ("if target
-            // opponent controls more lands than you") reads it from before the
-            // branches, which may have moved the player context elsewhere.
-            let predicate_names_target_player = matches!(
-                predicate,
-                PredicateAst::Player(
-                    crate::cards::builders::PlayerPredicateAst::PlayerControlsMoreThanYou {
-                        player: PlayerAst::Target | PlayerAst::TargetOpponent,
-                        ..
-                    }
-                )
-            );
-            let branch_last_player = predicate_names_target_player
-                .then(|| std::mem::replace(&mut ctx.last_player_filter, saved_last_player));
-            let condition =
-                compile_condition_from_predicate_ast(predicate, ctx, &condition_reference_tag)?;
-            if let Some(branch_last_player) = branch_last_player {
-                ctx.last_player_filter = branch_last_player;
-            }
-            ctx.last_object_tag = original_last_tag;
-            ctx.source_object_antecedent = original_source_object_antecedent;
-
-            let true_effects = if matches!(predicate, PredicateAst::ItIsSoulbondPaired)
-                && let Some(reference_tag) = condition_reference_tag.as_ref()
-            {
-                set_effects_tag_relation(
-                    true_effects,
-                    reference_tag.as_str(),
-                    TaggedOpbjectRelation::IsTaggedObject,
-                    TaggedOpbjectRelation::SoulbondPartnerOfTagged,
-                )
-            } else {
-                true_effects
-            };
-
-            let conditional = if false_effects.is_empty() {
-                Effect::conditional_only(condition, true_effects)
-            } else {
-                Effect::conditional(condition, true_effects, false_effects)
-            };
-            prelude.push(conditional);
-
-            if let Some(reference_tag) = condition_reference_tag {
-                ctx.last_object_tag = Some(reference_tag);
-            } else if if_false.is_empty() {
-                ctx.last_object_tag = true_last_tag.clone().or(saved_last_tag.clone());
-            } else {
-                ctx.last_object_tag = saved_last_tag.clone();
-            }
-
-            let mut choices = true_choices;
-            for choice in false_choices {
-                push_choice(&mut choices, choice);
-            }
-            if let Some(choice) = antecedent_choice {
-                push_choice(&mut choices, choice);
-            }
-            (prelude, choices)
-        }
+        }) => compile_conditional_ast(predicate, if_true, if_false, false, ctx)?,
         _ => return Ok(None),
     };
 
     Ok(Some(compiled))
+}
+
+/// Lower a state conditional. `trailing` marks a condition written after
+/// its consequence ("Destroy target creature if it's tapped", "Put a counter
+/// on that creature if the exiled creature was a Thrull"): references in the
+/// consequence were written before the condition's subject, so they keep
+/// their own antecedents rather than binding to that subject, while a
+/// trailing `it` may still name a target the consequence announced.
+fn compile_conditional_ast(
+    predicate: &PredicateAst,
+    if_true: &[EffectAst],
+    if_false: &[EffectAst],
+    trailing: bool,
+    ctx: &mut EffectLoweringContext,
+) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
+    let mut effective_if_true = if_true.to_vec();
+    let predicate_names_explicit_subject = matches!(
+        predicate,
+        PredicateAst::TaggedMatches(tag, _)
+            if tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str()
+    );
+    if let Some(antecedent) = predicate_object_filter_antecedent(predicate)
+        && !(trailing && predicate_names_explicit_subject)
+    {
+        bind_condition_antecedent_in_effects(
+            &mut effective_if_true,
+            &antecedent,
+            ConditionAntecedentBinding::IncludeRandomWithCountObjects,
+        );
+    }
+    bind_random_count_condition_antecedent_in_effects(&mut effective_if_true, predicate);
+    if let Some(counter_type) = predicate_source_counter_antecedent(predicate) {
+        bind_condition_counter_antecedent_in_effects(&mut effective_if_true, counter_type);
+    }
+    let saved_last_tag = ctx.last_object_tag.clone();
+    // The predicate is evaluated before either branch runs, so it
+    // reads the player context from before the branches.
+    let saved_last_player = ctx.last_player_filter.clone();
+    let saved_source_object_antecedent = ctx.source_object_antecedent;
+    ctx.source_object_antecedent |= predicate.establishes_source_object_antecedent();
+    let (true_effects, true_choices) = compile_effects(&effective_if_true, ctx)?;
+    let true_last_tag = ctx.last_object_tag.clone();
+    ctx.last_object_tag = saved_last_tag.clone();
+    ctx.source_object_antecedent =
+        saved_source_object_antecedent || predicate.establishes_source_object_antecedent();
+    let (false_effects, false_choices) = compile_effects(if_false, ctx)?;
+    ctx.source_object_antecedent = saved_source_object_antecedent;
+    let predicate_references_it = predicate_uses_implicit_object_reference(predicate)
+        || predicate_references_tag(
+            predicate,
+            crate::tag::CompilerReferenceTag::It.as_str(),
+        );
+
+    // A leading condition's `it` precedes every target its consequence
+    // announces; with an established source antecedent it names the source
+    // ("When you do, if it has four or more quest counters on it, put a
+    // +1/+1 counter on target creature you control").
+    let antecedent_choice = if saved_last_tag.is_none()
+        && predicate_references_it
+        && (trailing || !saved_source_object_antecedent)
+    {
+        let mut antecedent_choice = None;
+        for choice in true_choices.iter().chain(false_choices.iter()) {
+            if choice.is_target() && choose_spec_targets_object(choice) {
+                antecedent_choice = Some(choice.clone());
+                break;
+            }
+        }
+        antecedent_choice
+    } else {
+        None
+    };
+
+    let mut condition_reference_tag = saved_last_tag.clone();
+    let mut prelude = Vec::new();
+    if condition_reference_tag.is_none()
+        && let Some(choice) = antecedent_choice.clone()
+    {
+        let tag = if let Some(existing) = tagged_alias_for_choice(&true_effects, &choice) {
+            existing
+        } else {
+            ctx.next_tag("targeted")
+        };
+        prelude.push(
+            Effect::new(crate::effects::TargetOnlyEffect::new(choice)).tag(tag.clone()),
+        );
+        condition_reference_tag = Some(tag);
+    }
+
+    let original_last_tag = ctx.last_object_tag.clone();
+    ctx.last_object_tag = condition_reference_tag.clone().or(saved_last_tag.clone());
+    let original_source_object_antecedent = ctx.source_object_antecedent;
+    if ctx.last_object_tag.is_none()
+        && antecedent_choice.is_none()
+        && predicate_uses_implicit_object_reference(predicate)
+    {
+        ctx.source_object_antecedent = true;
+    }
+    // A predicate naming the declared target player ("if target
+    // opponent controls more lands than you") reads it from before the
+    // branches, which may have moved the player context elsewhere.
+    let predicate_names_target_player = matches!(
+        predicate,
+        PredicateAst::Player(
+            crate::cards::builders::PlayerPredicateAst::PlayerControlsMoreThanYou {
+                player: PlayerAst::Target | PlayerAst::TargetOpponent,
+                ..
+            }
+        )
+    );
+    let branch_last_player = predicate_names_target_player
+        .then(|| std::mem::replace(&mut ctx.last_player_filter, saved_last_player));
+    let condition =
+        compile_condition_from_predicate_ast(predicate, ctx, &condition_reference_tag)?;
+    if let Some(branch_last_player) = branch_last_player {
+        ctx.last_player_filter = branch_last_player;
+    }
+    ctx.last_object_tag = original_last_tag;
+    ctx.source_object_antecedent = original_source_object_antecedent;
+
+    let true_effects = if matches!(predicate, PredicateAst::ItIsSoulbondPaired)
+        && let Some(reference_tag) = condition_reference_tag.as_ref()
+    {
+        set_effects_tag_relation(
+            true_effects,
+            reference_tag.as_str(),
+            TaggedOpbjectRelation::IsTaggedObject,
+            TaggedOpbjectRelation::SoulbondPartnerOfTagged,
+        )
+    } else {
+        true_effects
+    };
+
+    let conditional = if false_effects.is_empty() {
+        Effect::conditional_only(condition, true_effects)
+    } else {
+        Effect::conditional(condition, true_effects, false_effects)
+    };
+    prelude.push(conditional);
+
+    if let Some(reference_tag) = condition_reference_tag {
+        ctx.last_object_tag = Some(reference_tag);
+    } else if if_false.is_empty() {
+        ctx.last_object_tag = true_last_tag.clone().or(saved_last_tag.clone());
+    } else {
+        ctx.last_object_tag = saved_last_tag.clone();
+    }
+
+    let mut choices = true_choices;
+    for choice in false_choices {
+        push_choice(&mut choices, choice);
+    }
+    if let Some(choice) = antecedent_choice {
+        push_choice(&mut choices, choice);
+    }
+    Ok((prelude, choices))
 }
 
 fn predicate_uses_implicit_object_reference(predicate: &PredicateAst) -> bool {

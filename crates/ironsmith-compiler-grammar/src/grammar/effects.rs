@@ -1518,6 +1518,27 @@ pub fn parse_persistent_no_maximum_hand_size_player_lexed(
     .then_some(player)
 }
 
+/// The player who retains mana in "<subject> don't lose this mana as steps and
+/// phases end". A pronoun subject ("they", "that player") names the player the
+/// surrounding sentence already introduced (for example the player who just
+/// added the mana), not the ability's controller.
+fn dont_lose_mana_subject_player(words: &[&str]) -> PlayerAst {
+    let Some(negation) = words
+        .iter()
+        .position(|word| matches!(*word, "dont" | "don't" | "do" | "doesnt" | "doesn't"))
+    else {
+        return PlayerAst::Implicit;
+    };
+    let mut subject = &words[..negation];
+    if let Some(rest) = subject.strip_prefix(&["until", "end", "of", "turn"][..]) {
+        subject = rest;
+    }
+    match subject {
+        ["they"] | ["that", "player"] => PlayerAst::That,
+        _ => PlayerAst::Implicit,
+    }
+}
+
 pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1657,7 +1678,9 @@ pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
     let source_tapped_duration = cant_sentence_has_source_remains_tapped_duration(tokens);
     if words_contain_all(&words, LOSE_MANA_STEPS_PHASES_END_WORDS) {
         return Ok(Some(vec![
-            EffectAst::subject_verb_dont_lose_this_mana_as_steps_and_phases_end_this_turn(),
+            EffectAst::subject_verb_dont_lose_this_mana_as_steps_and_phases_end_this_turn_by(
+                dont_lose_mana_subject_player(&words),
+            ),
         ]));
     }
     let Some(prepared_clause) = prepare_cant_sentence_restriction_clause_lexed(tokens)? else {

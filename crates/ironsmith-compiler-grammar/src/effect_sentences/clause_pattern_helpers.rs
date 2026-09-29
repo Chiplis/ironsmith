@@ -96,10 +96,18 @@ pub fn parse_double_counters_clause(
             surface,
         } => {
             let span = span_from_tokens(holder_tokens);
-            EffectAst::subject_verb_double_counters_on_target(
-                shape.counter_type,
-                TargetAst::Object(ObjectFilter::source_with_surface(surface), None, span),
-            )
+            // The bare pronoun ("double the number of +1/+1 counters on it")
+            // names the latest object antecedent; reference resolution falls
+            // back to the source only when the ability has none.
+            let target = if matches!(
+                &surface,
+                crate::target::SourceReferenceSurface::ThisPermanentType(text) if text == "it"
+            ) {
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span)
+            } else {
+                TargetAst::Object(ObjectFilter::source_with_surface(surface), None, span)
+            };
+            EffectAst::subject_verb_double_counters_on_target(shape.counter_type, target)
         }
         clause_shapes::DoubleCounterHolderShape::Target(holder_tokens) => {
             EffectAst::subject_verb_double_counters_on_target(

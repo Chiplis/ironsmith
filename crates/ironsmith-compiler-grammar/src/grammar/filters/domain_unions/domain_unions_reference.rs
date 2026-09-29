@@ -101,6 +101,46 @@ fn leading_shared_domain_colors(segments: &[&[OwnedLexToken]]) -> Option<crate::
     (!next_color && !colors.is_empty()).then_some(colors)
 }
 
+/// A bare singular card-type adjective arm such as `artifact` in `artifact
+/// and enchantment cards from all graveyards`: its noun (and so its domain) is
+/// elided and shared with the following arm.
+///
+/// Only a list whose final arm itself reads `<type> card(s) ...` shares the
+/// noun that way; `target creature or card in a graveyard` keeps `creature`
+/// as its own noun.
+fn elided_card_noun_type_arms(segments: &[&[OwnedLexToken]]) -> Vec<bool> {
+    let Some((last, preceding)) = segments.split_last() else {
+        return Vec::new();
+    };
+    let last_words = TokenWordView::new(last).word_refs();
+    let last_is_typed_card_noun = last_words
+        .iter()
+        .position(|word| matches!(*word, "card" | "cards"))
+        .is_some_and(|noun| {
+            noun > 0
+                && last_words[..noun].iter().all(|word| {
+                    crate::util::parse_card_type(word).is_some()
+                        || crate::util::parse_non_type(word).is_some()
+                })
+        });
+    let mut flags = preceding
+        .iter()
+        .map(|segment| last_is_typed_card_noun && is_elided_card_noun_type_arm(segment))
+        .collect::<Vec<_>>();
+    flags.push(false);
+    flags
+}
+
+fn is_elided_card_noun_type_arm(segment: &[OwnedLexToken]) -> bool {
+    let words = TokenWordView::new(segment).word_refs();
+    !words.is_empty()
+        && words.iter().all(|word| {
+            !word.ends_with('s')
+                && (crate::util::parse_card_type(word).is_some()
+                    || crate::util::parse_non_type(word).is_some())
+        })
+}
+
 /// Parse a union whose branches each name their own object class and may
 /// carry independent qualifiers.
 ///
@@ -189,6 +229,10 @@ pub fn parse_branch_scoped_object_filter_union_lexed(
     });
 
     let shared_colors = leading_shared_domain_colors(&segments);
+    // A bare singular card-type adjective arm (`artifact` in `artifact and
+    // enchantment cards from all graveyards`) elides the card noun it shares
+    // with the final arm, so it also shares that arm's trailing card zone.
+    let elided_card_noun_arms = elided_card_noun_type_arms(&segments);
 
     let branches = segments
         .into_iter()
@@ -266,7 +310,16 @@ pub fn parse_branch_scoped_object_filter_union_lexed(
         >= branches.len();
     propagate_leading_shared_set_modifiers(tokens, other, shared_player_scope, &mut branches);
     propagate_trailing_shared_player_scope(&mut branches);
-    propagate_trailing_shared_card_zone_scope(&mut branches, repeated_card_noun_surface);
+    let elided_card_noun_arms = if elided_card_noun_arms.len() == branches.len() {
+        elided_card_noun_arms
+    } else {
+        vec![false; branches.len()]
+    };
+    propagate_trailing_shared_card_zone_scope(
+        &mut branches,
+        repeated_card_noun_surface,
+        &elided_card_noun_arms,
+    );
     propagate_trailing_shared_attachment_scope(&mut branches);
     propagate_leading_shared_state(tokens, &mut branches);
     let mut union = ObjectFilter::default();
@@ -336,6 +389,12 @@ pub fn parse_domain_union_object_filter_lexed(
     }
     let segments = split_lexed_slices_on_list_conjunction(tokens);
     if segments.len() < 2 {
+        return None;
+    }
+    // `artifact and enchantment cards from all graveyards`: a leading bare
+    // type adjective shares the final arm's noun and domain, so the list is
+    // one selector, not a union of independently scoped domains.
+    if elided_card_noun_type_arms(&segments).into_iter().any(|elided| elided) {
         return None;
     }
 

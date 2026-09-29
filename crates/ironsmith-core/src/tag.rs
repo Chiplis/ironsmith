@@ -28,6 +28,14 @@ pub const PRIOR_EXILED_CARD_TAG: &str = "__prior_exiled_card__";
 /// runtime execution agree on the same typed result-set identity.
 pub const REVEALED_THIS_WAY_TAG: &str = "__revealed_this_way__";
 
+/// Object set produced by a private look at a player's hand in the current
+/// resolution ("look at target opponent's hand and exile those cards").
+///
+/// Distinct from [`REVEALED_THIS_WAY_TAG`]: a look shows the cards only to the
+/// looking player, so this set is resolution-local bookkeeping and never marks
+/// the cards publicly revealed.
+pub const LOOKED_AT_HAND_TAG: &str = "__looked_at_hand__";
+
 /// Runtime tag for the resolving spell or ability's source object.
 ///
 /// This gives object-relative player filters (for example, "this artifact's
@@ -136,6 +144,7 @@ pub const WELL_KNOWN_TAGS: &[&str] = &[
     ZONE_REPLACEMENT_OBJECT_TAG,
     PRIOR_EXILED_CARD_TAG,
     REVEALED_THIS_WAY_TAG,
+    LOOKED_AT_HAND_TAG,
     SOURCE_OBJECT_TAG,
     DELAYED_TARGET_PLAYERS_TAG,
     CHOSEN_OBJECTS_TAG,

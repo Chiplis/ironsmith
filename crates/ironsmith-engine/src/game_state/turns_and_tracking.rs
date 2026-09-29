@@ -3167,6 +3167,7 @@ impl GameState {
             tagged_players,
             effect_outcomes: std::collections::HashMap::new(),
             stack_entry: None,
+            filter_candidate_players: None,
         }
     }
 
@@ -3708,6 +3709,7 @@ impl GameState {
 
     fn filter_reads_summoning_sickness_state(filter: &crate::target::ObjectFilter) -> bool {
         filter.entered_since_your_last_turn_ended
+            || filter.controlled_continuously_since_turn_began.is_some()
             || filter
                 .targets_object
                 .as_deref()

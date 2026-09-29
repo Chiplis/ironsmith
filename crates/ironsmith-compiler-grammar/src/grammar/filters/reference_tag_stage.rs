@@ -923,10 +923,17 @@ fn try_apply_blocked_or_was_blocked_by_this_turn_clause(
     segment_tokens: &mut Vec<OwnedLexToken>,
 ) -> Result<bool, CardTextError> {
     let words = non_article_parser_word_refs(segment_tokens);
+    // `creatures that blocked or were blocked by it` is the plural form.
     let Some(blocked_idx) = crate::word_primitives::parse_sequence_start(
         &words,
         &["blocked", "or", "was", "blocked", "by"],
-    ) else {
+    )
+    .or_else(|| {
+        crate::word_primitives::parse_sequence_start(
+            &words,
+            &["blocked", "or", "were", "blocked", "by"],
+        )
+    }) else {
         return Ok(false);
     };
     let partner_start = blocked_idx + 5;
@@ -1011,6 +1018,21 @@ fn has_tap_activated_ability_phrase(words: &[&str]) -> bool {
         ],
     ];
     parse_phrase_choice_anywhere(words, TAP_ACTIVATED_ABILITY_PHRASES).is_some()
+}
+
+/// "(a land) with an activated ability that isn't a mana ability" /
+/// "(creature cards) with activated abilities that aren't mana abilities":
+/// a characteristic of the described object, not a stack-ability filter.
+fn has_non_mana_activated_ability_phrase(words: &[&str]) -> bool {
+    const NON_MANA_ACTIVATED_ABILITY_PHRASES: &[&[&str]] = &[
+        &["with", "activated", "ability", "that", "isnt", "mana", "ability"],
+        &["with", "activated", "ability", "that", "isn't", "mana", "ability"],
+        &["with", "activated", "ability", "that", "is", "not", "mana", "ability"],
+        &["with", "activated", "abilities", "that", "arent", "mana", "abilities"],
+        &["with", "activated", "abilities", "that", "aren't", "mana", "abilities"],
+        &["with", "activated", "abilities", "that", "are", "not", "mana", "abilities"],
+    ];
+    parse_phrase_choice_anywhere(words, NON_MANA_ACTIVATED_ABILITY_PHRASES).is_some()
 }
 
 fn strip_be_put_on_reference_prefix(all_words: &mut Vec<&str>, segment_tokens: &[OwnedLexToken]) {
