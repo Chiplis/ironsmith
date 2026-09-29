@@ -23,6 +23,10 @@ pub struct ThisAttacksWithNOthersTrigger {
     pub other_filter: Option<ObjectFilter>,
     /// Whether the authored subject explicitly used the word "other".
     pub other_surface: bool,
+    /// The attacking subject when it is a filtered object rather than the
+    /// source ("Whenever equipped creature and at least one other creature
+    /// attack"). `None` requires the source itself to attack.
+    pub subject_filter: Option<ObjectFilter>,
 }
 
 impl ThisAttacksWithNOthersTrigger {
@@ -33,6 +37,7 @@ impl ThisAttacksWithNOthersTrigger {
             display_subject: None,
             other_filter: None,
             other_surface: true,
+            subject_filter: None,
         }
     }
 
@@ -47,6 +52,7 @@ impl ThisAttacksWithNOthersTrigger {
             display_subject,
             other_filter,
             other_surface: true,
+            subject_filter: None,
         }
     }
 
@@ -62,6 +68,7 @@ impl ThisAttacksWithNOthersTrigger {
             display_subject,
             other_filter,
             other_surface,
+            subject_filter: None,
         }
     }
 
@@ -72,17 +79,28 @@ impl ThisAttacksWithNOthersTrigger {
             display_subject: None,
             other_filter: None,
             other_surface: true,
+            subject_filter: None,
         }
     }
 
-    fn matching_other_attackers(&self, ctx: &TriggerContext) -> Option<usize> {
+    /// Attach a filtered attacking subject that replaces the source.
+    pub fn with_subject_filter(mut self, subject_filter: Option<ObjectFilter>) -> Self {
+        self.subject_filter = subject_filter;
+        self
+    }
+
+    fn matching_other_attackers(
+        &self,
+        subject_id: crate::ids::ObjectId,
+        ctx: &TriggerContext,
+    ) -> Option<usize> {
         let other_filter = self.other_filter.as_ref()?;
         let combat = ctx.game.combat.as_ref()?;
         Some(
             combat
                 .attackers
                 .iter()
-                .filter(|info| info.creature != ctx.source_id)
+                .filter(|info| info.creature != subject_id)
                 .filter(|info| {
                     ctx.game.object(info.creature).is_some_and(|object| {
                         other_filter.matches(object, &ctx.filter_ctx, ctx.game)
@@ -146,12 +164,20 @@ impl TriggerMatcher for ThisAttacksWithNOthersTrigger {
         let Some(e) = event.downcast::<CreatureAttackedEvent>() else {
             return false;
         };
-        // The source itself must be one of the attackers, and the declared
-        // attackers must satisfy the requested source-plus-others threshold.
-        if e.attacker != ctx.source_id {
+        // The subject (the source itself, or the filtered object such as the
+        // equipped creature) must be one of the attackers, and the declared
+        // attackers must satisfy the requested subject-plus-others threshold.
+        if let Some(subject_filter) = &self.subject_filter {
+            let Some(attacker) = ctx.game.object(e.attacker) else {
+                return false;
+            };
+            if !subject_filter.matches(attacker, &ctx.filter_ctx, ctx.game) {
+                return false;
+            }
+        } else if e.attacker != ctx.source_id {
             return false;
         }
-        if let Some(matching_others) = self.matching_other_attackers(ctx) {
+        if let Some(matching_others) = self.matching_other_attackers(e.attacker, ctx) {
             if self.exact {
                 matching_others == self.other_count
             } else {
@@ -169,7 +195,7 @@ impl TriggerMatcher for ThisAttacksWithNOthersTrigger {
     }
 
     fn source_must_match_event_object(&self, event_kind: EventKind) -> bool {
-        event_kind == EventKind::CreatureAttacked
+        self.subject_filter.is_none() && event_kind == EventKind::CreatureAttacked
     }
 
     fn display(&self) -> String {

@@ -57,6 +57,22 @@ pub(super) fn matches_subject(
         return false;
     }
 
+    if let Some(source_filter) = &filter.not_targeted_by_ability_from {
+        let subject_id = subject.object_id();
+        let targeted = game.stack.iter().any(|entry| {
+            entry.is_ability
+                && entry.targets.iter().any(|target| {
+                    matches!(target, crate::game_state::Target::Object(id) if *id == subject_id)
+                })
+                && game
+                    .object(entry.object_id)
+                    .is_some_and(|source| source_filter.matches(source, ctx, game))
+        });
+        if targeted {
+            return false;
+        }
+    }
+
     if !filter.any_of.is_empty()
         && !filter
             .any_of
@@ -925,7 +941,9 @@ pub(super) fn matches_subject(
             filter.power_reference,
             allow_calculated_pt,
         ) {
-            if !power_cmp.satisfies_with_context(power, game, ctx, stack_entry) {
+            if !candidate_bound_comparison(power_cmp, subject)
+                .satisfies_with_context(power, game, ctx, stack_entry)
+            {
                 return false;
             }
         } else {
@@ -1038,7 +1056,9 @@ pub(super) fn matches_subject(
             filter.toughness_reference,
             allow_calculated_pt,
         ) {
-            if !toughness_cmp.satisfies_with_context(toughness, game, ctx, stack_entry) {
+            if !candidate_bound_comparison(toughness_cmp, subject)
+                .satisfies_with_context(toughness, game, ctx, stack_entry)
+            {
                 return false;
             }
         } else {
@@ -1077,7 +1097,10 @@ pub(super) fn matches_subject(
             let controller = subject.controller(game).unwrap_or(owner);
             let mut candidate_ctx = ctx.clone();
             candidate_ctx.filter_candidate_players = Some((controller, owner));
-            mv_cmp.satisfies_with_context(mv, game, &candidate_ctx, stack_entry)
+            // "... less than or equal to the number of rust counters on it":
+            // bind the candidate's own counters into the operand.
+            candidate_bound_comparison(mv_cmp, subject)
+                .satisfies_with_context(mv, game, &candidate_ctx, stack_entry)
         } else {
             mv_cmp.satisfies_with_context(mv, game, ctx, stack_entry)
         };
@@ -1171,5 +1194,19 @@ pub(super) fn matches_subject(
         ObjectSubject::Snapshot(snapshot) => {
             filter.matches_shared_tail(snapshot, ctx, game, stack_entry)
         }
+    }
+}
+
+/// Bind candidate-relative counter operands ("the number of rust counters on
+/// it") to the filtered candidate. Comparisons without such operands are
+/// borrowed unchanged.
+fn candidate_bound_comparison<'c>(
+    comparison: &'c crate::filter::Comparison,
+    subject: ObjectSubject<'_>,
+) -> std::borrow::Cow<'c, crate::filter::Comparison> {
+    if comparison.references_filter_candidate() {
+        std::borrow::Cow::Owned(comparison.bind_filter_candidate_counters(subject.counters()))
+    } else {
+        std::borrow::Cow::Borrowed(comparison)
     }
 }

@@ -2423,6 +2423,7 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         )
         .replace("Target other ", "Another target ")
         .replace("target other ", "another target ")
+        .replace("up to one another target ", "up to one other target ")
         .replace(" and gains This creature can't ", " and can't ")
         .replace(" and gains This creature cant ", " and can't ")
         .replace(" and gains This permanent can't ", " and can't ")

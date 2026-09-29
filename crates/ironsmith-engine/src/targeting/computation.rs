@@ -885,6 +885,9 @@ fn subject_matches_protection(
         // Relative to the protected permanent's controller; handled by
         // `protection_from_subject_with_view`.
         ProtectionFrom::ColorsOutsideCommanderIdentity => false,
+        // Materialized to `Color` when the granting instruction resolves;
+        // an unmaterialized reference protects from nothing.
+        ProtectionFrom::ColorsOf(_) => false,
         // Protection from a card type
         ProtectionFrom::CardType(card_type) => source.protection_has_card_type(view, *card_type),
         // Protection from permanents matching a filter

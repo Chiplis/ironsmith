@@ -200,7 +200,7 @@ pub fn resolve_non_target_player_filter(
             "triggering_source",
         ))),
         PlayerAst::ItsController => {
-            if let Some(tag) = refs.known_last_object_tag() {
+            if let Some(tag) = controller_antecedent_tag(refs) {
                 Ok(PlayerFilter::ControllerOf(ObjectRef::tagged(tag.clone())))
             } else {
                 Ok(PlayerFilter::ControllerOf(ObjectRef::Target))
@@ -374,6 +374,29 @@ fn append_object_filter_target_player_choices(
     }
 }
 
+/// The object a controller back-reference names. A card just moved out of a
+/// graveyard, hand, or library has no controller (CR 108.4a), so the
+/// reference keeps naming the object antecedent that card superseded.
+fn controller_antecedent_tag(refs: &ReferenceEnv) -> Option<&TagKey> {
+    let last = refs.known_last_object_tag()?;
+    let is_off_battlefield_card = is_off_battlefield_card_result_tag(last.as_str())
+        || refs.snapshot_tag_aliases.iter().any(|(alias, concrete)| {
+            concrete == last
+                && alias.as_str()
+                    == crate::tag::CompilerReferenceTag::OffBattlefieldCardAntecedent.as_str()
+        });
+    if !is_off_battlefield_card {
+        return Some(last);
+    }
+    refs.snapshot_tag_aliases
+        .iter()
+        .find(|(alias, _)| {
+            alias.as_str() == crate::tag::CompilerReferenceTag::PriorObjectAntecedent.as_str()
+        })
+        .map(|(_, prior)| prior)
+        .or(Some(last))
+}
+
 fn resolve_object_ref(reference: &ObjectRef, refs: &ReferenceEnv) -> ObjectRef {
     match reference {
         ObjectRef::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() => {
@@ -470,6 +493,14 @@ fn resolve_contextual_player_filter(
             sources: Box::new(resolve_object_filter_player_refs(sources, refs)?),
             minimum: *minimum,
         },
+        PlayerFilter::ControllerOf(ObjectRef::Tagged(tag))
+            if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                && controller_antecedent_tag(refs).is_some() =>
+        {
+            PlayerFilter::ControllerOf(ObjectRef::tagged(
+                controller_antecedent_tag(refs).cloned().unwrap_or_else(|| tag.clone()),
+            ))
+        }
         PlayerFilter::ControllerOf(reference) => {
             PlayerFilter::ControllerOf(resolve_object_ref(reference, refs))
         }
@@ -714,6 +745,37 @@ fn resolve_object_filter_player_refs(
     Ok(resolved)
 }
 
+/// "Then remove a time counter from each other card you own in exile"
+/// (Alaundo), "return up to one other target creature card ... from your
+/// graveyard" (Colfenor): an off-battlefield "other" filter cannot be
+/// contrasting the card with the ability source; it contrasts it with the
+/// clause's object antecedent, the card just moved to that zone. Exclude that
+/// antecedent by identity. The source exclusion is kept: it is inert for a
+/// source outside that zone, and still correct for an ability of a card in
+/// that zone whose antecedent is the card itself ("Return this card and up
+/// to one other target creature card from your graveyard").
+fn bind_off_battlefield_other_to_antecedent(filter: &mut ObjectFilter, refs: &ReferenceEnv) {
+    if !filter.other || !matches!(filter.zone, Some(Zone::Graveyard | Zone::Exile)) {
+        return;
+    }
+    let Some(tag) = refs.known_last_object_tag() else {
+        return;
+    };
+    if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
+        return;
+    }
+    if !filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag == *tag && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
+    }) {
+        filter
+            .tagged_constraints
+            .push(crate::filter::TaggedObjectConstraint {
+                tag: tag.clone(),
+                relation: TaggedOpbjectRelation::IsNotTaggedObject,
+            });
+    }
+}
+
 pub fn resolve_it_tag(
     filter: &ObjectFilter,
     refs: &ReferenceEnv,
@@ -724,6 +786,7 @@ pub fn resolve_it_tag(
     // that nested marker to the same sacrifice-cost object before the normal
     // reference pass can discard an otherwise unbound `it` filter.
     let mut filter_with_context = filter.clone();
+    bind_off_battlefield_other_to_antecedent(&mut filter_with_context, refs);
     if let Some(cost_tag) = filter.tagged_constraints.iter().find_map(|constraint| {
         (constraint.relation == TaggedOpbjectRelation::IsTaggedObject
             && constraint.tag.as_str().starts_with("sacrifice_cost_"))
@@ -741,6 +804,9 @@ pub fn resolve_it_tag(
     let mut resolved = resolve_object_filter_player_refs(&filter_with_context, refs)?;
     if let Some(attached_to_object) = resolved.attached_to_object.as_mut() {
         **attached_to_object = resolve_it_tag(attached_to_object, refs)?;
+    }
+    if let Some(host) = resolved.could_enchant_object.as_mut() {
+        **host = resolve_it_tag(host, refs)?;
     }
     if let Some(combat_partner) = resolved.blocked_or_was_blocked_by_this_turn.as_mut() {
         **combat_partner = resolve_it_tag(combat_partner, refs)?;
@@ -1464,6 +1530,19 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
         Value::Scaled(value, multiplier) => Ok(Value::Scaled(
             Box::new(resolve_value_it_tag(value, refs)?),
             *multiplier,
+        )),
+        // "equal to half that card's mana value, rounded up": arithmetic
+        // wrappers keep the object reference of the value they transform.
+        Value::HalfRoundedDown(value) => Ok(Value::HalfRoundedDown(Box::new(
+            resolve_value_it_tag(value, refs)?,
+        ))),
+        Value::DividedRoundedDown(value, divisor) => Ok(Value::DividedRoundedDown(
+            Box::new(resolve_value_it_tag(value, refs)?),
+            *divisor,
+        )),
+        Value::Min(left, right) => Ok(Value::Min(
+            Box::new(resolve_value_it_tag(left, refs)?),
+            Box::new(resolve_value_it_tag(right, refs)?),
         )),
         Value::SurfaceHinted { value, hints }
             if hints.contains(&ironsmith_core::ValueSurfaceHint::LifeGainedAmount)

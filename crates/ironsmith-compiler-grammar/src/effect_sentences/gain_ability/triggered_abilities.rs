@@ -762,6 +762,16 @@ pub(super) fn parse_granted_triggered_otherwise_ability(
     if true_tokens.is_empty() || false_tokens.is_empty() {
         return Ok(None);
     }
+    // "Reveal the top card of your library. If it's a land card, put it onto
+    // the battlefield. Otherwise, ...": this repair reads the consequence as
+    // one sentence. Several sentences before "otherwise" belong to the
+    // complete-line parser, which pairs the fallback with its own condition.
+    if true_tokens
+        .iter()
+        .any(|token| token.kind == TokenKind::Period)
+    {
+        return Ok(None);
+    }
 
     // The complete-line parser owns a canonical condition with both branches.
     // This older repair is needed only when sentence parsing has not joined

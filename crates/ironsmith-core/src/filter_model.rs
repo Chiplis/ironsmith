@@ -1789,6 +1789,44 @@ pub enum Comparison {
 }
 
 impl Comparison {
+    /// Replace every candidate-relative counter operand
+    /// ([`Value::CountersOnFilterCandidate`]) with the candidate's actual
+    /// count, so the comparison can be evaluated for that candidate.
+    pub fn bind_filter_candidate_counters(
+        &self,
+        counters: &std::collections::BTreeMap<CounterType, u32>,
+    ) -> Self {
+        fn bind(value: &Value, counters: &std::collections::BTreeMap<CounterType, u32>) -> Value {
+            match value {
+                Value::CountersOnFilterCandidate(Some(counter_type)) => {
+                    Value::Fixed(counters.get(counter_type).copied().unwrap_or(0) as i32)
+                }
+                Value::CountersOnFilterCandidate(None) => {
+                    Value::Fixed(counters.values().copied().sum::<u32>() as i32)
+                }
+                Value::SurfaceHinted { value, hints } => Value::SurfaceHinted {
+                    value: Box::new(bind(value, counters)),
+                    hints: hints.clone(),
+                },
+                Value::Add(left, right) => Value::Add(
+                    Box::new(bind(left, counters)),
+                    Box::new(bind(right, counters)),
+                ),
+                other => other.clone(),
+            }
+        }
+        let rebind = |value: &Value| Box::new(bind(value, counters));
+        match self {
+            Self::EqualExpr(value) => Self::EqualExpr(rebind(value)),
+            Self::NotEqualExpr(value) => Self::NotEqualExpr(rebind(value)),
+            Self::LessThanExpr(value) => Self::LessThanExpr(rebind(value)),
+            Self::LessThanOrEqualExpr(value) => Self::LessThanOrEqualExpr(rebind(value)),
+            Self::GreaterThanExpr(value) => Self::GreaterThanExpr(rebind(value)),
+            Self::GreaterThanOrEqualExpr(value) => Self::GreaterThanOrEqualExpr(rebind(value)),
+            other => other.clone(),
+        }
+    }
+
     /// Whether the right-hand operand counts objects relative to the
     /// candidate being filtered ([`ObjectRef::FilterCandidate`]).
     pub fn references_filter_candidate(&self) -> bool {
@@ -1811,6 +1849,7 @@ impl Comparison {
                 Value::Add(left, right) => {
                     value_is_candidate_relative(left) || value_is_candidate_relative(right)
                 }
+                Value::CountersOnFilterCandidate(_) => true,
                 _ => false,
             }
         }
@@ -1957,6 +1996,11 @@ pub struct ObjectFilter {
     pub targets_only_object: Option<Box<ObjectFilter>>,
     pub targets_only_any_of: bool,
     pub could_be_targeted_by: Option<TargetabilityConstraint>,
+    /// Excludes objects that are the target of an ability on the stack whose
+    /// source matches this filter ("that isn't the target of an ability from
+    /// another creature named Goblin Artisans").
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub not_targeted_by_ability_from: Option<Box<ObjectFilter>>,
     pub card_types: Vec<CardType>,
     pub all_card_types: Vec<CardType>,
     /// Number of distinct card types on the candidate, independent of its
@@ -2055,6 +2099,11 @@ pub struct ObjectFilter {
     /// executable complement of `with_attached_object` for selectors such as
     /// "creatures that aren't enchanted."
     pub without_attached_object: Option<Box<ObjectFilter>>,
+    /// The candidate is an Aura that could legally enchant a battlefield
+    /// object matching the inner filter ("an Aura card that could enchant
+    /// that creature").
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub could_enchant_object: Option<Box<ObjectFilter>>,
     /// The object's controller must control a battlefield permanent matching
     /// the inner filter ("creature whose controller controls an Island").
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2836,6 +2885,7 @@ impl ObjectFilter {
             || self.sticker.is_some()
             || self.enlist_eligible
             || self.attached_to_object.is_some()
+            || self.could_enchant_object.is_some()
             || self.blocked_or_was_blocked_by_this_turn.is_some()
             || self.attached_to_player.is_some()
             || self.surveilled_this_turn
@@ -3639,6 +3689,23 @@ impl ObjectFilter {
     }
 
     pub fn description(&self) -> String {
+        // A union of bare result tags ("those tokens" across several
+        // creation results) is one referenced set; describe it as one.
+        if self.any_of.len() > 1
+            && self.any_of.iter().all(|branch| {
+                branch.tagged_constraints.len() == 1 && {
+                    let mut bare = branch.clone();
+                    bare.tagged_constraints.clear();
+                    bare == ObjectFilter::default()
+                }
+            })
+        {
+            let mut set = self.clone();
+            set.any_of.clear();
+            set.tagged_constraints
+                .push(self.any_of[0].tagged_constraints[0].clone());
+            return set.description();
+        }
         if let Some(description) = describe_nonbattlefield_card_union(self) {
             return description;
         }
@@ -4283,6 +4350,9 @@ impl ObjectFilter {
                         tag if tag == crate::SOURCE_EXILED_TAG => {
                             post_noun_qualifiers.push("exiled with this permanent".to_string());
                         }
+                        tag if tag == crate::tag::EXILED_BY_YOU_TAG => {
+                            post_noun_qualifiers.push("you exiled".to_string());
+                        }
                         _ => {}
                     }
                 }
@@ -4319,6 +4389,9 @@ impl ObjectFilter {
                                 // graveyard count. Battlefield trigger subjects remain permanents.
                                 "triggering" if self.zone != Some(Zone::Battlefield) => {
                                     "that spell"
+                                }
+                                crate::SPELLS_CAST_THIS_TURN_TAG => {
+                                    "a spell that was cast this turn"
                                 }
                                 _ => "it",
                             });
@@ -5594,6 +5667,19 @@ impl ObjectFilter {
                 ensure_indefinite_article(attached_to.description())
             ));
         }
+        if let Some(host) = &self.could_enchant_object {
+            // A tagged host is a back-reference ("it", "that creature").
+            let mut untagged = host.as_ref().clone();
+            untagged.tagged_constraints.clear();
+            let host_text = if host.tagged_constraints.is_empty() {
+                host.description()
+            } else if untagged == ObjectFilter::default() {
+                "it".to_string()
+            } else {
+                format!("that {}", untagged.description())
+            };
+            parts.push(format!("that could enchant {host_text}"));
+        }
         if let Some(with_attached) = &self.with_attached_object {
             let inner = with_attached.description();
             let surfaced = if inner.starts_with("another ") || inner.starts_with("other ") {
@@ -5743,6 +5829,13 @@ impl ObjectFilter {
                 }
             };
             parts.push(format!("{stack_text} could target"));
+        }
+
+        if let Some(source_filter) = &self.not_targeted_by_ability_from {
+            parts.push(format!(
+                "that isn't the target of an ability from {}",
+                source_filter.description()
+            ));
         }
 
         correct_leading_indefinite_article(parts.join(" "))
@@ -7332,6 +7425,13 @@ fn describe_comparison(cmp: &Comparison) -> String {
                     describe_counter_holder(spec)
                 )
             }
+            Value::CountersOnFilterCandidate(Some(counter_type)) => {
+                format!(
+                    "the number of {} counters on it",
+                    counter_type.description()
+                )
+            }
+            Value::CountersOnFilterCandidate(None) => "the number of counters on it".to_string(),
             Value::PlayerCounters(player, counter_type) => {
                 let holder = match player {
                     PlayerFilter::You => "you have".to_string(),

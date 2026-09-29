@@ -5560,8 +5560,18 @@ pub(in crate::compiled_text) fn describe_copy_count_replacement_with_shared_plur
     let default_text = describe_effect(default_copy_effect)
         .trim_end_matches('.')
         .to_string();
-    let replacement_text =
+    let mut replacement_text =
         lowercase_first(describe_effect(replacement_copy_effect).trim_end_matches('.'));
+    // Both branches copy the same declared target; the replacement names it
+    // again with a demonstrative ("copy that spell twice instead").
+    if replacement_copy.target.is_target() {
+        let mut demonstrative = replacement_copy.clone();
+        demonstrative.target = ChooseSpec::Tagged("triggering".into());
+        demonstrative.target_reference_kind = Some(StackObjectKind::Spell);
+        demonstrative.target_reference_pronoun = false;
+        replacement_text =
+            lowercase_first(describe_effect(&Effect::new(demonstrative)).trim_end_matches('.'));
+    }
     let replacement_clause = if leading_instead_surface {
         format!("If {condition_text}, instead {replacement_text}")
     } else {

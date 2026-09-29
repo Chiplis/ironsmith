@@ -343,7 +343,6 @@ fn finish_battlefield_entry(
     game: &mut GameState,
     ctx: &ExecutionContext,
     old_zone: Zone,
-    options: &BattlefieldEntryOptions,
     result: crate::game_state::EntersResult,
 ) -> BattlefieldEntryOutcome {
     let new_id = result.new_id;
@@ -355,10 +354,7 @@ fn finish_battlefield_entry(
     }
 
     game.add_battlefield_put_with_source_link(ctx.source, new_id);
-    let enters_tapped = result.enters_tapped || options.tapped;
-    if options.tapped && !result.enters_tapped {
-        game.tap(new_id);
-    }
+    let enters_tapped = result.enters_tapped;
 
     // "This creature enters prepared." The permanent is on the battlefield by
     // now, which is what the prepare spell copy's existence is tied to.
@@ -476,6 +472,7 @@ pub(crate) fn move_to_battlefield_batch_with_options(
             old_zone,
             &mut ctx.decision_maker,
             options.initial_counters.clone(),
+            options.tapped,
             entering_controller,
             &reserved_objects,
         );
@@ -576,7 +573,7 @@ pub(crate) fn move_to_battlefield_batch_with_options(
             apply_entry_definition(&mut working, result.new_id, transformed_definition);
         }
         apply_entry_modifications(&mut working, ctx, result.new_id, options);
-        outcomes[index] = finish_battlefield_entry(&mut working, ctx, old_zone, options, result);
+        outcomes[index] = finish_battlefield_entry(&mut working, ctx, old_zone, result);
     }
 
     // CR 613.7j: objects that receive timestamps simultaneously get them in an
@@ -722,6 +719,117 @@ mod tests {
     use crate::static_abilities::StaticAbility;
     use crate::target::ObjectFilter;
     use crate::types::{CardType, Subtype};
+
+    struct EntryOrderDm {
+        untapper: ObjectId,
+        untapped_last: bool,
+        choices: usize,
+    }
+
+    impl DecisionMaker for EntryOrderDm {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            self.choices += 1;
+            let option = ctx
+                .options
+                .iter()
+                .find(|option| {
+                    option.legal && (option.object_id == Some(self.untapper)) != self.untapped_last
+                })
+                .expect("both entry replacements should be offered");
+            vec![option.index]
+        }
+    }
+
+    fn check_tapped_instruction(has_untapper: bool, intrinsic_tapped: bool, untapped_last: bool) {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let card = CardBuilder::new(CardId::new(), "Entry Untapper")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        let mut object = Object::from_card(source, &card, alice, Zone::Battlefield);
+        if has_untapper {
+            object.abilities_mut().push(Ability::static_ability(
+                StaticAbility::enters_untapped_for_filter(ObjectFilter::land().you_control()),
+            ));
+        }
+        game.add_object(object);
+        let requests = (0..3)
+            .map(|_| {
+                let id = game.new_object_id();
+                let card = CardBuilder::new(CardId::new(), "Entering Land")
+                    .card_types(vec![CardType::Land])
+                    .build();
+                let mut object = Object::from_card(id, &card, alice, Zone::Library);
+                if intrinsic_tapped {
+                    object.abilities_mut().push(Ability::static_ability(
+                        StaticAbility::enters_tapped_ability(),
+                    ));
+                }
+                game.add_object(object);
+                (id, BattlefieldEntryOptions::specific(alice, true))
+            })
+            .collect();
+        let mut dm = EntryOrderDm {
+            untapper: source,
+            untapped_last,
+            choices: 0,
+        };
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        let outcomes = move_to_battlefield_batch_with_options(&mut game, &mut ctx, requests);
+        let expected_tapped = !has_untapper || (intrinsic_tapped && !untapped_last);
+        for outcome in outcomes {
+            let BattlefieldEntryOutcome::Moved(id) = outcome else {
+                panic!("all three lands should enter");
+            };
+            assert_eq!(game.is_tapped(id), expected_tapped);
+        }
+        let events = game.take_pending_trigger_events();
+        let entries: Vec<_> = events
+            .iter()
+            .filter_map(|event| {
+                crate::events::downcast_event::<EnterBattlefieldEvent>(event.inner())
+            })
+            .collect();
+        assert_eq!(entries.len(), 3);
+        assert!(
+            entries
+                .iter()
+                .all(|event| event.enters_tapped == expected_tapped)
+        );
+        assert_eq!(
+            dm.choices,
+            if has_untapper && intrinsic_tapped {
+                3
+            } else {
+                0
+            }
+        );
+    }
+
+    #[test]
+    fn tapped_instruction_allows_untapped_replacement_last() {
+        check_tapped_instruction(true, true, true);
+    }
+
+    #[test]
+    fn tapped_instruction_allows_tapped_replacement_last() {
+        check_tapped_instruction(true, true, false);
+    }
+
+    #[test]
+    fn tapped_instruction_is_replaced_for_plain_lands() {
+        check_tapped_instruction(true, false, true);
+    }
+
+    #[test]
+    fn tapped_instruction_without_replacement_stays_tapped() {
+        check_tapped_instruction(false, false, false);
+    }
 
     fn create_creature(game: &mut GameState, name: &str, owner: PlayerId) -> ObjectId {
         let id = game.new_object_id();
@@ -1398,3 +1506,7 @@ mod tests {
         assert!(dm.prompts.is_empty());
     }
 }
+
+#[cfg(test)]
+#[path = "entry_tapped_tests.rs"]
+mod entry_tapped_tests;

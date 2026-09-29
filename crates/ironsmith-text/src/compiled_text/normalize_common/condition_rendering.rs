@@ -3339,7 +3339,14 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             }
         }
         Condition::PlayerTaggedObjectEnteredBattlefieldThisTurn { player, tag } => {
-            if let Some(action) = tag_action_from_name(tag.as_str()) {
+            // The object just returned to the battlefield: "If it entered
+            // under your control, ..." (Hallowed Respite, Phelia).
+            if tag.as_str().starts_with("returned_") {
+                format!(
+                    "it entered under {} control",
+                    describe_possessive_player_filter(player)
+                )
+            } else if let Some(action) = tag_action_from_name(tag.as_str()) {
                 format!("{} {} it this way", describe_player_filter(player), action)
             } else if is_implicit_reference_tag(tag.as_str()) {
                 // "If it entered under your control, ..." (Hallowed Respite,
@@ -4600,6 +4607,21 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 describe_two_named_creatures_control_condition(left, right)
             {
                 return named_creatures;
+            }
+            if matches!(
+                left.as_ref(),
+                Condition::TurnHistory(ironsmith_core::TurnHistoryCondition::TriggeringObjectWasCast)
+            ) && matches!(right.as_ref(), Condition::Not(inner)
+                if matches!(
+                    inner.as_ref(),
+                    Condition::TurnHistory(
+                        ironsmith_core::TurnHistoryCondition::TriggeringObjectWasCastFromZone(
+                            Zone::Hand
+                        )
+                    )
+                ))
+            {
+                return "you cast it from anywhere other than your hand".to_string();
             }
             let cast_outside_sorcery_timing = |cast: &Condition, timing: &Condition| {
                 matches!(cast, Condition::SourceWasCast)

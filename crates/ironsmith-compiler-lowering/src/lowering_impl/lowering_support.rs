@@ -1066,8 +1066,31 @@ fn bind_unblocked_trigger_attacker_combat_assignment(
     if !trigger_is_attacks_and_isnt_blocked(trigger) {
         return;
     }
+    // In "whenever a creature ... attacks and isn't blocked, ... have it deal
+    // damage to target creature. If you do, it assigns no combat damage", the
+    // only creature whose combat damage assignment the pronoun can govern is
+    // the unblocked attacker, not the most recent damage recipient.
+    let mut event = trigger;
+    while let TriggerSpec::WithIntro { trigger, .. } = event {
+        event = trigger;
+    }
+    let bind_pronoun = matches!(event, TriggerSpec::AttacksAndIsntBlocked(_));
 
-    fn visit(effect: &mut EffectAst) {
+    fn visit(effect: &mut EffectAst, bind_pronoun: bool) {
+        if bind_pronoun
+            && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::DamagePrevention(
+                        DamagePreventionActionAst::AssignNoCombatDamage { source, .. },
+                    ),
+                ..
+            }) = effect
+            && let TargetAst::Tagged(tag, span) = source
+            && tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+        {
+            *source = TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), *span);
+            return;
+        }
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::DamagePrevention(
@@ -1088,11 +1111,124 @@ fn bind_unblocked_trigger_attacker_combat_assignment(
         }
         for_each_nested_effects_mut(effect, true, |nested| {
             for child in nested {
-                visit(child);
+                visit(child, bind_pronoun);
             }
         });
     }
 
+    for effect in effects {
+        visit(effect, bind_pronoun);
+    }
+}
+
+/// "When you cast this spell, each player sacrifices X creatures. This
+/// creature enters with two +1/+1 counters on it for each creature sacrificed
+/// this way.": the only object that will enter the battlefield here is the
+/// spell itself. An entry-counter grant whose pronoun subject the grammar left
+/// unbound must not bind to the sacrificed objects the preceding instruction
+/// produced.
+fn bind_cast_trigger_entry_grants_to_source(effects: &mut [EffectAst], trigger: &TriggerSpec) {
+    let mut event = trigger;
+    while let TriggerSpec::WithIntro { trigger, .. } = event {
+        event = trigger;
+    }
+    if !matches!(event, TriggerSpec::YouCastThisSpell) {
+        return;
+    }
+    fn is_entry_counter_grant(ability: &crate::cards::builders::GrantedAbilityAst) -> bool {
+        let crate::cards::builders::GrantedAbilityAst::StaticAbility(ability) = ability else {
+            return false;
+        };
+        let StaticAbilityAst::Static(ability) = ability.as_ref() else {
+            return false;
+        };
+        matches!(
+            ability.payload,
+            ironsmith_core::StaticAbilityPayload::EntersWithCountersValue { .. }
+                | ironsmith_core::StaticAbilityPayload::EntersWithCountersIfCondition { .. }
+        )
+    }
+    fn visit(effect: &mut EffectAst) {
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
+                    target,
+                    abilities,
+                    ..
+                }),
+            ..
+        }) = effect
+            && let TargetAst::Tagged(tag, span) = target
+            && tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+            && !abilities.is_empty()
+            && abilities.iter().all(is_entry_counter_grant)
+        {
+            *target = TargetAst::Source(*span);
+            return;
+        }
+        for_each_nested_effects_mut(effect, true, |nested| {
+            for child in nested {
+                visit(child);
+            }
+        });
+    }
+    for effect in effects {
+        visit(effect);
+    }
+}
+
+/// "Whenever a creature you control attacks alone, you may search your
+/// library for an Aura card ..., put it onto the battlefield attached to that
+/// creature": inside the per-result loop the pronoun would name the Aura
+/// itself, and an object can't be attached to itself. The destination is the
+/// trigger's event object.
+fn bind_self_attach_destination_to_trigger_object(
+    effects: &mut [EffectAst],
+    trigger: &TriggerSpec,
+) {
+    if ironsmith_compiler_semantic::trigger_references::default_trigger_last_object_tag(trigger)
+        .is_none_or(|tag| tag.as_str() != crate::tag::CompilerReferenceTag::Triggering.as_str())
+    {
+        return;
+    }
+    fn is_bare_it(target: &TargetAst) -> bool {
+        let it = crate::tag::CompilerReferenceTag::It.as_str();
+        match target {
+            TargetAst::Tagged(tag, _) => tag.as_str() == it,
+            TargetAst::Object(filter, None, _) => matches!(
+                filter.tagged_constraints.as_slice(),
+                [constraint]
+                    if constraint.tag.as_str() == it
+                        && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            ),
+            _ => false,
+        }
+    }
+    fn visit(effect: &mut EffectAst) {
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Control(crate::cards::builders::ControlActionAst::Attach {
+                    object: TargetAst::Tagged(object_tag, _),
+                    target,
+                }),
+            ..
+        }) = effect
+            && object_tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str()
+            && is_bare_it(target)
+        {
+            let span = match target {
+                TargetAst::Tagged(_, span) | TargetAst::Object(_, _, span) => *span,
+                _ => None,
+            };
+            *target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), span);
+            return;
+        }
+        for_each_nested_effects_mut(effect, true, |nested| {
+            for child in nested {
+                visit(child);
+            }
+        });
+    }
     for effect in effects {
         visit(effect);
     }
@@ -2876,6 +3012,8 @@ pub fn stage_effects_with_trigger_context_for_lowering(
         preserve_copy_reference_kind_from_trigger(&mut normalized, trigger);
         bind_post_copy_cast_spell_exile_to_triggering_object(&mut normalized, trigger);
         bind_unblocked_trigger_attacker_combat_assignment(&mut normalized, trigger);
+        bind_cast_trigger_entry_grants_to_source(&mut normalized, trigger);
+        bind_self_attach_destination_to_trigger_object(&mut normalized, trigger);
         bind_phase_step_trigger_untap_after_incompatible_discard(&mut normalized, trigger);
         // A stack retarget can never act on the source permanent, so an
         // "it"/"that spell" reference inside its clause always means the
@@ -2941,6 +3079,79 @@ pub fn stage_effects_with_trigger_context_for_lowering(
         default_last_object_prelude,
         trigger.is_some(),
     )
+}
+
+/// "Whenever equipped creature deals damage to a blocking creature, this
+/// Equipment deals that much damage to each other creature defending player
+/// controls" (Kusari-Gama): in a damage-to-object trigger, a damage fan-out
+/// over "each other <kind>" of the damaged object's kind is relative to the
+/// damaged object named by the trigger, not to the ability source. Exclude
+/// that object by identity through the trigger's damaged-object tag.
+fn bind_other_damage_each_to_damaged_object(trigger: &TriggerSpec, effects: &mut [EffectAst]) {
+    fn damaged_object_filter(trigger: &TriggerSpec) -> Option<&ObjectFilter> {
+        match trigger {
+            TriggerSpec::WithIntro { trigger, .. } => damaged_object_filter(trigger),
+            TriggerSpec::DealsDamageTo { target, .. }
+            | TriggerSpec::DealsCombatDamageTo { target, .. }
+            | TriggerSpec::ThisDealsDamageTo(target)
+            | TriggerSpec::ThisDealsCombatDamageTo(target) => Some(target),
+            _ => None,
+        }
+    }
+    fn bind(filter: &mut ObjectFilter, damaged: &ObjectFilter, tag: &crate::tag::TagKey) {
+        if !filter.other
+            || damaged.card_types.is_empty()
+            || !filter
+                .card_types
+                .iter()
+                .any(|card_type| damaged.card_types.contains(card_type))
+        {
+            return;
+        }
+        filter.other = false;
+        filter
+            .tagged_constraints
+            .push(crate::filter::TaggedObjectConstraint {
+                tag: tag.clone(),
+                relation: TaggedOpbjectRelation::IsNotTaggedObject,
+            });
+    }
+    fn walk(effects: &mut [EffectAst], damaged: &ObjectFilter, tag: &crate::tag::TagKey) {
+        for effect in effects {
+            match effect {
+                EffectAst::SubjectVerb(subject_verb) => {
+                    if let SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach {
+                        filter,
+                        ..
+                    }) = &mut subject_verb.action
+                    {
+                        bind(filter, damaged, tag);
+                    }
+                }
+                EffectAst::ForEach(ForEachEffectAst::ForEachObject { filter, effects })
+                    if effects.iter().any(|effect| {
+                        matches!(
+                            effect,
+                            EffectAst::SubjectVerb(subject_verb)
+                                if matches!(
+                                    subject_verb.action,
+                                    SubjectVerbActionAst::Damage(_)
+                                )
+                        )
+                    }) =>
+                {
+                    bind(filter, damaged, tag);
+                }
+                _ => {}
+            }
+            for_each_nested_effects_mut(effect, true, |nested| walk(nested, damaged, tag));
+        }
+    }
+    let Some(damaged) = damaged_object_filter(trigger) else {
+        return;
+    };
+    let tag: crate::tag::TagKey = crate::tag::CompilerReferenceTag::Damaged.bind().into();
+    walk(effects, damaged, &tag);
 }
 
 pub fn stage_triggered_effects_for_lowering(
@@ -3208,6 +3419,37 @@ pub fn stage_owned_triggered_effects_for_lowering(
             ),
         );
     }
+    // Landfall: "... tap target creature. If that land is an Island, ..."
+    // The entering land stays nameable by "that land" after later targets.
+    fn has_single_land_antecedent(trigger: &TriggerSpec) -> bool {
+        match trigger {
+            TriggerSpec::WithIntro { trigger, .. }
+            | TriggerSpec::ConditionQualified { trigger, .. } => {
+                has_single_land_antecedent(trigger)
+            }
+            TriggerSpec::EntersBattlefield { filter, .. }
+            | TriggerSpec::EntersBattlefieldFromZone {
+                filter,
+                one_or_more: false,
+                ..
+            } => {
+                filter.card_types == [crate::types::CardType::Land]
+                    && filter.any_of.is_empty()
+                    && !filter.type_or_subtype_union
+            }
+            _ => false,
+        }
+    }
+    if has_single_land_antecedent(&trigger) {
+        let mut land = ObjectFilter::default();
+        land.card_types = vec![crate::types::CardType::Land];
+        std::sync::Arc::make_mut(&mut imports.recent_object_target_bindings).push(
+            crate::model::reference_state::ObjectTargetBinding::new(
+                crate::tag::CompilerReferenceTag::Triggering.key(),
+                &land,
+            ),
+        );
+    }
 
     let mut normalized = effects;
     crate::effect_ast_normalization::normalize_effects_ast_in_place(&mut normalized);
@@ -3225,6 +3467,8 @@ pub fn stage_owned_triggered_effects_for_lowering(
     bind_source_and_trigger_object_destroy_pair(&mut normalized, &trigger);
     preserve_blocker_regeneration_followup_as_restriction(&mut normalized, &trigger);
     bind_unblocked_trigger_attacker_combat_assignment(&mut normalized, &trigger);
+    bind_cast_trigger_entry_grants_to_source(&mut normalized, &trigger);
+    bind_self_attach_destination_to_trigger_object(&mut normalized, &trigger);
     bind_phase_step_trigger_untap_after_incompatible_discard(&mut normalized, &trigger);
     // "You may choose new targets for that spell" after a body sentence about
     // the source must still bind the TRIGGERING stack object (Speedball).
@@ -3345,6 +3589,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
         bind_random_count_condition_antecedent_in_effects(&mut body_effects, predicate);
     }
     resolve_source_damage_attack_followups_to_source(&mut body_effects);
+    bind_other_damage_each_to_damaged_object(&trigger, &mut body_effects);
     if let Some(counter_type) = intervening_if
         .as_ref()
         .and_then(predicate_source_counter_antecedent)
@@ -4109,6 +4354,26 @@ fn preserve_named_granting_source_in_effect(effect: Effect) -> Effect {
         }
     }
 
+    // "... gains control of Shuriken unless it was unattached from a Ninja":
+    // the condition reads the ability's source (the equipped creature), and
+    // only the branch's named object is the granting attachment.
+    if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>()
+        && direct_named_granting_source_spec(&effect).is_none()
+    {
+        let mut conditional = conditional.clone();
+        conditional.if_true = conditional
+            .if_true
+            .into_iter()
+            .map(preserve_named_granting_source_in_effect)
+            .collect();
+        conditional.if_false = conditional
+            .if_false
+            .into_iter()
+            .map(preserve_named_granting_source_in_effect)
+            .collect();
+        return Effect::new(conditional);
+    }
+
     let Some(source) = direct_named_granting_source_spec(&effect) else {
         return effect;
     };
@@ -4626,6 +4891,41 @@ pub(crate) fn lower_compiler_static_ability_core(
                     performer_filter,
                     replacement_effects,
                     optional,
+                    display,
+                },
+            })
+        }
+        crate::model::CompilerStaticAbilityPayloadCore::DrawReplacementWithEffects {
+            drawer,
+            except_first_of_draw_step,
+            replacement_effects,
+            display,
+        } => {
+            // The replacement sentences form one resolution program: "they
+            // draw a card and reveal it. If it's a creature card, that player
+            // discards it" refers back to the drawn card, so the effects must
+            // share one lowering context instead of being lowered one by one.
+            // Normalize first so "draw a card and reveal it" tags the drawn
+            // card as the antecedent of the reveal and later "it".
+            let mut replacement_effects = replacement_effects;
+            crate::effect_ast_normalization::normalize_effects_ast_in_place(
+                &mut replacement_effects,
+            );
+            let mut ctx = crate::model::facts::EffectLoweringContext::new();
+            let (replacement_effects, choices) =
+                crate::compile_support::compile_effects(&replacement_effects, &mut ctx)?;
+            if !choices.is_empty() {
+                return Err(CardTextError::InvariantViolation(
+                    "draw replacement cannot announce targets".into(),
+                ));
+            }
+            Ok(StaticAbility {
+                id,
+                label,
+                payload: crate::static_abilities::StaticAbilityPayload::DrawReplacementWithEffects {
+                    drawer,
+                    except_first_of_draw_step,
+                    replacement_effects,
                     display,
                 },
             })

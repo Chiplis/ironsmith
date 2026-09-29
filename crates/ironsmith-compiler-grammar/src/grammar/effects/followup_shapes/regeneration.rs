@@ -29,6 +29,13 @@ fn regeneration_subject<'a>(input: &mut LexStream<'a>) -> WResult<CantBeRegenera
         primitives::kw("it").value(CantBeRegeneratedSubject::It),
         primitives::kw("they").value(CantBeRegeneratedSubject::They),
         primitives::phrase(&["those", "creatures"]).value(CantBeRegeneratedSubject::They),
+        // "Artifacts destroyed this way can't be regenerated." (Corrosion)
+        // names the whole destroyed group, like "they".
+        alt((
+            primitives::phrase(&["artifacts", "destroyed", "this", "way"]),
+            primitives::phrase(&["permanents", "destroyed", "this", "way"]),
+        ))
+        .value(CantBeRegeneratedSubject::They),
         alt((
             primitives::phrase(&["creature", "destroyed", "this", "way"]),
             primitives::phrase(&["creatures", "destroyed", "this", "way"]),

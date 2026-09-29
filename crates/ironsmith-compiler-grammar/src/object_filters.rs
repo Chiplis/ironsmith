@@ -1066,10 +1066,73 @@ fn parse_whose_controller_controls_filter(
     Ok(Some(filter))
 }
 
+/// Split "<head> that isn't the target of an ability from <source filter>"
+/// (Goblin Artisans). The trailing filter describes the sources of abilities
+/// on the stack that target the object, not the object itself.
+fn split_not_targeted_by_ability_from(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+    const PHRASES: &[&[&str]] = &[
+        &["that", "isn't", "the", "target", "of", "an", "ability", "from"],
+        &["that", "isnt", "the", "target", "of", "an", "ability", "from"],
+        &["that", "is", "not", "the", "target", "of", "an", "ability", "from"],
+    ];
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.to_word_refs();
+    let starts = view.token_start_indices();
+    for start in 1..words.len() {
+        for phrase in PHRASES {
+            if words.get(start..start + phrase.len()) != Some(*phrase) {
+                continue;
+            }
+            let tail_word = start + phrase.len();
+            if tail_word >= words.len() {
+                return None;
+            }
+            let head_end = *starts.get(start)?;
+            let tail_start = *starts.get(tail_word)?;
+            return Some((&tokens[..head_end], &tokens[tail_start..]));
+        }
+    }
+    None
+}
+
+fn parse_not_targeted_by_ability_from_filter(
+    tokens: &[OwnedLexToken],
+    other: bool,
+    parse_head: fn(&[OwnedLexToken], bool) -> Result<ObjectFilter, CardTextError>,
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let Some((head, tail)) = split_not_targeted_by_ability_from(tokens) else {
+        return Ok(None);
+    };
+    // "another creature named ..." excludes the ability's own source.
+    let (tail, source_other) = match tail.first() {
+        Some(first) if first.is_word("another") && tail.len() > 1 => (&tail[1..], true),
+        _ => (tail, false),
+    };
+    let Ok(mut source_filter) = parse_object_filter(tail, source_other) else {
+        return Ok(None);
+    };
+    source_filter.other |= source_other;
+    let mut filter = parse_head(head, other)?;
+    filter.not_targeted_by_ability_from = Some(Box::new(source_filter));
+    Ok(Some(filter))
+}
+
 pub fn parse_object_filter(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some((base, host)) = split_could_enchant_suffix(tokens)? {
+        let mut filter = parse_object_filter(&base, other)?;
+        filter.could_enchant_object = Some(Box::new(host));
+        return Ok(filter);
+    }
+    if let Some(filter) =
+        parse_not_targeted_by_ability_from_filter(tokens, other, parse_object_filter)?
+    {
+        return Ok(filter);
+    }
     if let Some(filter) =
         parse_whose_controller_controls_filter(tokens, other, parse_object_filter)?
     {
@@ -1298,10 +1361,64 @@ pub fn parse_object_filter_words(
     ))
 }
 
+/// "an Aura card that could enchant that creature": split the terminal
+/// enchantability relation from the Aura's own description. The host is a
+/// back-reference ("it", "that creature") or an ordinary object phrase.
+fn split_could_enchant_suffix(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<(Vec<OwnedLexToken>, ObjectFilter)>, CardTextError> {
+    let words = super::lexer::parser_token_word_positions(tokens);
+    let Some(index) = words.windows(3).position(|window| {
+        window[0].1 == "that"
+            && matches!(window[1].1, "could" | "can")
+            && window[2].1 == "enchant"
+    }) else {
+        return Ok(None);
+    };
+    if index == 0 || index + 3 >= words.len() {
+        return Ok(None);
+    }
+    let host_words = words[index + 3..]
+        .iter()
+        .map(|(_, word)| *word)
+        .collect::<Vec<_>>();
+    let it = || ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
+    // The back-reference is one or two words; any trailing words ("from your
+    // graveyard") still describe the Aura card itself.
+    let (host, consumed) = match host_words.as_slice() {
+        ["it", ..] => (it(), 1),
+        ["that", "object" | "permanent", ..] => (it(), 2),
+        ["that", noun, ..] if parse_card_type(noun).is_some() => {
+            let mut host = it();
+            host.card_types = parse_card_type(noun).into_iter().collect();
+            (host, 2)
+        }
+        _ => (
+            parse_object_filter_lexed(&tokens[words[index + 3].0..], false)?,
+            host_words.len(),
+        ),
+    };
+    let mut base = tokens[..words[index].0].to_vec();
+    if let Some((token_index, _)) = words.get(index + 3 + consumed) {
+        base.extend_from_slice(&tokens[*token_index..]);
+    }
+    Ok(Some((base, host)))
+}
+
 pub fn parse_object_filter_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some((base, host)) = split_could_enchant_suffix(tokens)? {
+        let mut filter = parse_object_filter_lexed(&base, other)?;
+        filter.could_enchant_object = Some(Box::new(host));
+        return Ok(filter);
+    }
+    if let Some(filter) =
+        parse_not_targeted_by_ability_from_filter(tokens, other, parse_object_filter_lexed)?
+    {
+        return Ok(filter);
+    }
     if let Some(filter) =
         parse_whose_controller_controls_filter(tokens, other, parse_object_filter_lexed)?
     {

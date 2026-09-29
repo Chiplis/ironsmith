@@ -343,19 +343,13 @@ pub fn apply_priority_response_with_dm(
                     .grant_registry
                     .land_play_from_permissions_enters_tapped(game, *land_id, old_zone, player);
             crate::special_actions::apply_land_play_face(game, *land_id, back_face);
-            let result = if permission_forces_tapped {
-                game.move_object_with_etb_processing_with_dm_and_forced_tapped(
-                    *land_id,
-                    Zone::Battlefield,
-                    decision_maker,
-                )
-            } else {
-                game.move_object_with_etb_processing_with_dm(
-                    *land_id,
-                    Zone::Battlefield,
-                    decision_maker,
-                )
-            }
+            let result = game.move_object_with_etb_processing_with_entry_options(
+                *land_id,
+                Zone::Battlefield,
+                decision_maker,
+                permission_forces_tapped,
+                true,
+            )
             .ok_or_else(|| GameLoopError::InvalidState("Failed to move land".to_string()))?;
             let new_id = result.new_id;
             if let Some(shared_usage_id) = shared_usage_to_consume {

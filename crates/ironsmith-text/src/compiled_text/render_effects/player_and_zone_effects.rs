@@ -1400,6 +1400,7 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
             Some(format!("{prefix}{described} {tail}"))
         }
         Value::SourceRegeneratedThisTurnCount => Some("time it regenerated this turn".to_string()),
+        Value::SourceDevouredCreatureCount => Some("creature it devoured".to_string()),
         Value::Add(inner, offset)
             if matches!(offset.unhinted(), Value::Fixed(-1))
                 && matches!(inner.unhinted(), Value::SpellsCastThisTurn(_)) =>
@@ -1758,6 +1759,7 @@ pub(crate) fn should_render_token_count_with_where_x(value: &Value) -> bool {
             | Value::TimesPaidLabel(_)
             | Value::KickCount
             | Value::SourceRegeneratedThisTurnCount
+            | Value::SourceDevouredCreatureCount
             | Value::MagicGamesLostToOpponentsSinceLastWin
     ) {
         return false;

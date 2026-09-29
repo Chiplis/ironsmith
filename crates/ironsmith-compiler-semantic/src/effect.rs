@@ -1154,11 +1154,13 @@ impl Effect {
         effects: Vec<Effect>,
         choices: Vec<crate::target::ChooseSpec>,
     ) -> Self {
+        let intervening_if = reflexive_intervening_condition(&effects);
         Self::new(crate::effects::ReflexiveTriggerEffect {
             condition: effect_id.into(),
             predicate,
             effects,
             choices,
+            intervening_if,
         })
     }
 
@@ -2699,4 +2701,46 @@ impl From<crate::effects::ChoosePlayerEffect> for Effect {
     fn from(value: crate::effects::ChoosePlayerEffect) -> Self {
         Self::new(value)
     }
+}
+
+/// "When you do, if <condition>, <effects>": a reflexive ability whose whole
+/// body is one leading condition has an intervening-if (CR 603.4). The body
+/// keeps the resolution-time check; this returns the same condition for the
+/// trigger-time check. Target declarations of the reflexive ability may
+/// precede the gate. A condition about an object of the reflexive ability
+/// itself (any tagged reference) can only be checked on resolution.
+fn reflexive_intervening_condition(
+    effects: &[Effect],
+) -> Option<ironsmith_core::value_model::Condition> {
+    use ironsmith_core::tag::TagKeyWalk;
+    let is_target_declaration = |effect: &Effect| {
+        effect
+            .downcast_ref::<crate::effects::TargetOnlyEffect>()
+            .is_some()
+            || effect
+                .downcast_ref::<crate::effects::TaggedEffect>()
+                .is_some_and(|tagged| {
+                    tagged
+                        .effect
+                        .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                        .is_some()
+                })
+    };
+    let mut gates = effects
+        .iter()
+        .filter(|effect| !is_target_declaration(effect));
+    let (Some(gate), None) = (gates.next(), gates.next()) else {
+        return None;
+    };
+    let conditional = gate.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if conditional.surface != ironsmith_core::ConditionalSurface::LeadingIf
+        || !conditional.if_false.is_empty()
+    {
+        return None;
+    }
+    let mut references_tag = false;
+    conditional
+        .condition
+        .for_each_tag_key(&mut |_| references_tag = true);
+    (!references_tag).then(|| conditional.condition.clone())
 }

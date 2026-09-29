@@ -4425,6 +4425,7 @@ pub(crate) fn describe_until(until: &Until) -> String {
         Until::YourNextTurn => "until your next turn".to_string(),
         Until::YourNextTurnEnd => "until the end of your next turn".to_string(),
         Until::YourNextUpkeep => "until your next upkeep".to_string(),
+        Until::NextEndStep => "until the next end step".to_string(),
         Until::ControllersNextUntapStep => "during its controller's next untap step".to_string(),
         Until::EndOfCombat => "until end of combat".to_string(),
         Until::ThisLeavesTheBattlefield => {

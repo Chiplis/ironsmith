@@ -85,6 +85,7 @@ pub fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtHand { target })
             | SubjectVerbActionAst::Stack(StackActionAst::Counter { target })
             | SubjectVerbActionAst::Stack(StackActionAst::CounterUnlessPays { target, .. })
+            | SubjectVerbActionAst::Stack(StackActionAst::CopySpell { target, .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target, .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice {
                 target, ..

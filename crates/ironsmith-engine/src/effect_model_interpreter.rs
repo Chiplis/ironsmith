@@ -1278,6 +1278,9 @@ where
             ironsmith_core::PreventNextTimeDamageTarget::You => {
                 crate::effects::PreventNextTimeDamageTarget::You
             }
+            ironsmith_core::PreventNextTimeDamageTarget::YouAndPermanents(filter) => {
+                crate::effects::PreventNextTimeDamageTarget::YouAndPermanents(filter.clone())
+            }
             ironsmith_core::PreventNextTimeDamageTarget::Target(spec) => {
                 crate::effects::PreventNextTimeDamageTarget::Target(spec.clone())
             }
@@ -1526,12 +1529,15 @@ where
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::ReflexiveTriggerEffect<M::Effect>>(&effect)
     {
-        return Ok(Effect::new(crate::effects::ReflexiveTriggerEffect::new(
-            payload.condition,
-            payload.predicate.clone(),
-            convert_effects(payload.effects.iter().cloned(), hooks)?,
-            payload.choices.clone(),
-        )));
+        return Ok(Effect::new(
+            crate::effects::ReflexiveTriggerEffect::new(
+                payload.condition,
+                payload.predicate.clone(),
+                convert_effects(payload.effects.iter().cloned(), hooks)?,
+                payload.choices.clone(),
+            )
+            .with_intervening_if(payload.intervening_if.clone()),
+        ));
     }
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::ScheduleEffectsWhenTaggedLeavesEffect<M::Effect>>(&effect)

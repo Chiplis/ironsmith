@@ -714,6 +714,53 @@ fn parse_granted_ability_component_for_gain(
             StaticAbilityAst::Static(StaticAbility::changeling()),
         ))]));
     }
+    // "protection from the colors of target permanent you control" (Samite
+    // Elder): the colors of one targeted object, locked in on resolution.
+    if let ["protection", "from", "the", "colors", "of", "target", filter_words @ ..] =
+        ability_words.as_slice()
+        && !filter_words.is_empty()
+        && ability_tokens.len() == ability_words.len()
+        && let Ok(filter) = parse_object_filter(&ability_tokens[6..], false)
+    {
+        let spec = crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(filter));
+        return Ok(Some(vec![GrantedAbilityAst::StaticAbility(Box::new(
+            StaticAbilityAst::Static(StaticAbility::protection(
+                crate::ability::ProtectionFrom::ColorsOf(Box::new(spec)),
+            )),
+        ))]));
+    }
+    // "protection from each of that permanent's colors" / "... from the
+    // colors of that creature" (Samite Elder, Éowyn): the colors of the
+    // object the preceding clause referenced, bound by reference resolution.
+    let references_prior_object_colors = matches!(
+        ability_words.as_slice(),
+        ["protection", "from", "each", "of", "that", _, "colors"]
+            | ["protection", "from", "each", "of", "its", "colors"]
+            | ["protection", "from", "its", "colors"]
+            | ["protection", "from", "the", "colors", "of", "that", _]
+            | ["protection", "from", "the", "colors", "of", "it"]
+    ) && match ability_words.as_slice() {
+        ["protection", "from", "each", "of", "that", noun, "colors"] => noun
+            .strip_suffix("'s")
+            .or_else(|| noun.strip_suffix('s'))
+            .is_some_and(|noun| {
+                matches!(noun, "permanent" | "creature" | "card" | "spell" | "object")
+            }),
+        ["protection", "from", "the", "colors", "of", "that", noun] => {
+            matches!(*noun, "permanent" | "creature" | "card" | "spell" | "object")
+        }
+        _ => true,
+    };
+    if references_prior_object_colors {
+        let spec = crate::target::ChooseSpec::Tagged(
+            crate::tag::CompilerReferenceTag::It.bind().into(),
+        );
+        return Ok(Some(vec![GrantedAbilityAst::StaticAbility(Box::new(
+            StaticAbilityAst::Static(StaticAbility::protection(
+                crate::ability::ProtectionFrom::ColorsOf(Box::new(spec)),
+            )),
+        ))]));
+    }
     let top_level_activated_ability = authored_as_quoted_ability
         && gain_shapes::parse_top_level_activated_ability_surface(&ability_tokens);
     let top_level_triggered_ability = authored_as_quoted_ability

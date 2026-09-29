@@ -1549,6 +1549,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::XTimes(_)
         | Value::VoteCount(_)
         | Value::PlayerVoteCount(_)
+        | Value::ObjectVoteCount(_)
         | Value::Count(_)
         | Value::CountScaled(_, _)
         | Value::GreatestCount(_)
@@ -1623,6 +1624,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::ThisAbilityResolvedThisTurnCount
         | Value::SourceRegeneratedThisTurnCount
         | Value::SourceMutationCount
+        | Value::SourceDevouredCreatureCount
         | Value::SpellsCastThisTurnMatching { .. }
         | Value::TotalManaValueOfSpellsCastThisTurnMatching { .. }
         | Value::DamageDealtThisTurnByTaggedSpellCast(_)
@@ -1635,6 +1637,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::PlayerCounters(_, _)
         | Value::CountersOnSource(_)
         | Value::CountersOn(_, _)
+        | Value::CountersOnFilterCandidate(_)
         | Value::WasPaid(_)
         | Value::WasPaidLabel(_)
         | Value::TimesPaid(_)
@@ -2222,6 +2225,7 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::XTimes(_)
         | Value::VoteCount(_)
         | Value::PlayerVoteCount(_)
+        | Value::ObjectVoteCount(_)
         | Value::LifeTotal(_)
         | Value::LifeTotalAsTurnBegan(_)
         | Value::LifeTotalDifference(_)
@@ -2252,6 +2256,7 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::ThisAbilityResolvedThisTurnCount
         | Value::SourceRegeneratedThisTurnCount
         | Value::SourceMutationCount
+        | Value::SourceDevouredCreatureCount
         | Value::CreaturesDiedThisTurn
         | Value::CreaturesDiedThisTurnControlledBy(_)
         | Value::PlayersBeingAttacked
@@ -2274,6 +2279,7 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::PlayerCounters(_, _)
         | Value::CountersOnSource(_)
         | Value::CountersOn(_, _)
+        | Value::CountersOnFilterCandidate(_)
         | Value::WasPaid(_)
         | Value::WasPaidLabel(_)
         | Value::TimesPaid(_)

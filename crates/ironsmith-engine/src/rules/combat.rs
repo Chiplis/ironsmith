@@ -452,6 +452,7 @@ fn protection_prevents_blocking_with_view(
             })
         }
         ProtectionFrom::Everything => true,
+        ProtectionFrom::ColorsOf(_) => false,
         ProtectionFrom::Colorless => blocker_colors.is_empty(),
         ProtectionFrom::ChosenPlayer => game
             .chosen_player(attacker.id)

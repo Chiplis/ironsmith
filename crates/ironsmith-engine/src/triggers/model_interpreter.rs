@@ -180,11 +180,15 @@ pub(crate) fn interpret_trigger_model(
             display_subject,
             other_filter,
             other_surface,
-        } => crate::triggers::Trigger::this_attacks_with_n_others_display_subject_filter_and_other_surface(
-            count,
-            display_subject,
-            other_filter,
-            other_surface,
+            subject_filter,
+        } => crate::triggers::Trigger::new(
+            crate::triggers::ThisAttacksWithNOthersTrigger::with_display_subject_filter_and_other_surface(
+                count,
+                display_subject,
+                other_filter,
+                other_surface,
+            )
+            .with_subject_filter(subject_filter),
         ),
         TriggerKind::ThisAttacksWithExactNOthers { count } => {
             crate::triggers::Trigger::this_attacks_with_exact_n_others(count)

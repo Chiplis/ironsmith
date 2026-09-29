@@ -206,6 +206,9 @@ pub enum RedirectNextTimeDamageDestinationAst {
 pub enum PreventNextTimeDamageTargetAst {
     AnyTarget,
     You,
+    /// "you and/or creatures you control": the controller plus every
+    /// permanent matching the filter.
+    YouAndPermanents(crate::target::ObjectFilter),
     Target(TargetAst),
 }
 

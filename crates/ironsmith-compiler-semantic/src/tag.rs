@@ -322,6 +322,9 @@ pub enum CompilerReferenceTag {
     LinkedTriggerPlayer,
     WhereXCommanderManaValue,
     SourceExiled,
+    /// Cards in exile that the source's controller exiled ("cards you
+    /// exiled"), whatever source did the exiling.
+    ExiledByYou,
     MillProbe,
     EachPlayerRevealedThisWay,
     EachGraveyardChosen,
@@ -349,6 +352,14 @@ pub enum CompilerReferenceTag {
     /// producer superseded. A definite description whose noun cannot name the
     /// newest result ("create a token and exile that card") reads it.
     PriorObjectAntecedent,
+    /// Parse-time marker alias: the newest object antecedent is a card the
+    /// latest instruction moved out of a graveyard, hand, or library. Such a
+    /// card has no controller, so "that creature's controller" skips it.
+    OffBattlefieldCardAntecedent,
+    /// Parse-time alias group: one entry per token-creation member of the
+    /// latest coordinated creation ("create a Cat, a Bird, and an Ox"), so a
+    /// plural "those tokens" can name every member's result.
+    CoordinatedCreatedResult,
 }
 
 impl CompilerReferenceTag {
@@ -450,6 +461,7 @@ impl CompilerReferenceTag {
             Self::LinkedTriggerPlayer => ironsmith_core::LINKED_TRIGGER_PLAYER_TAG,
             Self::WhereXCommanderManaValue => "__where_x_commander_mana_value",
             Self::SourceExiled => "__source_exiled__",
+            Self::ExiledByYou => "__exiled_by_you__",
             Self::MillProbe => "__mill_probe__",
             Self::EachPlayerRevealedThisWay => "__each_player_revealed_this_way",
             Self::EachGraveyardChosen => "__each_graveyard_chosen",
@@ -474,6 +486,8 @@ impl CompilerReferenceTag {
             Self::TappedThisWayGroup => "tapped_this_way_group",
             Self::OtherAttacker => "other_attacker",
             Self::PriorObjectAntecedent => "__prior_object_antecedent__",
+            Self::OffBattlefieldCardAntecedent => "__off_battlefield_card_antecedent__",
+            Self::CoordinatedCreatedResult => "__coordinated_created_result__",
         }
     }
 
@@ -551,6 +565,7 @@ impl CompilerReferenceTag {
             Self::PriorExiledCard
             | Self::ExiledThisWay
             | Self::SourceExiled
+            | Self::ExiledByYou
             | Self::HideawayExiled
             | Self::JunkExiledCard
             | Self::IterativeLibraryExiled

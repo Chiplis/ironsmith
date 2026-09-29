@@ -233,6 +233,9 @@ pub enum Until {
     YourNextTurnEnd,
     YourNextUpkeep,
     ControllersNextUntapStep,
+    /// "until the next end step": ends as the first end step to begin after
+    /// the effect was created begins (this turn's, unless it already began).
+    NextEndStep,
     EndOfCombat,
     ThisLeavesTheBattlefield,
     SourceUntaps,
@@ -498,6 +501,9 @@ pub enum PreventNextTimeDamageTarget {
     AnyTarget,
     Omitted,
     You,
+    /// Damage dealt to you and/or permanents matching the filter
+    /// ("you and/or creatures you control").
+    YouAndPermanents(crate::filter_model::ObjectFilter),
     Target(ChooseSpec),
 }
 

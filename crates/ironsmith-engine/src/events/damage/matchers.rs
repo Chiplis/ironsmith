@@ -721,6 +721,12 @@ pub enum DamageTargetConstraint {
     Player(PlayerId),
     /// Damage is dealt to a specific object.
     Object(ObjectId),
+    /// Damage is dealt to a specific player or to a permanent matching the
+    /// filter (evaluated from the shield controller's point of view).
+    PlayerOrPermanents {
+        player: PlayerId,
+        filter: ObjectFilter,
+    },
 }
 
 /// Matches preventable damage events with optional source/target constraints.
@@ -786,6 +792,23 @@ impl ReplacementMatcher for PreventableDamageConstraintMatcher {
                     }
                 }
                 DamageTarget::Player(_) => return false,
+            },
+            DamageTargetConstraint::PlayerOrPermanents { player, filter } => match damage.target {
+                DamageTarget::Player(pid) => {
+                    if pid != *player {
+                        return false;
+                    }
+                }
+                DamageTarget::Object(id) => {
+                    let filter_ctx = ctx.game.filter_context_for(*player, None);
+                    if !ctx
+                        .game
+                        .object(id)
+                        .is_some_and(|object| filter.matches(object, &filter_ctx, ctx.game))
+                    {
+                        return false;
+                    }
+                }
             },
         }
 

@@ -226,6 +226,12 @@ pub fn parse_choice_card_type_phrase_words(words: &[&str]) -> Option<ChoiceCardT
     if options.is_empty() {
         return None;
     }
+    // "Choose a creature" / "choose an artifact or creature" names an object,
+    // not a card type: a bare type list is a type choice only without the
+    // indefinite article ("choose artifact, creature, or land").
+    if matches!(words.get(1).copied(), Some("a" | "an")) {
+        return None;
+    }
 
     Some(ChoiceCardTypePhrase {
         consumed: words.len().saturating_sub(input.len()),

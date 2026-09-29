@@ -604,6 +604,9 @@ pub(crate) fn describe_where_x_basis(value: &Value) -> Option<String> {
         Value::SourceMutationCount => {
             Some("the number of times this creature has mutated".to_string())
         }
+        Value::SourceDevouredCreatureCount => {
+            Some("the number of creatures it devoured".to_string())
+        }
         Value::PowerOf(spec) => Some(describe_dynamic_counter_basis(spec, "power")),
         Value::ToughnessOf(spec) => Some(describe_dynamic_counter_basis(spec, "toughness")),
         Value::ManaValueOf(spec) => Some(describe_dynamic_counter_basis(spec, "mana value")),

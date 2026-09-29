@@ -4262,7 +4262,12 @@ pub fn parse_soulbond_shared_line(
             }]));
         }
 
-        if let Some(actions) = parse_ability_line(ability_tokens) {
+        // A quoted activated or triggered ability is granted as a whole; only
+        // unquoted keyword lists are shared keyword abilities.
+        let quoted_ability = ability_tokens
+            .iter()
+            .any(|token| token.kind == TokenKind::Quote);
+        if !quoted_ability && let Some(actions) = parse_ability_line(ability_tokens) {
             reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
             let abilities: Vec<StaticAbility> = actions
                 .into_iter()

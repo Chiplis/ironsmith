@@ -353,6 +353,11 @@ pub enum ProtectionFrom {
     /// identity" (Commander's Plate), for the protected permanent's
     /// controller (CR 903.4).
     ColorsOutsideCommanderIdentity,
+    /// "protection from the colors of target permanent you control"
+    /// (Samite Elder): the referenced object's colors, locked in when the
+    /// granting instruction resolves. Materialized to [`Self::Color`] before
+    /// the ability is applied; unmaterialized it protects from nothing.
+    ColorsOf(Box<crate::target_model::ChooseSpec>),
     Everything,
 }
 

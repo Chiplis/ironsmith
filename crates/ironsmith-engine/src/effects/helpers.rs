@@ -2326,7 +2326,15 @@ pub fn resolve_objects_for_effect_with_choice_description(
             }
             if filter.one_per_card_type {
                 candidates =
-                    normalize_chosen_one_per_card_type(game, candidates, &[], min, max, false);
+                    normalize_chosen_one_per_card_type(
+                    game,
+                    candidates,
+                    &[],
+                    min,
+                    max,
+                    false,
+                    &filter.card_types,
+                );
             }
             if candidates.len() < min {
                 return Err(ExecutionError::InvalidTarget);
@@ -2372,6 +2380,7 @@ pub fn resolve_objects_for_effect_with_choice_description(
                         min,
                         max,
                         false,
+                        &filter.card_types,
                     )
                 } else {
                     normalized
@@ -2464,7 +2473,15 @@ pub fn resolve_objects_for_effect_with_choice_description(
             chosen
         };
         let chosen = if filter.one_per_card_type {
-            normalize_chosen_one_per_card_type(game, chosen, &candidates, min, max, true)
+            normalize_chosen_one_per_card_type(
+                game,
+                chosen,
+                &candidates,
+                min,
+                max,
+                true,
+                &filter.card_types,
+            )
         } else {
             chosen
         };
@@ -2622,10 +2639,15 @@ fn normalize_objects_for_count(
     normalized
 }
 
-fn card_type_assignment_exists(game: &GameState, chosen: &[ObjectId]) -> bool {
+fn card_type_assignment_exists(
+    game: &GameState,
+    chosen: &[ObjectId],
+    slot_types: &[CardType],
+) -> bool {
     fn assign_card(
         game: &GameState,
         id: ObjectId,
+        slot_types: &[CardType],
         visited_types: &mut HashSet<CardType>,
         assigned: &mut HashMap<CardType, ObjectId>,
     ) -> bool {
@@ -2634,13 +2656,19 @@ fn card_type_assignment_exists(game: &GameState, chosen: &[ObjectId]) -> bool {
             .or_else(|| game.object(id).map(|object| object.card_types.to_vec()))
             .unwrap_or_default();
         for card_type in card_types {
+            // "one card of each permanent type": only the listed types are
+            // slots (a kindred card's kindred type isn't a permanent type).
+            if !slot_types.is_empty() && !slot_types.contains(&card_type) {
+                continue;
+            }
             if !visited_types.insert(card_type) {
                 continue;
             }
             let previous = assigned.get(&card_type).copied();
             if previous.is_none()
-                || previous
-                    .is_some_and(|previous| assign_card(game, previous, visited_types, assigned))
+                || previous.is_some_and(|previous| {
+                    assign_card(game, previous, slot_types, visited_types, assigned)
+                })
             {
                 assigned.insert(card_type, id);
                 return true;
@@ -2651,7 +2679,7 @@ fn card_type_assignment_exists(game: &GameState, chosen: &[ObjectId]) -> bool {
 
     let mut assigned = HashMap::new();
     for &id in chosen {
-        if !assign_card(game, id, &mut HashSet::new(), &mut assigned) {
+        if !assign_card(game, id, slot_types, &mut HashSet::new(), &mut assigned) {
             return false;
         }
     }
@@ -2669,6 +2697,7 @@ pub(crate) fn normalize_chosen_one_per_card_type(
     min: usize,
     max: usize,
     fill_to_min: bool,
+    slot_types: &[CardType],
 ) -> Vec<ObjectId> {
     let mut normalized = Vec::new();
     for id in chosen {
@@ -2676,7 +2705,7 @@ pub(crate) fn normalize_chosen_one_per_card_type(
             continue;
         }
         normalized.push(id);
-        if !card_type_assignment_exists(game, &normalized) {
+        if !card_type_assignment_exists(game, &normalized, slot_types) {
             normalized.pop();
         }
     }
@@ -2687,7 +2716,7 @@ pub(crate) fn normalize_chosen_one_per_card_type(
                 continue;
             }
             normalized.push(id);
-            if !card_type_assignment_exists(game, &normalized) {
+            if !card_type_assignment_exists(game, &normalized, slot_types) {
                 normalized.pop();
             }
         }

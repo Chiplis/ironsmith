@@ -234,7 +234,14 @@ fn parse_explicit_target_object_damage_source(
         &crate::lexer::token_word_refs(subject_tokens),
         &["it"],
     );
-    if !explicitly_targeted && !anaphoric_object {
+    // "Enchanted creature deals 1 damage to ..." / "Equipped creature deals
+    // ...": the attached object, not the Aura or Equipment, is the damage
+    // source (CR 120.3).
+    let attached_subject = matches!(
+        crate::lexer::token_word_refs(subject_tokens).as_slice(),
+        ["enchanted" | "equipped" | "fortified", _]
+    );
+    if !explicitly_targeted && !anaphoric_object && !attached_subject {
         return Ok(None);
     }
 
@@ -273,7 +280,25 @@ fn explicit_damage_source_effect(
     explicitly_targeted: bool,
     parsed: crate::cards::builders::SubjectVerbEffectAst,
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let source = if explicitly_targeted {
+    let attached_subject = !explicitly_targeted
+        && matches!(
+            crate::lexer::token_word_refs(subject_tokens).as_slice(),
+            ["enchanted" | "equipped" | "fortified", _]
+        );
+    let source = if attached_subject {
+        let source = parse_target_phrase(subject_tokens)?;
+        let TargetAst::Object(filter, None, _) = &source else {
+            return Ok(None);
+        };
+        if filter.source
+            || !filter.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            })
+        {
+            return Ok(None);
+        }
+        source
+    } else if explicitly_targeted {
         let source = parse_target_phrase(subject_tokens)?;
         if !matches!(
             &source,
@@ -297,7 +322,7 @@ fn explicit_damage_source_effect(
             amount,
             target,
             unpreventable,
-        }) if explicitly_targeted => (amount, target, unpreventable),
+        }) if explicitly_targeted || attached_subject => (amount, target, unpreventable),
         SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, mut filter }) => {
             // The ordinary each-target damage AST carries set semantics in
             // its variant. This explicit-source form uses a TargetAst, so

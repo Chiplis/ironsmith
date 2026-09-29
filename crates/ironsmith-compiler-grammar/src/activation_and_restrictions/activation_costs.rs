@@ -734,6 +734,52 @@ mod cant_clause_readings;
 pub fn parse_cant_clauses(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    Ok(parse_cant_clauses_unbound(tokens)?.map(|abilities| {
+        abilities
+            .into_iter()
+            .map(bind_static_restriction_pronoun_to_source)
+            .collect()
+    }))
+}
+
+/// A static rule has no earlier object antecedent: "Creatures with power
+/// less than this creature's power can't block it" names the source. Left as
+/// the pronoun tag, the restriction would match nothing, since static rules
+/// evaluate without tagged objects.
+fn bind_static_restriction_pronoun_to_source(mut ability: StaticAbility) -> StaticAbility {
+    fn is_bare_pronoun(filter: &ObjectFilter) -> bool {
+        let [constraint] = filter.tagged_constraints.as_slice() else {
+            return false;
+        };
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && ObjectFilter {
+                tagged_constraints: Vec::new(),
+                ..filter.clone()
+            } == ObjectFilter::default()
+    }
+    let ironsmith_core::StaticAbilityPayload::RuleRestriction {
+        restriction,
+        additional_restrictions,
+        ..
+    } = &mut ability.payload
+    else {
+        return ability;
+    };
+    for restriction in std::iter::once(restriction).chain(additional_restrictions.iter_mut()) {
+        if let crate::effect::Restriction::BlockSpecificAttacker { attacker, .. }
+        | crate::effect::Restriction::MustBlockSpecificAttacker { attacker, .. } = restriction
+            && is_bare_pronoun(attacker)
+        {
+            *attacker = ObjectFilter::source();
+        }
+    }
+    ability
+}
+
+fn parse_cant_clauses_unbound(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     if crate::word_primitives::parse_choice_sequence_complete(
         &crate::lexer::token_word_refs(tokens),
         &[
@@ -795,6 +841,14 @@ pub fn parse_cant_clauses(
             })
         || matches!(
             crate::keyword_static::parse_subject_has_keywords_and_cant_be_blocked_line(tokens),
+            Ok(Some(_))
+        )
+        // "<attached subject> has <keywords> and can't be blocked except by
+        // ..." shares the attached subject across both verb phrases.
+        || matches!(
+            crate::keyword_static::parse_attached_has_keywords_and_negated_restriction_line(
+                tokens
+            ),
             Ok(Some(_))
         )
         // A subject-scoped evasion line ("Blue creatures you control can't be

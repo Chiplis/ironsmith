@@ -484,10 +484,36 @@ pub fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value>
         let start = 8;
         let end = words.len().saturating_sub(2);
         let range = word_view.token_span_for_words(start, end)?;
-        let sources = crate::grammar::primitives::probe_shape(parse_object_filter(
-            &trim_edge_punctuation(&tokens[range]),
-            false,
-        ))?;
+        // "by Estinien Varlineau or a Dragon": the source is one alternative
+        // of a disjunction, not a qualifier conjoined onto the other arm.
+        let source_words = &words[start..end];
+        let source_or_filter = source_words
+            .iter()
+            .position(|word| *word == "or")
+            .filter(|or_idx| {
+                *or_idx > 0
+                    && *or_idx + 1 < source_words.len()
+                    && crate::util::is_source_reference_words(&source_words[..*or_idx])
+            });
+        let sources = if let Some(or_idx) = source_or_filter {
+            let other_range =
+                word_view.token_span_for_words(start + or_idx + 1, end)?;
+            let other = crate::grammar::primitives::probe_shape(parse_object_filter(
+                &trim_edge_punctuation(&tokens[other_range]),
+                false,
+            ))?;
+            let source = crate::util::source_reference_surface_for_words(&source_words[..or_idx])
+                .map(ObjectFilter::source_with_surface)
+                .unwrap_or_else(ObjectFilter::source);
+            let mut union = ObjectFilter::default();
+            union.any_of = vec![source, other];
+            union
+        } else {
+            crate::grammar::primitives::probe_shape(parse_object_filter(
+                &trim_edge_punctuation(&tokens[range]),
+                false,
+            ))?
+        };
         return Some(Value::TurnHistoryCount(
             TurnHistoryCount::PlayersDealtCombatDamageBy {
                 players: PlayerFilter::Opponent,

@@ -16,6 +16,24 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
         ));
     }
 
+    // "for each creature it devoured" (Tar Fiend, Marrow Chomper): the
+    // creatures sacrificed to this permanent's devour ability (CR 702.82b),
+    // not the creatures currently on the battlefield.
+    if !head.other {
+        let devoured_len = match &words[idx..] {
+            ["creature" | "creatures", "it", "devoured", ..] => Some(3),
+            ["creature" | "creatures", "this", "creature", "devoured", ..] => Some(4),
+            _ => None,
+        };
+        if let Some(len) = devoured_len {
+            return Some((
+                Value::SourceDevouredCreatureCount
+                    .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+                idx + len,
+            ));
+        }
+    }
+
     // "for each graveyard with seven or more cards in it" (The Master of
     // Lake-town): graveyards, one per player, meeting the size threshold.
     if !head.other

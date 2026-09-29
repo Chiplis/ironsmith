@@ -91,6 +91,8 @@ pub(super) fn filter_keyword_constraint_for_words(
         Some(Marker("level up"))
     } else if permission_shapes::exact_words(words, &["disturb"]) {
         Some(Marker("disturb"))
+    } else if permission_shapes::exact_words(words, &["flashback"]) {
+        Some(Marker("flashback"))
     } else if permission_shapes::exact_words(words, &["mutate"]) {
         // Costed keyword markers retain their full printed surface (for
         // example, `Mutate {4}{B}`), while ObjectFilter marker matching is

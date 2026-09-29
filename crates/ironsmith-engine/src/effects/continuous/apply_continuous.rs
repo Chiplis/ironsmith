@@ -1025,6 +1025,15 @@ impl EffectExecutor for ApplyContinuousEffect {
                 | Until::YourNextUpkeep
                 | Until::ControllersNextUntapStep => game.turn.turn_number,
                 Until::YourNextTurnEnd => next_turn_number_for_player(game, ctx.controller),
+                // Created during or after this turn's end step: the next end
+                // step is the next turn's.
+                Until::NextEndStep => {
+                    if matches!(game.turn.phase, crate::game_state::Phase::Ending) {
+                        game.turn.turn_number + 1
+                    } else {
+                        game.turn.turn_number
+                    }
+                }
                 _ => u32::MAX,
             };
             let mut effect = ContinuousEffect::new(

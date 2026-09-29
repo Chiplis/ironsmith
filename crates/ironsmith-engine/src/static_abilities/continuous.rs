@@ -6004,6 +6004,31 @@ fn materialize_named_granting_source_in_effect(
             .collect();
         return crate::effect::Effect::new(sequence);
     }
+    // A named-source step can sit under a result tag ("Shuriken deals 2
+    // damage to target creature. That creature's controller ...") or in a
+    // conditional branch ("... unless it was unattached from a Ninja").
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        let mut tagged = tagged.clone();
+        tagged.effect = Box::new(materialize_named_granting_source_in_effect(
+            &tagged.effect,
+            source,
+        ));
+        return crate::effect::Effect::new(tagged);
+    }
+    if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
+        let mut conditional = conditional.clone();
+        conditional.if_true = conditional
+            .if_true
+            .iter()
+            .map(|effect| materialize_named_granting_source_in_effect(effect, source))
+            .collect();
+        conditional.if_false = conditional
+            .if_false
+            .iter()
+            .map(|effect| materialize_named_granting_source_in_effect(effect, source))
+            .collect();
+        return crate::effect::Effect::new(conditional);
+    }
 
     let Some(with_source) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>() else {
         return effect.clone();

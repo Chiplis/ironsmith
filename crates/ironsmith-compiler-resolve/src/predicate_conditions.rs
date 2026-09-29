@@ -438,10 +438,15 @@ pub fn resolve_condition_from_predicate(
             PlayerPredicateAst::PlayerTaggedObjectEnteredBattlefieldThisTurn { player, tag },
         ) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
-            Condition::PlayerTaggedObjectEnteredBattlefieldThisTurn {
-                player,
-                tag: tag.clone().into(),
-            }
+            // "If it entered under your control": `it` names the current
+            // object antecedent (the object just returned).
+            let tag: TagKey = tag.clone().into();
+            let tag = if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
+                resolve_it_tag_key(&tag, &refs).unwrap_or(tag)
+            } else {
+                tag
+            };
+            Condition::PlayerTaggedObjectEnteredBattlefieldThisTurn { player, tag }
         }
         PredicateAst::Player(
             PlayerPredicateAst::PlayerControlsBasicLandTypesAmongLandsOrMore { player, count },

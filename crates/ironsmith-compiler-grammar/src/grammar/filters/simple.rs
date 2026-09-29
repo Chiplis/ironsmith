@@ -659,8 +659,28 @@ fn parse_compound_subtype_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjec
         parse_time_lord_compound_atom,
         parse_urzas_land_compound_atom,
         parse_split_hyphenated_subtype_atom,
+        parse_token_headed_subtype_atom,
     ))
     .parse_next(input)
+}
+
+/// A subtype word the broad parser rejects as an ordinary English noun
+/// ("blood") is unambiguous when it heads a token noun: "thirteen Blood
+/// tokens" names the Blood artifact subtype. The token noun itself is left
+/// for the flag atom.
+fn parse_token_headed_subtype_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterAtom> {
+    if let [word, next, ..] = *input
+        && matches!(*next, "token" | "tokens")
+        && parse_subtype_flexible(word).is_none()
+        && let Some(subtype) = super::super::leaf::classify_token_definition_subtype(word)
+    {
+        *input = &input[1..];
+        return Ok(SimpleObjectFilterAtom::Subtype(subtype));
+    }
+    Err(primitives::backtrack_err(
+        "token-headed subtype",
+        "a subtype word followed by token or tokens",
+    ))
 }
 
 /// Normalized document tokens can split a hyphenated subtype into two words.

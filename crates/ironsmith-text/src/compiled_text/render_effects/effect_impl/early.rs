@@ -791,6 +791,8 @@
             || crate::cards::is_sentence_helper_tag(tag, "exiled")
         {
             "For each card exiled this way".to_string()
+        } else if tag == crate::effects::VOTED_OBJECTS_TAG {
+            "For each object with one or more votes".to_string()
         } else if let Some(action) = this_way_action_from_tag(&for_each_tagged.tag) {
             let noun = if matches!(action, "milled" | "revealed" | "discarded" | "exiled") {
                 "card"
@@ -3945,6 +3947,27 @@
                 ),
                 &return_to_battlefield.enters_with_counters,
             );
+        }
+        // "For each permanent type, return up to one card of that type from
+        // your graveyard to the battlefield" (Revival Experiment).
+        if let ChooseSpec::Object(filter) = return_to_battlefield.target.base()
+            && filter.zone == Some(Zone::Graveyard)
+            && filter.one_per_card_type
+            && filter.owner == Some(PlayerFilter::You)
+            && !return_to_battlefield.tapped
+        {
+            let type_noun = if filter.has_all_permanent_card_types() {
+                "permanent type"
+            } else if filter.card_types.is_empty() {
+                "card type"
+            } else {
+                ""
+            };
+            if !type_noun.is_empty() {
+                return format!(
+                    "For each {type_noun}, return up to one card of that type from your graveyard to the battlefield{where_clause}"
+                );
+            }
         }
         if let Some(owner) = graveyard_owner_from_spec(&return_to_battlefield.target) {
             let target_text =

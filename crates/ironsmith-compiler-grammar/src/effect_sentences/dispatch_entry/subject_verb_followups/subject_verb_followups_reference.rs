@@ -293,6 +293,24 @@ pub(super) fn rebind_source_match_to_target(predicate: PredicateAst) -> Predicat
     }
 }
 
+fn rebind_it_match_to_source(predicate: PredicateAst) -> PredicateAst {
+    match predicate {
+        PredicateAst::ItMatches(filter) | PredicateAst::TargetMatches(filter) => {
+            PredicateAst::Source(SourcePredicateAst::SourceMatches(filter))
+        }
+        PredicateAst::Not(inner) => PredicateAst::Not(Box::new(rebind_it_match_to_source(*inner))),
+        PredicateAst::And(left, right) => PredicateAst::And(
+            Box::new(rebind_it_match_to_source(*left)),
+            Box::new(rebind_it_match_to_source(*right)),
+        ),
+        PredicateAst::Or(left, right) => PredicateAst::Or(
+            Box::new(rebind_it_match_to_source(*left)),
+            Box::new(rebind_it_match_to_source(*right)),
+        ),
+        other => other,
+    }
+}
+
 pub(super) fn target_is_explicitly_a_land(target: &TargetAst) -> bool {
     match target {
         TargetAst::Object(filter, _, _) | TargetAst::ObjectOrPlayer(filter, _, _) => {
@@ -330,6 +348,17 @@ pub(super) fn bind_self_replacement_condition_to_previous_target(
             &["if", "those"],
         ],
     );
+    // "This creature gets +1/+0 ... If it's an Aura, ... instead" (bestow):
+    // when the default action's object is the source itself, the local
+    // pronoun repeats that source, not a resolution target.
+    let previous_target_is_source = match previous_target {
+        Some(TargetAst::Source(_)) => true,
+        Some(TargetAst::Object(filter, None, _)) => filter.source,
+        _ => false,
+    };
+    if has_local_it_condition && previous_target_is_source {
+        return rebind_it_match_to_source(predicate);
+    }
     if !has_local_it_condition || !previous_target.is_some_and(target_is_explicitly_chosen) {
         return predicate;
     }

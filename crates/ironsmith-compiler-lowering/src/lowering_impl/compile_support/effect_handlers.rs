@@ -603,11 +603,45 @@ fn compile_duration_scoped_delayed_trigger(
         };
         return Ok((vec![Effect::new(schedule)], choices));
     }
+    // A delayed trigger whose event names its own untagged object ("whenever
+    // a creature becomes tapped, destroy it") supplies the antecedent for its
+    // body. Only a trigger that watches a prior object ("whenever that
+    // creature ...") or has no event object inherits the scheduling
+    // instruction's object antecedent.
+    let trigger_supplies_own_object = {
+        let event_filter = match trigger_without_intro(trigger) {
+            TriggerSpec::PermanentBecomesTapped(filter)
+            | TriggerSpec::Dies(filter)
+            | TriggerSpec::Attacks(filter)
+            | TriggerSpec::AttacksAndIsntBlocked(filter)
+            | TriggerSpec::DealsCombatDamage(filter)
+            | TriggerSpec::IsDealtDamage(filter)
+            | TriggerSpec::IsDealtCombatDamage(filter)
+            | TriggerSpec::LeavesBattlefield(filter)
+            | TriggerSpec::Blocks(filter)
+            | TriggerSpec::BecomesBlocked(filter)
+            | TriggerSpec::PutIntoGraveyard(filter)
+            | TriggerSpec::DealsCombatDamageToPlayer { source: filter, .. }
+            | TriggerSpec::EntersBattlefield { filter, .. } => Some(filter),
+            _ => None,
+        };
+        event_filter.is_some_and(|filter| {
+            let mut references_tag = false;
+            ironsmith_core::tag::TagKeyWalk::for_each_tag_key(filter, &mut |_| {
+                references_tag = true
+            });
+            !filter.source && !references_tag
+        })
+    };
     let lowered = compile_trigger_effects_with_imports(
         Some(trigger),
         effects,
         &ReferenceImports {
-            last_object_tag: ctx.last_object_tag.clone(),
+            last_object_tag: if trigger_supplies_own_object {
+                None
+            } else {
+                ctx.last_object_tag.clone()
+            },
             ..Default::default()
         },
     )?;
@@ -1372,6 +1406,41 @@ pub(super) fn try_compile_timing_and_control_effect(
                                     source: resolved_source,
                                     target: resolved_target,
                                 },
+                                delayed_effects,
+                                *one_shot,
+                                Vec::new(),
+                                PlayerFilter::You,
+                            )
+                            .until_end_of_turn(),
+                        );
+                        (vec![effect], choices)
+                    }
+                }
+                TriggerSpec::DealsCombatDamage(filter) => {
+                    // "Target creature ... Whenever that creature deals combat
+                    // damage this turn, ...": watch the referenced object
+                    // itself rather than any creature carrying the tag.
+                    let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+                    if let Some(watched_tag) = watch_tag_from_filter(&resolved_filter) {
+                        let delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
+                            watched_tag.clone(),
+                            ironsmith_core::DelayedTriggerSpec::DealsCombatDamage(
+                                crate::target::ObjectFilter::source(),
+                            ),
+                            delayed_effects,
+                            *one_shot,
+                            Vec::new(),
+                            PlayerFilter::You,
+                        )
+                        .with_target_filter(resolved_filter)
+                        .until_end_of_turn();
+                        (vec![Effect::new(delayed)], choices)
+                    } else {
+                        let effect = Effect::new(
+                            crate::effects::ScheduleDelayedTriggerEffect::new(
+                                ironsmith_core::DelayedTriggerSpec::DealsCombatDamage(
+                                    resolved_filter,
+                                ),
                                 delayed_effects,
                                 *one_shot,
                                 Vec::new(),

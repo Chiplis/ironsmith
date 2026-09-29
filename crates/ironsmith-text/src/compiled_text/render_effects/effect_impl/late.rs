@@ -2905,6 +2905,12 @@
             crate::effects::PreventNextTimeDamageTarget::AnyTarget => "any target".to_string(),
             crate::effects::PreventNextTimeDamageTarget::Omitted => String::new(),
             crate::effects::PreventNextTimeDamageTarget::You => "you".to_string(),
+            crate::effects::PreventNextTimeDamageTarget::YouAndPermanents(filter) => {
+                format!(
+                    "you and/or {}",
+                    pluralize_noun_phrase(&describe_for_each_filter(filter))
+                )
+            }
             crate::effects::PreventNextTimeDamageTarget::Target(spec) => describe_choose_spec(spec),
         };
         let omits_any_target =
@@ -2927,6 +2933,43 @@
         }
         if prevention_gain_life_follow_up(&prevent_next_time.follow_up_effects).is_some() {
             rendered.push_str(". You gain life equal to the damage prevented this way");
+        }
+        // "If damage from a black source is prevented this way, you gain
+        // that much life" (Shadowbane): a rider gated on the prevented
+        // damage's source.
+        if let [follow_up] = prevent_next_time.follow_up_effects.as_slice()
+            && let Some(conditional) = follow_up.downcast_ref::<crate::effects::ConditionalEffect>()
+            && let crate::ConditionExpr::TaggedObjectMatches(tag, filter) = &conditional.condition
+            && tag.as_str() == "triggering"
+            && conditional.if_false.is_empty()
+            && prevention_gain_life_follow_up(&conditional.if_true).is_some()
+        {
+            let source_text = match filter.colors {
+                Some(colors)
+                    if crate::target::ObjectFilter {
+                        colors: None,
+                        ..filter.clone()
+                    } == crate::target::ObjectFilter::default() =>
+                {
+                    let mut color_words = Vec::new();
+                    for (color, word) in [
+                        (crate::color::Color::White, "white"),
+                        (crate::color::Color::Blue, "blue"),
+                        (crate::color::Color::Black, "black"),
+                        (crate::color::Color::Red, "red"),
+                        (crate::color::Color::Green, "green"),
+                    ] {
+                        if colors.contains(color) {
+                            color_words.push(word);
+                        }
+                    }
+                    with_indefinite_article(&format!("{} source", color_words.join(" or ")))
+                }
+                _ => describe_prevention_damage_source(filter, false),
+            };
+            rendered.push_str(&format!(
+                ". If damage from {source_text} is prevented this way, you gain that much life"
+            ));
         }
         if let Some(exile_top) =
             prevention_exile_prevented_top_follow_up(&prevent_next_time.follow_up_effects)
@@ -3174,6 +3217,14 @@
         if let Some(source_target) = &prevent_all.source_target
             && matches!(prevent_all.until, Until::EndOfTurn)
         {
+            if !prevent_all.protect_source
+                && matches!(prevent_all.target, crate::prevention::PreventionTarget::All)
+            {
+                return format!(
+                    "Prevent all damage that would be dealt this turn by {}",
+                    describe_choose_spec(source_target)
+                );
+            }
             let protected = if prevent_all.protect_source {
                 "this creature".to_string()
             } else {

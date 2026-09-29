@@ -849,6 +849,7 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         "parse_copy_activated_abilities_line" => Vec::new(),
         "parse_attached_has_and_loses_keywords_line"
         | "parse_attached_has_keywords_and_is_goaded_line"
+        | "parse_attached_has_keywords_and_negated_restriction_line"
         | "parse_attached_is_goaded_line" => vec![
             StaticAbilityLineHeadHint::Single("enchanted"),
             StaticAbilityLineHeadHint::Single("equipped"),
@@ -1545,6 +1546,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_rule!(parse_attached_restrictions_with_ignore_special_action_line),
         multi_static_ability_ast_rule!(parse_attached_is_goaded_line),
         multi_static_ability_ast_rule!(parse_attached_has_keywords_and_is_goaded_line),
+        multi_static_ability_ast_rule!(parse_attached_has_keywords_and_negated_restriction_line),
         multi_static_ability_ast_rule!(parse_equipped_creature_has_line),
         multi_static_ability_ast_rule!(parse_enchanted_creature_has_line),
         single_static_ability_ast_passthrough_rule!(

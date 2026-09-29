@@ -561,7 +561,34 @@ pub(super) fn read_same_name_as_filter_predicate(
     if filter_tokens.is_empty() {
         return Ok(None);
     }
+    // "a spell that was cast this turn": the comparison set is the turn's
+    // cast history, not only spells still on the stack.
+    let filter_words = crate::lexer::parser_token_word_refs(filter_tokens);
+    let cast_this_turn_suffix = [
+        &["that", "was", "cast", "this", "turn"][..],
+        &["that", "were", "cast", "this", "turn"][..],
+        &["cast", "this", "turn"][..],
+    ]
+    .into_iter()
+    .find(|suffix| crate::word_primitives::parse_sequence_suffix(&filter_words, suffix));
+    let word_token_indices = filter_tokens
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.as_word().is_some())
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    let (filter_tokens, cast_this_turn) = match cast_this_turn_suffix {
+        Some(suffix) if word_token_indices.len() > suffix.len() => (
+            &filter_tokens[..word_token_indices[word_token_indices.len() - suffix.len()]],
+            true,
+        ),
+        _ => (filter_tokens, false),
+    };
     let mut filter = parse_object_filter(filter_tokens, false)?;
+    if cast_this_turn {
+        filter.cast_this_turn = true;
+        filter.zone = Some(crate::zone::Zone::Stack);
+    }
     filter.tagged_constraints.push(TaggedObjectConstraint {
         tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
         relation: TaggedOpbjectRelation::SameNameAsTagged,

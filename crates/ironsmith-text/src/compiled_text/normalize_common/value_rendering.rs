@@ -2471,6 +2471,7 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                             if let Some(rest) = inner_text
                                 .strip_prefix("another target ")
                                 .or_else(|| inner_text.strip_prefix("other target "))
+                                .or_else(|| inner_text.strip_prefix("target other "))
                             {
                                 format!(
                                     "up to one other target {rest}{controller_suffix}{random_suffix}"
@@ -5763,6 +5764,13 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::PlayerVoteCount(filter) => {
             format!("the number of votes {} received", filter.description())
         }
+        Value::ObjectVoteCount(spec) => {
+            if matches!(spec.base(), ChooseSpec::Iterated) {
+                "that many".to_string()
+            } else {
+                format!("the number of votes for {}", describe_choose_spec(spec))
+            }
+        }
         Value::Count(filter) => {
             if filter.tagged_constraints.iter().any(|constraint| {
                 constraint.relation
@@ -6410,6 +6418,9 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::SourceMutationCount => {
             "the number of times this creature has mutated".to_string()
         }
+        Value::SourceDevouredCreatureCount => {
+            "the number of creatures this creature devoured".to_string()
+        }
         Value::SpellsCastThisTurnMatching {
             player,
             filter,
@@ -6610,6 +6621,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 format!("the number of counters on {}", describe_choose_spec(spec))
             }
         }
+        Value::CountersOnFilterCandidate(Some(counter_type)) => {
+            format!("the number of {} counters on it", counter_type.description())
+        }
+        Value::CountersOnFilterCandidate(None) => "the number of counters on it".to_string(),
         Value::PendingComparisonLeft | Value::PendingComparisonRight | Value::PendingComparisonDifference =>
             "<unresolved comparison reference>".to_string(),
         Value::TaggedCount => "the tagged object count".to_string(),

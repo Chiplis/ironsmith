@@ -190,6 +190,9 @@ pub enum TriggerSpec {
         display_subject: Option<String>,
         other_filter: Option<ObjectFilter>,
         other_surface: bool,
+        /// `Some` when the attacking subject is a filtered object (such as
+        /// the equipped creature) rather than the source.
+        subject_filter: Option<ObjectFilter>,
     },
     ThisAttacksWithExactlyNOthers(u32),
     ThisAttacksAndIsntBlocked,

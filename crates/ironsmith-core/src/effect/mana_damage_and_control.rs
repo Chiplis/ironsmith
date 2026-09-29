@@ -4895,6 +4895,12 @@ pub struct ReflexiveTriggerEffect<E> {
     pub predicate: EffectPredicate,
     pub effects: Vec<E>,
     pub choices: Vec<ChooseSpec>,
+    /// Intervening-if of the reflexive ability ("When you do, if ...",
+    /// CR 603.4): the ability triggers only when this holds as the
+    /// antecedent event happens. The resolution-time recheck is part of
+    /// `effects`.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub intervening_if: Option<crate::value_model::Condition>,
 }
 
 /// Reveal the subtype previously chosen secretly for this source by the payer.

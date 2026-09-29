@@ -723,6 +723,7 @@ pub(crate) fn resolve(
             Ok(game.regenerated_this_turn_count(context.source) as i32)
         }
         Value::SourceMutationCount => Ok(game.mutation_count(context.source) as i32),
+        Value::SourceDevouredCreatureCount => Ok(game.devoured_count(context.source) as i32),
         Value::DamageDealtThisTurnByTaggedSpellCast(tag) => {
             let id = context.tagged_spell_id(value, tag)?;
             Ok(game
@@ -1008,6 +1009,9 @@ pub(crate) fn resolve(
                 .map(|player| player.counter_count(*counter_type) as i32)
                 .sum())
         }
+        // Only meaningful while an enclosing object filter binds its
+        // candidate (see `Comparison::bind_filter_candidate_counters`).
+        Value::CountersOnFilterCandidate(_) => Ok(0),
         Value::CountersOnSource(counter_type) => {
             if let Some(ctx) = context.execution() {
                 {
@@ -1126,6 +1130,21 @@ pub(crate) fn resolve(
                 .vote_results
                 .get(&ctx.source)
                 .map(|result| result.count_for_option(option) as i32)
+                .unwrap_or(0))
+        }
+        Value::ObjectVoteCount(spec) => {
+            let ctx =
+                context.require_execution(value, "vote totals require a resolving vote context");
+            let object_ids = resolve_objects_from_spec(game, spec, ctx)?;
+            Ok(ctx
+                .vote_results
+                .get(&ctx.source)
+                .map(|result| {
+                    object_ids
+                        .iter()
+                        .map(|id| result.object_counts.get(id).copied().unwrap_or(0) as i32)
+                        .sum()
+                })
                 .unwrap_or(0))
         }
         Value::PlayerVoteCount(filter) => {

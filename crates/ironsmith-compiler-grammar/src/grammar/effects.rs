@@ -1581,10 +1581,12 @@ pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
             &["step"],
         ],
     ) {
+        // Keep the head noun: "that creature" can skip a newer antecedent
+        // it cannot name (the cards just milled or revealed).
+        let mut that_creature = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
+        that_creature.card_types = vec![crate::types::CardType::Creature];
         return Ok(Some(vec![EffectAst::subject_verb_cant(
-            crate::effect::Restriction::Untap(ObjectFilter::tagged(
-                crate::tag::CompilerReferenceTag::It.bind(),
-            )),
+            crate::effect::Restriction::Untap(that_creature),
             crate::effect::Until::ControllersNextUntapStep,
             None,
         )]));

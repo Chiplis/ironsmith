@@ -42,6 +42,19 @@ impl Protection {
     }
 }
 
+fn describe_colors_reference(spec: &crate::target::ChooseSpec) -> String {
+    use crate::target::ChooseSpec;
+    match spec.base() {
+        ChooseSpec::Target(inner) => match inner.base() {
+            ChooseSpec::Object(filter) => format!("target {}", filter.description()),
+            _ => "target permanent".to_string(),
+        },
+        ChooseSpec::Object(filter) => filter.description(),
+        ChooseSpec::Source => "this permanent".to_string(),
+        _ => "that permanent".to_string(),
+    }
+}
+
 fn describe_color_set(colors: crate::color::ColorSet) -> String {
     let mut names = Vec::new();
     if colors.contains(Color::White) {
@@ -85,6 +98,9 @@ impl StaticAbilityKind for Protection {
             ProtectionFrom::ColorsOutsideCommanderIdentity => {
                 "Protection from each color that's not in your commander's color identity"
                     .to_string()
+            }
+            ProtectionFrom::ColorsOf(spec) => {
+                format!("Protection from the colors of {}", describe_colors_reference(spec))
             }
             ProtectionFrom::CardType(ct) => format!("Protection from {}", ct.plural_name()),
             ProtectionFrom::Creatures => "Protection from creatures".to_string(),
@@ -133,6 +149,43 @@ impl StaticAbilityKind for Protection {
 
     fn protection_from(&self) -> Option<&ProtectionFrom> {
         Some(&self.from)
+    }
+
+    /// "Protection from the colors of target permanent" locks in the
+    /// referenced object's colors as the granting instruction resolves; later
+    /// color changes of that object don't change the protection.
+    fn materialize_resolution_values(
+        &self,
+        game: &crate::game_state::GameState,
+        ctx: &mut crate::effects::ExecutionContext<'_>,
+    ) -> Result<Option<super::StaticAbility>, crate::effects::ExecutionError> {
+        let ProtectionFrom::ColorsOf(spec) = &self.from else {
+            return Ok(None);
+        };
+        let mut colors = crate::color::ColorSet::new();
+        let objects =
+            crate::effects::helpers::resolve_objects_from_spec(game, spec, ctx).unwrap_or_default();
+        if objects.is_empty() {
+            // A reference to an object that has left its zone reads its
+            // last known colors.
+            if let crate::target::ChooseSpec::Tagged(tag) = spec.base()
+                && let Some(snapshots) = ctx.get_tagged_all(tag.as_str())
+            {
+                for snapshot in snapshots {
+                    colors = colors.union(snapshot.colors);
+                }
+            }
+        }
+        for id in objects {
+            if let Some(object_colors) = game.current_colors(id) {
+                colors = colors.union(object_colors);
+            } else if let Some(object) = game.object(id) {
+                colors = colors.union(object.colors());
+            }
+        }
+        Ok(Some(super::StaticAbility::protection(ProtectionFrom::Color(
+            colors,
+        ))))
     }
 }
 

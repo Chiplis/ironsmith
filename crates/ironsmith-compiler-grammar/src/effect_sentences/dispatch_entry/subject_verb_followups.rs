@@ -1944,7 +1944,16 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
     ),
     pre_followup_rule!(
         "cant-be-regenerated",
-        &["it", "they", "those", "creature", "creatures", "a"],
+        &[
+            "it",
+            "they",
+            "those",
+            "creature",
+            "creatures",
+            "a",
+            "artifacts",
+            "permanents",
+        ],
         pre_rule_cant_be_regenerated_followup
     ),
     pre_followup_rule!(
@@ -2091,6 +2100,11 @@ const POST_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbPostParseRuleDef] = &
         post_rule_reflexive_object_followup
     ),
     post_followup_rule!(
+        "delayed-return-condition-followup",
+        &["if"],
+        post_rule_delayed_return_condition_followup
+    ),
+    post_followup_rule!(
         "delayed-trigger-result-followup",
         &["if", "when"],
         post_rule_delayed_trigger_result_followup
@@ -2182,9 +2196,10 @@ pub(super) use subject_verb_followups_trigger_programs::transport_copy_retarget_
 use subject_verb_followups_trigger_programs::{
     append_copy_retarget_to_trailing_delayed_trigger,
     bind_demonstrative_land_match_to_triggering_object,
-    post_rule_delayed_trigger_copy_retarget_followup, post_rule_delayed_trigger_result_followup,
-    post_rule_reflexive_object_followup, post_rule_targeted_object_delayed_leave,
-    replace_event_amount_with_value, trailing_delayed_trigger_effects_mut,
+    post_rule_delayed_return_condition_followup, post_rule_delayed_trigger_copy_retarget_followup,
+    post_rule_delayed_trigger_result_followup, post_rule_reflexive_object_followup,
+    post_rule_targeted_object_delayed_leave, replace_event_amount_with_value,
+    trailing_delayed_trigger_effects_mut,
 };
 #[path = "subject_verb_followups/subject_verb_followups_object_action.rs"]
 mod subject_verb_followups_object_action_programs;

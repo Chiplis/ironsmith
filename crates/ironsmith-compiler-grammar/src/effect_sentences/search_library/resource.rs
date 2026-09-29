@@ -84,6 +84,47 @@ pub fn parse_for_each_sacrificed_this_way_sentence(
         bind_sacrificed_snapshot_controller(effect);
     }
 
+    // "For each Spirit sacrificed this way, that creature gets an additional
+    // +3/+0": a sacrificed object can't be pumped, so the demonstrative names
+    // the earlier object and the sacrificed set only scales the bonus.
+    if let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::StatChanges(crate::cards::builders::StatChangeActionAst::Pump {
+                    power: crate::effect::Value::Fixed(power_per),
+                    toughness: crate::effect::Value::Fixed(toughness_per),
+                    target,
+                    duration,
+                    condition: None,
+                    ..
+                }),
+            ..
+        }),
+    ] = effects.as_slice()
+    {
+        let count = crate::effect::Value::PendingPriorEffectMetric(
+            ironsmith_core::PriorEffectMetricQuery::new(
+                ironsmith_core::EffectMetricSource::AffectedObjects,
+                ironsmith_core::EffectMetric::Count,
+            )
+            .with_filter(filter.clone())
+            .with_action(ironsmith_core::PriorEffectAction::Sacrificed),
+        );
+        return Ok(Some(vec![EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject: match &effects[0] {
+                EffectAst::SubjectVerb(subject_verb) => subject_verb.subject.clone(),
+                _ => unreachable!("matched a subject-verb pump above"),
+            },
+            action: SubjectVerbActionAst::StatChanges(crate::cards::builders::StatChangeActionAst::PumpForEach {
+                power_per: *power_per,
+                toughness_per: *toughness_per,
+                target: target.clone(),
+                count,
+                duration: duration.clone(),
+            }),
+        })]));
+    }
+
     Ok(Some(vec![EffectAst::ForEach(
         ForEachEffectAst::ForEachTagged {
             tag: crate::tag::CompilerReferenceTag::It.bind(),

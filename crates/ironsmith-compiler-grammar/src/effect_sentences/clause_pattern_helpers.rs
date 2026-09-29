@@ -1281,6 +1281,20 @@ pub fn parse_prevent_all_damage_clause(
     let clause_text = LexedClause::new(tokens).text();
     match shape {
         clause_shapes::PreventAllDamageShape::FromSource { source_tokens } => {
+            // "Prevent all damage that would be dealt this turn by target
+            // creature you control" (Kry Shield): the source is a declared
+            // target, so it must stay a target choice (and the antecedent of a
+            // following "that creature"), protecting every recipient.
+            if starts_with_target_indicator(source_tokens) {
+                let source_target = parse_target_phrase(source_tokens)?;
+                return Ok(Some(
+                    EffectAst::subject_verb_prevent_all_damage_to_target_from_target_source(
+                        TargetAst::ObjectOrPlayer(ObjectFilter::default(), PlayerFilter::Any, None),
+                        source_target,
+                        Until::EndOfTurn,
+                    ),
+                ));
+            }
             let source_filter_target = parse_target_phrase(source_tokens)?;
             let TargetAst::Object(source_filter, _, _) = source_filter_target else {
                 return Err(CardTextError::ParseError(format!(
@@ -1522,6 +1536,9 @@ pub fn parse_prevent_next_time_damage_sentence(
     let target = match shape.target {
         clause_shapes::DamageTargetShape::AnyTarget => PreventNextTimeDamageTargetAst::AnyTarget,
         clause_shapes::DamageTargetShape::You => PreventNextTimeDamageTargetAst::You,
+        clause_shapes::DamageTargetShape::YouAndPermanents(filter) => {
+            PreventNextTimeDamageTargetAst::YouAndPermanents(filter)
+        }
         clause_shapes::DamageTargetShape::Target(target_tokens) => {
             PreventNextTimeDamageTargetAst::Target(parse_target_phrase(target_tokens)?)
         }

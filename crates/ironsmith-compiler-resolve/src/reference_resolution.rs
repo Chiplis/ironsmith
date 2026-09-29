@@ -471,7 +471,21 @@ fn track_player_from_object_filter(filter: &ObjectFilter, frame: &mut ReferenceF
         // chosen opponent available to the second half.
         return;
     }
-    if let Some(tag) = frame.last_object_tag.as_ref() {
+    // "Destroy all creatures target opponent controls. ... that player": an
+    // announced player target stays the antecedent even when the affected
+    // set is empty.
+    let names_player_target = matches!(
+        filter.owner.as_ref().or(filter.controller.as_ref()),
+        Some(PlayerFilter::Target(_))
+    );
+    if names_player_target && frame.last_object_tag.is_some() {
+        // Refer back to the announced target rather than re-declaring it.
+        frame.last_player_filter = player_filter_from_object_filter(filter).map(as_followup_player_alias);
+        return;
+    }
+    if let Some(tag) = frame.last_object_tag.as_ref()
+        && !names_player_target
+    {
         if filter.owner.is_some() {
             frame.last_player_filter =
                 Some(PlayerFilter::AliasedOwnerOf(ObjectRef::tagged(tag.clone())));
@@ -592,6 +606,55 @@ fn remember_explicit_object_target_binding(target: &TargetAst, frame: &mut Refer
     bindings.push(binding);
 }
 
+/// Record what kind of object a non-target antecedent is ("sacrifice a
+/// Forest", "create a Germ creature token") so a later definite description
+/// whose head noun cannot name it ("that creature", "that Equipment") can
+/// skip it for the earlier object it does name.
+fn remember_object_kind_binding(frame: &mut ReferenceFrame, tag: &TagKey, filter: &ObjectFilter) {
+    if filter.source
+        || !filter.tagged_constraints.is_empty()
+        || (crate::model::reference_state::filter_implied_card_types(filter).is_empty()
+            && filter
+                .zone
+                .is_none_or(|zone| zone == crate::zone::Zone::Battlefield))
+    {
+        return;
+    }
+    let binding = ObjectTargetBinding::new(tag.clone(), filter);
+    let bindings = std::sync::Arc::make_mut(&mut frame.recent_object_target_bindings);
+    bindings.retain(|existing| existing.tag != binding.tag);
+    bindings.push(binding);
+}
+
+/// The characteristics a created token is known to have, when its
+/// definition is a creature token.
+fn created_token_kind(
+    definition: &crate::model::token_definition::TokenDefinitionSpec,
+) -> Option<ObjectFilter> {
+    use crate::model::token_definition::TokenDefinitionSpec;
+    let card_types = match definition {
+        TokenDefinitionSpec::Creature(_)
+        | TokenDefinitionSpec::Angel
+        | TokenDefinitionSpec::Wall
+        | TokenDefinitionSpec::Squirrel
+        | TokenDefinitionSpec::Elephant
+        | TokenDefinitionSpec::Shapeshifter(_)
+        | TokenDefinitionSpec::AstartesWarrior(_) => vec![crate::types::CardType::Creature],
+        TokenDefinitionSpec::Construct(_) => {
+            vec![
+                crate::types::CardType::Artifact,
+                crate::types::CardType::Creature,
+            ]
+        }
+        _ => return None,
+    };
+    Some(ObjectFilter {
+        card_types,
+        token: true,
+        ..ObjectFilter::default()
+    })
+}
+
 /// A "target spell" slot, recorded so a later "that spell" can find it even
 /// after other clauses have introduced newer object antecedents.
 fn remember_explicit_spell_target_binding(target: &TargetAst, frame: &mut ReferenceFrame) {
@@ -602,6 +665,321 @@ fn remember_explicit_spell_target_binding(target: &TargetAst, frame: &mut Refere
     let bindings = std::sync::Arc::make_mut(&mut frame.recent_object_target_bindings);
     bindings.retain(|existing| existing.tag != binding.tag);
     bindings.push(binding);
+}
+
+/// "that spell" is parsed as the triggering stack object. When the same
+/// instruction already declared exactly one stack-object target ("counter
+/// target spell. ... that spell's mana value", "choose target spell ...
+/// counter that spell"), the demonstrative names that target: a resolving
+/// spell or activated ability has no triggering object at all, and a trigger
+/// that declares its own spell target refers back to that target. Delayed
+/// triggers keep their own triggering object.
+fn resolve_spell_demonstrative_to_stack_target(
+    effect: &mut EffectAst,
+    bindings: &[ObjectTargetBinding],
+) {
+    use ironsmith_core::tag::TagKeyWalk;
+    let mut stack_bindings = bindings
+        .iter()
+        .filter(|binding| binding.discriminator.names_stack_object());
+    let (Some(binding), None) = (stack_bindings.next(), stack_bindings.next()) else {
+        return;
+    };
+    if effect_contains_delayed_trigger(effect) {
+        return;
+    }
+    let triggering = crate::tag::CompilerReferenceTag::Triggering.as_str();
+    effect.map_tag_keys(&mut |tag| {
+        if tag.as_str() == triggering {
+            *tag = binding.tag.clone();
+        }
+    });
+}
+
+/// The earlier object a definite description names when the newest object
+/// antecedent is of a kind its head noun excludes: after "tap target
+/// creature", "that land" is the land that entered; after "sacrifice a
+/// Forest", "that creature" is the attacking creature; after "create a Germ
+/// creature token", "that Equipment" is the Equipment. Only a unique earlier
+/// object of the named kind qualifies.
+fn noun_excluded_antecedent_replacement(
+    noun: &[crate::types::CardType],
+    env: &ReferenceEnv,
+) -> Option<TagKey> {
+    if noun.is_empty() {
+        return None;
+    }
+    let current = env.known_last_object_tag()?;
+    let bindings = env.recent_object_target_bindings.as_slice();
+    let current_kind = bindings.iter().find(|binding| &binding.tag == current)?;
+    let current_types = current_kind.discriminator.implied_card_types();
+    // A card set aside in a hidden or public non-battlefield zone ("exile the
+    // top card of your library") is never "that creature".
+    let current_is_off_battlefield_card = matches!(
+        current_kind.discriminator.zone(),
+        Some(
+            crate::zone::Zone::Exile
+                | crate::zone::Zone::Graveyard
+                | crate::zone::Zone::Library
+                | crate::zone::Zone::Hand
+        )
+    ) && noun.iter().any(|card_type| {
+        matches!(
+            card_type,
+            crate::types::CardType::Creature
+                | crate::types::CardType::Artifact
+                | crate::types::CardType::Enchantment
+                | crate::types::CardType::Land
+                | crate::types::CardType::Planeswalker
+                | crate::types::CardType::Battle
+        )
+    });
+    if !current_is_off_battlefield_card
+        && (current_types.is_empty()
+            || current_types
+                .iter()
+                .any(|card_type| noun.contains(card_type)))
+    {
+        return None;
+    }
+    let mut candidates = bindings.iter().filter(|binding| {
+        &binding.tag != current
+            && binding
+                .discriminator
+                .implied_card_types()
+                .iter()
+                .any(|card_type| noun.contains(card_type))
+    });
+    let (Some(candidate), None) = (candidates.next(), candidates.next()) else {
+        return None;
+    };
+    Some(candidate.tag.clone())
+}
+
+fn demonstrative_noun_card_types(filter: &ObjectFilter) -> Vec<crate::types::CardType> {
+    use ironsmith_core::DemonstrativeAntecedentSurface as Noun;
+    match filter.demonstrative_antecedent_surface() {
+        Some(Noun::Artifact) => vec![crate::types::CardType::Artifact],
+        Some(Noun::Creature) => vec![crate::types::CardType::Creature],
+        Some(Noun::Enchantment) => vec![crate::types::CardType::Enchantment],
+        Some(Noun::Land) => vec![crate::types::CardType::Land],
+        _ => Vec::new(),
+    }
+}
+
+/// A pronoun reference ("that creature") carrying its head noun.
+fn noun_bearing_pronoun_filter_mut(target: &mut TargetAst) -> Option<&mut ObjectFilter> {
+    match target {
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, ..) => {
+            noun_bearing_pronoun_filter_mut(inner)
+        }
+        TargetAst::Object(filter, None, _)
+            if filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                    && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            }) =>
+        {
+            Some(filter)
+        }
+        _ => None,
+    }
+}
+
+fn rebind_pronoun_filter(
+    filter: &mut ObjectFilter,
+    noun: &[crate::types::CardType],
+    env: &ReferenceEnv,
+) {
+    let Some(replacement) = noun_excluded_antecedent_replacement(noun, env) else {
+        return;
+    };
+    for constraint in &mut filter.tagged_constraints {
+        if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+            && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        {
+            constraint.tag = replacement.clone();
+        }
+    }
+}
+
+fn rebind_noun_excluded_antecedent_references(effect: &mut EffectAst, env: &ReferenceEnv) {
+    if env.known_last_object_tag().is_none() {
+        return;
+    }
+    fn rebind_demonstrative_predicate(predicate: &mut PredicateAst, env: &ReferenceEnv) {
+        let rebound = match predicate {
+            PredicateAst::ItMatches(filter) => {
+                noun_excluded_antecedent_replacement(&demonstrative_noun_card_types(filter), env)
+                    .map(|tag| {
+                        PredicateAst::TaggedMatches(
+                            ironsmith_compiler_semantic::tag::TagRef::of(tag),
+                            filter.clone(),
+                        )
+                    })
+            }
+            PredicateAst::TaggedMatches(tag, filter)
+                if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() =>
+            {
+                noun_excluded_antecedent_replacement(&demonstrative_noun_card_types(filter), env)
+                    .map(|tag| {
+                        PredicateAst::TaggedMatches(
+                            ironsmith_compiler_semantic::tag::TagRef::of(tag),
+                            filter.clone(),
+                        )
+                    })
+            }
+            _ => None,
+        };
+        if let Some(rebound) = rebound {
+            *predicate = rebound;
+        }
+    }
+    match effect {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. }) => {
+            rebind_demonstrative_predicate(predicate, env);
+        }
+        EffectAst::ControlFlow(control) => {
+            if let crate::model::ControlFlowNodeAst::Condition {
+                condition:
+                    crate::model::ControlConditionAst {
+                        predicate: crate::model::ControlPredicateAst::State(predicate),
+                        ..
+                    },
+                reflexive: false,
+                ..
+            } = &mut control.node
+            {
+                rebind_demonstrative_predicate(predicate, env);
+            }
+        }
+        EffectAst::SubjectVerb(subject_verb) => {
+            let (targets, affects_permanent): (Vec<&mut TargetAst>, bool) = match &mut subject_verb
+                .action
+            {
+                SubjectVerbActionAst::Control(ControlActionAst::Attach { object, .. }) => {
+                    (vec![object], true)
+                }
+                SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { target, .. }) => {
+                    (vec![target], false)
+                }
+                SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. })
+                | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
+                    target,
+                    ..
+                })
+                | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { target, .. })
+                | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
+                    target, ..
+                }) => (vec![target], true),
+                _ => (Vec::new(), false),
+            };
+            for target in targets {
+                if let Some(filter) = noun_bearing_pronoun_filter_mut(target) {
+                    let mut noun = crate::model::reference_state::filter_implied_card_types(filter);
+                    if let Some(card_type) = filter.explicit_card_type_noun()
+                        && !noun.contains(&card_type)
+                    {
+                        noun.push(card_type);
+                    }
+                    rebind_pronoun_filter(filter, &noun, env);
+                } else if affects_permanent
+                    && let TargetAst::Tagged(tag, _) = target
+                    && tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                    && let Some(prior) = object_antecedent_before_sacrifice(env)
+                {
+                    // "Sacrifice a Forest. If you do, it gains trample": a
+                    // sacrificed object is gone, so an action that affects
+                    // a permanent names the object before it.
+                    *tag = ironsmith_compiler_semantic::tag::TagRef::of(prior);
+                }
+            }
+        }
+        _ => {
+            // Wrappers whose first nested instruction resolves before any
+            // sibling changes the antecedent ("If you do, ...", "you may
+            // ...").
+            if matches!(
+                effect,
+                EffectAst::Conditionals(
+                    ConditionalEffectAst::IfResult { .. }
+                        | ConditionalEffectAst::ResolvedIfResult { .. }
+                ) | EffectAst::Permissions(_)
+            ) {
+                super::effect_ast_traversal::for_each_nested_effects_mut(effect, false, |nested| {
+                    if let Some(first) = nested.first_mut() {
+                        rebind_noun_excluded_antecedent_references(first, env);
+                    }
+                });
+            }
+        }
+    }
+}
+
+fn object_antecedent_before_sacrifice(env: &ReferenceEnv) -> Option<TagKey> {
+    let current = env.known_last_object_tag()?;
+    if !is_sacrificed_object_reference_tag(current.as_str()) {
+        return None;
+    }
+    env.snapshot_tag_aliases
+        .iter()
+        .find(|(alias, _)| alias == &crate::tag::CompilerReferenceTag::PriorObjectAntecedent.key())
+        .map(|(_, prior)| prior.clone())
+        .filter(|prior| prior != current)
+}
+
+/// "Search your library for up to that many land cards": a choice counted
+/// by the objects of the current antecedent set ("that many" after "if one
+/// or more of the chosen permanents are still on the battlefield") names
+/// that set when the choice is made.
+fn bind_counted_choice_amount_to_antecedent(effect: &mut EffectAst, env: &ReferenceEnv) {
+    let Some(antecedent) = env.known_last_object_tag() else {
+        return;
+    };
+    if antecedent.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
+        return;
+    }
+    let effect = match effect {
+        EffectAst::Sequence { effects }
+        | EffectAst::SourceSentence { effects, .. }
+        | EffectAst::CommaThen { effects } => match effects.first_mut() {
+            Some(first) => first,
+            None => return,
+        },
+        other => other,
+    };
+    let filter = match effect {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            count_value: Some(Value::Count(filter)),
+            ..
+        })
+        | EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
+                    count_value: Some(Value::Count(filter)),
+                    ..
+                }),
+            ..
+        }) => filter,
+        _ => return,
+    };
+    for constraint in &mut filter.tagged_constraints {
+        if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+            && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        {
+            constraint.tag = antecedent.clone();
+        }
+    }
+}
+
+fn effect_contains_delayed_trigger(effect: &EffectAst) -> bool {
+    if matches!(effect, EffectAst::Delayed(_)) {
+        return true;
+    }
+    let mut found = false;
+    for_each_nested_effects(effect, true, |nested| {
+        found |= nested.iter().any(effect_contains_delayed_trigger);
+    });
+    found
 }
 
 fn spell_target_reference_filter() -> ObjectFilter {
@@ -704,6 +1082,17 @@ fn resolve_definite_object_references_in_effect(
             }) => {
                 resolve_definite_object_target_from_bindings(creature1, bindings);
                 resolve_definite_object_target_from_bindings(creature2, bindings);
+                // "... then you may have this creature fight that creature"
+                // (Kraul Harpooner): a demonstrative opponent of the source
+                // can never be the source itself, even when an intervening
+                // source instruction ("this creature gets +X/+0") left no
+                // ordinary object antecedent in the nested clause. Bind it to
+                // the unique recorded object it describes.
+                if matches!(creature1, TargetAst::Source(_))
+                    || matches!(creature1, TargetAst::Object(filter, None, _) if filter.source)
+                {
+                    resolve_orphaned_definite_object_target(creature2, bindings);
+                }
             }
             SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
                 source,
@@ -926,6 +1315,26 @@ fn advance_effects_in_iterated_player_context(
     if saved.last_object_tag != nested.last_object_tag {
         frame.last_object_tag = nested.last_object_tag;
     }
+    // Choices made across the participant loop ("for each opponent, choose
+    // up to one target creature that player controls") accumulate into one
+    // chosen set that a following "the chosen creatures" names.
+    let chosen = crate::tag::CompilerReferenceTag::ChosenObjects.key();
+    let nested_chosen = nested
+        .snapshot_tag_aliases
+        .iter()
+        .find(|(alias, _)| alias == &chosen)
+        .cloned();
+    let saved_chosen = saved
+        .snapshot_tag_aliases
+        .iter()
+        .find(|(alias, _)| alias == &chosen)
+        .cloned();
+    if let Some(nested_chosen) = nested_chosen
+        && Some(&nested_chosen) != saved_chosen.as_ref()
+    {
+        frame.snapshot_tag_aliases.retain(|(alias, _)| alias != &chosen);
+        frame.snapshot_tag_aliases.push(nested_chosen);
+    }
     Ok(())
 }
 
@@ -1014,8 +1423,40 @@ fn advance_reference_frame_for_effect(
                 }
                 *frame = saved;
             } else {
+                let group = crate::tag::CompilerReferenceTag::CoordinatedCreatedResult.key();
+                let mut created = Vec::new();
+                let mut all_members_create = coordination.members.len() > 1;
                 for member in &coordination.members {
+                    let before = frame.last_object_tag.clone();
                     advance_reference_frames(&member.effects, id_gen, frame)?;
+                    let creates_tokens = !member.effects.is_empty()
+                        && member.effects.iter().all(|effect| {
+                            matches!(
+                                effect,
+                                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                                    action: SubjectVerbActionAst::Tokens(
+                                        TokenActionAst::CreateTokenWithMods { .. }
+                                            | TokenActionAst::CreateTokenCopy { .. }
+                                            | TokenActionAst::CreateTokenCopyFromSource { .. }
+                                    ),
+                                    ..
+                                })
+                            )
+                        });
+                    match frame.last_object_tag.clone() {
+                        Some(tag) if creates_tokens && Some(&tag) != before.as_ref() => {
+                            created.push(tag)
+                        }
+                        _ => all_members_create = false,
+                    }
+                }
+                frame
+                    .snapshot_tag_aliases
+                    .retain(|(alias, _)| alias != &group);
+                if all_members_create {
+                    frame
+                        .snapshot_tag_aliases
+                        .extend(created.into_iter().map(|tag| (group.clone(), tag)));
                 }
             }
         }
@@ -1093,6 +1534,8 @@ fn advance_reference_frame_for_effect(
                         maybe_tag_target(target, frame, id_gen, "retargeted")?;
                     } else if frame.auto_tag_object_targets {
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "retargeted"));
+                        remember_explicit_object_target_binding(target, frame);
+                        remember_explicit_spell_target_binding(target, frame);
                     }
                 }
                 SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { target, .. })
@@ -1155,6 +1598,7 @@ fn advance_reference_frame_for_effect(
                 }
                 SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap { target }) => {
                     maybe_tag_target(target, frame, id_gen, "tapped")?;
+                    remember_explicit_object_target_binding(target, frame);
                 }
                 SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Untap { target }) => {
                     maybe_tag_target(target, frame, id_gen, "untapped")?;
@@ -1254,8 +1698,14 @@ fn advance_reference_frame_for_effect(
                                 // Runtime zone moves record the source/exiled
                                 // relationship, so a non-target exile keeps the
                                 // canonical source-exiled identity.
-                                frame.last_object_tag =
-                                    Some((crate::tag::CompilerReferenceTag::SourceExiled.bind()).into());
+                                let source_exiled: TagKey =
+                                    (crate::tag::CompilerReferenceTag::SourceExiled.bind()).into();
+                                remember_off_battlefield_card_antecedent(
+                                    frame,
+                                    &spec,
+                                    &source_exiled,
+                                );
+                                frame.last_object_tag = Some(source_exiled);
                             }
                         }
                     track_target_player(target, frame);
@@ -1489,6 +1939,7 @@ fn advance_reference_frame_for_effect(
                     };
                     if let Some(sacrificed_tag) = sacrificed_tag {
                         remember_local_sacrifice_alias_if_unbound(frame, &sacrificed_tag);
+                        remember_object_kind_binding(frame, &sacrificed_tag, filter);
                         frame.last_object_tag = Some(sacrificed_tag);
                     }
                 }
@@ -1586,6 +2037,7 @@ fn advance_reference_frame_for_effect(
                 }
                 SubjectVerbActionAst::Control(ControlActionAst::GainControl { target, .. }) => {
                     maybe_tag_target(target, frame, id_gen, "controlled")?;
+                    remember_explicit_object_target_binding(target, frame);
                 }
                 SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectNextTimeDamageToSource { target, .. })
                 | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
@@ -1689,11 +2141,13 @@ fn advance_reference_frame_for_effect(
                     // Accumulated tags name a union built across several
                     // effects, never the antecedent of a later "it".
                     if let Some(tag) = tags.first() {
-                        frame.last_object_tag = Some(if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
+                        let exiled = if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                             next_reference_tag(id_gen, "exiled")
                         } else {
                             tag.clone().into()
-                        });
+                        };
+                        remember_exiled_library_card_kind(effect, &exiled, frame);
+                        frame.last_object_tag = Some(exiled);
                     }
                 }
                 SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealCardsFromHand { tag, .. }) => {
@@ -1752,7 +2206,24 @@ fn advance_reference_frame_for_effect(
                     // same tag here so delayed "those objects" references and
                     // the lowering ID stream stay aligned.
                     if frame.auto_tag_object_targets || attached_to.is_some() {
-                        let tag = if matches!(spec.base(), ChooseSpec::Source) {
+                        // "Put a card exiled with this artifact into ...": a
+                        // counted selection from the source's linked exile
+                        // moves only the chosen card. A later `it` names that
+                        // card, which lowering tags, not the whole linked set.
+                        // (A looked-at pool keeps its tag for "the rest".)
+                        let selects_from_tagged_set = matches!(
+                            &spec,
+                            ChooseSpec::WithCount(inner, count)
+                                if matches!(
+                                    inner.base(),
+                                    ChooseSpec::Tagged(tag)
+                                        if tag.as_str()
+                                            == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
+                                ) && count.max.is_some()
+                        );
+                        let tag = if matches!(spec.base(), ChooseSpec::Source)
+                            || selects_from_tagged_set
+                        {
                             Some(next_reference_tag(id_gen, "moved"))
                         } else {
                             propagated_or_generated_object_tag(&spec, id_gen, "moved")
@@ -1779,6 +2250,7 @@ fn advance_reference_frame_for_effect(
                     maybe_tag_target(target, frame, id_gen, "targeted")?;
                     if *explicit_declaration {
                         remember_explicit_object_target_binding(target, frame);
+                        remember_explicit_spell_target_binding(target, frame);
                     }
                 }
                 SubjectVerbActionAst::TagMatchingObjects { filter, tag, .. } => {
@@ -1853,6 +2325,33 @@ fn advance_reference_frame_for_effect(
                         copy_source_tag = frame.last_object_tag.clone();
                     }
                     let previous_source_antecedent = frame.source_object_antecedent;
+                    // "Shards you control become copies of it until ...
+                    // Return it ...": a whole group taking on the copiable
+                    // values of a referenced object leaves that singular
+                    // object as the antecedent of the next `it`/`that card`.
+                    let referenced_copy_source = {
+                        let refs = lowering_reference_frame(frame);
+                        let (target_spec, _) = resolve_target_spec_with_choices(target, &refs)?;
+                        let (source_spec, _) = resolve_target_spec_with_choices(source, &refs)?;
+                        let target_is_group = !target_spec.is_target()
+                            && match target_spec.base() {
+                                ChooseSpec::All(filter) | ChooseSpec::Object(filter) => {
+                                    filter.tagged_constraints.is_empty() && !filter.source
+                                }
+                                _ => false,
+                            };
+                        match source_spec.base() {
+                            ChooseSpec::Tagged(tag)
+                                if target_is_group
+                                    && tag.as_str()
+                                        != crate::tag::CompilerReferenceTag::It.as_str() =>
+                            {
+                                Some(tag.clone())
+                            }
+                            _ => None,
+                        }
+                    };
+                    let group_copies_referenced_object = referenced_copy_source.is_some();
                     maybe_tag_target(target, frame, id_gen, "copied")?;
                     // "~ becomes a copy of target creature. ... that creature
                     // ..." (Gogo, Mysterious Mime): after a self-copy the
@@ -1861,6 +2360,8 @@ fn advance_reference_frame_for_effect(
                     if copies_onto_source && copy_source_tag.is_some() {
                         frame.last_object_tag = copy_source_tag;
                         frame.source_object_antecedent = previous_source_antecedent;
+                    } else if group_copies_referenced_object && referenced_copy_source.is_some() {
+                        frame.last_object_tag = referenced_copy_source;
                     }
                 }
                 SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { target, .. })
@@ -1925,6 +2426,7 @@ fn advance_reference_frame_for_effect(
                     player,
                     attached_to,
                     dynamic_power_toughness,
+                    definition,
                     ..
                 }) => {
                     track_effect_player(*player, frame, true, true)?;
@@ -1932,7 +2434,11 @@ fn advance_reference_frame_for_effect(
                         || attached_to.is_some()
                         || dynamic_power_toughness.is_some()
                     {
-                        frame.last_object_tag = Some(next_reference_tag(id_gen, "created"));
+                        let created = next_reference_tag(id_gen, "created");
+                        if let Some(kind) = created_token_kind(definition) {
+                            remember_object_kind_binding(frame, &created, &kind);
+                        }
+                        frame.last_object_tag = Some(created);
                     }
                     if frame.auto_tag_object_targets && attached_to.is_some() {
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "attachment_target"));
@@ -2224,7 +2730,14 @@ fn advance_reference_frame_for_effect(
             nested.last_object_tag = Some((crate::tag::CompilerReferenceTag::It.bind()).into());
             nested.iterated_object = true;
             advance_reference_frames(effects, id_gen, &mut nested)?;
-            if saved.last_object_tag != nested.last_object_tag {
+            // The loop binding exists only inside the loop. When the body
+            // produced no newer object, a later reference ("the chosen
+            // permanents") still names the iterated set.
+            let body_left_only_loop_binding =
+                nested.last_object_tag.as_ref().is_some_and(|tag| {
+                    tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                }) && saved.last_object_tag.is_some();
+            if saved.last_object_tag != nested.last_object_tag && !body_left_only_loop_binding {
                 frame.last_object_tag = nested.last_object_tag;
             }
             if saved.last_player_filter != nested.last_player_filter {
@@ -2378,12 +2891,55 @@ fn advance_reference_frame_for_effect(
             frame.last_object_tag = Some(tag.clone().into());
         }
         EffectAst::TagAffected { effect, tag } => {
+            let object_before = frame.last_object_tag.clone();
             advance_reference_frame_for_effect(effect, id_gen, frame)?;
+            // A single target declaration recorded under the nested action's
+            // own result tag is known at runtime only under the explicit
+            // alias ("Choose target spell" tagged as the controller's choice).
+            let single_declaration = matches!(
+                effect.as_ref(),
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::TargetOnly { .. },
+                    ..
+                })
+            );
+            // The shared chosen-objects collector accumulates several
+            // declarations; only a per-declaration alias renames one slot.
+            let per_declaration_alias = tag.as_str() != ironsmith_core::CHOSEN_OBJECTS_TAG
+                && !frame
+                    .recent_object_target_bindings
+                    .iter()
+                    .any(|binding| binding.tag == tag.key);
+            if single_declaration
+                && per_declaration_alias
+                && let Some(inner) = frame.last_object_tag.clone()
+                && frame.last_object_tag != object_before
+                && inner != tag.key
+                && frame
+                    .recent_object_target_bindings
+                    .iter()
+                    .any(|binding| binding.tag == inner)
+            {
+                let alias: TagKey = tag.key.clone();
+                for binding in std::sync::Arc::make_mut(&mut frame.recent_object_target_bindings) {
+                    if binding.tag == inner {
+                        binding.tag = alias.clone();
+                    }
+                }
+            }
             // The explicit tag is a real runtime alias for exactly the set
             // affected by the nested effect. Subsequent demonstratives must
             // bind to that stable alias rather than to an implementation tag
             // introduced while lowering the nested action.
             frame.last_object_tag = Some(tag.clone().into());
+            if crate::tag::CompilerReferenceTag::AbilityControllerTargetChoice.matches(&tag.key)
+                || crate::tag::CompilerReferenceTag::OpponentTargetChoice.matches(&tag.key)
+            {
+                // "Choose up to one target creature ... each of the chosen
+                // creatures": the attributed declaration set is the choice.
+                remember_chosen_object_alias(frame, &tag.key);
+            }
+            remember_exiled_library_card_kind(effect, &tag.key, frame);
             if is_object_memory_producer_for_action(effect, PriorEffectAction::Exiled) {
                 let alias = crate::tag::CompilerReferenceTag::ExiledThisWay.key();
                 frame
@@ -2426,6 +2982,23 @@ fn advance_reference_frame_for_effect(
         frame.snapshot_tag_aliases.push((alias, tag));
     }
     Ok(())
+}
+
+/// Cards exiled from the top of a library are exiled cards, not permanents.
+fn remember_exiled_library_card_kind(effect: &EffectAst, tag: &TagKey, frame: &mut ReferenceFrame) {
+    if matches!(
+        effect,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { .. }),
+            ..
+        })
+    ) {
+        let exiled_card = ObjectFilter {
+            zone: Some(crate::zone::Zone::Exile),
+            ..ObjectFilter::default()
+        };
+        remember_object_kind_binding(frame, tag, &exiled_card);
+    }
 }
 
 fn effect_reference_resolution_state(env: &ReferenceEnv) -> EffectReferenceResolutionState<'_> {
@@ -2478,6 +3051,21 @@ fn explicit_exiled_object_tag(effects: &[EffectAst]) -> Option<crate::TagKey> {
         {
             return Some(tag.clone().into());
         }
+        // "You may put the exiled card onto the battlefield if it's a
+        // creature card": the trailing condition tests the moved card.
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+                    target: TargetAst::Tagged(tag, _),
+                    ..
+                }),
+            ..
+        }) = effect
+            && (tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
+                || is_sentence_helper_exiled_collection_tag(tag))
+        {
+            return Some(tag.clone().into());
+        }
         let mut nested_tag = None;
         for_each_nested_effects(effect, true, |nested| {
             if nested_tag.is_none() {
@@ -2517,11 +3105,27 @@ fn annotate_effect_sequence_with_env_internal(
         let mut source_exiled_condition_tag = match &effect {
             EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: PredicateAst::ItMatches(_) | PredicateAst::ItMatchedLastKnown(_),
-                if_true,
+                if_true: effects,
                 ..
-            }) => explicit_exiled_object_tag(if_true),
+            })
+            | EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
+                predicate: PredicateAst::ItMatches(_) | PredicateAst::ItMatchedLastKnown(_),
+                effects,
+            }) => explicit_exiled_object_tag(effects),
             _ => None,
         };
+        // "Exile the top card ... Then you may cast the exiled card ... if
+        // it's ...": within the instruction that exiled it, "the exiled card"
+        // is the card exiled this way.
+        if source_exiled_condition_tag.as_ref().is_some_and(|tag| {
+            tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
+        }) && let Some((_, exiled_this_way)) = in_env
+            .snapshot_tag_aliases
+            .iter()
+            .find(|(alias, _)| alias == &crate::tag::CompilerReferenceTag::ExiledThisWay.key())
+        {
+            source_exiled_condition_tag = Some(exiled_this_way.clone());
+        }
         let mut resolution_env = in_env.clone();
         // A positive follow-up to a turn-order offer refers to the accepting
         // participant. Its result carries per-player outcomes, which the
@@ -2598,6 +3202,12 @@ fn annotate_effect_sequence_with_env_internal(
             .last_exile_cost_tag_index
             .or(imported_exile_cost_tag_index);
         resolve_effect_references_in_effect(&mut effect, id_gen, resolution_state)?;
+        resolve_spell_demonstrative_to_stack_target(
+            &mut effect,
+            &resolution_env.recent_object_target_bindings,
+        );
+        rebind_noun_excluded_antecedent_references(&mut effect, &resolution_env);
+        bind_counted_choice_amount_to_antecedent(&mut effect, &resolution_env);
         // Some surface parsers initially spell "the exiled card" as the
         // ordinary `it` target and only resolve it to the source-linked exile
         // tag while resolving the action. If the trailing `it` predicate was
@@ -2728,6 +3338,7 @@ fn annotate_effect_sequence_with_env_internal(
         // has consumed that signal, store the choice with its exact typed
         // result-set tag so lowering cannot widen it to the whole zone.
         resolve_direct_choice_filter_references(&mut effect, &resolution_env)?;
+        expand_coordinated_created_iteration(&mut effect, &resolution_env);
         if let Some(tag) = source_exiled_condition_tag.as_ref() {
             out_env.last_object_tag = RefState::Known(tag.clone());
         }
@@ -2803,6 +3414,41 @@ fn annotate_effect_sequence_with_env_internal(
         effects: annotated,
         final_env: current_env,
     })
+}
+
+/// "Create a Cat token, a Bird token, and an Ox token. For each of those
+/// tokens, ...": each coordinated creation exports its own result tag, and
+/// the ordinary object antecedent is only the last one. Iterate the union.
+fn expand_coordinated_created_iteration(effect: &mut EffectAst, env: &ReferenceEnv) {
+    let effect = match effect {
+        EffectAst::SourceSentence { effects, .. } if effects.len() == 1 => &mut effects[0],
+        effect => effect,
+    };
+    let EffectAst::ForEach(ForEachEffectAst::ForEachObject { filter, .. }) = effect else {
+        return;
+    };
+    let is_it_set = filter.any_of.is_empty()
+        && matches!(
+            filter.tagged_constraints.as_slice(),
+            [constraint]
+                if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                    && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        );
+    if !is_it_set {
+        return;
+    }
+    let group = crate::tag::CompilerReferenceTag::CoordinatedCreatedResult.key();
+    let members = env
+        .snapshot_tag_aliases
+        .iter()
+        .filter(|(alias, _)| alias == &group)
+        .map(|(_, tag)| tag.clone())
+        .collect::<Vec<_>>();
+    if members.len() < 2 || env.known_last_object_tag() != members.last() {
+        return;
+    }
+    filter.tagged_constraints.clear();
+    filter.any_of = members.into_iter().map(ObjectFilter::tagged).collect();
 }
 
 fn resolve_direct_choice_filter_references(
@@ -4579,12 +5225,55 @@ fn advance_reference_env_for_effect(
 /// the newest object antecedent, keep the antecedent it superseded reachable.
 /// "Create a Zombie token and exile that card" and "reveal the top card ...
 /// to that creature" still describe the earlier object.
+/// "Deals 6 damage to target creature. You may exile a card from your
+/// graveyard. If you do, ... deals 2 damage to that creature's controller":
+/// a card moved out of a graveyard, hand, or library has no controller, so a
+/// controller back-reference keeps naming the object it superseded.
+fn remember_off_battlefield_card_antecedent(
+    frame: &mut ReferenceFrame,
+    spec: &ChooseSpec,
+    result: &TagKey,
+) {
+    let marker = crate::tag::CompilerReferenceTag::OffBattlefieldCardAntecedent.key();
+    frame
+        .snapshot_tag_aliases
+        .retain(|(existing, _)| existing != &marker);
+    let mut base = spec.base();
+    while let ChooseSpec::WithCount(inner, _) | ChooseSpec::WithCountValue(inner, _, _) = base {
+        base = inner.base();
+    }
+    let from_off_battlefield_zone = matches!(
+        base,
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter)
+            if matches!(
+                filter.zone,
+                Some(crate::zone::Zone::Graveyard | crate::zone::Zone::Hand | crate::zone::Zone::Library)
+            )
+    );
+    if !from_off_battlefield_zone {
+        return;
+    }
+    let Some(previous) = frame.last_object_tag.clone().filter(|previous| previous != result)
+    else {
+        return;
+    };
+    let prior = crate::tag::CompilerReferenceTag::PriorObjectAntecedent.key();
+    frame
+        .snapshot_tag_aliases
+        .retain(|(existing, _)| existing != &prior);
+    frame.snapshot_tag_aliases.push((prior, previous));
+    frame.snapshot_tag_aliases.push((marker, result.clone()));
+}
+
 fn remember_superseded_object_antecedent(env: &ReferenceEnv, frame: &mut ReferenceFrame) {
     let (Some(previous), Some(current)) = (env.known_last_object_tag(), &frame.last_object_tag)
     else {
         return;
     };
-    if previous == current || !is_noun_restricted_object_result_tag(current) {
+    if previous == current
+        || !(is_noun_restricted_object_result_tag(current)
+            || is_sacrificed_object_reference_tag(current.as_str()))
+    {
         return;
     }
     let alias = crate::tag::CompilerReferenceTag::PriorObjectAntecedent.key();

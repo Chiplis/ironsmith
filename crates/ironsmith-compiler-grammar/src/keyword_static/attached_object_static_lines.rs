@@ -1266,6 +1266,78 @@ pub fn parse_attached_has_keywords_and_is_goaded_line(
     Ok(Some(grants))
 }
 
+/// Parse "<attached subject> has <keywords> and can't <restriction>" when the
+/// negated half is not a plain unblockability grant ("Enchanted creature has
+/// phasing and can't be blocked except by Walls").
+///
+/// Both verb phrases share the attached subject: the keywords are an attached
+/// grant and the negated tail is a restriction on the same attached object.
+/// The generic can't-clause splitter would otherwise read "enchanted creature
+/// has phasing" as a restriction subject and leave the second half subjectless
+/// (bound to the Aura itself).
+pub fn parse_attached_has_keywords_and_negated_restriction_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let tokens = super::grammar::line_families::parse_visible_line_tokens(tokens);
+    let Some(has) = attached_grammar::parse_attached_has_tokens(tokens) else {
+        return Ok(None);
+    };
+    let ability_tokens = trim_edge_punctuation(has.ability_tokens);
+    // Plain "and can't be blocked" and "... by more than N" have their own
+    // keyword productions.
+    if crate::grammar::anthem_grants::parse_keywords_and_cant_be_blocked_clause(&ability_tokens)
+        .is_some()
+        || crate::grammar::anthem_grants::parse_keywords_and_cant_be_blocked_by_more_than_clause(
+            tokens,
+        )
+        .is_some()
+    {
+        return Ok(None);
+    }
+    let Some(and_index) = ability_tokens.iter().enumerate().find_map(|(index, token)| {
+        (token.is_word("and")
+            && ability_tokens.get(index + 1).is_some_and(|next| {
+                next.is_word("can't") || next.is_word("cant") || next.is_word("cannot")
+            }))
+        .then_some(index)
+    }) else {
+        return Ok(None);
+    };
+    let granted_tokens = trim_edge_punctuation(&ability_tokens[..and_index]);
+    let negated_tail = trim_edge_punctuation(&ability_tokens[and_index + 1..]);
+    if granted_tokens.is_empty() || negated_tail.is_empty() {
+        return Ok(None);
+    }
+
+    let subject = has.subject.display();
+    let clause_text = crate::lexer::render_token_slice(tokens);
+    let Some(mut grants) = parse_attached_keyword_action_grants(
+        subject,
+        &granted_tokens,
+        None,
+        &clause_text,
+        has.subject.is_equipped(),
+    )?
+    else {
+        return Ok(None);
+    };
+
+    let mut restriction_tokens = trim_edge_punctuation(has.subject_tokens).to_vec();
+    restriction_tokens.extend_from_slice(&negated_tail);
+    let Some(parsed_restriction) = parse_negated_object_restriction_clause(&restriction_tokens)?
+    else {
+        return Ok(None);
+    };
+    if parsed_restriction.target.is_some() {
+        return Ok(None);
+    }
+    grants.push(StaticAbilityAst::Static(StaticAbility::restriction(
+        parsed_restriction.restriction,
+        display_text_for_tokens(&restriction_tokens, true),
+    )));
+    Ok(Some(grants))
+}
+
 /// Parse the old-frame attached-object restriction whose controller may take a
 /// special action to ignore that restriction for the turn.
 ///

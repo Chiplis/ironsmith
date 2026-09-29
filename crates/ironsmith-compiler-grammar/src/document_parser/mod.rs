@@ -3497,6 +3497,11 @@ pub fn recognize_document_with_context(
                     continue;
                 }
                 if let Some(abilities) = parse_named_attachment_counter_release(line_context, line)?
+                    .map(Ok)
+                    .or_else(|| {
+                        parse_named_attachment_damage_grant(line_context, line).transpose()
+                    })
+                    .transpose()?
                 {
                     lines.push(RecognizedLine::Static(RecognizedStaticLine {
                         info: line.info.clone(),
@@ -4015,6 +4020,21 @@ fn try_push_complete_typed_static_line(
     {
         return Ok(false);
     }
+    // Soulbond's shared grant ("As long as this creature is paired with
+    // another creature, each of those creatures has \"...\"") names the
+    // pair. The generic quoted-grant reading keeps only the pairing condition
+    // and leaves "those creatures" as an unbound pronoun set.
+    if let Ok(Some(abilities)) = crate::keyword_static::parse_soulbond_shared_line(&line.tokens) {
+        let recognized = RecognizedLine::Static(RecognizedStaticLine {
+            info: line.info.clone(),
+            parse_tokens: line.tokens.clone(),
+            chosen_option: None,
+            parsed: Some(Box::new(LineAst::StaticAbilities(abilities))),
+        });
+        trace_recognized_line(&recognized);
+        lines.push(recognized);
+        return Ok(true);
+    }
     if split_lexed_sentences(&line.tokens).len() != 1 {
         // This fast path owns one complete quoted-grant sentence. Earlier
         // sentences on the same line (a search, a token creation) are
@@ -4325,6 +4345,166 @@ fn rewrite_named_source_gain_line(
         return Ok(None);
     }
     Ok(Some(Box::new(rewritten_line)))
+}
+
+/// "Equipped creature has "{T}, Unattach Shuriken: Shuriken deals 2 damage to
+/// target creature. That creature's controller gains control of Shuriken ..."":
+/// inside an ability an attachment grants, the attachment's own name denotes
+/// the attachment, while the ability's source is the permanent it's attached
+/// to. The contextless grammar can't recognize the proper name, so rewrite it
+/// to the typed self-reference, parse, and keep the authored name surface on
+/// the damage source and the control-change object; the attached grant binds
+/// that named surface to the concrete attachment when it generates the
+/// ability.
+fn parse_named_attachment_damage_grant(
+    context: ParseContextView<'_>,
+    line: &PreprocessedLine,
+) -> Result<Option<Vec<crate::cards::builders::StaticAbilityAst>>, CardTextError> {
+    use crate::cards::builders::{
+        ControlActionAst, DamageActionAst, StaticAbilityAst, SubjectVerbActionAst, TargetAst,
+    };
+    let quotes: Vec<_> = line
+        .info
+        .source_tokens
+        .iter()
+        .enumerate()
+        .filter(|(_, t)| t.kind == TokenKind::Quote)
+        .map(|(i, _)| i)
+        .collect();
+    let [start, end] = quotes.as_slice() else {
+        return Ok(None);
+    };
+    let body = &line.info.source_tokens[start + 1..*end];
+    // An explicit self-reference in the granted ability denotes its holder.
+    if body.iter().any(|t| t.is_word("this")) {
+        return Ok(None);
+    }
+    let body_words = crate::lexer::parser_token_word_refs(body);
+    if !body_words
+        .windows(2)
+        .any(|pair| matches!(pair[1], "deal" | "deals"))
+    {
+        return Ok(None);
+    }
+    let Some(surface) = crate::util::authored_named_source_reference_surface(context, body) else {
+        return Ok(None);
+    };
+    if super::grammar::structure::classify_static_line_family_lexed(&line.tokens)
+        != Some(super::grammar::structure::StaticLineFamily::GrantedQuotedAbility)
+    {
+        return Ok(None);
+    }
+    let Some(normalized) =
+        normalize_named_source_tokens_with_context(context, &line.tokens)
+    else {
+        return Ok(None);
+    };
+    let Some(mut abilities) =
+        crate::keyword_static::parse_filter_has_granted_ability_line(&normalized)?
+    else {
+        return Ok(None);
+    };
+    fn name_source(target: &mut TargetAst, surface: &crate::target::SourceReferenceSurface) -> bool {
+        match target {
+            TargetAst::Source(span) => {
+                *target = TargetAst::Object(
+                    crate::target::ObjectFilter::source_with_surface(surface.clone()),
+                    None,
+                    *span,
+                );
+                true
+            }
+            TargetAst::Object(filter, _, _) if filter.source => {
+                filter.source_surface = Some(surface.clone());
+                true
+            }
+            _ => false,
+        }
+    }
+    fn bind(
+        effects: &mut [crate::model::ast::EffectAst],
+        surface: &crate::target::SourceReferenceSurface,
+        named: &mut usize,
+    ) {
+        for effect in effects {
+            if let crate::model::ast::EffectAst::SubjectVerb(subject) = effect {
+                // The quoted body never says "this", so a damage clause with
+                // an implicit (self) subject was authored with the name.
+                if let SubjectVerbActionAst::Damage(DamageActionAst::DealDamage {
+                    amount,
+                    target,
+                    unpreventable,
+                }) = &subject.action
+                {
+                    subject.action =
+                        SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
+                            source: TargetAst::Object(
+                                crate::target::ObjectFilter::source_with_surface(
+                                    surface.clone(),
+                                ),
+                                None,
+                                None,
+                            ),
+                            amount: amount.clone(),
+                            target: target.clone(),
+                            unpreventable: *unpreventable,
+                        });
+                    *named += 1;
+                }
+                match &mut subject.action {
+                    SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
+                        source,
+                        ..
+                    }) => {
+                        if name_source(source, surface) {
+                            *named += 1;
+                        }
+                    }
+                    SubjectVerbActionAst::Control(ControlActionAst::GainControl {
+                        target, ..
+                    }) => {
+                        if name_source(target, surface) {
+                            *named += 1;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+                bind(nested, surface, named)
+            });
+        }
+    }
+    let mut named = 0;
+    for ability in &mut abilities {
+        if let StaticAbilityAst::AttachedObjectAbilityGrant { ability, .. } = ability
+            && let Some(effects) = &mut ability.effects_ast
+        {
+            bind(effects, &surface, &mut named);
+        }
+    }
+    if named == 0 {
+        return Ok(None);
+    }
+    // Keep the authored surface ("Shuriken deals ...") rather than the
+    // normalized self-reference in the grant's display.
+    if let Ok(Some(authored)) = crate::keyword_static::parse_filter_has_granted_ability_line(&line.tokens)
+        && authored.len() == abilities.len()
+    {
+        for (ability, authored) in abilities.iter_mut().zip(authored) {
+            if let (
+                StaticAbilityAst::AttachedObjectAbilityGrant { display, .. },
+                StaticAbilityAst::AttachedObjectAbilityGrant {
+                    display: authored_display,
+                    ..
+                },
+            ) = (ability, authored)
+            {
+                *display = authored_display;
+            }
+        }
+    }
+    Ok(Some(abilities))
 }
 
 // Cost parsing without card context cannot bind an authored proper name to

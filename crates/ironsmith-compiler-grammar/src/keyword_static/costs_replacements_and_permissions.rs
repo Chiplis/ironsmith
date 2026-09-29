@@ -4100,7 +4100,7 @@ pub fn parse_you_may_cast_exile_counter_cards_with_mana_permission_line(
         base_filter
             .tagged_constraints
             .push(crate::target::TaggedObjectConstraint {
-                tag: (crate::tag::CompilerReferenceTag::SourceExiled.bind()).into(),
+                tag: (crate::tag::CompilerReferenceTag::ExiledByYou.bind()).into(),
                 relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
             });
     }

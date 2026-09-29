@@ -1,5 +1,45 @@
 use super::*;
 
+/// "another target creature card with equal or lesser power" (Body
+/// Launderer), "other target creature card with lesser toughness" (Colfenor):
+/// the comparison is against the clause's object antecedent (`it`), which
+/// reference resolution binds to the trigger object or source.
+fn apply_relative_lesser_power_toughness(filter: &mut ObjectFilter, all_words: &[&str]) {
+    for (axis, is_power) in [("power", true), ("toughness", false)] {
+        let or_equal = find_phrase_start(all_words, &["with", "equal", "or", "lesser", axis]);
+        let strict = find_phrase_start(all_words, &["with", "lesser", axis]);
+        let Some(start) = or_equal.or(strict) else {
+            continue;
+        };
+        // "with lesser power than <something>" names its own comparand.
+        let phrase_len = if or_equal.is_some() { 5 } else { 3 };
+        if all_words.get(start + phrase_len) == Some(&"than") {
+            continue;
+        }
+        let slot = if is_power {
+            &mut filter.power
+        } else {
+            &mut filter.toughness
+        };
+        if slot.is_some() {
+            continue;
+        }
+        let spec = Box::new(crate::ChooseSpec::Tagged(
+            (crate::tag::CompilerReferenceTag::It.bind()).into(),
+        ));
+        let value = Box::new(if is_power {
+            Value::PowerOf(spec)
+        } else {
+            Value::ToughnessOf(spec)
+        });
+        *slot = Some(if or_equal.is_some() {
+            crate::filter::Comparison::LessThanOrEqualExpr(value)
+        } else {
+            crate::filter::Comparison::LessThanExpr(value)
+        });
+    }
+}
+
 pub(in super::super) fn apply_reference_and_tag_stage(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&str>,
@@ -169,6 +209,25 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         ],
     ) {
         filter.blocked_by_source = true;
+        all_words.truncate(relation_idx);
+    }
+
+    // "a creature it's paired with" (Donna Noble): the source's soulbond
+    // partner (CR 702.95). The relation is read from the filter's source.
+    if let Some(relation_idx) = find_any_filter_phrase_start(
+        all_words,
+        &[
+            &["it's", "paired", "with"],
+            &["its", "paired", "with"],
+            &["it", "is", "paired", "with"],
+            &["this", "creature", "is", "paired", "with"],
+        ],
+    ) && all_words.last() == Some(&"with")
+    {
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: (crate::tag::CompilerReferenceTag::SourceObject.bind()).into(),
+            relation: TaggedOpbjectRelation::SoulbondPartnerOfTagged,
+        });
         all_words.truncate(relation_idx);
     }
 
@@ -435,6 +494,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
             relation: TaggedOpbjectRelation::ManaValueLtTagged,
         });
     }
+    apply_relative_lesser_power_toughness(filter, all_words);
     if has_same_name_as_tagged_object {
         filter.set_same_name_antecedent_surface(same_name_antecedent_surface(all_words));
         filter.tagged_constraints.push(TaggedObjectConstraint {

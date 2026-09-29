@@ -32,6 +32,10 @@ pub struct ReflexiveTriggerEffect {
     pub effects: Vec<Effect>,
     /// Target choices that must be made when the reflexive ability is created.
     pub choices: Vec<ChooseSpec>,
+    /// Intervening-if of the reflexive ability ("When you do, if ...",
+    /// CR 603.4), checked as the ability would trigger. The resolution-time
+    /// recheck is part of `effects`.
+    pub intervening_if: Option<crate::effect::Condition>,
 }
 
 impl ReflexiveTriggerEffect {
@@ -46,7 +50,13 @@ impl ReflexiveTriggerEffect {
             predicate,
             effects,
             choices,
+            intervening_if: None,
         }
+    }
+
+    pub fn with_intervening_if(mut self, condition: Option<crate::effect::Condition>) -> Self {
+        self.intervening_if = condition;
+        self
     }
 }
 
@@ -310,6 +320,11 @@ impl EffectExecutor for ReflexiveTriggerEffect {
             .cloned()
             .unwrap_or_else(EffectOutcome::impossible);
         if !self.predicate.evaluate_outcome(&outcome) {
+            return Ok(EffectOutcome::resolved());
+        }
+        if let Some(condition) = &self.intervening_if
+            && !crate::condition_eval::evaluate_condition_resolution(game, condition, ctx)?
+        {
             return Ok(EffectOutcome::resolved());
         }
         let fallback_it_snapshots = reflexive_it_snapshots(game, &outcome);

@@ -1233,8 +1233,6 @@ pub(super) fn resolve_stack_entry_full(
         crate::resolution::ResolutionProgram::default()
     };
     link_enter_and_leave_trigger_players(game, &entry, execution_source, &mut ctx);
-    // ETB replacement is resolved when the spell actually moves to the battlefield.
-    let etb_replacement_result: Option<(bool, bool, Zone)> = None;
     let chapter_resolution = entry
         .is_ability
         .then(|| resolved_chapter_ability_event(game, &entry))
@@ -1407,87 +1405,6 @@ pub(super) fn resolve_stack_entry_full(
             } else {
                 None
             };
-            // Handle ETB replacement: if player didn't satisfy the replacement, redirect
-            if let Some((enters, enters_tapped, redirect_zone)) = etb_replacement_result {
-                if !enters {
-                    // Permanent goes to redirect zone instead of battlefield
-                    let _ = crate::effects::zones::apply_zone_change(
-                        game,
-                        entry.object_id,
-                        Zone::Stack,
-                        redirect_zone,
-                        crate::events::cause::EventCause::from_effect(
-                            entry.object_id,
-                            entry.controller,
-                        ),
-                        &mut *decision_maker,
-                    );
-                    return Ok(());
-                }
-
-                // Copy optional_costs_paid to the permanent before moving to battlefield
-                if let Some(perm) = game.object_mut(entry.object_id) {
-                    perm.optional_costs_paid = entry.optional_costs_paid.clone();
-                    perm.cast_tagged_objects = entry.tagged_objects.clone();
-                }
-
-                // Interactive replacement was already processed above - skip second ETB processing
-                // and move directly to battlefield (avoids double-processing)
-                let new_id = game.move_object_by_effect(entry.object_id, Zone::Battlefield);
-                if let Some(id) = new_id {
-                    inherit_resolving_spell_delayed_triggers(game, entry.object_id, id);
-                    if entry.controller != obj.owner {
-                        game.set_current_controller(id, entry.controller);
-                    }
-                    if let Some(chosen_player) = chosen_player {
-                        game.set_chosen_player(id, chosen_player);
-                    }
-                    // Apply enters tapped if needed (e.g., shock land not paying life)
-                    if enters_tapped || cast_with_sneak {
-                        game.tap(id);
-                    }
-                    if let Some(attack_target) = sneak_attack_target.take()
-                        && attack_target_still_valid(game, &attack_target)
-                        && let Some(combat) = game.combat.as_mut()
-                    {
-                        combat.attackers.push(crate::combat_state::AttackerInfo {
-                            creature: id,
-                            target: attack_target,
-                        });
-                    }
-
-                    if let Some(ref mut tq) = trigger_queue {
-                        // Drain pending ZoneChangeEvent emitted by move_object.
-                        drain_pending_trigger_events(game, tq);
-                    }
-
-                    // Check for ETB triggers
-                    if let Some(ref mut tq) = trigger_queue {
-                        let etb_event_provenance = game
-                            .provenance_graph_mut()
-                            .alloc_root_event(crate::events::EventKind::EnterBattlefield);
-                        let etb_event = if enters_tapped || cast_with_sneak {
-                            TriggerEvent::new_with_provenance(
-                                EnterBattlefieldEvent::tapped(id, Zone::Stack),
-                                etb_event_provenance,
-                            )
-                        } else {
-                            TriggerEvent::new_with_provenance(
-                                EnterBattlefieldEvent::new(id, Zone::Stack),
-                                etb_event_provenance,
-                            )
-                        };
-                        let etb_event = game.ensure_trigger_event_provenance(etb_event);
-                        let etb_triggers = check_triggers(game, &etb_event);
-                        for trigger in etb_triggers {
-                            tq.add(trigger);
-                        }
-                    }
-                }
-                return Ok(());
-            }
-
-            // No interactive replacement was handled above - use normal ETB processing
             // Copy optional_costs_paid to the permanent before moving to battlefield
             // (so ETB triggers can access kick count, etc.)
             if let Some(perm) = game.object_mut(entry.object_id) {
@@ -1512,10 +1429,12 @@ pub(super) fn resolve_stack_entry_full(
 
             // It's a permanent spell, move to battlefield with ETB processing
             // This handles replacement effects like "enters tapped" or "enters with counters"
-            let etb_result = game.move_object_with_etb_processing_with_dm(
+            let etb_result = game.move_object_with_etb_processing_with_entry_options(
                 entry.object_id,
                 Zone::Battlefield,
                 decision_maker,
+                cast_with_sneak,
+                true,
             );
 
             // Note: Use the new ID from ETB result since zone change creates a new object
@@ -1544,9 +1463,6 @@ pub(super) fn resolve_stack_entry_full(
                             .continuous_effects
                             .record_attachment(result.new_id);
                     }
-                }
-                if cast_with_sneak && !result.enters_tapped {
-                    game.tap(result.new_id);
                 }
                 if let Some(attack_target) = sneak_attack_target.take()
                     && attack_target_still_valid(game, &attack_target)
@@ -1763,7 +1679,7 @@ pub(super) fn resolve_stack_entry_full(
                     let etb_event_provenance = game
                         .provenance_graph_mut()
                         .alloc_root_event(crate::events::EventKind::EnterBattlefield);
-                    let etb_event = if result.enters_tapped || cast_with_sneak {
+                    let etb_event = if result.enters_tapped {
                         TriggerEvent::new_with_provenance(
                             EnterBattlefieldEvent::tapped(result.new_id, Zone::Stack),
                             etb_event_provenance,
@@ -2213,6 +2129,74 @@ mod tests {
     use crate::object::CounterType;
     use crate::static_abilities::StaticAbility;
     use crate::types::CardType;
+
+    #[test]
+    fn sneak_tapped_instruction_respects_untapped_entry_and_trigger_state() {
+        for untap in [false, true] {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let alice = PlayerId::from_index(0);
+            let bob = PlayerId::from_index(1);
+            let filter = crate::target::ObjectFilter::creature().you_control();
+            let mut observer = CardDefinitionBuilder::new(CardId::new(), "Entry Observer")
+                .card_types(vec![CardType::Enchantment])
+                .with_ability(Ability::triggered(
+                    crate::triggers::Trigger::enters_battlefield_untapped(filter.clone(), None),
+                    vec![crate::effect::Effect::gain_life(1)],
+                ));
+            if untap {
+                observer = observer.with_ability(Ability::static_ability(
+                    StaticAbility::enters_untapped_for_filter(filter),
+                ));
+            }
+            game.create_object_from_definition(&observer.build(), alice, Zone::Battlefield);
+            let definition = CardDefinitionBuilder::new(CardId::new(), "Sneak Creature")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(2, 2))
+                .alternative_cast(
+                    crate::alternative_cast::AlternativeCastingMethod::alternative_cost(
+                        "Sneak",
+                        None,
+                        Vec::new(),
+                    ),
+                )
+                .build();
+            let id = game.create_object_from_definition(&definition, alice, Zone::Stack);
+            game.combat = Some(Default::default());
+            game.turn.phase = crate::game_state::Phase::Combat;
+            game.record_sneak_attack_target(id, AttackTarget::Player(bob));
+            let mut entry = StackEntry::new(id, alice);
+            entry.casting_method = CastingMethod::Alternative(0);
+            game.push_to_stack(entry);
+            let mut queue = TriggerQueue::new();
+            let mut dm = crate::decision::SelectFirstDecisionMaker;
+            resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut queue).unwrap();
+            let entered = game
+                .battlefield
+                .iter()
+                .copied()
+                .find(|id| {
+                    game.object(*id)
+                        .is_some_and(|object| object.name == "Sneak Creature")
+                })
+                .expect("the spell should enter");
+            assert_eq!(game.is_tapped(entered), !untap);
+            assert_eq!(
+                queue.entries.len(),
+                usize::from(untap),
+                "only the untapped event triggers"
+            );
+            assert!(
+                game.combat
+                    .as_ref()
+                    .unwrap()
+                    .attackers
+                    .iter()
+                    .any(|attacker| {
+                        attacker.creature == entered && attacker.target == AttackTarget::Player(bob)
+                    })
+            );
+        }
+    }
 
     #[derive(Default)]
     struct MatchingOptionDecisionMaker {

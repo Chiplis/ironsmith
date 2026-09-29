@@ -1828,6 +1828,7 @@ pub(crate) fn run_choose_objects(
                 min,
                 max,
                 !allow_hidden_partial,
+                &effect.filter.card_types,
             )
         } else {
             chosen

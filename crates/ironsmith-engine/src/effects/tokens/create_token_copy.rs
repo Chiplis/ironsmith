@@ -367,7 +367,6 @@ impl EffectExecutor for CreateTokenCopyEffect {
             self.next_end_step_player.clone(),
         );
         let entry_options = TokenEntryOptions::new(
-            self.enters_tapped,
             self.enters_attacking && configured_attack_player.is_none(),
         );
         let mut static_abilities_to_grant =
@@ -444,10 +443,12 @@ impl EffectExecutor for CreateTokenCopyEffect {
             let token_is_creature = token.is_creature();
 
             game.add_object(token);
-            let Some(entry_result) = game.move_object_with_etb_processing_with_dm(
+            let Some(entry_result) = game.move_object_with_etb_processing_with_entry_options(
                 id,
                 Zone::Battlefield,
                 &mut ctx.decision_maker,
+                self.enters_tapped,
+                true,
             ) else {
                 game.remove_object(id);
                 continue;
@@ -459,7 +460,6 @@ impl EffectExecutor for CreateTokenCopyEffect {
                 .is_some_and(|obj| obj.zone == Zone::Battlefield);
 
             if entered_battlefield {
-                let effective_tapped = entry_result.enters_tapped || self.enters_tapped;
                 let entered_is_creature = game.current_is_creature(entered_id);
                 let tracks_creature_etb = entered_is_creature || token_is_creature;
                 apply_token_battlefield_entry(
@@ -470,7 +470,7 @@ impl EffectExecutor for CreateTokenCopyEffect {
                     tracks_creature_etb,
                     entry_options,
                     Zone::Command,
-                    effective_tapped,
+                    entry_result.enters_tapped,
                     &mut events,
                 )?;
 

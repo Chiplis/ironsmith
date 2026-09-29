@@ -642,6 +642,16 @@ pub(super) fn object_has_ability_marker(object: &Object, marker: &str) -> bool {
     {
         return true;
     }
+    if marker.trim().eq_ignore_ascii_case("flashback")
+        && object.alternative_casts.iter().any(|method| {
+            matches!(
+                method,
+                crate::alternative_cast::AlternativeCastingMethod::Flashback { .. }
+            )
+        })
+    {
+        return true;
+    }
     if marker.trim().eq_ignore_ascii_case("freerunning")
         && object.alternative_casts.iter().any(|method| {
             method.is_composed_cost() && method.name().eq_ignore_ascii_case("Freerunning")

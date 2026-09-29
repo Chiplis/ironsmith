@@ -15,6 +15,12 @@ use std::fmt;
 /// Runtime tag for cards linked as "exiled with this source object".
 pub const SOURCE_EXILED_TAG: &str = "__source_exiled__";
 
+/// Runtime tag for cards in exile that "you" (the filter context's player)
+/// exiled: cards linked as exiled by a source that player controls, or that
+/// its owner controlled when it left the battlefield ("cards you exiled").
+/// Evaluated directly from the exile links rather than captured.
+pub const EXILED_BY_YOU_TAG: &str = "__exiled_by_you__";
+
 /// The exact new object created by a zone-change replacement before its
 /// replacement follow-up effects execute.
 pub const ZONE_REPLACEMENT_OBJECT_TAG: &str = "__zone_replacement_object__";
@@ -35,6 +41,11 @@ pub const REVEALED_THIS_WAY_TAG: &str = "__revealed_this_way__";
 /// looking player, so this set is resolution-local bookkeeping and never marks
 /// the cards publicly revealed.
 pub const LOOKED_AT_HAND_TAG: &str = "__looked_at_hand__";
+
+/// Snapshots of the spells cast this turn, gathered as the comparison set of
+/// a same-name check ("a spell with the same name as a spell that was cast
+/// this turn").
+pub const SPELLS_CAST_THIS_TURN_TAG: &str = "__spells_cast_this_turn__";
 
 /// Runtime tag for the resolving spell or ability's source object.
 ///
@@ -141,6 +152,7 @@ pub const CAST_CONTROLLED_OBJECTS_TAG: &str = "__cast_controlled_objects__";
 /// A parse binds each of them once, in the document's symbol scope.
 pub const WELL_KNOWN_TAGS: &[&str] = &[
     SOURCE_EXILED_TAG,
+    EXILED_BY_YOU_TAG,
     ZONE_REPLACEMENT_OBJECT_TAG,
     PRIOR_EXILED_CARD_TAG,
     REVEALED_THIS_WAY_TAG,

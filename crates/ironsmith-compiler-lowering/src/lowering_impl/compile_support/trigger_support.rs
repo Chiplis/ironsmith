@@ -393,6 +393,20 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             display_subject,
             other_filter,
             other_surface,
+            subject_filter: Some(subject_filter),
+        } => Trigger::filtered_subject_attacks_with_n_others(
+            subject_filter,
+            other_count as usize,
+            display_subject,
+            other_filter,
+            other_surface,
+        ),
+        TriggerSpec::ThisAttacksWithNOthers {
+            other_count,
+            display_subject,
+            other_filter,
+            other_surface,
+            subject_filter: None,
         } => Trigger::this_attacks_with_n_others_display_subject_filter_and_other_surface(
             other_count as usize,
             display_subject,

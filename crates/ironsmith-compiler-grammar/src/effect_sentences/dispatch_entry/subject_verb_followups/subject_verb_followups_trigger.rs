@@ -84,6 +84,32 @@ pub(super) fn post_rule_reflexive_object_followup(
     }))
 }
 
+/// "At the beginning of the next end step, return that card to the
+/// battlefield ... If it entered under your control, ...": a condition about
+/// the returned object is checked when the delayed return happens.
+pub(super) fn post_rule_delayed_return_condition_followup(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    _sentence_tokens: &[OwnedLexToken],
+    sentence_effects: &mut Vec<EffectAst>,
+) -> Result<Option<PostParseFollowupResult>, CardTextError> {
+    if !crate::effect_sentences::dispatch_entry::is_single_condition_on_it(sentence_effects) {
+        return Ok(None);
+    }
+    let Some(delayed_body) = state
+        .effects
+        .last_mut()
+        .and_then(crate::effect_sentences::dispatch_entry::trailing_delayed_return_body_mut)
+    else {
+        return Ok(None);
+    };
+    delayed_body.append(sentence_effects);
+    Ok(Some(PostParseFollowupResult::Handled {
+        consumed_sentences: 1,
+    }))
+}
+
 /// A later delayed trigger whose subject is "the targeted ..." watches the
 /// exact object selected by the nearest earlier target declaration. Keeping
 /// only the noun filter (for example, `creature`) makes every matching object

@@ -1374,6 +1374,10 @@ fn try_merge_otherwise_into_previous_conditional(
     else {
         return false;
     };
+    // "If it was a creature card, ... If it was a land card, ... Otherwise,
+    // ...": rows classifying the same object are independent checks (a card
+    // can match both), and the fallback applies only when no row matched.
+    let sibling_row_predicates = classification_sibling_predicates(effects);
     let Some(previous) = effects.last_mut() else {
         return false;
     };
@@ -1405,8 +1409,91 @@ fn try_merge_otherwise_into_previous_conditional(
     // "Otherwise" negates the authored condition. An optional action in the
     // true arm does not make the condition false when its player declines it;
     // explicit "if you don't" wording is handled by the result-followup path.
-    *if_false = otherwise_effects.clone();
+    *if_false = match sibling_row_predicates
+        .into_iter()
+        .map(|predicate| PredicateAst::Not(Box::new(predicate)))
+        .reduce(|left, right| PredicateAst::And(Box::new(left), Box::new(right)))
+    {
+        Some(no_earlier_row_matched) => {
+            vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate: no_earlier_row_matched,
+                if_true: otherwise_effects.clone(),
+                if_false: Vec::new(),
+            })]
+        }
+        None => otherwise_effects.clone(),
+    };
     true
+}
+
+/// The object a classification row ("If it was a creature card, ...")
+/// inspects, when the row's condition is a plain characteristic check.
+fn classification_row_subject(effect: &EffectAst) -> Option<(String, &PredicateAst)> {
+    let EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+        predicate,
+        if_false,
+        ..
+    }) = effect
+    else {
+        return None;
+    };
+    if !if_false.is_empty() {
+        return None;
+    }
+    let subject = match predicate {
+        PredicateAst::ItMatches(_)
+        | PredicateAst::ItMatchedLastKnown(_)
+        | PredicateAst::ItIsLandCard => crate::tag::CompilerReferenceTag::It.as_str().to_string(),
+        PredicateAst::TargetMatches(_) => "__target__".to_string(),
+        PredicateAst::TaggedMatches(tag, _) => tag.as_str().to_string(),
+        _ => return None,
+    };
+    Some((subject, predicate))
+}
+
+/// Earlier rows classifying the same object as the final conditional row,
+/// in authored order.
+fn classification_sibling_predicates(effects: &[EffectAst]) -> Vec<PredicateAst> {
+    let Some((last, earlier)) = effects.split_last() else {
+        return Vec::new();
+    };
+    let Some((subject, last_predicate)) = classification_row_subject(last) else {
+        return Vec::new();
+    };
+    fn row_filter(predicate: &PredicateAst) -> Option<&ObjectFilter> {
+        match predicate {
+            PredicateAst::ItMatches(filter)
+            | PredicateAst::ItMatchedLastKnown(filter)
+            | PredicateAst::TargetMatches(filter)
+            | PredicateAst::TaggedMatches(_, filter) => Some(filter),
+            _ => None,
+        }
+    }
+    // A row whose class lies inside the final row's class ("a Bison card"
+    // before "a creature card") cannot match when the final row fails.
+    let implied_by_final_row = |predicate: &PredicateAst| {
+        let (Some(earlier), Some(last)) = (row_filter(predicate), row_filter(last_predicate))
+        else {
+            return false;
+        };
+        let implied = crate::model::reference_state::filter_implied_card_types(earlier);
+        !implied.is_empty()
+            && implied
+                .iter()
+                .all(|card_type| last.card_types.contains(card_type))
+    };
+    let mut siblings = earlier
+        .iter()
+        .rev()
+        .map_while(|effect| {
+            classification_row_subject(effect)
+                .filter(|(row_subject, _)| row_subject == &subject)
+                .map(|(_, predicate)| predicate.clone())
+        })
+        .filter(|predicate| !implied_by_final_row(predicate))
+        .collect::<Vec<_>>();
+    siblings.reverse();
+    siblings
 }
 
 #[cfg(test)]
@@ -4965,6 +5052,152 @@ pub(super) fn parse_delegated_partition_program_prefix(
 /// composes by concatenating their AST nodes; demonstratives remain explicit
 /// reference constraints for the reference phase to bind across source
 /// sentence boundaries.
+fn is_single_condition_on_it(effects: &[EffectAst]) -> bool {
+    let [only] = effects else {
+        return false;
+    };
+    let is_condition = match only {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. }) => true,
+        EffectAst::ControlFlow(control) => matches!(
+            control.node,
+            crate::model::ControlFlowNodeAst::Condition {
+                reflexive: false,
+                ..
+            }
+        ),
+        _ => false,
+    };
+    is_condition && crate::tag_support::effects_reference_it_tag(effects)
+}
+
+/// The body of a trailing delayed trigger whose last action returns an
+/// object to the battlefield.
+fn trailing_delayed_return_body_mut(effect: &mut EffectAst) -> Option<&mut Vec<EffectAst>> {
+    fn returns_to_battlefield(effect: &EffectAst) -> bool {
+        match effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::ZoneMoves(
+                        ZoneMoveActionAst::ReturnToBattlefield { .. }
+                        | ZoneMoveActionAst::MoveToZone {
+                            zone: Zone::Battlefield,
+                            ..
+                        },
+                    ),
+                ..
+            }) => true,
+            EffectAst::SourceSentence { effects, .. }
+            | EffectAst::Sequence { effects }
+            | EffectAst::Coordinated { effects, .. } => {
+                effects.last().is_some_and(returns_to_battlefield)
+            }
+            _ => false,
+        }
+    }
+    let body = match effect {
+        EffectAst::SourceSentence { effects, .. }
+        | EffectAst::Sequence { effects }
+        | EffectAst::Coordinated { effects, .. } => {
+            return effects
+                .last_mut()
+                .and_then(trailing_delayed_return_body_mut);
+        }
+        EffectAst::Delayed(
+            DelayedEffectAst::DelayedUntilNextEndStep { effects, .. }
+            | DelayedEffectAst::DelayedUntilNextCleanupStep { effects, .. }
+            | DelayedEffectAst::DelayedUntilNextUpkeep { effects, .. }
+            | DelayedEffectAst::DelayedUntilEndOfCombat { effects },
+        ) => effects,
+        EffectAst::ControlFlow(control) => {
+            let crate::model::ControlFlowNodeAst::Delayed {
+                program,
+                reflexive: false,
+                ..
+            } = control.node
+            else {
+                return None;
+            };
+            &mut control.program_mut(program)?.effects
+        }
+        _ => return None,
+    };
+    body.last()
+        .is_some_and(returns_to_battlefield)
+        .then_some(body)
+}
+
+/// The body a continuation sentence joins when it follows a reflexive
+/// ("When you do, ...") trigger. A body that is one intervening condition
+/// ("When you do, if <condition>, <effects>") is gated as a whole, so the
+/// continuation joins the gated consequence.
+fn trailing_reflexive_body_mut(effect: &mut EffectAst) -> Option<&mut Vec<EffectAst>> {
+    fn intervening_consequence(effect: &EffectAst) -> Option<usize> {
+        match effect {
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_false, .. })
+                if if_false.is_empty() =>
+            {
+                Some(0)
+            }
+            EffectAst::ControlFlow(control) => match control.node {
+                crate::model::ControlFlowNodeAst::Condition {
+                    consequence_program,
+                    alternative_program: None,
+                    reflexive: false,
+                    ..
+                } => Some(consequence_program),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+    fn gated_body(effects: &mut Vec<EffectAst>) -> &mut Vec<EffectAst> {
+        let [only] = effects.as_slice() else {
+            return effects;
+        };
+        let Some(program) = intervening_consequence(only) else {
+            return effects;
+        };
+        match effects.first_mut() {
+            Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                if_true, ..
+            })) => if_true,
+            Some(EffectAst::ControlFlow(control)) => {
+                &mut control
+                    .program_mut(program)
+                    .expect("condition consequence program exists")
+                    .effects
+            }
+            _ => unreachable!("single intervening condition was proven above"),
+        }
+    }
+    match effect {
+        EffectAst::SourceSentence { effects, .. }
+        | EffectAst::Sequence { effects }
+        | EffectAst::Coordinated { effects, .. } => {
+            effects.last_mut().and_then(trailing_reflexive_body_mut)
+        }
+        EffectAst::Conditionals(
+            ConditionalEffectAst::WhenResult { effects, .. }
+            | ConditionalEffectAst::ResolvedWhenResult { effects, .. },
+        ) => Some(gated_body(effects)),
+        EffectAst::ControlFlow(control) => {
+            let crate::model::ControlFlowNodeAst::Condition {
+                consequence_program,
+                alternative_program: None,
+                reflexive: true,
+                ..
+            } = control.node
+            else {
+                return None;
+            };
+            control
+                .program_mut(consequence_program)
+                .map(|program| gated_body(&mut program.effects))
+        }
+        _ => None,
+    }
+}
+
 fn parse_composable_typed_statements(
     sentences: &[&[OwnedLexToken]],
     full_tokens: &[OwnedLexToken],
@@ -5138,6 +5371,32 @@ fn parse_composable_typed_statements(
         if let Some(mut statement_effects) =
             parse_independent_typed_statement(sentence, is_document)?
         {
+            // "When you do, put a +1/+1 counter on target creature. It gains
+            // trample ...": a continuation about the reflexive trigger's
+            // object belongs to that trigger. As an outer sibling it would
+            // resolve before the reflexive ability exists.
+            if sentence_start > 0
+                && (crate::tag_support::effects_reference_it_tag(&statement_effects)
+                    || crate::tag_support::effects_reference_its_controller(&statement_effects))
+                && let Some(reflexive_body) =
+                    effects.last_mut().and_then(trailing_reflexive_body_mut)
+            {
+                reflexive_body.append(&mut statement_effects);
+                continue;
+            }
+            // "At the beginning of the next end step, return that card to the
+            // battlefield ... If it entered under your control, ...": a
+            // condition about the returned object is checked when the delayed
+            // return happens, not when the delayed trigger is created.
+            if sentence_start > 0
+                && is_single_condition_on_it(&statement_effects)
+                && let Some(delayed_body) = effects
+                    .last_mut()
+                    .and_then(trailing_delayed_return_body_mut)
+            {
+                delayed_body.append(&mut statement_effects);
+                continue;
+            }
             effects.append(&mut statement_effects);
             preserve_source_sentence_boundary(&mut effects, sentence_start, sentence, is_document);
             continue;
@@ -12168,6 +12427,16 @@ pub fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
             rebind_qualified_it_reference(effect_target, tag);
             return false;
         }
+        // "enchanted creature" / "equipped creature" names the attached
+        // object explicitly; it is not an anaphor for the default action's
+        // object (bestow: "If it's an Aura, enchanted creature gets ...
+        // instead").
+        if let TargetAst::Tagged(tag, _) = effect_target
+            && (tag.as_str() == crate::tag::CompilerReferenceTag::Enchanted.as_str()
+                || tag.as_str() == crate::tag::CompilerReferenceTag::Equipped.as_str())
+        {
+            return false;
+        }
         target_references_it(effect_target)
             || matches!(
                 effect_target,
@@ -12227,6 +12496,10 @@ pub fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
                     target: effect_target,
                 })
                 | SubjectVerbActionAst::Stack(StackActionAst::CounterUnlessPays {
+                    target: effect_target,
+                    ..
+                })
+                | SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
                     target: effect_target,
                     ..
                 })

@@ -1699,6 +1699,8 @@ pub(super) fn parse_value_reference_comparison_predicate(
         if right_used != right_tokens.len() {
             continue;
         }
+        let mut right = right;
+        bind_other_aggregate_to_compared_object(&left, &mut right);
         return Some(PredicateAst::ValueComparison {
             left,
             operator,
@@ -1706,6 +1708,38 @@ pub(super) fn parse_value_reference_comparison_predicate(
         });
     }
     None
+}
+
+/// "its power is greater than each other creature's power" (Selvala): the
+/// aggregate's `other` is relative to the object whose characteristic is on
+/// the left, not to the ability source. When that object is a tagged
+/// reference, exclude it by identity instead of excluding the source.
+fn bind_other_aggregate_to_compared_object(left: &Value, right: &mut Value) {
+    let (Value::PowerOf(spec) | Value::ToughnessOf(spec) | Value::ManaValueOf(spec)) = left else {
+        return;
+    };
+    let crate::ChooseSpec::Tagged(tag) = spec.base() else {
+        return;
+    };
+    let (Value::GreatestPower(filter)
+    | Value::GreatestToughness(filter)
+    | Value::GreatestManaValue(filter)
+    | Value::LeastPower(filter)
+    | Value::LeastToughness(filter)
+    | Value::LeastManaValue(filter)) = right
+    else {
+        return;
+    };
+    if !filter.other {
+        return;
+    }
+    filter.other = false;
+    filter
+        .tagged_constraints
+        .push(crate::target::TaggedObjectConstraint {
+            tag: tag.clone(),
+            relation: crate::target::TaggedOpbjectRelation::IsNotTaggedObject,
+        });
 }
 
 pub(super) fn is_predicate_reference_value(value: &Value) -> bool {
@@ -3540,8 +3574,28 @@ fn parse_tagged_chosen_name_shape(tokens: &[OwnedLexToken]) -> Option<PredicateA
     Some(PredicateAst::ItMatches(filter))
 }
 
+/// "unless it was unattached from a Ninja" (Shuriken): inside an ability an
+/// attachment grants to the permanent it's attached to, that permanent is the
+/// ability's source, and "the object it was unattached from" is that source.
+fn parse_unattached_from_source_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let words = TokenWordView::new(tokens).to_word_refs();
+    let ["it", "was", "unattached", "from", rest @ ..] = words.as_slice() else {
+        return None;
+    };
+    if rest.is_empty() {
+        return None;
+    }
+    let filter_start = TokenWordView::new(tokens).token_start_indices().get(4).copied()?;
+    let filter = crate::grammar::primitives::probe_shape(parse_object_filter(
+        &tokens[filter_start..],
+        false,
+    ))?;
+    Some(PredicateAst::Source(SourcePredicateAst::SourceMatches(filter)))
+}
+
 pub(super) fn parse_tagged_state_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    parse_tagged_chosen_name_shape(tokens)
+    parse_unattached_from_source_shape(tokens)
+        .or_else(|| parse_tagged_chosen_name_shape(tokens))
         .or_else(|| parse_tagged_controlled_permanent_shape(tokens))
         .or_else(|| parse_tagged_entered_under_your_control_shape(tokens))
         .or_else(|| parse_tagged_wasnt_blocking_shape(tokens))

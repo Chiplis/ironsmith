@@ -1803,6 +1803,15 @@ pub fn track_selected_object_player_provenance(spec: &ChooseSpec, ctx: &mut Effe
     let Some(filter) = selected_object_filter(spec) else {
         return;
     };
+    // "Destroy all creatures target opponent controls. ... to that player":
+    // the owner/controller is already an announced player target, which stays
+    // the antecedent even when the affected set is empty.
+    if matches!(
+        filter.owner.as_ref().or(filter.controller.as_ref()),
+        Some(PlayerFilter::Target(_))
+    ) {
+        return;
+    }
     let reference = if spec.is_target() && !ctx.auto_tag_object_targets {
         ObjectRef::Target
     } else {

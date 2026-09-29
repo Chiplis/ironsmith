@@ -79,6 +79,7 @@ fn until_from_leaf(duration: leaf::LeafDurationPhrase) -> Until {
         leaf::LeafDurationPhrase::UntilYourNextTurnEnd => Until::YourNextTurnEnd,
         leaf::LeafDurationPhrase::UntilYourNextUpkeep => Until::YourNextUpkeep,
         leaf::LeafDurationPhrase::ControllersNextUntapStep => Until::ControllersNextUntapStep,
+        leaf::LeafDurationPhrase::UntilNextEndStep => Until::NextEndStep,
         leaf::LeafDurationPhrase::Forever => Until::Forever,
     }
 }

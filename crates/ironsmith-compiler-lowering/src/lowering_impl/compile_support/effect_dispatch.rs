@@ -3,6 +3,7 @@ use crate::cards::builders::CharacteristicActionAst;
 use crate::cards::builders::ConditionalEffectAst;
 use crate::cards::builders::ControlActionAst;
 use crate::cards::builders::CounterActionAst;
+use crate::cards::builders::DamagePreventionActionAst;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::GrantActionAst;
 use crate::cards::builders::KeywordActionAst;
@@ -1111,6 +1112,13 @@ fn prevention_target_from_non_choice_target(
     match target {
         TargetAst::Player(PlayerFilter::You, _) => Ok(ironsmith_core::PreventionTarget::You),
         TargetAst::Player(PlayerFilter::Any, _) => Ok(ironsmith_core::PreventionTarget::Players),
+        // "Prevent all damage that would be dealt by <source>": every
+        // recipient, permanent or player, is protected.
+        TargetAst::ObjectOrPlayer(filter, PlayerFilter::Any, None)
+            if *filter == crate::filter::ObjectFilter::default() =>
+        {
+            Ok(ironsmith_core::PreventionTarget::All)
+        }
         TargetAst::Object(filter, explicit_target_span, _) if explicit_target_span.is_none() => {
             Ok(ironsmith_core::PreventionTarget::PermanentsMatching(
                 resolve_it_tag(filter, &current_reference_env(ctx))?,
@@ -1903,6 +1911,31 @@ fn compile_compiler_control_flow(
                         )
                         | SubjectVerbActionAst::StatChanges(
                             StatChangeActionAst::RemoveAbilitiesFromTarget { duration, .. },
+                        )
+                        | SubjectVerbActionAst::DamagePrevention(
+                            DamagePreventionActionAst::PreventAllDamageToTarget {
+                                duration, ..
+                            },
+                        )
+                        | SubjectVerbActionAst::DamagePrevention(
+                            DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter {
+                                duration,
+                                ..
+                            },
+                        )
+                        | SubjectVerbActionAst::DamagePrevention(
+                            DamagePreventionActionAst::PreventAllDamageFromSourceFilter {
+                                duration,
+                                ..
+                            },
+                        )
+                        | SubjectVerbActionAst::DamagePrevention(
+                            DamagePreventionActionAst::PreventAllCombatDamage { duration },
+                        )
+                        | SubjectVerbActionAst::DamagePrevention(
+                            DamagePreventionActionAst::PreventAllCombatDamageToYou {
+                                duration, ..
+                            },
                         ) => {
                             *duration = until.clone();
                             changed += 1;

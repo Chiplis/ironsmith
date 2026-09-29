@@ -2592,6 +2592,12 @@ pub(super) fn compile_subject_verb_early(
                 PreventNextTimeDamageTargetAst::You => {
                     (crate::effects::PreventNextTimeDamageTarget::You, Vec::new())
                 }
+                PreventNextTimeDamageTargetAst::YouAndPermanents(filter) => (
+                    crate::effects::PreventNextTimeDamageTarget::YouAndPermanents(
+                        resolve_it_tag(filter, &current_reference_env(ctx))?,
+                    ),
+                    Vec::new(),
+                ),
                 PreventNextTimeDamageTargetAst::Target(target) => {
                     if matches!(target, TargetAst::AnyTarget(_)) {
                         (
@@ -2768,11 +2774,14 @@ pub(super) fn compile_subject_verb_early(
                     ironsmith_core::DamageFilter::all(),
                     duration.clone(),
                 )
-                .with_target_source(source_spec);
+                .with_target_source(source_spec.clone());
                 if protect_source {
                     effect = effect.protecting_source();
                 }
-                return Ok(Some((vec![Effect::new(effect)], choices)));
+                // Record the targeted source so a following "that creature"
+                // (Kry Shield) reads the chosen object.
+                let effect = tag_object_target_effect(Effect::new(effect), &source_spec, ctx, "source");
+                return Ok(Some((vec![effect], choices)));
             }
             if *source_of_your_choice
                 && let TargetAst::Player(crate::target::PlayerFilter::You, _) = target

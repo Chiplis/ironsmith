@@ -240,6 +240,19 @@ pub(super) fn try_parse_source_with_filtered_attack_count_trigger_lexed(
         return Ok(None);
     };
 
+    // A non-source subject ("equipped creature", "enchanted creature") is the
+    // attacker the threshold is counted around; it must not collapse into the
+    // source (an Equipment never attacks itself).
+    let left_word_view = ActivationRestrictionCompatWords::new(&left);
+    let left_words = non_article_word_refs(&left_word_view.to_word_refs());
+    let subject_filter = if is_source_reference_words(&left_words)
+        || source_reference_surface_for_trigger_subject(&left).is_some()
+    {
+        None
+    } else {
+        parse_attack_trigger_subject_filter_lexed(&left)?.filter(|filter| !filter.source)
+    };
+
     let rendered_subject = crate::lexer::render_token_slice(&left).trim().to_string();
     let display_subject = (rendered_subject != "this")
         .then_some(rendered_subject)
@@ -249,6 +262,7 @@ pub(super) fn try_parse_source_with_filtered_attack_count_trigger_lexed(
         display_subject,
         other_filter: Some(other_filter),
         other_surface,
+        subject_filter,
     }))
 }
 
@@ -971,6 +985,16 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             // shares the left arm's subject, not the ability's source.
             trigger_atom_token(left_tokens, TriggerClauseAtom::Block)
                 .or_else(|| trigger_atom_token(left_tokens, TriggerClauseAtom::Attack))
+        } else if right_words.len() > 1
+            && right_words
+                .first()
+                .is_some_and(|word| matches!(*word, "enters" | "enter"))
+        {
+            // "a creature you control attacks or enters attacking": the
+            // entry arm shares the attacking subject; it is not the source's
+            // own ETB.
+            trigger_atom_token(left_tokens, TriggerClauseAtom::Attack)
+                .or_else(|| trigger_atom_token(left_tokens, TriggerClauseAtom::Block))
         } else {
             None
         };
@@ -1881,6 +1905,11 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             );
         if let Some(mut filter) = parsed_filter {
             preserve_trigger_filter_union_surface(&mut filter, filtered_subject_tokens);
+            // CR 506.3a/508.4: "enters attacking" is part of the entry event;
+            // the entering object must be an attacking creature as it enters.
+            if words.get(enters_word_idx + 1) == Some(&"attacking") {
+                filter.attacking = true;
+            }
             let cause_filter = if contains_window(&words, &["without", "being", "played"]) {
                 Some(crate::events::cause::CauseFilter::not_type(
                     crate::events::cause::CauseType::SpecialAction,

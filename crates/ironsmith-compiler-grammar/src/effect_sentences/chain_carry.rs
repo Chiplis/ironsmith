@@ -2507,6 +2507,59 @@ fn is_delayed_creature_counters_followup(tokens: &[OwnedLexToken]) -> bool {
     crate::word_primitives::parse_sequence_complete(&words[prefix_len..], &expected_suffix)
 }
 
+/// "If damage from a <quality> source is prevented this way, you gain that
+/// much life." — a prevention rider conditioned on the prevented damage's
+/// source. Only the life-gain body is accepted: its amount is the prevented
+/// event's amount.
+fn parse_colored_source_prevention_followup(sentence: &[OwnedLexToken]) -> Option<EffectAst> {
+    let words = token_word_refs(sentence);
+    let ["if", "damage", "from", "a" | "an", rest @ ..] = words.as_slice() else {
+        return None;
+    };
+    let source_idx = rest.iter().position(|word| *word == "source")?;
+    if source_idx == 0
+        || rest.get(source_idx + 1..source_idx + 5) != Some(&["is", "prevented", "this", "way"][..])
+        || rest[source_idx + 5..] != ["you", "gain", "that", "much", "life"]
+    {
+        return None;
+    }
+    // The leading words carry no punctuation, so they align with tokens.
+    let quality_tokens = sentence.get(4..4 + source_idx)?;
+    if token_word_refs(quality_tokens).as_slice() != &rest[..source_idx] {
+        return None;
+    }
+    // A bare color ("a black source") names only the source's color; don't
+    // let the object-filter parser add a permanent noun it never saw.
+    let color_only = rest[..source_idx]
+        .iter()
+        .map(|word| crate::util::parse_color(word))
+        .collect::<Option<Vec<_>>>();
+    let filter = if let Some(colors) = color_only {
+        let mut filter = ObjectFilter::default();
+        filter.colors = colors.into_iter().reduce(|left, right| left.union(right));
+        filter
+    } else {
+        parse_object_filter(quality_tokens, false).ok()?
+    };
+    if filter.colors.is_none() && filter.card_types.is_empty() && filter.subtypes.is_empty() {
+        return None;
+    }
+    Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+        predicate: PredicateAst::TaggedMatches(
+            crate::tag::CompilerReferenceTag::Triggering.bind(),
+            filter,
+        ),
+        if_true: vec![EffectAst::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            PlayerAst::You,
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife {
+                amount: Value::EventValue(crate::effect::EventValueSpec::Amount),
+            }),
+        )],
+        if_false: Vec::new(),
+    }))
+}
+
 /// Bind a sentence that says what happens to damage the preceding prevention
 /// shield prevents: "You gain life equal to the damage prevented this way.",
 /// "Exile cards from the top of your library equal to the damage prevented
@@ -2546,6 +2599,14 @@ pub fn bind_prevention_followup(effects: &mut Vec<EffectAst>, sentence: &[OwnedL
                     Vec::new(),
                     Vec::new(),
                 ));
+                return true;
+            }
+            // "If damage from a black source is prevented this way, you gain
+            // that much life." (Shadowbane): the rider runs as the shield
+            // prevents the damage, gated on the damage source's quality at
+            // that time. The prevented damage event's object is its source.
+            if let Some(follow_up) = parse_colored_source_prevention_followup(sentence) {
+                follow_up_effects.push(follow_up);
                 return true;
             }
             false

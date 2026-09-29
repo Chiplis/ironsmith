@@ -132,6 +132,7 @@ impl EffectExecutor for AuraSwapEffect {
         let entry_proposal = crate::events::processing::process_etb_with_event_and_dm_with_initial_counters_and_controller(
             &mut exchange, hand_aura, Zone::Hand, ctx.decision_maker,
             Vec::new(), Some(ctx.controller),
+            false,
         );
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));

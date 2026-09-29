@@ -3053,6 +3053,45 @@ impl ObjectFilterExt for ObjectFilter {
                 continue;
             }
             let Some(tagged_snapshots) = ctx.tagged_objects.get(constraint.tag.as_str()) else {
+                // "cards you exiled" (Haldan): exiled cards linked to a source
+                // whose controller is the filter's "you".
+                if constraint.tag.as_str() == crate::tag::EXILED_BY_YOU_TAG
+                    && matches!(
+                        constraint.relation,
+                        TaggedOpbjectRelation::IsTaggedObject
+                            | TaggedOpbjectRelation::IsNotTaggedObject
+                    )
+                {
+                    let subject_id = subject.subject_object_id();
+                    let exiled_by_you = ctx.you.is_some_and(|you| {
+                        game.exiled_with_source_entries().any(|(source, exiled)| {
+                            exiled.contains(&subject_id)
+                                && game
+                                    .object(*source)
+                                    .is_some_and(|source| game.controller_of(source) == you)
+                        })
+                    });
+                    if exiled_by_you
+                        != (constraint.relation == TaggedOpbjectRelation::IsTaggedObject)
+                    {
+                        return false;
+                    }
+                    continue;
+                }
+                // "a creature it's paired with" in a trigger or static
+                // filter: the source object is always known from the filter
+                // context even when no resolution tag has been captured.
+                if constraint.tag.as_str() == crate::tag::SOURCE_OBJECT_TAG
+                    && constraint.relation == TaggedOpbjectRelation::SoulbondPartnerOfTagged
+                {
+                    let paired = ctx.source.is_some_and(|source| {
+                        game.soulbond_partner(source) == Some(subject.subject_object_id())
+                    });
+                    if !paired {
+                        return false;
+                    }
+                    continue;
+                }
                 if let Some(matches) = intrinsic_attachment_tag_constraint_matches_subject(
                     subject,
                     &constraint.tag,
@@ -3118,6 +3157,31 @@ impl ObjectFilterExt for ObjectFilter {
                         && attached_to_filter.matches_snapshot(source_snapshot, ctx, game)
                 });
             if !matches_current_attachment && !matches_departed_source_lki {
+                return false;
+            }
+        }
+
+        if let Some(host_filter) = &self.could_enchant_object {
+            use crate::object::AuraAttachmentFilterRuntimeExt;
+            // CR 303.4a: an Aura "could enchant" an object its enchant
+            // ability allows. Evaluate against the live hosts that match.
+            let could_enchant = game
+                .object(subject.subject_object_id())
+                .and_then(|aura| aura.aura_attach_filter_owned())
+                .is_some_and(|attach| {
+                    game.battlefield
+                        .iter()
+                        .filter_map(|id| game.object(*id))
+                        .filter(|host| host_filter.matches(host, ctx, game))
+                        .any(|host| {
+                            attach.matches_target(
+                                crate::object::AttachmentTarget::Object(host.id),
+                                ctx,
+                                game,
+                            )
+                        })
+                });
+            if !could_enchant {
                 return false;
             }
         }
@@ -3942,6 +4006,9 @@ impl ObjectFilterExt for ObjectFilter {
                         }
                         crate::tag::SOURCE_EXILED_TAG => {
                             post_noun_qualifiers.push("exiled with this permanent".to_string());
+                        }
+                        crate::tag::EXILED_BY_YOU_TAG => {
+                            post_noun_qualifiers.push("you exiled".to_string());
                         }
                         _ => {}
                     }
@@ -5218,6 +5285,13 @@ impl ObjectFilterExt for ObjectFilter {
                 }
             };
             parts.push(format!("{stack_text} could target"));
+        }
+
+        if let Some(source_filter) = &self.not_targeted_by_ability_from {
+            parts.push(format!(
+                "that isn't the target of an ability from {}",
+                source_filter.description()
+            ));
         }
 
         correct_filter_leading_indefinite_article(parts.join(" "))

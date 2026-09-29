@@ -1147,20 +1147,23 @@ where
             if filter.zone != Some(Zone::Exile) {
                 return None;
             }
-            let source_linked = filter.tagged_constraints.iter().any(|constraint| {
-                constraint.tag.as_str() == crate::SOURCE_EXILED_TAG
-                    && constraint.relation
-                        == crate::filter_model::TaggedOpbjectRelation::IsTaggedObject
-            });
+            // Linked to an exiling source: this permanent's own exile links,
+            // or every card "you exiled".
+            let is_link = |constraint: &crate::filter_model::TaggedObjectConstraint| {
+                matches!(
+                    constraint.tag.as_str(),
+                    crate::SOURCE_EXILED_TAG | crate::tag::EXILED_BY_YOU_TAG
+                ) && constraint.relation
+                    == crate::filter_model::TaggedOpbjectRelation::IsTaggedObject
+            };
+            let source_linked = filter.tagged_constraints.iter().any(is_link);
             let mut normalized = filter.clone();
             let owner = normalized.owner.take();
             normalized.zone = None;
             normalized.with_counter = None;
-            normalized.tagged_constraints.retain(|constraint| {
-                !(constraint.tag.as_str() == crate::SOURCE_EXILED_TAG
-                    && constraint.relation
-                        == crate::filter_model::TaggedOpbjectRelation::IsTaggedObject)
-            });
+            normalized
+                .tagged_constraints
+                .retain(|constraint| !is_link(constraint));
             if !normalized.tagged_constraints.is_empty() {
                 return None;
             }
@@ -1277,7 +1280,13 @@ where
             {
                 return None;
             }
-            let card_pool = if matches!(beneficiary, PlayerFilter::You) {
+            let exiled_by_you = filter.any_of.iter().any(|branch| {
+                branch
+                    .tagged_constraints
+                    .iter()
+                    .any(|constraint| constraint.tag.as_str() == crate::tag::EXILED_BY_YOU_TAG)
+            });
+            let card_pool = if exiled_by_you || matches!(beneficiary, PlayerFilter::You) {
                 "cards you exiled"
             } else {
                 "cards exiled with this permanent"

@@ -385,7 +385,13 @@ fn read_control_flow_plan(input: &InnerChain<'_>) -> Result<Option<Vec<EffectAst
         match super::super::super::grammar::effects::control_flow::recognize_control_flow(tokens) {
             crate::recognition::ParseOutcome::Match(matched) => {
                 let plan = matched.value;
-                let mut effects = if plan.parse_original_with_legacy {
+                let prevention = prevention_body_under_leading_duration(&plan);
+                let mut effects = if let Some(prevention) = prevention.as_ref() {
+                    // "Until your next turn, prevent all damage that would be
+                    // dealt to you": the prevention grammar spells its own
+                    // duration; the leading scope replaces it when lowered.
+                    parse_effect_chain_inner_lexed(prevention)?
+                } else if plan.parse_original_with_legacy {
                     parse_effect_chain_inner_lexed_unstacked(tokens, false)?
                 } else {
                     parse_effect_chain_inner_lexed(plan.body_tokens)?
@@ -411,6 +417,28 @@ fn read_control_flow_plan(input: &InnerChain<'_>) -> Result<Option<Vec<EffectAst
         }
     }
     Ok(None)
+}
+fn prevention_body_under_leading_duration(
+    plan: &super::super::super::grammar::effects::control_flow::ControlFlowPlan<'_>,
+) -> Option<Vec<crate::lexer::OwnedLexToken>> {
+    use super::super::super::grammar::effects::control_flow::RecognizedControlFlowAst;
+    if !matches!(plan.structure, RecognizedControlFlowAst::Duration(_)) {
+        return None;
+    }
+    let words = crate::lexer::parser_token_word_refs(plan.body_tokens);
+    if !crate::word_primitives::parse_sequence_prefix(&words, &["prevent", "all"])
+        || crate::word_primitives::sequence_occurs(&words, &["this", "turn"])
+    {
+        return None;
+    }
+    let mut body = crate::util::trim_edge_punctuation_tokens(plan.body_tokens).to_vec();
+    for word in ["this", "turn"] {
+        body.push(crate::lexer::OwnedLexToken::word(
+            word,
+            crate::diagnostics::TextSpan::synthetic(),
+        ));
+    }
+    Some(body)
 }
 fn read_venture_conjunction(
     input: &InnerChain<'_>,

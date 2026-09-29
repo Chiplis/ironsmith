@@ -149,6 +149,11 @@ pub enum TriggerKind {
         display_subject: Option<String>,
         other_filter: Option<ObjectFilter>,
         other_surface: bool,
+        /// The attacking subject when it is not the source itself
+        /// ("Whenever equipped creature and at least one other creature
+        /// attack"). `None` means the source object.
+        #[cfg_attr(feature = "serde", serde(default))]
+        subject_filter: Option<ObjectFilter>,
     },
     ThisAttacksWithExactNOthers {
         count: usize,
@@ -831,6 +836,29 @@ impl Trigger {
                 display_subject,
                 other_filter,
                 other_surface,
+                subject_filter: None,
+            },
+        )
+    }
+
+    /// "Whenever [subject] and at least N other creatures attack" where the
+    /// subject is a filtered object (such as the equipped creature) rather
+    /// than the source itself.
+    pub fn filtered_subject_attacks_with_n_others(
+        subject_filter: ObjectFilter,
+        count: usize,
+        display_subject: Option<String>,
+        other_filter: Option<ObjectFilter>,
+        other_surface: bool,
+    ) -> Self {
+        Self::typed(
+            "this_attacks_with_n_others",
+            TriggerKind::ThisAttacksWithNOthers {
+                count,
+                display_subject,
+                other_filter,
+                other_surface,
+                subject_filter: Some(subject_filter),
             },
         )
     }

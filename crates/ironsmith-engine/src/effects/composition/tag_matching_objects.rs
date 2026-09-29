@@ -4,6 +4,7 @@ use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_objects_from_spec;
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
@@ -58,6 +59,27 @@ impl EffectExecutor for TagMatchingObjectsEffect {
                     }
                 }
             }
+            let object_ids = snapshots
+                .iter()
+                .map(|snapshot| snapshot.object_id)
+                .collect::<Vec<_>>();
+            ctx.set_tagged_objects(self.tag.clone(), snapshots);
+            return Ok(EffectOutcome::with_objects(object_ids));
+        }
+
+        // "a spell that was cast this turn" names every spell cast this
+        // turn, including those that have already resolved or left the
+        // stack; the turn's cast history records them.
+        if self.filter.cast_this_turn && effect_zones(self) == [Zone::Stack] {
+            let filter_ctx = ctx.filter_context(game);
+            let snapshots = game
+                .turn_store
+                .turn_history
+                .spell_cast_snapshot_history()
+                .iter()
+                .filter(|snapshot| self.filter.matches_snapshot(snapshot, &filter_ctx, game))
+                .cloned()
+                .collect::<Vec<_>>();
             let object_ids = snapshots
                 .iter()
                 .map(|snapshot| snapshot.object_id)

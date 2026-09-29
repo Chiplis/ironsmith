@@ -20,14 +20,12 @@ pub(crate) const TOKEN_PER_PLAYER_LIMIT: usize = 500;
 /// Entry-processing options for newly created tokens.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct TokenEntryOptions {
-    pub enters_tapped: bool,
     pub enters_attacking: bool,
 }
 
 impl TokenEntryOptions {
-    pub fn new(enters_tapped: bool, enters_attacking: bool) -> Self {
+    pub fn new(enters_attacking: bool) -> Self {
         Self {
-            enters_tapped,
             enters_attacking,
         }
     }
@@ -120,9 +118,7 @@ pub(crate) fn apply_token_battlefield_entry(
         game.add_token_created_with_source_link(source_stable_id, token_stable_id);
     }
 
-    if enters_tapped && !game.is_tapped(token_id) {
-        game.tap(token_id);
-    }
+    // Tapped state was committed from the resolved entry event.
     // Tokens always have summoning sickness.
     game.set_summoning_sick(token_id);
 
@@ -410,7 +406,7 @@ mod tests {
     }
 
     #[test]
-    fn test_apply_token_battlefield_entry_sets_flags_and_events() {
+    fn test_apply_token_battlefield_entry_preserves_committed_state_and_events() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
         let source = game.new_object_id();
@@ -418,13 +414,15 @@ mod tests {
         let mut ctx = ExecutionContext::new_default(source, alice);
         let mut events = Vec::new();
 
+        game.tap(token_id); // The entry commit has already applied the final state.
+
         apply_token_battlefield_entry(
             &mut game,
             &mut ctx,
             token_id,
             alice,
             true,
-            TokenEntryOptions::new(true, false),
+            TokenEntryOptions::new(false),
             Zone::Command,
             true,
             &mut events,
@@ -476,7 +474,7 @@ mod tests {
             token_id,
             alice,
             true,
-            TokenEntryOptions::new(false, true),
+            TokenEntryOptions::new(true),
             Zone::Command,
             false,
             &mut events,

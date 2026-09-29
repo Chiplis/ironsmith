@@ -208,6 +208,36 @@ fn bind_candidate_controller_graveyard_count(operand: Value, operand_words: &[&s
     operand
 }
 
+/// Inside an object-filter comparison ("each artifact with mana value less
+/// than or equal to the number of rust counters on it"), the trailing "it"
+/// names the candidate object being filtered, not the source. The standalone
+/// value reader binds those counters to the source; rebind them to the
+/// candidate here.
+fn bind_candidate_counters_on_it(operand: Value, operand_words: &[&str]) -> Value {
+    if !matches!(operand_words, [.., "counters" | "counter", "on", "it"]) {
+        return operand;
+    }
+    fn rebind(value: &mut Value) -> bool {
+        match value {
+            Value::SurfaceHinted { value, .. } => rebind(value),
+            Value::CountersOnSource(counter_type) => {
+                *value = Value::CountersOnFilterCandidate(Some(*counter_type));
+                true
+            }
+            Value::CountersOn(spec, counter_type)
+                if matches!(spec.base(), crate::target::ChooseSpec::Source) =>
+            {
+                *value = Value::CountersOnFilterCandidate(*counter_type);
+                true
+            }
+            _ => false,
+        }
+    }
+    let mut operand = operand;
+    rebind(&mut operand);
+    operand
+}
+
 pub fn parse_filter_comparison_tokens(
     axis: &str,
     tokens: &[&str],
@@ -331,6 +361,7 @@ pub fn parse_filter_comparison_tokens(
             })?;
         let operand =
             bind_candidate_controller_graveyard_count(operand, &operand_words[..used]);
+        let operand = bind_candidate_counters_on_it(operand, &operand_words[..used]);
         let operand = if starts_explicit_ordered_comparison(tokens, operator)
             && !matches!(operand.unhinted(), Value::Fixed(_))
         {

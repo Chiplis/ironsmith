@@ -891,6 +891,16 @@ pub fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
     {
         return true;
     }
+    // "deals that much damage to each other creature ..." whose exclusion
+    // names the trigger's damaged object needs that object's tag prelude.
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { filter, .. }),
+        ..
+    }) = effect
+        && filter_references_tag(filter, tag)
+    {
+        return true;
+    }
     if let Some(filter) = effect_tagged_filter(effect) {
         return filter_references_tag(filter, tag);
     }
@@ -2018,6 +2028,35 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
     if direct_effect_targets_reference_tag(effect, crate::tag::CompilerReferenceTag::It.as_str()) {
         return true;
     }
+    // "Creatures you control gain protection from each of that permanent's
+    // colors": the granted quality reads the preceding clause's object.
+    if let EffectAst::SubjectVerb(subject_verb) = effect
+        && let SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll { abilities, .. }) =
+            &subject_verb.action
+        && abilities.iter().any(|ability| {
+            matches!(
+                ability,
+                crate::cards::builders::GrantedAbilityAst::StaticAbility(ability)
+                    if matches!(
+                        ability.as_ref(),
+                        crate::cards::builders::StaticAbilityAst::Static(core)
+                            if matches!(
+                                &core.payload,
+                                ironsmith_core::StaticAbilityPayload::Protection(
+                                    ironsmith_core::ProtectionFrom::ColorsOf(spec)
+                                ) if matches!(
+                                    spec.base(),
+                                    ChooseSpec::Tagged(tag)
+                                        if tag.as_str()
+                                            == crate::tag::CompilerReferenceTag::It.as_str()
+                                )
+                            )
+                    )
+            )
+        })
+    {
+        return true;
+    }
 
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
@@ -2136,6 +2175,12 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
             }) => {
                 value_references_tag(count, crate::tag::CompilerReferenceTag::It.as_str())
                     || filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
+            }
+            // "Exile an instant or sorcery card ... Put a number of +1/+1
+            // counters on this creature equal to half that card's mana
+            // value": the amount alone reads the prior object.
+            SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { count, .. }) => {
+                value_references_tag(count, crate::tag::CompilerReferenceTag::It.as_str())
             }
             SubjectVerbActionAst::Library(LibraryActionAst::ReorderTopOfLibrary { tag }) => {
                 tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()

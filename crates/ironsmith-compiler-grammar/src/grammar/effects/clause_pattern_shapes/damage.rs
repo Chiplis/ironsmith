@@ -27,10 +27,13 @@ pub struct ReplaceNextDamageWithDestroyShape<'a> {
     pub target_tokens: &'a [OwnedLexToken],
     pub destroyed_reference: DestroyDamageTargetReference,
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum DamageTargetShape<'a> {
     AnyTarget,
     You,
+    /// "you and/or creatures you control": the controller plus every
+    /// matching permanent (no target is chosen).
+    YouAndPermanents(ObjectFilter),
     Target(&'a [OwnedLexToken]),
 }
 #[derive(Debug, Clone)]
@@ -358,6 +361,8 @@ fn classify_damage_target(tokens: &[OwnedLexToken]) -> DamageTargetShape<'_> {
     .is_ok()
     {
         DamageTargetShape::You
+    } else if let Some(filter) = parse_you_and_permanents_filter_tokens(tokens) {
+        DamageTargetShape::YouAndPermanents(filter)
     } else {
         DamageTargetShape::Target(tokens)
     }

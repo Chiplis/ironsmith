@@ -477,6 +477,9 @@ fn subject_start_at(words: &[&str], offset: usize) -> Option<usize> {
         && words
             .get(offset + 1)
             .is_some_and(|next| gain_word_is_source_noun(next))
+        // "Dinosaurs you control other than this creature get ..." (Triceraton
+        // Commander): the source phrase qualifies the group subject.
+        && !(offset >= 2 && words[offset - 2..offset] == ["other", "than"])
     {
         return Some(offset);
     }

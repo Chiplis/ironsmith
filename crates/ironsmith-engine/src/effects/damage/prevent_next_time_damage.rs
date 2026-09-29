@@ -40,6 +40,9 @@ pub enum PreventNextTimeDamageTarget {
     Omitted,
     /// Only damage that would be dealt to you.
     You,
+    /// Damage that would be dealt to you and/or permanents matching the
+    /// filter ("you and/or creatures you control").
+    YouAndPermanents(ObjectFilter),
     /// Only damage that would be dealt to a chosen target.
     Target(ChooseSpec),
 }
@@ -87,6 +90,12 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
                 DamageTargetConstraint::Any
             }
             PreventNextTimeDamageTarget::You => DamageTargetConstraint::Player(ctx.controller),
+            PreventNextTimeDamageTarget::YouAndPermanents(filter) => {
+                DamageTargetConstraint::PlayerOrPermanents {
+                    player: ctx.controller,
+                    filter: filter.clone(),
+                }
+            }
             PreventNextTimeDamageTarget::Target(spec) => {
                 if let Ok(objects) = resolve_objects_for_effect(game, ctx, spec)
                     && let Some(object_id) = objects.first()

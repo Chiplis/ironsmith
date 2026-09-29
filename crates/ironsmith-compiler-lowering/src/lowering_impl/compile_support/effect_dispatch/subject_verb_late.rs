@@ -722,15 +722,26 @@ pub(super) fn compile_subject_verb_late(
                 } else {
                     Effect::deal_damage(damage_amount.clone(), damage_target_spec.clone())
                 };
-                let damage_effect = tag_object_target_effect(
-                    Effect::new(crate::effects::ExecuteWithSourceEffect::new(
-                        damage_source_spec.clone(),
-                        damage,
-                    )),
-                    &damage_target_spec,
-                    ctx,
-                    "damaged",
-                );
+                let damage_effect = Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+                    damage_source_spec.clone(),
+                    damage,
+                ));
+                // "It deals 1 damage to any target. If a Dragon is dealt
+                // damage this way, destroy it": an any-target recipient is
+                // an object result exactly like the sourceless damage form.
+                let damage_effect = if target_is_any_damage_target(target) {
+                    if ctx.auto_tag_object_targets {
+                        let tag = ctx
+                            .take_reserved_object_result_tag("damaged")
+                            .unwrap_or_else(|| ctx.next_tag("damaged"));
+                        ctx.last_object_tag = Some(tag.clone());
+                        damage_effect.tag(tag)
+                    } else {
+                        damage_effect
+                    }
+                } else {
+                    tag_object_target_effect(damage_effect, &damage_target_spec, ctx, "damaged")
+                };
                 effects.push(damage_effect);
             }
 

@@ -1294,24 +1294,44 @@ impl GameState {
         )
     }
 
-    /// Move an object with ordinary ETB replacement processing while also
-    /// applying a linked play-permission rule that makes this particular
-    /// battlefield entry tapped.
-    pub(crate) fn move_object_with_etb_processing_with_dm_and_forced_tapped(
+    /// Move an object with an authored tapped instruction in the original entry
+    /// event, before replacement effects modify it.
+    pub(crate) fn move_object_with_etb_processing_with_entry_options(
         &mut self,
         old_id: ObjectId,
         new_zone: Zone,
         decision_maker: &mut dyn crate::decision::DecisionMaker,
+        initial_enters_tapped: bool,
+        choose_aura_attachment: bool,
     ) -> Option<EntersResult> {
-        self.move_object_with_etb_processing_with_dm_and_cause_internal(
+        self.move_object_with_etb_processing_with_cause_and_entry_options(
             old_id,
             new_zone,
             crate::events::cause::EventCause::effect(),
             decision_maker,
-            true,
+            initial_enters_tapped,
+            choose_aura_attachment,
+        )
+    }
+
+    pub(crate) fn move_object_with_etb_processing_with_cause_and_entry_options(
+        &mut self,
+        old_id: ObjectId,
+        new_zone: Zone,
+        cause: crate::events::cause::EventCause,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+        initial_enters_tapped: bool,
+        choose_aura_attachment: bool,
+    ) -> Option<EntersResult> {
+        self.move_object_with_etb_processing_with_dm_and_cause_internal(
+            old_id,
+            new_zone,
+            cause,
+            decision_maker,
+            choose_aura_attachment,
             Vec::new(),
             None,
-            true,
+            initial_enters_tapped,
             None,
         )
     }
@@ -2084,7 +2104,7 @@ impl GameState {
         choose_aura_attachment: bool,
         initial_enters_with_counters: Vec<(crate::object::CounterType, u32)>,
         entering_controller: Option<PlayerId>,
-        force_enters_tapped: bool,
+        initial_enters_tapped: bool,
         prepared_entry: Option<PreparedEtbEntry>,
     ) -> Option<EntersResult> {
         if new_zone == Zone::Battlefield && self.card_cannot_enter_battlefield(old_id) {
@@ -2100,7 +2120,7 @@ impl GameState {
                 choose_aura_attachment,
                 initial_enters_with_counters,
                 entering_controller,
-                force_enters_tapped,
+                initial_enters_tapped,
                 prepared_entry,
                 false,
             );
@@ -2119,7 +2139,7 @@ impl GameState {
             choose_aura_attachment,
             initial_enters_with_counters,
             entering_controller,
-            force_enters_tapped,
+            initial_enters_tapped,
             prepared_entry,
             false,
         )
@@ -2134,7 +2154,7 @@ impl GameState {
         choose_aura_attachment: bool,
         initial_enters_with_counters: Vec<(crate::object::CounterType, u32)>,
         entering_controller: Option<PlayerId>,
-        force_enters_tapped: bool,
+        initial_enters_tapped: bool,
         prepared_entry: Option<PreparedEtbEntry>,
         entry_prevalidated: bool,
     ) -> Option<EntersResult> {
@@ -2150,7 +2170,7 @@ impl GameState {
         }
 
         // Process through ETB replacement effects
-        let mut prepared_entry = if let Some(prepared_entry) = prepared_entry {
+        let prepared_entry = if let Some(prepared_entry) = prepared_entry {
             prepared_entry
         } else {
             let result = crate::events::processing::process_etb_with_event_and_dm_with_initial_counters_and_controller(
@@ -2160,6 +2180,7 @@ impl GameState {
                 decision_maker,
                 initial_enters_with_counters,
                 entering_controller,
+                initial_enters_tapped,
             );
             self.prepare_etb_entry_with_controller_and_dm(
                 old_id,
@@ -2168,9 +2189,6 @@ impl GameState {
                 decision_maker,
             )?
         };
-        if force_enters_tapped {
-            prepared_entry.result.enters_tapped = true;
-        }
         let PreparedEtbEntry { result, choices } = prepared_entry;
 
         // If ETB was prevented or redirected to a different zone
@@ -5025,10 +5043,12 @@ mod chosen_option_tests {
         let mut decisions = crate::decision::SelectFirstDecisionMaker;
 
         let result = game
-            .move_object_with_etb_processing_with_dm_and_forced_tapped(
+            .move_object_with_etb_processing_with_entry_options(
                 exiled_id,
                 Zone::Battlefield,
                 &mut decisions,
+                true,
+                true,
             )
             .expect("land should enter the battlefield");
 

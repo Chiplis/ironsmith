@@ -72,12 +72,76 @@ fn exclude_entering_object_from_other_counts(
     rewrite(predicate)
 }
 
+/// "Whenever Alex Wilder or another creature you control enters, if you cast
+/// it from anywhere other than your hand, ...": when the entering object can
+/// be something other than the source, the cast-origin clause names the
+/// entering (triggering) object, not the source spell. Rewriting it also
+/// keeps the clause from establishing the source as the antecedent of the
+/// effect's later `it`.
+fn bind_cast_origin_predicate_to_entering_object(
+    trigger: &TriggerSpec,
+    predicate: PredicateAst,
+) -> PredicateAst {
+    fn has_non_source_entering_subject(trigger: &TriggerSpec) -> bool {
+        match trigger {
+            TriggerSpec::WithIntro { trigger, .. } => has_non_source_entering_subject(trigger),
+            TriggerSpec::AnyOf(triggers) => triggers.iter().any(has_non_source_entering_subject),
+            TriggerSpec::Either(left, right) => {
+                has_non_source_entering_subject(left) || has_non_source_entering_subject(right)
+            }
+            TriggerSpec::EntersBattlefield { filter, .. }
+            | TriggerSpec::EntersBattlefieldOneOrMore { filter, .. } => !filter.source,
+            _ => false,
+        }
+    }
+    fn rewrite(predicate: PredicateAst) -> PredicateAst {
+        use crate::cards::builders::TurnHistoryPredicateAst;
+        match predicate {
+            PredicateAst::ThisSpellWasCastFromNonHand => PredicateAst::And(
+                Box::new(PredicateAst::TurnHistory(
+                    TurnHistoryPredicateAst::TriggeringObjectWasCast,
+                )),
+                Box::new(PredicateAst::Not(Box::new(PredicateAst::TurnHistory(
+                    TurnHistoryPredicateAst::TriggeringObjectWasCastFromZone(
+                        crate::zone::Zone::Hand,
+                    ),
+                )))),
+            ),
+            PredicateAst::ThisSpellWasCastFromZone(zone) => PredicateAst::TurnHistory(
+                TurnHistoryPredicateAst::TriggeringObjectWasCastFromZone(zone),
+            ),
+            PredicateAst::And(left, right) => {
+                PredicateAst::And(Box::new(rewrite(*left)), Box::new(rewrite(*right)))
+            }
+            PredicateAst::Or(left, right) => {
+                PredicateAst::Or(Box::new(rewrite(*left)), Box::new(rewrite(*right)))
+            }
+            PredicateAst::Not(inner) => PredicateAst::Not(Box::new(rewrite(*inner))),
+            other => other,
+        }
+    }
+    if !has_non_source_entering_subject(trigger) {
+        return predicate;
+    }
+    rewrite(predicate)
+}
+
 pub fn apply_explicit_intervening_if_to_triggered_chunk(
     chunk: LineAst,
     explicit_intervening_if: Option<PredicateAst>,
 ) -> Result<LineAst, CardTextError> {
     let Some(predicate) = explicit_intervening_if else {
         return Ok(chunk);
+    };
+    let predicate = match &chunk {
+        LineAst::Triggered { trigger, .. } => {
+            bind_cast_origin_predicate_to_entering_object(trigger, predicate)
+        }
+        LineAst::Ability(parsed) => match parsed.trigger_spec.as_deref() {
+            Some(trigger) => bind_cast_origin_predicate_to_entering_object(trigger, predicate),
+            None => predicate,
+        },
+        _ => predicate,
     };
     match chunk {
         LineAst::Triggered {

@@ -212,6 +212,12 @@ pub(super) fn read_for_each_object_filter_effect(
             // its fixed or dynamic count. A set filter would lose both.
             return Ok(None);
         }
+        if let Some(effect) = parse_for_each_type_return_one_of_that_type(
+            shape.filter_tokens,
+            shape.effect_tokens,
+        ) {
+            return Ok(Some(vec![effect]));
+        }
         let filter = super::super::super::super::for_each_helpers::parse_for_each_object_filter(
             shape.filter_tokens,
         )?;
@@ -226,6 +232,58 @@ pub(super) fn read_for_each_object_filter_effect(
     }
     Ok(None)
 }
+/// "For each permanent type, return up to one card of that type from your
+/// graveyard to the battlefield" (Revival Experiment): the loop runs over the
+/// permanent types, not over permanents. Each returned card fills a distinct
+/// type slot, so this is one simultaneous return of any number of permanent
+/// cards, at most one per permanent type (multitype cards are assigned to
+/// distinct slots by the `one_per_card_type` selection constraint).
+fn parse_for_each_type_return_one_of_that_type(
+    filter_tokens: &[crate::lexer::OwnedLexToken],
+    effect_tokens: &[crate::lexer::OwnedLexToken],
+) -> Option<EffectAst> {
+    let filter_words = crate::lexer::token_word_refs(filter_tokens);
+    let permanent_types = match filter_words.as_slice() {
+        ["permanent", "type"] => true,
+        ["card", "type"] => false,
+        _ => return None,
+    };
+    let effect_words = crate::lexer::token_word_refs(effect_tokens);
+    if effect_words.as_slice()
+        != [
+            "return", "up", "to", "one", "card", "of", "that", "type", "from", "your",
+            "graveyard", "to", "the", "battlefield",
+        ]
+    {
+        return None;
+    }
+    let mut filter = ObjectFilter::default().in_zone(Zone::Graveyard);
+    filter.owner = Some(PlayerFilter::You);
+    if permanent_types {
+        filter.card_types = vec![
+            CardType::Artifact,
+            CardType::Battle,
+            CardType::Creature,
+            CardType::Enchantment,
+            CardType::Land,
+            CardType::Planeswalker,
+        ];
+    }
+    filter.one_per_card_type = true;
+    let target = TargetAst::WithCount(
+        Box::new(TargetAst::Object(filter, None, None)),
+        crate::effect::ChoiceCount::any_number(),
+    );
+    Some(EffectAst::subject_verb_return_to_battlefield(
+        target,
+        false,
+        false,
+        false,
+        crate::cards::builders::ReturnControllerAst::Preserve,
+        None,
+    ))
+}
+
 pub(super) fn read_delayed_until_next_end_step(
     input: &Sentence<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {

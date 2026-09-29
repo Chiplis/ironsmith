@@ -342,7 +342,8 @@ pub struct GrantObjectAbilityForFilter {
 
 impl std::fmt::Debug for GrantObjectAbilityForFilter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("GrantObjectAbilityForFilter")
+        let mut debug = f.debug_struct("GrantObjectAbilityForFilter");
+        debug
             .field("filter", &self.filter)
             .field("ability", &self.ability)
             .field("additional_abilities", &self.additional_abilities)
@@ -352,8 +353,13 @@ impl std::fmt::Debug for GrantObjectAbilityForFilter {
             )
             .field("display", &self.display)
             .field("condition", &self.condition)
-            .field("set_quantifier_surface", &self.set_quantifier_surface)
-            .finish()
+            .field("set_quantifier_surface", &self.set_quantifier_surface);
+        // A source-only grant ignores `filter` (Class level statics, CR
+        // 716.2c); say so, or the dump reads as a grant to every match.
+        if self.source_only {
+            debug.field("source_only", &self.source_only);
+        }
+        debug.finish()
     }
 }
 
@@ -693,7 +699,7 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
     fn apply_restrictions(
         &self,
         game: &mut crate::game_state::GameState,
-        _source: crate::ids::ObjectId,
+        source: crate::ids::ObjectId,
         controller: crate::ids::PlayerId,
     ) {
         let granted = self
@@ -718,6 +724,9 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
             .iter()
             .map(|entry| entry.object_id)
             .filter(|&id| {
+                if self.applies_to_source() {
+                    return id == source;
+                }
                 game.object(id)
                     .map(|obj| self.filter.matches(obj, &filter_ctx, game))
                     .unwrap_or(false)

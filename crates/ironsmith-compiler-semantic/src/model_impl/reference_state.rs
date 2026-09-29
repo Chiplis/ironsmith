@@ -96,6 +96,65 @@ impl ObjectTargetDiscriminator {
         self == &Self::from_filter(filter)
     }
 
+    /// Whether this slot names an object on the stack (a spell or ability).
+    pub fn names_stack_object(&self) -> bool {
+        self.zone == Some(Zone::Stack)
+    }
+
+    /// The zone this slot is known to occupy, if any.
+    pub fn zone(&self) -> Option<Zone> {
+        self.zone
+    }
+
+    /// Card types this slot is known to have, including those implied by its
+    /// subtypes ("a Forest" is a land, "an Equipment" an artifact).
+    pub fn implied_card_types(&self) -> Vec<CardType> {
+        implied_card_types(
+            self.card_types.iter().chain(&self.all_card_types),
+            self.subtypes.iter().chain(&self.all_subtypes),
+        )
+    }
+}
+
+/// Card types stated by a filter's head noun, including those implied by its
+/// subtypes.
+pub fn filter_implied_card_types(filter: &ObjectFilter) -> Vec<CardType> {
+    implied_card_types(
+        filter.card_types.iter().chain(&filter.all_card_types),
+        filter.subtypes.iter().chain(&filter.all_subtypes),
+    )
+}
+
+fn implied_card_types<'a>(
+    card_types: impl Iterator<Item = &'a CardType>,
+    subtypes: impl Iterator<Item = &'a Subtype>,
+) -> Vec<CardType> {
+    let mut implied = Vec::new();
+    let mut push = |card_type: CardType| {
+        if !implied.contains(&card_type) {
+            implied.push(card_type);
+        }
+    };
+    for card_type in card_types {
+        push(*card_type);
+    }
+    for subtype in subtypes {
+        if subtype.is_creature_type() {
+            push(CardType::Creature);
+        } else if subtype.is_land_subtype() {
+            push(CardType::Land);
+        } else if subtype.is_artifact_subtype() {
+            push(CardType::Artifact);
+        } else if subtype.is_enchantment_subtype() {
+            push(CardType::Enchantment);
+        } else if subtype.is_planeswalker_subtype() {
+            push(CardType::Planeswalker);
+        }
+    }
+    implied
+}
+
+impl ObjectTargetDiscriminator {
     /// Whether a definite description ("that creature") can name this slot:
     /// every characteristic the description states agrees with the slot,
     /// while characteristics it leaves unstated ("that creature" after

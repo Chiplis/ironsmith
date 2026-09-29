@@ -120,8 +120,46 @@ pub(super) fn parse_generic_vote_option_effects(
     };
 
     let effect_tokens = trim_commas(shape.effect_tokens);
-    let effects = parse_effect_chain_lexed(&effect_tokens)?;
+    let mut effects = parse_effect_chain_lexed(&effect_tokens)?;
+    // "For each creature with one or more votes, put that many stun counters
+    // on it, then tap it" (Trap the Trespassers): the quantifier ranges over
+    // the voted objects, not over the votes for a named option. Each voted
+    // object is the loop's `it`, and "that many" is its own vote total.
+    let option_words = option_clause.word_refs();
+    if option_words.len() > 4
+        && option_words.ends_with(&["with", "one", "or", "more"])
+    {
+        bind_that_many_to_iterated_object_votes(&mut effects);
+        return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+            tag: crate::tag::CompilerReferenceTag::VotedObjects.bind(),
+            effects,
+        })));
+    }
     Ok(Some(EffectAst::Votes(VoteEffectAst::VoteOption { option, effects })))
+}
+
+fn bind_that_many_to_iterated_object_votes(effects: &mut [EffectAst]) {
+    fn bind_value(value: &mut Value) {
+        match value {
+            Value::SurfaceHinted { value, .. } => bind_value(value),
+            Value::EventValue(crate::effect::EventValueSpec::Amount) => {
+                *value = Value::ObjectVoteCount(Box::new(crate::ChooseSpec::Iterated));
+            }
+            _ => {}
+        }
+    }
+    for effect in effects.iter_mut() {
+        if let EffectAst::SubjectVerb(subject_verb) = effect
+            && let SubjectVerbActionAst::Counters(
+                crate::cards::builders::CounterActionAst::PutCounters { count, .. },
+            ) = &mut subject_verb.action
+        {
+            bind_value(count);
+        }
+        crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+            bind_that_many_to_iterated_object_votes(nested);
+        });
+    }
 }
 
 pub(super) fn parse_generic_player_vote_received_effects(

@@ -156,6 +156,7 @@ fn parse_source_and_another_attack_with_trigger(
         display_subject: Some(display_subject),
         other_filter: Some(other_filter),
         other_surface: true,
+        subject_filter: None,
     }))
 }
 
@@ -1639,6 +1640,7 @@ mod tests {
                     display_subject,
                     other_filter: Some(other_filter),
                     other_surface,
+                    ..
                 },
             effects,
             ..
@@ -1709,6 +1711,7 @@ mod tests {
                     display_subject,
                     other_filter: Some(other_filter),
                     other_surface,
+                    ..
                 },
             ..
         } = parsed

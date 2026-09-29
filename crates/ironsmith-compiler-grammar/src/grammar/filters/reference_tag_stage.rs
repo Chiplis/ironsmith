@@ -67,6 +67,16 @@ fn parse_compound_filter_subtype(words: &[&str], idx: usize) -> Option<Subtype> 
                 .and_then(|next| parse_subtype_flexible(next))
                 .map(|_| subtype)
         })
+        .or_else(|| {
+            // A subtype word rejected as an ordinary English noun ("blood")
+            // is unambiguous when it heads a token noun: "thirteen Blood
+            // tokens" names the Blood artifact subtype.
+            let subtype = super::super::leaf::classify_token_definition_subtype(words.get(idx)?)?;
+            words
+                .get(idx + 1)
+                .is_some_and(|next| matches!(*next, "token" | "tokens"))
+                .then_some(subtype)
+        })
 }
 const ONLY_WORD: &str = "only";
 const SINGLE_WORD: &str = "single";

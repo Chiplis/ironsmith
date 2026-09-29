@@ -156,6 +156,81 @@ fn bind_may_player_to_implicit_search_choosers(effect: &mut EffectAst) {
     }
 }
 
+/// "You may cast a spell from your hand without paying its mana cost if it
+/// has the same name as a spell that was cast this turn": `it` is the spell
+/// being cast, so the name test restricts which spell may be cast. Tag the
+/// comparison set first, then cast only a spell sharing a name with it.
+fn bind_same_name_cast_condition_to_cast_filter(effects: &mut Vec<EffectAst>) {
+    use crate::filter::{TaggedObjectConstraint, TaggedOpbjectRelation};
+    let mut index = 0;
+    while index < effects.len() {
+        let EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
+            predicate:
+                PredicateAst::CountComparison {
+                    count:
+                        crate::static_abilities::AnthemCountExpression::MatchingFilter(comparison_set),
+                    comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+                    ..
+                },
+            effects: gated,
+        }) = &effects[index]
+        else {
+            index += 1;
+            continue;
+        };
+        let names_the_cast_spell = |constraint: &TaggedObjectConstraint| {
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                && constraint.relation == TaggedOpbjectRelation::SameNameAsTagged
+        };
+        let [
+            EffectAst::Permissions(
+                PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. },
+            ),
+        ] = gated.as_slice()
+        else {
+            index += 1;
+            continue;
+        };
+        if comparison_set.tagged_constraints.len() != 1
+            || !comparison_set
+                .tagged_constraints
+                .iter()
+                .all(names_the_cast_spell)
+        {
+            index += 1;
+            continue;
+        }
+        let mut set_filter = comparison_set.clone();
+        set_filter.tagged_constraints.clear();
+        let zones = set_filter.zone.into_iter().collect::<Vec<_>>();
+        let set_tag =
+            ironsmith_compiler_semantic::tag::TagRef::of(ironsmith_core::SPELLS_CAST_THIS_TURN_TAG);
+        let EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { effects: gated, .. }) =
+            effects.remove(index)
+        else {
+            unreachable!("trailing condition shape was proven above");
+        };
+        let mut cast = gated;
+        if let Some(EffectAst::Permissions(
+            PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost { filter, .. },
+        )) = cast.first_mut()
+        {
+            filter.tagged_constraints.push(TaggedObjectConstraint {
+                tag: set_tag.key.clone(),
+                relation: TaggedOpbjectRelation::SameNameAsTagged,
+            });
+        }
+        effects.insert(
+            index,
+            EffectAst::subject_verb_tag_matching_objects(set_filter, zones, set_tag),
+        );
+        for (offset, effect) in cast.into_iter().enumerate() {
+            effects.insert(index + 1 + offset, effect);
+        }
+        index += 2;
+    }
+}
+
 /// "If target opponent controls more lands than you, ...": when a condition
 /// is where the spell's player target is first named, declare that target
 /// ahead of the conditional so the predicate reads the chosen player.
@@ -336,6 +411,7 @@ fn bind_typed_where_x_references(effects: &mut [EffectAst], inherited: Option<Va
 
 fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
     declare_predicate_introduced_player_targets(effects);
+    bind_same_name_cast_condition_to_cast_filter(effects);
     for effect in effects.iter_mut() {
         bind_may_player_to_implicit_search_choosers(effect);
         normalize_nested_effects(effect);
@@ -358,6 +434,7 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
             *effect = EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay);
         }
         normalize_singular_source_exiled_move(effect);
+        bind_coordinated_rest_sacrifice_to_chosen_complement(effect);
     }
     // A full-card parse can normalize a named source reference only after the
     // narrow removal/damage sentence recognizer has run. Recover the same
@@ -366,6 +443,7 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
     // member belongs to the damage fanout.
     bind_removed_counter_damage_fanout(effects);
     bind_explicit_chosen_object_followups(effects);
+    bind_other_group_to_explicit_target_choice(effects);
     correlate_conditional_quantified_choice_followups(effects);
     correlate_split_for_each_player_choice_complements(effects);
     bind_all_players_subtype_choices_to_destroy_exclusion(effects);
@@ -374,8 +452,11 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
     bind_counted_set_followups(effects);
     bind_drawn_cards_to_reveal_followups(effects);
     bind_until_next_turn_permissions_to_prior_exiled_collection(effects);
+    transport_exiled_card_permissions_into_delayed_trigger(effects);
+    fold_per_object_random_player_control_changes(effects);
     bind_choice_remainder_to_choice_domain(effects);
     bind_consult_remainder_to_revealed_collection(effects);
+    bind_plural_total_power_to_prior_object_set(effects);
     if let Some(rewritten) = rewrite_repeat_process(effects) {
         *effects = rewritten;
     }
@@ -389,6 +470,201 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
         *effects = rewritten;
     }
     effects.retain(|effect| !is_noop_effect(effect));
+}
+
+/// "Each player puts a vow counter on a creature they control and sacrifices
+/// the rest": `the rest` is the complement of the singular object the shared
+/// subject just chose, within the same domain. Rewrite the unresolved
+/// remainder sacrifice to "sacrifice all <domain> other than it".
+fn bind_coordinated_rest_sacrifice_to_chosen_complement(effect: &mut EffectAst) {
+    let EffectAst::Coordination(coordination) = effect else {
+        return;
+    };
+    let mut chosen_domain: Option<crate::filter::ObjectFilter> = None;
+    for member in &mut coordination.members {
+        for effect in &mut member.effects {
+            let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect else {
+                continue;
+            };
+            match action {
+                SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
+                    target: TargetAst::Object(filter, _, _),
+                    target_count: Some(count),
+                    ..
+                }) if count.is_single() => {
+                    chosen_domain = Some(filter.clone());
+                }
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice {
+                    filter,
+                    target: None,
+                    ..
+                }) if filter.tagged_constraints.len() == 1
+                    && filter.tagged_constraints[0].tag.as_str()
+                        == crate::tag::CompilerReferenceTag::Rest.as_str()
+                    && filter.tagged_constraints[0].relation
+                        == crate::filter::TaggedOpbjectRelation::IsTaggedObject =>
+                {
+                    let Some(domain) = chosen_domain.as_ref() else {
+                        continue;
+                    };
+                    *action = SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll {
+                        filter: domain
+                            .clone()
+                            .not_tagged(crate::tag::CompilerReferenceTag::It.key()),
+                    });
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+/// "For each nonland permanent, choose a player at random. Then each player
+/// gains control of each permanent for which they were chosen. Untap those
+/// permanents.": each chosen player belongs to exactly one permanent, so the
+/// control change happens per permanent, under the player chosen for it.
+/// Fold the participant loop into the object loop (the unfolded shape would
+/// hand every permanent to every player in turn) and untap that same domain.
+fn fold_per_object_random_player_control_changes(effects: &mut Vec<EffectAst>) {
+    use crate::cards::builders::{ControlActionAst, PermanentStateActionAst};
+    let mut index = 1;
+    while index < effects.len() {
+        let (before, after) = effects.split_at_mut(index);
+        let EffectAst::ForEach(ForEachEffectAst::ForEachObject {
+            filter: domain,
+            effects: loop_body,
+        }) = sentence_tail_mut(&mut before[index - 1])
+        else {
+            index += 1;
+            continue;
+        };
+        let chooses_random_player = matches!(
+            loop_body.as_slice(),
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Choices(ChoiceActionAst::ChoosePlayer {
+                    random: true,
+                    ..
+                }),
+                ..
+            })]
+        );
+        let EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+            effects: player_body,
+        }) = sentence_tail(&after[0])
+        else {
+            index += 1;
+            continue;
+        };
+        let control_change = match player_body.as_slice() {
+            [EffectAst::SubjectVerb(
+                subject_verb @ SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::Control(ControlActionAst::GainControl {
+                            target: TargetAst::Object(filter, None, _),
+                            controller_reference: None,
+                            ..
+                        }),
+                    ..
+                },
+            )] if chooses_random_player
+                && filter.tagged_constraints.is_empty()
+                && filter.zone == domain.zone =>
+            {
+                let mut control_change = subject_verb.clone();
+                if let SubjectVerbActionAst::Control(ControlActionAst::GainControl {
+                    target, ..
+                }) = &mut control_change.action
+                {
+                    *target =
+                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None);
+                }
+                control_change
+            }
+            _ => {
+                index += 1;
+                continue;
+            }
+        };
+        // The control change names the player chosen in this iteration.
+        // Give that choice an explicit identity so the reference pass and
+        // lowering agree on the player tag.
+        if let [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Choices(ChoiceActionAst::ChoosePlayer { tag, .. }),
+            ..
+        })] = loop_body.as_mut_slice()
+            && tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+        {
+            *tag = ironsmith_compiler_semantic::tag::declared_key("chosen_player_for_object");
+        }
+        loop_body.push(EffectAst::SubjectVerb(control_change));
+        let domain = domain.clone();
+        effects.remove(index);
+        if let Some(next) = effects.get_mut(index)
+            && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::PermanentState(PermanentStateActionAst::UntapAll { filter }),
+                ..
+            }) = sentence_tail_mut(next)
+            && filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+            })
+        {
+            *filter = domain;
+        }
+    }
+}
+
+/// The last authored effect of a (possibly sentence-wrapped) statement.
+fn sentence_tail(effect: &EffectAst) -> &EffectAst {
+    match effect {
+        EffectAst::SourceSentence { effects, .. } => effects.last().map_or(effect, sentence_tail),
+        _ => effect,
+    }
+}
+
+fn sentence_tail_mut(effect: &mut EffectAst) -> &mut EffectAst {
+    let is_wrapped = matches!(effect, EffectAst::SourceSentence { effects, .. } if !effects.is_empty());
+    if !is_wrapped {
+        return effect;
+    }
+    let EffectAst::SourceSentence { effects, .. } = effect else {
+        unreachable!("checked above");
+    };
+    sentence_tail_mut(effects.last_mut().expect("non-empty sentence"))
+}
+
+/// The grammar reads "their total power" as the creatures of an attack-group
+/// trigger. After an instruction that removes a whole set of objects
+/// ("Destroy all creatures target opponent controls. ... equal to their total
+/// power"; "sacrifice any number of other creatures, then ... their total
+/// power") the plural pronoun instead names that set, so rebind it to the
+/// ordinary object antecedent.
+fn bind_plural_total_power_to_prior_object_set(effects: &mut [EffectAst]) {
+    use ironsmith_core::tag::TagKeyWalk;
+    let group = crate::tag::CompilerReferenceTag::AttackingGroup.as_str();
+    let mut after_object_set = false;
+    for effect in effects.iter_mut() {
+        if after_object_set {
+            effect.map_tag_keys(&mut |tag| {
+                if tag.as_str() == group {
+                    *tag = crate::tag::CompilerReferenceTag::It.key();
+                }
+            });
+        }
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = sentence_tail(effect) {
+            match action {
+                SubjectVerbActionAst::ZoneMoves(
+                    ZoneMoveActionAst::DestroyAll { .. }
+                    | ZoneMoveActionAst::ExileAll { .. }
+                    | ZoneMoveActionAst::SacrificeAll { .. },
+                ) => after_object_set = true,
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice {
+                    filter, ..
+                }) if !filter.source => after_object_set = true,
+                _ => {}
+            }
+        }
+    }
 }
 
 /// Resolve “the rest of the revealed cards” against the two collections
@@ -580,7 +856,7 @@ fn bind_until_next_turn_permissions_to_prior_exiled_collection(effects: &mut [Ef
     }
 
     let mut prior_exiled_tag = None;
-    for effect in effects {
+    for effect in effects.iter_mut() {
         if let Some(tag) = prior_exiled_tag.as_ref() {
             rebind_unresolved_permissions(effect, tag);
         }
@@ -592,6 +868,84 @@ fn bind_until_next_turn_permissions_to_prior_exiled_collection(effects: &mut [Ef
             [] => prior_exiled_tag,
             _ => None,
         };
+    }
+}
+
+/// "Until end of turn, whenever a creature you control dies, exile the top
+/// card of your library. You may play it until the end of your next turn.":
+/// the card exists only once the delayed trigger resolves, so a permission
+/// naming exactly that trigger's exile result belongs inside its body rather
+/// than on the scheduling instruction, where the tag is still empty.
+fn transport_exiled_card_permissions_into_delayed_trigger(effects: &mut Vec<EffectAst>) {
+    fn delayed_body(effect: &mut EffectAst) -> Option<&mut Vec<EffectAst>> {
+        match sentence_tail_mut(effect) {
+            EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn { effects, .. })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { effects, .. }) => {
+                Some(effects)
+            }
+            _ => None,
+        }
+    }
+    fn body_exiled_tag(body: &[EffectAst]) -> Option<crate::tag::TagKey> {
+        let mut found = None;
+        for effect in body {
+            if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
+                        tags: moved_tags,
+                        ..
+                    }),
+                ..
+            }) = effect
+                && let [tag] = moved_tags.as_slice()
+            {
+                found = Some(tag.key.clone());
+            }
+        }
+        found
+    }
+    fn permission_tag(effect: &EffectAst) -> Option<&crate::tag::TagKey> {
+        if let EffectAst::SourceSentence { effects, .. } = effect {
+            return match effects.as_slice() {
+                [single] => permission_tag(single),
+                _ => None,
+            };
+        }
+        match effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::Grants(
+                        GrantActionAst::GrantPlayTaggedUntilEndOfTurn { tag, .. }
+                        | GrantActionAst::GrantPlayTaggedUntilYourNextTurn { tag, .. },
+                    ),
+                ..
+            }) => Some(&tag.key),
+            _ => None,
+        }
+    }
+    let mut index = 1;
+    while index < effects.len() {
+        let (before, after) = effects.split_at_mut(index);
+        let moved = if let Some(body) = delayed_body(&mut before[index - 1])
+            && let Some(exiled) = body_exiled_tag(body)
+            && permission_tag(&after[0]) == Some(&exiled)
+        {
+            let mut permission = after[0].clone();
+            while let EffectAst::SourceSentence { effects, .. } = &mut permission
+                && effects.len() == 1
+            {
+                permission = effects.remove(0);
+            }
+            body.push(permission);
+            true
+        } else {
+            false
+        };
+        if moved {
+            effects.remove(index);
+        } else {
+            index += 1;
+        }
     }
 }
 
@@ -1049,6 +1403,109 @@ fn target_only_collection_tag_mut(effect: &mut EffectAst) -> Option<&mut crate::
 /// The parser uses `__it__` for standalone choices, while the consumer uses
 /// the reserved chosen-set alias; assigning the producer that same durable
 /// tag preserves both runtime collection identity and authored rendering.
+/// "Choose up to one target creature, then airbend all other creatures"
+/// (Avatar's Wrath), "Choose target creature you control. Each other
+/// creature becomes a copy of that creature" (Nanogene Conversion): a group
+/// "other <kind>" immediately following an explicit target declaration of
+/// that kind contrasts the group with the declared target, not with the
+/// source. Exclude the declared target (the follow-up's `it`) by identity.
+fn bind_other_group_to_explicit_target_choice(effects: &mut [EffectAst]) {
+    fn declared_target_filter(effect: &EffectAst) -> Option<&crate::filter::ObjectFilter> {
+        match effect {
+            EffectAst::TagAffected { effect, .. } => declared_target_filter(effect),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::TargetOnly {
+                        target,
+                        explicit_declaration: true,
+                    },
+                ..
+            }) => target_filter(target),
+            _ => None,
+        }
+    }
+    fn target_filter(target: &TargetAst) -> Option<&crate::filter::ObjectFilter> {
+        match target {
+            TargetAst::Object(filter, Some(_), _) => Some(filter),
+            TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, ..) => {
+                target_filter(inner)
+            }
+            _ => None,
+        }
+    }
+    fn group_filter_mut(effect: &mut EffectAst) -> Option<&mut crate::filter::ObjectFilter> {
+        match effect {
+            EffectAst::ForEach(ForEachEffectAst::ForEachObject { filter, .. }) => Some(filter),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) => match action {
+                SubjectVerbActionAst::KeywordActions(
+                    crate::cards::builders::KeywordActionAst::Airbend {
+                        target: TargetAst::Object(filter, None, _),
+                    },
+                )
+                | SubjectVerbActionAst::ZoneMoves(
+                    ZoneMoveActionAst::DestroyAll { filter, .. }
+                    | ZoneMoveActionAst::ExileAll { filter, .. }
+                    | ZoneMoveActionAst::ReturnAllToHand { filter, .. },
+                )
+                | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
+                    filter, ..
+                })
+                | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll {
+                    filter, ..
+                })
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach {
+                    filter, ..
+                }) => Some(filter),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+    fn bind_pair(previous: &EffectAst, next: &mut EffectAst) {
+        let Some(declared) = declared_target_filter(previous) else {
+            return;
+        };
+        let declared_types = declared.card_types.clone();
+        if declared_types.is_empty() {
+            return;
+        }
+        let Some(group) = group_filter_mut(next) else {
+            return;
+        };
+        if !group.other
+            || !matches!(group.zone, None | Some(crate::zone::Zone::Battlefield))
+            || !group
+                .card_types
+                .iter()
+                .any(|card_type| declared_types.contains(card_type))
+        {
+            return;
+        }
+        group.other = false;
+        group
+            .tagged_constraints
+            .push(crate::filter::TaggedObjectConstraint {
+                tag: crate::tag::CompilerReferenceTag::It.key(),
+                relation: crate::filter::TaggedOpbjectRelation::IsNotTaggedObject,
+            });
+    }
+    for index in 1..effects.len() {
+        let (before, after) = effects.split_at_mut(index);
+        bind_pair(&before[index - 1], &mut after[0]);
+    }
+    // "Choose up to one target creature, then airbend all other creatures":
+    // a comma-then sentence keeps its members inside one coordination.
+    for effect in effects.iter_mut() {
+        if let EffectAst::Coordination(coordination) = effect {
+            let mut members: Vec<&mut EffectAst> = coordination.effects_mut().collect();
+            for index in 1..members.len() {
+                let (before, after) = members.split_at_mut(index);
+                bind_pair(before[index - 1], after[0]);
+            }
+        }
+    }
+}
+
 fn bind_explicit_chosen_object_followups(effects: &mut [EffectAst]) {
     for consumer_index in 1..effects.len() {
         if !super::compile_support::effect_references_tag(

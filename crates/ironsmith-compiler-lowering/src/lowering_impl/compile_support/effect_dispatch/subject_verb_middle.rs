@@ -673,6 +673,34 @@ pub(super) fn compile_grant_abilities_all_action(
     let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
     let mut choices = Vec::new();
     collect_targeted_player_specs_from_filter(&resolved_filter, &mut choices);
+    // A granted quality that reads a targeted object ("protection from the
+    // colors of target permanent you control") declares that target for the
+    // resolving spell or ability.
+    let mut prelude = Vec::new();
+    let mut modifications = modifications;
+    for modification in &mut modifications {
+        let crate::continuous::Modification::AddAbility(ability) = modification else {
+            continue;
+        };
+        let ironsmith_core::StaticAbilityPayload::Protection(
+            ironsmith_core::ProtectionFrom::ColorsOf(spec),
+        ) = &mut ability.payload
+        else {
+            continue;
+        };
+        if spec.is_target() {
+            if !choices.contains(spec.as_ref()) {
+                prelude.push(Effect::new(crate::effects::TargetOnlyEffect::new(
+                    spec.as_ref().clone(),
+                )));
+                choices.push(spec.as_ref().clone());
+            }
+        } else {
+            // "each of that permanent's colors": bind the pronoun to the
+            // object the preceding clause named.
+            **spec = resolve_choose_spec_it_tag(spec, &current_reference_env(ctx))?;
+        }
+    }
     let resolved_condition = condition
         .as_ref()
         .map(|condition| {
@@ -705,7 +733,8 @@ pub(super) fn compile_grant_abilities_all_action(
         effect = effect.tag_all(tag.clone());
         ctx.last_object_tag = Some(tag);
     }
-    Ok((vec![effect], choices))
+    prelude.push(effect);
+    Ok((prelude, choices))
 }
 
 pub(super) fn compile_become_base_pt_creature_action(

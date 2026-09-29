@@ -2,6 +2,66 @@ use super::*;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::SourcePredicateAst;
 
+/// "If this spell's madness cost was paid, instead gain control of that
+/// creature if its toughness is X or less" (Welcome to the Fold): the
+/// replacement's local gate reads the same object as its action ("that
+/// creature"), which the replacement already addresses through the prior
+/// action's result tag. The replacement branch never runs after the default
+/// action, so an unbound `its` there must not fall back to the source.
+fn bind_replacement_it_characteristics_to_tag(effects: &mut [EffectAst], tag: &TagKey) {
+    fn bind_value(value: &mut Value, tag: &TagKey) {
+        match value {
+            Value::PowerOf(spec) | Value::ToughnessOf(spec) | Value::ManaValueOf(spec) => {
+                let rebind = match spec.base() {
+                    crate::ChooseSpec::Tagged(found) => {
+                        found.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                    }
+                    crate::ChooseSpec::Source => true,
+                    _ => false,
+                };
+                if rebind {
+                    **spec = crate::ChooseSpec::Tagged(tag.clone());
+                }
+            }
+            Value::SurfaceHinted { value, .. } => bind_value(value, tag),
+            _ => {}
+        }
+    }
+    fn bind_predicate(predicate: &mut PredicateAst, tag: &TagKey) {
+        match predicate {
+            PredicateAst::ValueComparison { left, right, .. } => {
+                bind_value(left, tag);
+                bind_value(right, tag);
+            }
+            PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
+                bind_predicate(left, tag);
+                bind_predicate(right, tag);
+            }
+            PredicateAst::Not(inner) => bind_predicate(inner, tag),
+            _ => {}
+        }
+    }
+    for effect in effects {
+        match effect {
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. })
+            | EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, .. }) => {
+                bind_predicate(predicate, tag);
+            }
+            EffectAst::ControlFlow(control) => {
+                if let crate::model::control_flow::ControlFlowNodeAst::Condition {
+                    condition, ..
+                } = &mut control.node
+                    && let crate::model::control_flow::ControlPredicateAst::State(predicate) =
+                        &mut condition.predicate
+                {
+                    bind_predicate(predicate, tag);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 pub(super) fn pre_rule_conditional_optional_result_followup(
     state: &mut SentenceDispatchState<'_>,
     _sentences: &[SentenceInput],
@@ -392,6 +452,9 @@ pub(in super::super) fn post_rule_future_zone_and_self_replacement(
             .or(previous_target.as_ref())
         {
             replace_it_target_in_effects(&mut if_true, target);
+        }
+        if replacement_qualifies_antecedent && let Some(tag) = previous_result_tag.as_ref() {
+            bind_replacement_it_characteristics_to_tag(&mut if_true, tag);
         }
         if let Some(target) = previous_damage_target.as_ref() {
             replace_it_damage_target_in_effects(&mut if_true, target);

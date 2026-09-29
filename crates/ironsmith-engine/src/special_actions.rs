@@ -1288,16 +1288,27 @@ fn perform_play_land(
     decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
     let shared_usage_to_consume = shared_usage_to_consume_for_land_play(game, player, card_id);
+    let old_zone = game
+        .object(card_id)
+        .ok_or(ActionError::ObjectNotFound)?
+        .zone;
+    let initial_tapped = old_zone != Zone::Hand
+        && game
+            .effect_store
+            .grant_registry
+            .land_play_from_permissions_enters_tapped(game, card_id, old_zone, player);
     let cause = crate::events::cause::EventCause::from_special_action(Some(card_id), player);
     apply_land_play_face(game, card_id, back_face);
 
     // Move the land to the battlefield with ETB replacement processing.
     let result = game
-        .move_object_with_etb_processing_with_dm_and_cause(
+        .move_object_with_etb_processing_with_cause_and_entry_options(
             card_id,
             Zone::Battlefield,
             cause,
             decision_maker,
+            initial_tapped,
+            true,
         )
         .ok_or(ActionError::ObjectNotFound)?;
     let new_id = result.new_id;
@@ -1318,6 +1329,23 @@ fn perform_play_land(
     }
 
     game.set_current_controller(new_id, player);
+    if game
+        .object(new_id)
+        .is_some_and(|object| object.zone == Zone::Battlefield)
+    {
+        let event = if result.enters_tapped {
+            crate::events::EnterBattlefieldEvent::tapped(new_id, old_zone)
+        } else {
+            crate::events::EnterBattlefieldEvent::new(new_id, old_zone)
+        };
+        let provenance = game
+            .provenance_graph_mut()
+            .alloc_root_event(crate::events::EventKind::EnterBattlefield);
+        game.queue_trigger_event(
+            provenance,
+            crate::triggers::TriggerEvent::new_with_provenance(event, provenance),
+        );
+    }
 
     Ok(())
 }

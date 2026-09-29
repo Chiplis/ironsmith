@@ -712,6 +712,9 @@ pub enum Value {
     SourceRegeneratedThisTurnCount,
     /// Number of times the source permanent has mutated since it entered the battlefield.
     SourceMutationCount,
+    /// Number of creatures the source permanent devoured as it entered the
+    /// battlefield (CR 702.82b: "each creature it devoured").
+    SourceDevouredCreatureCount,
     DamageDealtThisTurnByTaggedSpellCast(TagKey),
     CardTypesInGraveyard(PlayerFilter),
     Devotion {
@@ -792,9 +795,19 @@ pub enum Value {
     PlayerCounters(PlayerFilter, CounterType),
     CountersOnSource(CounterType),
     CountersOn(Box<ChooseSpec>, Option<CounterType>),
+    /// Counters (of one kind, or of every kind) on the candidate an enclosing
+    /// object filter is currently evaluating ("destroy each artifact with
+    /// mana value less than or equal to the number of rust counters on it").
+    /// Only resolvable while matching that filter
+    /// ([`crate::ObjectRef::FilterCandidate`]).
+    CountersOnFilterCandidate(Option<CounterType>),
     TaggedCount,
     VoteCount(String),
     PlayerVoteCount(PlayerFilter),
+    /// The number of votes the referenced object received in the resolving
+    /// object vote ("for each creature with one or more votes, put that many
+    /// stun counters on it").
+    ObjectVoteCount(Box<ChooseSpec>),
 }
 
 impl Value {

@@ -4792,6 +4792,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
         from,
         dm,
         initial_enters_with_counters,
+        false,
         None,
         &std::collections::HashSet::new(),
     )
@@ -4804,6 +4805,7 @@ pub(crate) fn process_etb_with_event_and_dm_with_initial_counters_and_controller
     dm: &mut dyn DecisionMaker,
     initial_enters_with_counters: Vec<(CounterType, u32)>,
     entering_controller: Option<PlayerId>,
+    initial_enters_tapped: bool,
 ) -> EtbEventResult {
     process_etb_with_event_and_dm_with_initial_counters_and_reservations(
         game,
@@ -4811,6 +4813,7 @@ pub(crate) fn process_etb_with_event_and_dm_with_initial_counters_and_controller
         from,
         dm,
         initial_enters_with_counters,
+        initial_enters_tapped,
         entering_controller,
         &std::collections::HashSet::new(),
     )
@@ -4825,6 +4828,7 @@ pub(crate) fn process_etb_batch_proposal_with_initial_counters(
     from: Zone,
     dm: &mut dyn DecisionMaker,
     initial_enters_with_counters: Vec<(CounterType, u32)>,
+    initial_enters_tapped: bool,
     entering_controller: Option<PlayerId>,
     reserved_objects: &std::collections::HashSet<ObjectId>,
 ) -> EtbEventResult {
@@ -4834,6 +4838,7 @@ pub(crate) fn process_etb_batch_proposal_with_initial_counters(
         from,
         dm,
         initial_enters_with_counters,
+        initial_enters_tapped,
         entering_controller,
         reserved_objects,
     )
@@ -4845,6 +4850,7 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
     from: Zone,
     dm: &mut dyn DecisionMaker,
     initial_enters_with_counters: Vec<(CounterType, u32)>,
+    initial_enters_tapped: bool,
     entering_controller: Option<PlayerId>,
     batch_reserved_objects: &std::collections::HashSet<ObjectId>,
 ) -> EtbEventResult {
@@ -4857,8 +4863,9 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
 
     game.update_replacement_effects();
 
-    // Check the object's own abilities for ETB replacement effects.
-    let enters_tapped = false;
+    // One-shot instructions establish the original event before replacements
+    // (such as entering untapped) modify it.
+    let enters_tapped = initial_enters_tapped;
     let mut enters_with_counters: Vec<(CounterType, u32)> = initial_enters_with_counters;
 
     // Gather ETB replacement effects from the object's abilities.
