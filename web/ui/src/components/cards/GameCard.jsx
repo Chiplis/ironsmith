@@ -1688,7 +1688,9 @@ export default function GameCard({
 
       </div>
       {variant === "battlefield" && !useTokenBattlefield && counterBadges.length > 0 && (
-        <div className="battlefield-counter-rail">
+        <div
+          className={`battlefield-counter-rail${card.power_toughness ? " battlefield-counter-rail--with-pt" : ""}`}
+        >
           {counterBadges.map((badge, index) => (
             <BattlefieldCounterBadge
               key={`${badge.fullLabel}-${index}`}

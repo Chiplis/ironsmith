@@ -1666,6 +1666,11 @@
   filter: none;
 }
 
+.battlefield-counter-rail--with-pt {
+  top: auto;
+  bottom: clamp(4px, calc(var(--bf-card-height, 96px) * 0.035), 7px);
+}
+
 .battlefield-counter-chip {
   display: inline-flex;
   align-items: center;
@@ -1738,12 +1743,12 @@
 /* Charge counters use one compact asymmetric molded silhouette: a circular
    left shoulder flowing into a short rectangular number panel. */
 .battlefield-counter-chip--shape-charge {
-  width: clamp(52px, calc(var(--bf-card-width, 124px) * 0.42), 68px);
-  height: clamp(26px, calc(var(--bf-card-height, 96px) * 0.3), 36px);
+  width: clamp(48px, calc(var(--bf-card-width, 124px) * 0.38), 62px);
+  height: clamp(24px, calc(var(--bf-card-height, 96px) * 0.27), 32px);
   min-height: 0;
   flex: 0 0 auto;
   padding: 0 clamp(5px, calc(var(--bf-card-width, 124px) * 0.04), 8px)
-    0 clamp(22px, calc(var(--bf-card-width, 124px) * 0.18), 30px);
+    0 clamp(19px, calc(var(--bf-card-width, 124px) * 0.16), 26px);
   border: 0;
   border-radius: 0;
   background: transparent !important;
@@ -1780,10 +1785,10 @@
 
 .battlefield-counter-chip--shape-charge > .battlefield-counter-icon {
   position: absolute;
-  left: clamp(6px, calc(var(--bf-card-height, 96px) * 0.075), 10px);
+  left: clamp(5px, calc(var(--bf-card-height, 96px) * 0.065), 8px);
   top: 50%;
-  width: clamp(11px, calc(var(--bf-card-height, 96px) * 0.15), 18px);
-  height: clamp(11px, calc(var(--bf-card-height, 96px) * 0.15), 18px);
+  width: clamp(10px, calc(var(--bf-card-height, 96px) * 0.14), 16px);
+  height: clamp(10px, calc(var(--bf-card-height, 96px) * 0.14), 16px);
   margin: 0;
   transform: translateY(-50%);
 }
@@ -1791,7 +1796,7 @@
 .battlefield-counter-chip--shape-charge > .battlefield-counter-amount {
   margin-left: auto;
   padding-right: clamp(1px, calc(var(--bf-card-width, 124px) * 0.025), 4px);
-  font-size: clamp(11px, calc(var(--bf-card-width, 124px) * 0.105), 20px);
+  font-size: clamp(10px, calc(var(--bf-card-width, 124px) * 0.09), 18px);
   color: #f5fbff;
   text-shadow:
     0 1px 0 #06111d,
