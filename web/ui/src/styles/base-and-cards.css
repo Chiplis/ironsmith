@@ -1916,7 +1916,7 @@
 /* Every counter uses the compact charge silhouette; only its icon and
    semantic palette change. */
 .battlefield-counter-chip {
-  width: clamp(36px, calc(var(--bf-card-width, 124px) * 0.3), 46px);
+  width: clamp(32px, calc(var(--bf-card-width, 124px) * 0.27), 41px);
   height: clamp(18px, calc(var(--bf-card-height, 96px) * 0.18), 23px);
   min-height: 0;
   flex: 0 0 auto;
@@ -1943,7 +1943,7 @@
 }
 
 .battlefield-counter-chip > .battlefield-counter-icon {
-  left: clamp(4px, calc(var(--bf-card-height, 96px) * 0.045), 6px);
+  left: clamp(5px, calc(var(--bf-card-height, 96px) * 0.05), 7px);
   top: 50%;
   width: clamp(8px, calc(var(--bf-card-height, 96px) * 0.1), 12px);
   height: clamp(8px, calc(var(--bf-card-height, 96px) * 0.1), 12px);
@@ -1964,11 +1964,11 @@
   text-shadow:
     0 1px 0 #06111d,
     0 0 4px var(--counter-accent, rgba(189, 232, 255, 0.62));
-  transform: translateX(-2px);
+  transform: translateX(-4px);
 }
 
 .battlefield-counter-chip > .battlefield-counter-symbol {
-  left: clamp(4px, calc(var(--bf-card-height, 96px) * 0.045), 6px);
+  left: clamp(5px, calc(var(--bf-card-height, 96px) * 0.05), 7px);
   top: 50%;
   margin: 0;
   color: #f5fbff;
