@@ -89,10 +89,10 @@ const FALLBACK_COUNTER_PALETTES = [
 function counterPalette(rawKind) {
   const displayLabel = counterDisplayLabel(rawKind);
   if (displayLabel?.startsWith("+")) {
-    return { accent: "#e7c76d", holder: "#876a1e", fill: "#5b4510", stroke: "#ffe8a8" };
+    return { accent: "#59d7b9", holder: "#1e7565", fill: "#123f3a", stroke: "#bcfff0" };
   }
   if (displayLabel?.startsWith("-")) {
-    return { accent: "#e59a5a", holder: "#8a471c", fill: "#642f12", stroke: "#ffd0a0" };
+    return { accent: "#c69ab7", holder: "#6b405a", fill: "#45293b", stroke: "#f3d1df" };
   }
   const normalizedKind = String(rawKind || "")
     .trim()
