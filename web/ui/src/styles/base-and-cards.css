@@ -1759,7 +1759,7 @@
   content: none;
 }
 
-.battlefield-counter-charge-frame {
+.battlefield-counter-frame {
   position: absolute;
   inset: 0;
   z-index: 0;
@@ -1770,7 +1770,7 @@
   shape-rendering: geometricPrecision;
 }
 
-.battlefield-counter-charge-frame__body {
+.battlefield-counter-frame__body {
   vector-effect: non-scaling-stroke;
 }
 
@@ -1911,6 +1911,77 @@
     brightness(0) invert(1)
     drop-shadow(0 0 2px rgba(230, 249, 255, 0.98))
     drop-shadow(0 0 5px rgba(70, 183, 255, 0.92));
+}
+
+/* Every counter uses the compact charge silhouette; only its icon and
+   semantic palette change. */
+.battlefield-counter-chip {
+  width: clamp(36px, calc(var(--bf-card-width, 124px) * 0.3), 46px);
+  height: clamp(18px, calc(var(--bf-card-height, 96px) * 0.18), 23px);
+  min-height: 0;
+  flex: 0 0 auto;
+  gap: 0;
+  padding: 0 clamp(4px, calc(var(--bf-card-width, 124px) * 0.03), 6px)
+    0 clamp(14px, calc(var(--bf-card-width, 124px) * 0.11), 18px);
+  border: 0;
+  border-radius: 0;
+  background: transparent !important;
+  box-shadow: none;
+  clip-path: none;
+}
+
+.battlefield-counter-chip::before,
+.battlefield-counter-chip::after {
+  content: none;
+}
+
+.battlefield-counter-chip > .battlefield-counter-icon,
+.battlefield-counter-chip > .battlefield-counter-amount,
+.battlefield-counter-chip > .battlefield-counter-symbol {
+  position: absolute;
+  z-index: 2;
+}
+
+.battlefield-counter-chip > .battlefield-counter-icon {
+  left: clamp(3px, calc(var(--bf-card-height, 96px) * 0.04), 5px);
+  top: 50%;
+  width: clamp(8px, calc(var(--bf-card-height, 96px) * 0.1), 12px);
+  height: clamp(8px, calc(var(--bf-card-height, 96px) * 0.1), 12px);
+  margin: 0;
+  transform: translateY(-50%);
+  filter:
+    brightness(0) invert(1)
+    drop-shadow(0 0 2px var(--counter-accent, #a7c3e7));
+}
+
+.battlefield-counter-chip > .battlefield-counter-amount {
+  right: clamp(2px, calc(var(--bf-card-width, 124px) * 0.018), 3px);
+  margin: 0;
+  padding: 0;
+  color: #f5fbff;
+  font-size: clamp(8px, calc(var(--bf-card-width, 124px) * 0.065), 13px);
+  letter-spacing: -0.07em;
+  text-shadow:
+    0 1px 0 #06111d,
+    0 0 4px var(--counter-accent, rgba(189, 232, 255, 0.62));
+  transform: translateX(-1px);
+}
+
+.battlefield-counter-chip > .battlefield-counter-symbol {
+  left: clamp(3px, calc(var(--bf-card-height, 96px) * 0.04), 5px);
+  top: 50%;
+  margin: 0;
+  color: #f5fbff;
+  font-size: clamp(10px, calc(var(--bf-card-height, 96px) * 0.11), 14px);
+  transform: translateY(-50%);
+}
+
+.game-card:hover .battlefield-counter-chip,
+.game-card.hovered .battlefield-counter-chip,
+.game-card.inspected .battlefield-counter-chip {
+  background: transparent !important;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .battlefield-counter-symbol {
