@@ -1652,8 +1652,9 @@
 
 .battlefield-counter-rail {
   position: absolute;
-  top: clamp(4px, calc(var(--bf-card-height, 96px) * 0.035), 7px);
+  top: auto;
   right: clamp(4px, calc(var(--bf-card-width, 124px) * 0.035), 7px);
+  bottom: clamp(4px, calc(var(--bf-card-height, 96px) * 0.035), 7px);
   z-index: 30;
   display: flex;
   max-width: clamp(42px, calc(var(--bf-card-width, 124px) * 0.43), 58px);
@@ -1664,11 +1665,6 @@
   mix-blend-mode: normal;
   opacity: 1;
   filter: none;
-}
-
-.battlefield-counter-rail--with-pt {
-  top: auto;
-  bottom: clamp(4px, calc(var(--bf-card-height, 96px) * 0.035), 7px);
 }
 
 .battlefield-counter-chip {
@@ -1743,12 +1739,12 @@
 /* Charge counters use one compact asymmetric molded silhouette: a circular
    left shoulder flowing into a short rectangular number panel. */
 .battlefield-counter-chip--shape-charge {
-  width: clamp(48px, calc(var(--bf-card-width, 124px) * 0.38), 62px);
-  height: clamp(24px, calc(var(--bf-card-height, 96px) * 0.27), 32px);
+  width: clamp(40px, calc(var(--bf-card-width, 124px) * 0.32), 50px);
+  height: clamp(22px, calc(var(--bf-card-height, 96px) * 0.23), 28px);
   min-height: 0;
   flex: 0 0 auto;
   padding: 0 clamp(5px, calc(var(--bf-card-width, 124px) * 0.04), 8px)
-    0 clamp(19px, calc(var(--bf-card-width, 124px) * 0.16), 26px);
+    0 clamp(16px, calc(var(--bf-card-width, 124px) * 0.14), 22px);
   border: 0;
   border-radius: 0;
   background: transparent !important;
@@ -1785,10 +1781,10 @@
 
 .battlefield-counter-chip--shape-charge > .battlefield-counter-icon {
   position: absolute;
-  left: clamp(5px, calc(var(--bf-card-height, 96px) * 0.065), 8px);
+  left: clamp(4px, calc(var(--bf-card-height, 96px) * 0.055), 7px);
   top: 50%;
-  width: clamp(10px, calc(var(--bf-card-height, 96px) * 0.14), 16px);
-  height: clamp(10px, calc(var(--bf-card-height, 96px) * 0.14), 16px);
+  width: clamp(9px, calc(var(--bf-card-height, 96px) * 0.12), 14px);
+  height: clamp(9px, calc(var(--bf-card-height, 96px) * 0.12), 14px);
   margin: 0;
   transform: translateY(-50%);
 }
@@ -1796,7 +1792,7 @@
 .battlefield-counter-chip--shape-charge > .battlefield-counter-amount {
   margin-left: auto;
   padding-right: clamp(1px, calc(var(--bf-card-width, 124px) * 0.025), 4px);
-  font-size: clamp(10px, calc(var(--bf-card-width, 124px) * 0.09), 18px);
+  font-size: clamp(9px, calc(var(--bf-card-width, 124px) * 0.075), 15px);
   color: #f5fbff;
   text-shadow:
     0 1px 0 #06111d,
