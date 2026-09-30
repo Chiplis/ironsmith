@@ -1189,6 +1189,14 @@
     inset 0 0 14px rgba(0, 0, 0, 0.26);
 }
 
+/* Battlefield cards keep their grid footprint when hovered. A small lift is
+   enough to establish focus without making the first hover jump into the
+   neighbouring card or obscure its counters. */
+.game-card.field-card:not(.battlefield-token-card):is(:hover, .hovered) {
+  --card-scale: 1.02;
+  --card-translate-y: -1px;
+}
+
 @media (min-width: 900px) {
   .game-card.field-card:not(.battlefield-token-card):not(.battlefield-arena-card) {
     --battlefield-card-scale: 1.15;
@@ -1653,8 +1661,8 @@
 .battlefield-counter-rail {
   position: absolute;
   top: auto;
-  right: clamp(4px, calc(var(--bf-card-width, 124px) * 0.035), 7px);
-  bottom: clamp(4px, calc(var(--bf-card-height, 96px) * 0.035), 7px);
+  right: clamp(2px, calc(var(--bf-card-width, 124px) * 0.022), 4px);
+  bottom: clamp(2px, calc(var(--bf-card-height, 96px) * 0.022), 4px);
   z-index: 30;
   display: flex;
   max-width: clamp(42px, calc(var(--bf-card-width, 124px) * 0.43), 58px);
@@ -1943,15 +1951,21 @@
 }
 
 .battlefield-counter-chip > .battlefield-counter-icon {
-  left: clamp(5px, calc(var(--bf-card-height, 96px) * 0.05), 7px);
+  left: clamp(5px, calc(var(--bf-card-height, 96px) * 0.055), 7px);
   top: 50%;
-  width: clamp(8px, calc(var(--bf-card-height, 96px) * 0.1), 12px);
-  height: clamp(8px, calc(var(--bf-card-height, 96px) * 0.1), 12px);
+  width: clamp(10px, calc(var(--bf-card-height, 96px) * 0.14), 16px);
+  height: clamp(10px, calc(var(--bf-card-height, 96px) * 0.14), 16px);
   margin: 0;
   transform: translateY(-50%);
-  filter:
-    brightness(0) invert(1)
-    drop-shadow(0 0 2px var(--counter-accent, #a7c3e7));
+  color: #f5fbff;
+  filter: drop-shadow(0 0 1.5px var(--counter-accent, #a7c3e7));
+}
+
+.battlefield-counter-chip > .battlefield-counter-icon--generated {
+  width: clamp(13px, calc(var(--bf-card-height, 96px) * 0.18), 19px);
+  height: clamp(13px, calc(var(--bf-card-height, 96px) * 0.18), 19px);
+  stroke-width: 1.6;
+  shape-rendering: geometricPrecision;
 }
 
 .battlefield-counter-chip > .battlefield-counter-amount {
@@ -1959,16 +1973,17 @@
   margin: 0;
   padding: 0;
   color: #f5fbff;
-  font-size: clamp(8px, calc(var(--bf-card-width, 124px) * 0.065), 13px);
-  letter-spacing: -0.07em;
+  font-size: clamp(10px, calc(var(--bf-card-width, 124px) * 0.078), 15px);
+  font-weight: 900;
+  letter-spacing: -0.055em;
   text-shadow:
     0 1px 0 #06111d,
-    0 0 4px var(--counter-accent, rgba(189, 232, 255, 0.62));
+    0 1px 2px rgba(3, 11, 22, 0.92);
   transform: translateX(-4px);
 }
 
 .battlefield-counter-chip > .battlefield-counter-symbol {
-  left: clamp(5px, calc(var(--bf-card-height, 96px) * 0.05), 7px);
+  left: clamp(7px, calc(var(--bf-card-height, 96px) * 0.07), 9px);
   top: 50%;
   margin: 0;
   color: #f5fbff;
@@ -1983,6 +1998,71 @@
   text-shadow:
     0 1px 0 #06111d,
     0 0 3px var(--counter-accent, rgba(189, 232, 255, 0.62));
+}
+
+/* Keep ordinary glyphs readable beside their value, while the compact +/−
+   markers sit closer to the number as a single visual unit. */
+.battlefield-counter-chip > .battlefield-counter-amount {
+  transform: translateX(-1px);
+}
+
+.battlefield-counter-chip--power-toughness > .battlefield-counter-symbol--power {
+  left: clamp(11px, calc(var(--bf-card-height, 96px) * 0.11), 13px);
+}
+
+.battlefield-counter-chip--power-toughness > .battlefield-counter-amount {
+  transform: translateX(-5px);
+}
+
+/* Power/toughness counters need a little more presence than the semantic
+   glyph badges: keep their compact proportions, then let the contrast come
+   from the solid palette, crisp rim and a restrained outer bloom. */
+.battlefield-counter-chip--power-toughness {
+  width: clamp(37px, calc(var(--bf-card-width, 124px) * 0.31), 46px);
+  height: clamp(20px, calc(var(--bf-card-height, 96px) * 0.2), 24px);
+}
+
+.battlefield-counter-chip--power-toughness > .battlefield-counter-frame {
+  filter:
+    drop-shadow(0 0 2px var(--counter-accent, #8fd9ff))
+    drop-shadow(0 2px 2px rgba(0, 0, 0, 0.82));
+}
+
+.battlefield-counter-chip--power-toughness > .battlefield-counter-symbol--power {
+  left: 50%;
+  right: auto;
+  width: calc(100% - 2px);
+  max-width: none;
+  font-size: clamp(10px, calc(var(--bf-card-width, 124px) * 0.095), 15px);
+  letter-spacing: -0.07em;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  text-shadow:
+    0 1px 0 #06111d,
+    0 1px 2px rgba(3, 11, 22, 0.92);
+}
+
+.battlefield-counter-chip--power-toughness > .battlefield-counter-amount {
+  font-size: clamp(10px, calc(var(--bf-card-width, 124px) * 0.075), 14px);
+  font-weight: 900;
+  color: #fff;
+  text-shadow:
+    0 1px 0 #06111d,
+    0 1px 2px rgba(3, 11, 22, 0.92);
+}
+
+/* Keep the semantic glyph counters on the same baseline as +/− while giving
+   their artwork a little more vertical breathing room. The power/toughness
+   chip keeps its tighter dimensions and spacing above. */
+.battlefield-counter-chip:not(.battlefield-counter-chip--power-toughness) {
+  height: clamp(20px, calc(var(--bf-card-height, 96px) * 0.2), 25px);
+}
+
+.battlefield-counter-chip:not(.battlefield-counter-chip--power-toughness) >
+  .battlefield-counter-amount {
+  right: clamp(0px, calc(var(--bf-card-width, 124px) * 0.006), 1px);
+  transform: translateX(0);
 }
 
 .game-card:hover .battlefield-counter-chip,
