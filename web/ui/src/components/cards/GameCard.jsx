@@ -12,7 +12,11 @@ import { animate, cancelMotion, createTimeline, uiSpring } from "@/lib/motion/an
 import { debounceClick, debouncePointerDown } from "@/lib/interactionDebounce";
 import { cn } from "@/lib/utils";
 import { getPlayerAccent } from "@/lib/player-colors";
-import { fetchScryfallCardMeta, isCompiledCardName } from "@/lib/scryfall";
+import {
+  customCardCounterOverrides,
+  fetchScryfallCardMeta,
+  isCompiledCardName,
+} from "@/lib/scryfall";
 import { useScryfallImage } from "@/hooks/useScryfallImageUrl";
 import { useTranslatedCardName } from "@/i18n/useTranslatedCardName";
 import usePreparedCardFrame from "@/hooks/usePreparedCardFrame";
@@ -20,6 +24,7 @@ import { cardArtCropUrl } from "@/lib/card-image-variants";
 import MiniatureCardFrame from "./MiniatureCardFrame";
 import { cardNeedsFrame } from '@/lib/card-frame-scope';
 import {
+  aggregateCounterEntries,
   BattlefieldCounterBadge,
   buildCounterBadge,
   resolveCardCounters,
@@ -770,12 +775,19 @@ export default function GameCard({
   const stackCleanupTimersRef = useRef([]);
   const previousInspectedRef = useRef(isInspected);
   const previousGroupSizeRef = useRef(groupSize);
+  const counterOverride = variant === "battlefield" ? customCardCounterOverrides(name) : null;
   const counterBadges = variant === "battlefield"
-    ? resolveCardCounters(card?.counters, card?.counter_signature ?? card?.counterSignature)
+    ? aggregateCounterEntries(
+      counterOverride
+        || resolveCardCounters(card?.counters, card?.counter_signature ?? card?.counterSignature)
+    )
       .map(buildCounterBadge)
       .filter(Boolean)
     : [];
-  const totalBattlefieldCounters = counterBadges.reduce((sum, badge) => sum + badge.amount, 0);
+  const totalBattlefieldCounters = counterBadges.reduce(
+    (sum, badge) => sum + (badge.sourceCount ?? badge.amount),
+    0
+  );
   const activeFetchedBattlefieldMeta = fetchedBattlefieldMeta?.name === name
     ? fetchedBattlefieldMeta
     : null;

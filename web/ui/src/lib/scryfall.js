@@ -16,6 +16,7 @@ const BASIC_LAND_KEYS = new Set(
 const PREFERRED_BASIC_LAND_SET = "fdn";
 
 const CUSTOM_CARD_ART_URLS_STORAGE_KEY = "ironsmith-custom-card-art-urls";
+const CUSTOM_CARD_COUNTER_OVERRIDES_STORAGE_KEY = "ironsmith-custom-card-counter-overrides";
 const CARD_PRINT_PREFERENCES_STORAGE_KEY = "ironsmith-card-print-preferences";
 const COMPILED_CARD_NAMES_STORAGE_KEY = "ironsmith-compiled-card-names";
 const HIDDEN_CARD_NAMES = new Set(["hidden card"]);
@@ -209,6 +210,48 @@ export function customCardArtUrl(cardName) {
   if (!key) return "";
   const url = readCustomCardArtUrlMap()[key];
   return typeof url === "string" ? url.trim() : "";
+}
+
+// Counter Lab can preview a mixed numeric stack without changing the engine's
+// counter rules. These overrides are deliberately scoped to compiled showcase
+// names and only affect presentation surfaces.
+export function setCustomCardCounterOverrides(overrides) {
+  const localStorage = storage();
+  if (!localStorage) return;
+  const normalized = Object.fromEntries(
+    Object.entries(overrides || {})
+      .map(([name, counters]) => [
+        customArtKey(name),
+        Array.isArray(counters)
+          ? counters
+            .map((counter) => ({
+              kind: String(counter?.kind || "").trim(),
+              amount: Number(counter?.amount),
+            }))
+            .filter((counter) => counter.kind && Number.isFinite(counter.amount) && counter.amount > 0)
+          : [],
+      ])
+      .filter(([key, counters]) => key && counters.length > 0)
+  );
+  if (Object.keys(normalized).length === 0) {
+    localStorage.removeItem(CUSTOM_CARD_COUNTER_OVERRIDES_STORAGE_KEY);
+    return;
+  }
+  localStorage.setItem(CUSTOM_CARD_COUNTER_OVERRIDES_STORAGE_KEY, JSON.stringify(normalized));
+}
+
+export function customCardCounterOverrides(cardName) {
+  const key = customArtKey(cardName);
+  if (!key) return null;
+  const localStorage = storage();
+  if (!localStorage) return null;
+  try {
+    const parsed = JSON.parse(localStorage.getItem(CUSTOM_CARD_COUNTER_OVERRIDES_STORAGE_KEY) || "{}");
+    const counters = parsed?.[key];
+    return Array.isArray(counters) ? counters : null;
+  } catch {
+    return null;
+  }
 }
 
 export function preferredCardPrint(cardName) {

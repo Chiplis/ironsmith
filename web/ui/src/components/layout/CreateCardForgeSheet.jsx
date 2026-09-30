@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import {
   customCardArtUrl,
   resolveScryfallImageUrl,
+  setCustomCardCounterOverrides,
   setCompiledCardNames,
   setCustomCardArtUrls,
 } from "@/lib/scryfall";
@@ -116,6 +117,59 @@ const COUNTER_LAB_PRESETS = COUNTER_LAB_COUNTER_KINDS.map((kind, index) => {
     oracleText: "",
   };
 });
+
+// A presentation-only mixed stack exercises the UI aggregation path without
+// changing engine rules. The engine seeds the first source so the card is a
+// real compiled object; the UI override supplies the complete source list for
+// this visual lab card (4 × +1/+1, 1 × +1/+0, 1 × -1/-1 => net +4/+3).
+const COUNTER_LAB_MIXED_PRESET = {
+  id: "counter-lab-mixed-power-toughness",
+  label: "Mixed P/T (+4/+3)",
+  counter: { kind: "Plus One Plus One", amount: 4 },
+  overrideCounters: [
+    { kind: "Plus One Plus One", amount: 4 },
+    { kind: "+1/+0", amount: 1 },
+    { kind: "Minus One Minus One", amount: 1 },
+  ],
+  name: "Counter Lab Mixed P/T +4/+3",
+  cardTypes: ["Artifact"],
+  // Keep the engine-facing text empty: this card is a visual fixture and the
+  // descriptive breakdown lives in the UI-only override below.
+  oracleText: "",
+};
+
+const COUNTER_LAB_THREE_THREE_PRESET = {
+  id: "counter-lab-net-three-three",
+  label: "Net P/T (+3/3)",
+  counter: { kind: "Minus One Minus One", amount: 1 },
+  overrideCounters: [
+    { kind: "Minus One Minus One", amount: 1 },
+    { kind: "+2/+2", amount: 2 },
+  ],
+  name: "Counter Lab Net +3/+3",
+  cardTypes: ["Artifact"],
+  oracleText: "",
+};
+
+const COUNTER_LAB_POSITIVE_STACK_PRESET = {
+  id: "counter-lab-positive-stack",
+  label: "Positive P/T (+5/5)",
+  counter: { kind: "Plus One Plus One", amount: 1 },
+  overrideCounters: [
+    { kind: "Plus One Plus One", amount: 1 },
+    { kind: "+2/+2", amount: 2 },
+  ],
+  name: "Counter Lab Positive Stack +5/+5",
+  cardTypes: ["Artifact"],
+  oracleText: "",
+};
+
+const COUNTER_LAB_SHOWCASE_PRESETS = [
+  ...COUNTER_LAB_PRESETS,
+  COUNTER_LAB_MIXED_PRESET,
+  COUNTER_LAB_THREE_THREE_PRESET,
+  COUNTER_LAB_POSITIVE_STACK_PRESET,
+];
 
 function counterLabDraft(preset) {
   const face = blankFace(preset.name);
@@ -623,7 +677,7 @@ export default function CreateCardForgeSheet({
       const created = [];
       const failed = [];
       try {
-        for (const preset of COUNTER_LAB_PRESETS) {
+        for (const preset of COUNTER_LAB_SHOWCASE_PRESETS) {
           try {
             await game.createCustomCard({
               draft: normalizeDraftForApi(counterLabDraft(preset)),
@@ -655,11 +709,16 @@ export default function CreateCardForgeSheet({
         const knownArtUrl = seedDraft?.faces?.[0]?.artUrl
           || draft.faces?.[0]?.artUrl
           || "";
-        setCustomCardArtUrls(COUNTER_LAB_PRESETS.map((preset) => ({
+        setCustomCardCounterOverrides({
+          [COUNTER_LAB_MIXED_PRESET.name]: COUNTER_LAB_MIXED_PRESET.overrideCounters,
+          [COUNTER_LAB_THREE_THREE_PRESET.name]: COUNTER_LAB_THREE_THREE_PRESET.overrideCounters,
+          [COUNTER_LAB_POSITIVE_STACK_PRESET.name]: COUNTER_LAB_POSITIVE_STACK_PRESET.overrideCounters,
+        });
+        setCustomCardArtUrls(COUNTER_LAB_SHOWCASE_PRESETS.map((preset) => ({
           name: preset.name,
           artUrl: knownArtUrl,
         })));
-        setCompiledCardNames(COUNTER_LAB_PRESETS.map((preset) => preset.name));
+        setCompiledCardNames(COUNTER_LAB_SHOWCASE_PRESETS.map((preset) => preset.name));
 
         setOpen(false);
         await refresh(
@@ -683,7 +742,7 @@ export default function CreateCardForgeSheet({
           if (!artSourceName) return;
           const showcaseArtUrl = await resolveScryfallImageUrl(artSourceName, "normal").catch(() => "");
           if (!showcaseArtUrl) return;
-          setCustomCardArtUrls(COUNTER_LAB_PRESETS.map((preset) => ({
+          setCustomCardArtUrls(COUNTER_LAB_SHOWCASE_PRESETS.map((preset) => ({
             name: preset.name,
             artUrl: showcaseArtUrl,
           })));
