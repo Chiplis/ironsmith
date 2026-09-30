@@ -289,6 +289,20 @@ impl GameState {
         regenerated_this_turn.clear();
     }
 
+    /// Whether this permanent's entry lore instruction already completed.
+    pub fn has_processed_saga_entry_lore(&self, id: ObjectId) -> bool {
+        self.battlefield_flags.saga_entry_lore_processed.contains(&id)
+    }
+
+    /// Record completed entry processing independently of how many counters it placed.
+    pub fn mark_saga_entry_lore_processed(&mut self, id: ObjectId) {
+        if self.object(id).is_some_and(|object| object.zone == Zone::Battlefield)
+            && self.battlefield_flags_mut().saga_entry_lore_processed.insert(id)
+        {
+            self.object_store.changes.record(id);
+        }
+    }
+
     /// Check if a creature is monstrous.
     pub fn is_monstrous(&self, id: ObjectId) -> bool {
         self.battlefield_flags.monstrous.contains(&id)
@@ -1846,6 +1860,7 @@ impl GameState {
             flags.class_levels.remove(&id);
             flags.harnessed.remove(&id);
             flags.renowned.remove(&id);
+            flags.saga_entry_lore_processed.remove(&id);
             flags.flipped.remove(&id);
             flags.face_down.remove(&id);
             flags.manifested.remove(&id);

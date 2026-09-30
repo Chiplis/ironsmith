@@ -240,6 +240,9 @@ pub struct PreventionEffectManager {
     /// their damage and its results have been committed.
     follow_up_deferral_depth: usize,
 
+    /// Enclosing resolutions for follow-ups queued by nested damage proposals.
+    follow_up_replacement_scopes: Vec<crate::effects::ReplacementExecutionContext>,
+
     /// Damage actually prevented by each shield. Entries outlive exhausted
     /// shields so delayed "prevented this way" effects can read the total.
     prevented_totals: HashMap<PreventionShieldId, u32>,
@@ -262,6 +265,8 @@ pub struct PreventionFollowUp {
 /// A prevention follow-up paired with the exact damage event it modified.
 #[derive(Debug, Clone)]
 pub struct PendingPreventionFollowUp {
+    pub(crate) replacement_scope: crate::effects::ReplacementExecutionContext,
+    pub source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
     pub follow_up: PreventionFollowUp,
     pub damage: crate::events::DamageEvent,
     pub provenance: crate::provenance::ProvNodeId,
@@ -357,11 +362,38 @@ impl PreventionEffectManager {
         damage: crate::events::DamageEvent,
         provenance: crate::provenance::ProvNodeId,
     ) {
+        self.queue_follow_up_with_source_snapshot(follow_up, damage, provenance, None);
+    }
+
+    pub(crate) fn queue_follow_up_with_source_snapshot(
+        &mut self,
+        follow_up: PreventionFollowUp,
+        damage: crate::events::DamageEvent,
+        provenance: crate::provenance::ProvNodeId,
+        source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+    ) {
         self.pending_follow_ups.push(PendingPreventionFollowUp {
+            replacement_scope: self.follow_up_replacement_scopes.last().cloned().unwrap_or_default(),
+            source_snapshot,
             follow_up,
             damage,
             provenance,
         });
+    }
+
+    pub(crate) fn requeue_follow_up(&mut self, pending: PendingPreventionFollowUp) {
+        self.pending_follow_ups.push(pending);
+    }
+
+    pub(crate) fn begin_follow_up_replacement_scope(
+        &mut self,
+        scope: &crate::effects::ReplacementExecutionContext,
+    ) {
+        self.follow_up_replacement_scopes.push(scope.clone());
+    }
+
+    pub(crate) fn end_follow_up_replacement_scope(&mut self) {
+        self.follow_up_replacement_scopes.pop().expect("balanced prevention replacement scope");
     }
 
     /// Drain follow-ups produced by the unified replacement loop.

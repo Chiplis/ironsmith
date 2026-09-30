@@ -437,6 +437,9 @@ struct BattlefieldFlags {
     harnessed: HashSet<ObjectId>,
     /// Creatures that are renowned.
     renowned: HashSet<ObjectId>,
+    /// Entry lore processing completed for this battlefield incarnation, even
+    /// when its placement was prevented or replaced with no counters.
+    saga_entry_lore_processed: HashSet<ObjectId>,
     /// Flipped permanents.
     flipped: HashSet<ObjectId>,
     /// Face-down permanents.

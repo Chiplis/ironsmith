@@ -19,132 +19,184 @@ use super::lifecycle::{
 
 pub type IncubateEffect = ironsmith_core::IncubateEffect;
 
+fn execute_token_instruction(
+    effect: &IncubateEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<EffectOutcome, ExecutionError> {
+    let controller_id = resolve_player_filter(game, &effect.controller, ctx)?;
+    let amount = resolve_value(game, &effect.amount, ctx)?.max(0) as u32;
+    let count = resolve_value(game, &effect.count, ctx)?.max(0) as usize;
+
+    let mut created_ids = Vec::with_capacity(count);
+    let mut events = Vec::with_capacity(count * 2);
+    let mut replacement_outcomes = Vec::new();
+    let entry_options = TokenEntryOptions::default();
+
+    for _ in 0..count {
+        let (front, back) = incubator_token_definitions();
+        game.register_linked_face_definition(&front);
+        game.register_linked_face_definition(&back);
+
+        // CR 701.53a: incubating creates an Incubator token, so token
+        // creation replacements (Doubling Season, Parallel Lives, ...)
+        // and token limits apply (CR 111.1, 614.1).
+        let token_preview = game.object_from_token_definition(
+            crate::ids::ObjectId::from_raw(0),
+            &front,
+            controller_id,
+        );
+        let replacement = crate::events::processing::process_token_creation_for_token_with_event(
+            game,
+            controller_id,
+            1,
+            Some(token_preview.clone()),
+            ctx.cause.clone(),
+            ctx,
+        )?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::with_objects(Vec::new()));
+        }
+        let replacement = match replacement {
+            crate::events::processing::TokenCreationReplacementResult::Proceed {
+                event,
+                provenance,
+            } => {
+                ctx.provenance = provenance;
+                event
+            }
+            crate::events::processing::TokenCreationReplacementResult::Finished(outcome) => {
+                replacement_outcomes.push(outcome);
+                events.push(TriggerEvent::new_with_provenance(
+                    KeywordActionEvent::new(
+                        KeywordActionKind::Incubate,
+                        controller_id,
+                        ctx.source,
+                        amount,
+                    ),
+                    ctx.provenance,
+                ));
+                continue;
+            }
+        };
+        let controller_id = replacement.controller;
+        let token_preview = replacement.token.clone().unwrap_or(token_preview);
+        let token_count =
+            (replacement.count as usize).min(remaining_token_slots(game, controller_id));
+
+        let mut incubated_ids = Vec::with_capacity(token_count);
+        for _ in 0..token_count {
+            let id = game.new_object_id();
+            let mut token_obj = game.object_from_token_definition(id, &front, controller_id);
+            token_obj.zone = Zone::Command;
+            let token_is_creature = token_obj.is_creature();
+
+            game.add_object(token_obj);
+
+            let initial_counters = if amount > 0 {
+                vec![(CounterType::PlusOnePlusOne, amount)]
+            } else {
+                Vec::new()
+            };
+            let entry_result = game.move_object_with_etb_processing_with_initial_counters_with_dm(
+                id,
+                Zone::Battlefield,
+                initial_counters,
+                &mut ctx.decision_maker,
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::with_objects(Vec::new()));
+            }
+            let Some(entry_result) = entry_result else {
+                game.remove_object(id);
+                continue;
+            };
+
+            let entered_id = entry_result.new_id;
+            incubated_ids.push(entered_id);
+
+            let entered_battlefield = game
+                .object(entered_id)
+                .is_some_and(|obj| obj.zone == Zone::Battlefield);
+            if entered_battlefield {
+                let entered_is_creature = game.current_is_creature(entered_id);
+                let tracks_creature_etb = entered_is_creature || token_is_creature;
+                apply_token_battlefield_entry(
+                    game,
+                    ctx,
+                    entered_id,
+                    controller_id,
+                    tracks_creature_etb,
+                    entry_options,
+                    Zone::Command,
+                    entry_result.enters_tapped,
+                    &mut events,
+                )?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::with_objects(Vec::new()));
+                }
+            }
+        }
+
+        if !incubated_ids.is_empty() {
+            game.queue_trigger_event(
+                ctx.provenance,
+                TriggerEvent::new_with_provenance(
+                    crate::events::CreateTokensEvent::with_token_cause(
+                        controller_id,
+                        incubated_ids.len() as u32,
+                        token_preview,
+                        ctx.cause.clone(),
+                    ),
+                    ctx.provenance,
+                ),
+            );
+        }
+        created_ids.extend(incubated_ids);
+        let additional_ids = create_replacement_additional_tokens(
+            game,
+            ctx,
+            controller_id,
+            &replacement.additional_tokens,
+            &mut events,
+        )?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::with_objects(Vec::new()));
+        }
+        created_ids.extend(additional_ids);
+
+        events.push(TriggerEvent::new_with_provenance(
+            KeywordActionEvent::new(
+                KeywordActionKind::Incubate,
+                controller_id,
+                ctx.source,
+                amount,
+            ),
+            ctx.provenance,
+        ));
+    }
+
+    let original = EffectOutcome::with_objects(created_ids.clone())
+        .with_result_objects(created_ids.clone())
+        .with_events(events)
+        .with_affected_objects_from_game(game, created_ids);
+    if replacement_outcomes.is_empty() {
+        Ok(original)
+    } else {
+        replacement_outcomes.push(original);
+        Ok(EffectOutcome::aggregate(replacement_outcomes))
+    }
+}
+
 impl EffectExecutor for IncubateEffect {
     fn execute(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let controller_id = resolve_player_filter(game, &self.controller, ctx)?;
-        let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
-        let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
-
-        let mut created_ids = Vec::with_capacity(count);
-        let mut events = Vec::with_capacity(count * 2);
-        let entry_options = TokenEntryOptions::default();
-
-        for _ in 0..count {
-            let (front, back) = incubator_token_definitions();
-            game.register_linked_face_definition(&front);
-            game.register_linked_face_definition(&back);
-
-            // CR 701.53a: incubating creates an Incubator token, so token
-            // creation replacements (Doubling Season, Parallel Lives, ...)
-            // and token limits apply (CR 111.1, 614.1).
-            let token_preview = game.object_from_token_definition(
-                crate::ids::ObjectId::from_raw(0),
-                &front,
-                controller_id,
-            );
-            let replacement =
-                crate::events::processing::process_token_creation_for_token_with_event(
-                    game,
-                    controller_id,
-                    1,
-                    Some(token_preview.clone()),
-                    ctx.cause.clone(),
-                    &mut ctx.decision_maker,
-                );
-            let token_count =
-                (replacement.count as usize).min(remaining_token_slots(game, controller_id));
-
-            let mut incubated_ids = Vec::with_capacity(token_count);
-            for _ in 0..token_count {
-                let id = game.new_object_id();
-                let mut token_obj = game.object_from_token_definition(id, &front, controller_id);
-                token_obj.zone = Zone::Command;
-                let token_is_creature = token_obj.is_creature();
-
-                game.add_object(token_obj);
-
-                let initial_counters = if amount > 0 {
-                    vec![(CounterType::PlusOnePlusOne, amount)]
-                } else {
-                    Vec::new()
-                };
-                let Some(entry_result) = game
-                    .move_object_with_etb_processing_with_initial_counters_with_dm(
-                        id,
-                        Zone::Battlefield,
-                        initial_counters,
-                        &mut ctx.decision_maker,
-                    )
-                else {
-                    game.remove_object(id);
-                    continue;
-                };
-
-                let entered_id = entry_result.new_id;
-                incubated_ids.push(entered_id);
-
-                let entered_battlefield = game
-                    .object(entered_id)
-                    .is_some_and(|obj| obj.zone == Zone::Battlefield);
-                if entered_battlefield {
-                    let entered_is_creature = game.current_is_creature(entered_id);
-                    let tracks_creature_etb = entered_is_creature || token_is_creature;
-                    apply_token_battlefield_entry(
-                        game,
-                        ctx,
-                        entered_id,
-                        controller_id,
-                        tracks_creature_etb,
-                        entry_options,
-                        Zone::Command,
-                        entry_result.enters_tapped,
-                        &mut events,
-                    )?;
-                }
-            }
-
-            if !incubated_ids.is_empty() {
-                game.queue_trigger_event(
-                    ctx.provenance,
-                    TriggerEvent::new_with_provenance(
-                        crate::events::CreateTokensEvent::with_token_cause(
-                            controller_id,
-                            incubated_ids.len() as u32,
-                            token_preview,
-                            ctx.cause.clone(),
-                        ),
-                        ctx.provenance,
-                    ),
-                );
-            }
-            created_ids.extend(incubated_ids);
-            let additional_ids = create_replacement_additional_tokens(
-                game,
-                ctx,
-                controller_id,
-                &replacement.additional_tokens,
-                &mut events,
-            )?;
-            created_ids.extend(additional_ids);
-
-            events.push(TriggerEvent::new_with_provenance(
-                KeywordActionEvent::new(
-                    KeywordActionKind::Incubate,
-                    controller_id,
-                    ctx.source,
-                    amount,
-                ),
-                ctx.provenance,
-            ));
-        }
-
-        Ok(EffectOutcome::with_objects(created_ids.clone())
-            .with_events(events)
-            .with_affected_objects_from_game(game, created_ids))
+        super::lifecycle::execute_token_instruction_atomically(game, ctx, |game, ctx| {
+            execute_token_instruction(self, game, ctx)
+        })
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

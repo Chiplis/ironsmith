@@ -274,6 +274,26 @@ pub fn parse_prior_effect_action(words: &[&str]) -> Option<(PriorEffectAction, u
         (&["revealed"], PriorEffectAction::Revealed),
         (&["sacrificed"], PriorEffectAction::Sacrificed),
         (&["searched"], PriorEffectAction::Searched),
+        (
+            &["shuffled", "into", "your", "library"],
+            PriorEffectAction::Shuffled,
+        ),
+        (
+            &["shuffled", "into", "their", "library"],
+            PriorEffectAction::Shuffled,
+        ),
+        (
+            &["shuffled", "into", "their", "libraries"],
+            PriorEffectAction::Shuffled,
+        ),
+        (
+            &["shuffled", "into", "its", "owner's", "library"],
+            PriorEffectAction::Shuffled,
+        ),
+        (
+            &["shuffled", "into", "their", "owners'", "libraries"],
+            PriorEffectAction::Shuffled,
+        ),
         (&["shuffled"], PriorEffectAction::Shuffled),
         (&["tapped"], PriorEffectAction::Tapped),
     ];

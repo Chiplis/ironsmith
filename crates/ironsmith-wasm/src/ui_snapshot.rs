@@ -4257,7 +4257,7 @@ mod tests {
             3,
             None,
             None,
-        );
+        ).unwrap();
         let card = CardBuilder::new(CardId::from_raw(90_810), "Other Head Secret")
             .card_types(vec![CardType::Instant])
             .build();

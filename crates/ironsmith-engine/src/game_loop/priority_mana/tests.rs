@@ -1648,7 +1648,7 @@ fn typed_mana_spend_predicates_preserve_negative_cast_and_source_activation_sema
 }
 
 #[test]
-fn u078_each_doubled_mana_unit_publishes_an_event_and_queues_its_own_payload() {
+fn u078_pool_doubling_publishes_each_spend_without_copying_the_old_payload() {
     use crate::effects::{DoubleManaPoolEffect, EffectExecutor, ExecutionContext};
 
     let mut game = setup_game();
@@ -1683,7 +1683,7 @@ fn u078_each_doubled_mana_unit_publishes_an_event_and_queues_its_own_payload() {
     let mut ctx = ExecutionContext::new_default(mana_source, alice);
     DoubleManaPoolEffect::you()
         .execute(&mut game, &mut ctx)
-        .expect("doubling should preserve the complete mana-unit payload");
+        .expect("pool doubling should add new mana of the same type");
 
     let creature = CardDefinitionBuilder::new(CardId::new(), "Paid Creature")
         .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]))
@@ -1713,7 +1713,10 @@ fn u078_each_doubled_mana_unit_publishes_an_event_and_queues_its_own_payload() {
     );
 
     let entries = game.take_pending_trigger_entries();
-    assert_eq!(entries.len(), 2, "CR 106.6a requires one trigger per unit");
+    // CR 106.6 (Doubling Cube example): new pool-doubling mana has no
+    // inherited spending bonuses. CR 106.6a concerns replacement effects
+    // on mana production, which this operation is not.
+    assert_eq!(entries.len(), 1, "only the original mana carries a spend payload");
     assert!(entries.iter().all(|entry| {
         entry
             .tagged_objects

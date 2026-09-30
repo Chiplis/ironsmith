@@ -21,6 +21,9 @@ pub enum ReturnControllerShape {
     You,
     Owner,
     ThatPlayer,
+    /// "under an opponent's control": the resolving player chooses one of
+    /// their opponents, who becomes the entering permanent's controller.
+    AnOpponent,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -372,6 +375,15 @@ fn parse_destination(tokens: &[OwnedLexToken]) -> Option<ReturnDestinationShape>
         )),
     ) {
         ReturnControllerShape::ThatPlayer
+    } else if marker_anywhere(
+        destination_head,
+        alt((
+            primitives::phrase(&["under", "an", "opponent", "control"]).void(),
+            primitives::phrase(&["under", "an", "opponents", "control"]).void(),
+            primitives::phrase(&["under", "an", "opponent's", "control"]).void(),
+        )),
+    ) {
+        ReturnControllerShape::AnOpponent
     } else if marker_anywhere(
         destination_head,
         alt((

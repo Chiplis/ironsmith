@@ -909,6 +909,14 @@ impl EffectExecutor for ApplyContinuousEffect {
             return Ok(EffectOutcome::target_invalid());
         }
         let mut source_type = self.source_type.clone();
+        // A resolved single-object instruction is a resolution effect too.
+        // Keep its locked identity explicit, as for multi-object instructions.
+        if source_type.is_none()
+            && let EffectTarget::Specific(object) = &target
+        {
+            source_type = Some(EffectSourceType::Resolution { locked_targets: vec![*object] });
+        }
+
 
         let filter_locked_targets = if let EffectTarget::Filter(filter) = &target {
             // Tagged filters depend on spell-resolution context and cannot be evaluated

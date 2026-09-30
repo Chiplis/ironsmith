@@ -289,7 +289,7 @@ pub(super) fn reveka_activation_runtime_keeps_source_tapped_for_next_untap() {
     game.turn.phase = crate::game_state::Phase::Beginning;
     game.turn.step = Some(crate::game_state::Step::Untap);
     let mut dm = crate::decision::SelectFirstDecisionMaker;
-    crate::turn::execute_untap_step_with(&mut game, &mut dm);
+    crate::turn::execute_untap_step_with(&mut game, &mut dm).unwrap();
 
     assert!(
         game.is_tapped(reveka_id),

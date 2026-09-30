@@ -84,6 +84,17 @@ pub fn parse_combat_damage_target_shape_lexed(
                 target_tokens: each_of_tokens,
             });
         }
+        // "each of those permanents and/or players": the objects and players
+        // an earlier clause announced as targets, not a battlefield filter.
+        if each_of_tokens
+            .first()
+            .is_some_and(|token| token.as_word() == Some("those"))
+            && one_of_words_occurs(each_of_tokens, &["player", "players"])
+        {
+            return Ok(CombatDamageTargetShape::EachOfTarget {
+                target_tokens: each_of_tokens,
+            });
+        }
     }
     if let Some(shape) = parse_combat_player_damage_target_shape_lexed(target_tokens, false) {
         return Ok(CombatDamageTargetShape::PlayerGroup(shape));

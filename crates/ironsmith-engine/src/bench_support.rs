@@ -592,7 +592,7 @@ pub fn aura_grant_probe() {
         game.is_tapped(bob_creature)
     );
     let mut dm = crate::decision::SelectFirstDecisionMaker;
-    crate::turn::execute_untap_step_with(&mut game, &mut dm);
+    crate::turn::execute_untap_step_with(&mut game, &mut dm).unwrap();
     eprintln!(
         "post-untap: tapped={} (expected true)",
         game.is_tapped(bob_creature)

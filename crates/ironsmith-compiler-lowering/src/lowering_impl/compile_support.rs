@@ -1398,6 +1398,13 @@ fn resolve_effect_player_filter(
             PlayerFilter::target_player(),
             vec![ChooseSpec::target_player()],
         ),
+        PlayerAst::AnotherTarget if allow_target => (
+            PlayerFilter::another_target_player(),
+            vec![ChooseSpec::target(ChooseSpec::Player(PlayerFilter::excluding(
+                PlayerFilter::Any,
+                PlayerFilter::target_player(),
+            )))],
+        ),
         PlayerAst::TargetOpponent if allow_target_opponent => (
             PlayerFilter::Target(Box::new(PlayerFilter::Opponent)),
             vec![ChooseSpec::target(ChooseSpec::Player(

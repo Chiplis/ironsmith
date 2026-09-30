@@ -2256,6 +2256,16 @@ pub(super) fn compile_subject_verb_middle(
                 return Ok(Some((source_choice_prelude, choices)));
             }
 
+            // "Put target cards from a player's graveyard on top of their
+            // library. That player ...": with no earlier player antecedent,
+            // the owner of the moved targets is the discourse player.
+            if spec.is_target()
+                && destination_player_surface.is_some()
+                && matches!(zone, Zone::Library | Zone::Hand | Zone::Graveyard)
+                && ctx.last_player_filter.is_none()
+            {
+                ctx.last_player_filter = Some(PlayerFilter::AliasedOwnerOf(ObjectRef::Target));
+            }
             source_choice_prelude.push(effect);
             Ok((source_choice_prelude, choices))
         }
@@ -2297,10 +2307,16 @@ pub(super) fn compile_subject_verb_middle(
             source_tags,
         } => {
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            // Reference resolution can relocate the pool (a looked-at hand
+            // rather than the default exiled pool); search where it now is.
+            let zones = match resolved_filter.zone {
+                Some(zone) if !zones.is_empty() && !zones.contains(&zone) => vec![zone],
+                _ => zones.clone(),
+            };
             let mut effect =
                 crate::effects::TagMatchingObjectsEffect::new(resolved_filter, tag.clone());
             if !zones.is_empty() {
-                effect = effect.in_zones(zones.clone());
+                effect = effect.in_zones(zones);
             }
             if !source_tags.is_empty() {
                 effect = effect.from_tagged_sources(

@@ -4855,6 +4855,22 @@ fn has_adjacent_token_producer_followup(
 }
 
 #[inline(never)]
+fn statement_omits_shared_subject(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let words = words
+        .iter()
+        .copied()
+        .skip_while(|word| matches!(*word, "then" | "and"))
+        .collect::<Vec<_>>();
+    let Some(first) = words.first() else {
+        return false;
+    };
+    effect_grammar::chain_splitting::find_chain_verb_words(&words)
+        .is_some_and(|verb| verb.word_index == 0)
+        && first.len() > 1
+        && first.ends_with('s')
+}
+
 pub(super) fn parse_flat_independent_statements(
     sentences: &[&[OwnedLexToken]],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -4902,6 +4918,17 @@ pub(super) fn parse_flat_independent_statements(
     let statements =
         super::lex_chain_helpers::split_segments_on_comma_then_lexed(sentences.to_vec());
     if statements.len() < 2 {
+        return Ok(None);
+    }
+    // "Target player gains 4 life, then gains 4 life for each ...": a later
+    // member that opens with a conjugated verb has an omitted subject shared
+    // with the previous member, so it is not an independent statement. (A
+    // bare imperative such as "then draw a card" still is.)
+    if statements
+        .iter()
+        .skip(1)
+        .any(|statement| statement_omits_shared_subject(statement))
+    {
         return Ok(None);
     }
     let mut effects = Vec::new();

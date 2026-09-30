@@ -486,6 +486,67 @@ pub fn parse_prevention_reflect_followup_shape(tokens: &[OwnedLexToken]) -> bool
     deal_idx > 0 && exact_unit(after_deal, reflect_tail)
 }
 
+/// What else happens after "<source> deals that much damage to that source's
+/// controller" in a prevention rider.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreventionSourceControllerReflectTail {
+    None,
+    /// "... and you draw that many cards."
+    DrawThatMany,
+    /// "... and you gain that much life."
+    GainThatMuchLife,
+}
+
+fn prevented_this_way_opening<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    alt((primitives::kw("if"), primitives::kw("when")))
+        .void()
+        .parse_next(input)?;
+    primitives::phrase(&["damage", "is", "prevented", "this", "way"])
+        .void()
+        .parse_next(input)?;
+    opt(primitives::comma()).void().parse_next(input)
+}
+
+fn source_controller_reflect_tail<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<PreventionSourceControllerReflectTail> {
+    primitives::phrase(&["that", "much", "damage", "to", "that"])
+        .void()
+        .parse_next(input)?;
+    alt((primitives::kw("source's"), primitives::kw("sources")))
+        .void()
+        .parse_next(input)?;
+    primitives::kw("controller").void().parse_next(input)?;
+    let tail = opt((
+        primitives::kw("and").void(),
+        alt((
+            primitives::phrase(&["you", "draw", "that", "many", "cards"])
+                .value(PreventionSourceControllerReflectTail::DrawThatMany),
+            primitives::phrase(&["you", "gain", "that", "much", "life"])
+                .value(PreventionSourceControllerReflectTail::GainThatMuchLife),
+        )),
+    ))
+    .parse_next(input)?;
+    Ok(tail.map_or(PreventionSourceControllerReflectTail::None, |(_, tail)| tail))
+}
+
+/// "If/When damage is prevented this way, <source> deals that much damage to
+/// that source's controller[ and you draw that many cards]." The source is
+/// the one chosen by the preceding next-time prevention shield, so the
+/// sentence is a rider on that shield rather than an independent effect.
+pub fn parse_prevention_source_controller_reflect_followup_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<PreventionSourceControllerReflectTail> {
+    let clause = trimmed(tokens);
+    let ((), rest) = primitives::parse_prefix(clause, prevented_this_way_opening)?;
+    let (deal_idx, (), after_deal) = primitives::find_prefix(rest, || deal_marker)?;
+    if deal_idx == 0 {
+        return None;
+    }
+    let (tail, remainder) = primitives::parse_prefix(after_deal, source_controller_reflect_tail)?;
+    trimmed(remainder).is_empty().then_some(tail)
+}
+
 fn prevention_gain_life_followup<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     primitives::phrase(&[
         "you",

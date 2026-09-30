@@ -305,7 +305,7 @@ fn representative_segment_targets(
     ctx: &mut ExecutionContext,
     effect: &Effect,
     effect_target_assignments: Vec<crate::game_state::TargetAssignment>,
-) -> Result<Option<Vec<crate::effects::ResolvedTarget>>, GameLoopError> {
+) -> Result<Option<Vec<crate::effects::ResolvedTarget>>, crate::effects::ExecutionError> {
     ctx.with_temp_target_assignments(effect_target_assignments, |ctx| {
         let Some(profile) = effect.target_selection_profile() else {
             return Ok(None);
@@ -317,7 +317,7 @@ fn representative_segment_targets(
         ) {
             Ok(id) => id,
             Err(crate::effects::ExecutionError::InvalidTarget) => return Ok(None),
-            Err(err) => return Err(GameLoopError::ResolutionFailed(err.to_string())),
+            Err(err) => return Err(err),
         };
         Ok(Some(vec![crate::effects::ResolvedTarget::Object(
             object_id,
@@ -329,14 +329,13 @@ fn apply_self_replacement_tag_prelude(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     effects: &[Effect],
-) -> Result<(), GameLoopError> {
+) -> Result<(), crate::effects::ExecutionError> {
     for effect in effects {
         let is_prelude_effect = effect.is_resolution_prelude();
         if !is_prelude_effect {
             break;
         }
-        crate::effects::execute_effect(game, effect, ctx)
-            .map_err(|err| GameLoopError::ResolutionFailed(err.to_string()))?;
+        crate::effects::execute_effect(game, effect, ctx)?;
     }
     Ok(())
 }
@@ -474,34 +473,27 @@ fn evaluate_self_replacement_branch(
     segment_effects: &[Effect],
     representative_effect: Option<&Effect>,
     representative_assignments: Vec<crate::game_state::TargetAssignment>,
-) -> Result<bool, GameLoopError> {
+) -> Result<bool, crate::effects::ExecutionError> {
     let original_tagged_objects = ctx.tagged_objects.clone();
     apply_self_replacement_tag_prelude(game, ctx, segment_effects)?;
     let Some(effect) = representative_effect else {
         let result =
-            crate::condition_eval::evaluate_condition_resolution(game, &branch.condition, ctx)
-                .map_err(|err| GameLoopError::ResolutionFailed(err.to_string()));
+            crate::condition_eval::evaluate_condition_resolution(game, &branch.condition, ctx);
         ctx.tagged_objects = original_tagged_objects;
         return result;
     };
 
     let representative_targets =
         representative_segment_targets(game, ctx, effect, representative_assignments.clone())?;
-    let result = ctx
-        .with_temp_target_assignments(representative_assignments, |ctx| {
-            if let Some(targets) = representative_targets {
-                ctx.with_temp_targets(targets, |ctx| {
-                    crate::condition_eval::evaluate_condition_resolution(
-                        game,
-                        &branch.condition,
-                        ctx,
-                    )
-                })
-            } else {
+    let result = ctx.with_temp_target_assignments(representative_assignments, |ctx| {
+        if let Some(targets) = representative_targets {
+            ctx.with_temp_targets(targets, |ctx| {
                 crate::condition_eval::evaluate_condition_resolution(game, &branch.condition, ctx)
-            }
-        })
-        .map_err(|err| GameLoopError::ResolutionFailed(err.to_string()));
+            })
+        } else {
+            crate::condition_eval::evaluate_condition_resolution(game, &branch.condition, ctx)
+        }
+    });
     ctx.tagged_objects = original_tagged_objects;
     result
 }
@@ -602,16 +594,9 @@ pub(crate) fn execute_resolution_program(
     chosen_modes: Option<&[usize]>,
     valid_target_assignments: &[crate::game_state::TargetAssignment],
 ) -> Result<Vec<crate::triggers::TriggerEvent>, GameLoopError> {
-    execute_resolution_program_with_trigger_matching(
-        game,
-        ctx,
-        controller,
-        source_id,
-        program,
-        chosen_modes,
-        valid_target_assignments,
-        false,
-    )
+    execute_resolution_program_typed(
+        game, ctx, controller, source_id, program, chosen_modes, valid_target_assignments,
+    ).map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))
 }
 
 /// Execute a resolution program. With `match_triggers_per_instruction`, the
@@ -633,20 +618,78 @@ pub(crate) fn execute_resolution_program_with_trigger_matching(
     valid_target_assignments: &[crate::game_state::TargetAssignment],
     match_triggers_per_instruction: bool,
 ) -> Result<Vec<crate::triggers::TriggerEvent>, GameLoopError> {
-    crate::effects::with_per_event_trigger_matching(game, match_triggers_per_instruction, |game| {
-        let mut events = execute_resolution_program_inner(
-            game,
-            ctx,
-            program,
-            chosen_modes,
-            valid_target_assignments,
-            match_triggers_per_instruction,
-        )?;
-        // Reported events a boundary already matched are not matched again
-        // by whoever consumes this resolution's events.
-        crate::effects::retain_unmatched_outcome_events(game, &mut events);
-        Ok(events)
-    })
+    execute_resolution_program_with_trigger_matching_typed(
+        game,
+        ctx,
+        _controller,
+        _source_id,
+        program,
+        chosen_modes,
+        valid_target_assignments,
+        match_triggers_per_instruction,
+    )
+    .map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))
+}
+/// Execute a whole effect program while retaining typed errors and restoring
+/// game and owned context on failure or an unanswered choice.
+pub(crate) fn execute_resolution_program_typed(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    controller: PlayerId,
+    source_id: ObjectId,
+    program: &crate::resolution::ResolutionProgram,
+    chosen_modes: Option<&[usize]>,
+    valid_target_assignments: &[crate::game_state::TargetAssignment],
+) -> Result<Vec<crate::triggers::TriggerEvent>, crate::effects::ExecutionError> {
+    execute_resolution_program_with_trigger_matching_typed(
+        game,
+        ctx,
+        controller,
+        source_id,
+        program,
+        chosen_modes,
+        valid_target_assignments,
+        false,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn execute_resolution_program_with_trigger_matching_typed(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    _controller: PlayerId,
+    _source_id: ObjectId,
+    program: &crate::resolution::ResolutionProgram,
+    chosen_modes: Option<&[usize]>,
+    valid_target_assignments: &[crate::game_state::TargetAssignment],
+    match_triggers_per_instruction: bool,
+) -> Result<Vec<crate::triggers::TriggerEvent>, crate::effects::ExecutionError> {
+    let checkpoint = game.clone();
+    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+    let result = crate::effects::with_per_event_trigger_matching(
+        game,
+        match_triggers_per_instruction,
+        |game| {
+            let mut events = execute_resolution_program_inner(
+                game,
+                ctx,
+                program,
+                chosen_modes,
+                valid_target_assignments,
+                match_triggers_per_instruction,
+            )?;
+            // Reported events a boundary already matched are not matched again
+            // by whoever consumes this resolution's events.
+            crate::effects::retain_unmatched_outcome_events(game, &mut events);
+            Ok(events)
+        },
+    );
+    if result.is_err() || ctx.decision_maker.awaiting_choice() {
+        *game = checkpoint;
+        context_checkpoint.restore(ctx);
+        return result.map(|_| Vec::new());
+    }
+    result
 }
 
 fn execute_resolution_program_inner(
@@ -656,7 +699,7 @@ fn execute_resolution_program_inner(
     chosen_modes: Option<&[usize]>,
     valid_target_assignments: &[crate::game_state::TargetAssignment],
     match_triggers_per_instruction: bool,
-) -> Result<Vec<crate::triggers::TriggerEvent>, GameLoopError> {
+) -> Result<Vec<crate::triggers::TriggerEvent>, crate::effects::ExecutionError> {
     // CR 805.9: a singular "active player" in an ability is selected by that
     // ability's controller when its effect is applied. Bind the selection once
     // for this resolution so player filters, object filters, values, and nested
@@ -738,7 +781,7 @@ fn execute_resolution_program_inner(
                 0 => (segment.default_effects.clone(), false),
                 1 => (applicable[0].replacement_effects.clone(), true),
                 _ => {
-                    return Err(GameLoopError::ResolutionFailed(
+                    return Err(crate::effects::ExecutionError::InternalError(
                         "multiple self-replacement branches applied during resolution".to_string(),
                     ));
                 }
@@ -846,7 +889,7 @@ fn execute_resolution_program_inner(
                     all_events.extend(outcome.events);
                 }
                 Err(crate::effects::ExecutionError::InvalidTarget) => {}
-                Err(err) => return Err(GameLoopError::ResolutionFailed(err.to_string())),
+                Err(err) => return Err(err),
             }
             // CR 724.1b/724.2b exile the resolving object. No later
             // instructions in its resolution program are performed.
@@ -879,6 +922,10 @@ fn execute_resolution_program_inner(
     all_events.append(&mut unmatched_outcome_events);
     Ok(all_events)
 }
+
+#[cfg(test)]
+#[path = "resolution_program_failure_tests.rs"]
+mod resolution_program_failure_tests;
 
 // ============================================================================
 // Stack Resolution
@@ -1660,7 +1707,7 @@ pub(super) fn resolve_stack_entry_full(
                 }
 
                 if let Some(ref mut tq) = trigger_queue {
-                    handle_saga_enters_battlefield(game, result.new_id, tq, decision_maker);
+                    handle_saga_enters_battlefield(game, result.new_id, tq, decision_maker).map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))?;
                 } else {
                     let mut temp_queue = TriggerQueue::new();
                     handle_saga_enters_battlefield(
@@ -1668,7 +1715,7 @@ pub(super) fn resolve_stack_entry_full(
                         result.new_id,
                         &mut temp_queue,
                         decision_maker,
-                    );
+                    ).map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))?;
                 }
 
                 // Check for ETB triggers and add them to the trigger queue

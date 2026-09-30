@@ -464,7 +464,7 @@ mod echo {
 
     fn echo_triggers(game: &mut GameState, patrol: ObjectId) -> usize {
         let mut dm = Dm::default();
-        ironsmith::turn::execute_untap_step_with(game, &mut dm);
+        ironsmith::turn::execute_untap_step_with(game, &mut dm).unwrap();
         step_triggers(game, Step::Upkeep, &mut dm);
         let count = game.stack.iter().filter(|entry| entry.object_id == patrol).count();
         game.stack.clear();
@@ -622,7 +622,7 @@ mod stun {
         let mut dm = Dm::default();
         game.turn.phase = Phase::Beginning;
         game.turn.step = Some(Step::Untap);
-        ironsmith::turn::execute_untap_step_with(&mut game, &mut dm);
+        ironsmith::turn::execute_untap_step_with(&mut game, &mut dm).unwrap();
         assert!(game.is_tapped(bear));
         assert_eq!(game.counter_count(bear, CounterType::Stun), 1);
     }

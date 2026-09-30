@@ -484,7 +484,7 @@ fn run(
                 .filter_map(|s| g.find_object_by_stable_id(*s))
                 .collect();
             dm.stage = format!("actual_precombat_main_chapter_{chapter}");
-            ironsmith::game_loop::add_saga_lore_counters_with_dm(&mut g, &mut q, dm);
+            ironsmith::game_loop::add_saga_lore_counters_with_dm(&mut g, &mut q, dm).unwrap();
             error = finish(&mut g, &mut q, dm).err();
             if error.is_some() {
                 break;

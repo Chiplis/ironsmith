@@ -500,3 +500,6 @@ pub use sacrifice::{
     EachPlayerSacrificesEffect, SacrificeEffect, SacrificePlayerEffect, SacrificeTargetEffect,
 };
 pub use shuffle_objects_into_library::ShuffleObjectsIntoLibraryEffect;
+
+#[cfg(test)]
+mod zone_entry_carrier_tests;

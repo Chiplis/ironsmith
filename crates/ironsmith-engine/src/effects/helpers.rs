@@ -1674,7 +1674,14 @@ fn resolve_controller_of(
     match object_ref {
         ObjectRef::FilterCandidate => Err(ExecutionError::InvalidTarget),
         ObjectRef::Target => {
-            let target_id = find_target_object(&ctx.targets)?;
+            let target_id = match find_target_object(&ctx.targets) {
+                Ok(id) => id,
+                Err(error) => {
+                    return delayed_captured_target_snapshot(ctx)
+                        .map(|snapshot| snapshot.controller)
+                        .ok_or(error);
+                }
+            };
             if let Some(obj) = game.object(target_id) {
                 Ok(game.controller_of(obj))
             } else if let Some(snapshot) = ctx.target_snapshots.get(&target_id) {
@@ -1765,7 +1772,14 @@ fn resolve_owner_of(
     match object_ref {
         ObjectRef::FilterCandidate => Err(ExecutionError::InvalidTarget),
         ObjectRef::Target => {
-            let target_id = find_target_object(&ctx.targets)?;
+            let target_id = match find_target_object(&ctx.targets) {
+                Ok(id) => id,
+                Err(error) => {
+                    return delayed_captured_target_snapshot(ctx)
+                        .map(|snapshot| snapshot.owner)
+                        .ok_or(error);
+                }
+            };
             if let Some(obj) = game.object(target_id) {
                 Ok(obj.owner)
             } else if let Some(snapshot) = ctx.target_snapshots.get(&target_id) {
@@ -1804,6 +1818,18 @@ fn resolve_owner_of(
 // ============================================================================
 
 /// Find the first object target in the targets list.
+/// A delayed triggered ability has no targets of its own chosen by the
+/// scheduling ability; when it was registered, that ability's object targets
+/// were captured as `targeted_<index>` snapshots. "That player"/"its owner"
+/// references to the scheduling ability's target read them from there
+/// ("... target cards from a player's graveyard ... That player draws a card
+/// at the beginning of the next turn's upkeep").
+fn delayed_captured_target_snapshot<'a>(
+    ctx: &'a ExecutionContext<'_>,
+) -> Option<&'a crate::snapshot::ObjectSnapshot> {
+    ctx.get_tagged("targeted_0")
+}
+
 pub fn find_target_object(targets: &[ResolvedTarget]) -> Result<ObjectId, ExecutionError> {
     for target in targets {
         if let ResolvedTarget::Object(id) = target {
@@ -2286,10 +2312,6 @@ pub fn resolve_objects_for_effect_with_choice_description(
             return Ok(Vec::new());
         }
 
-        // `rules_min`: the rules' requirement before clamping to the local
-        // candidate count (which differs between the owner and peers holding
-        // placeholders); see `record_hidden_shortfall_obligations`.
-        let mut rules_min = count.min;
         let (min, max) = if count.is_dynamic_x() {
             let x = if let Some(x) = resolved_dynamic_count {
                 x
@@ -2298,7 +2320,6 @@ pub fn resolve_objects_for_effect_with_choice_description(
                     ExecutionError::UnresolvableValue("X value not set".to_string())
                 })? as usize
             };
-            rules_min = if count.is_up_to_dynamic_x() { 0 } else { x };
             if count.is_up_to_dynamic_x() {
                 (0, x.min(candidates.len()))
             } else if spec.count_value().is_some() {
@@ -2450,16 +2471,6 @@ pub fn resolve_objects_for_effect_with_choice_description(
             let chosen = normalize_objects_for_count(chosen, &candidates, 0, max);
             game.record_hidden_identity_obligations(
                 &chosen,
-                filter,
-                &hidden_filter_ctx,
-                &description,
-            );
-            // Fewer than the rules require: the owner claims the other
-            // offered hidden cards do not match, checked once each is opened.
-            game.record_hidden_shortfall_obligations(
-                &game.all_hand_card_ids(),
-                &chosen,
-                rules_min,
                 filter,
                 &hidden_filter_ctx,
                 &description,

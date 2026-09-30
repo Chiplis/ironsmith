@@ -363,7 +363,7 @@ mod tests {
     ) {
         let model: crate::static_abilities::CompiledStaticAbility =
             ironsmith_core::StaticAbility::enters_with_counters_and_subtypes_for_filter(
-                ObjectFilter::creature(),
+                ObjectFilter::source(),
                 CounterType::PlusOnePlusOne,
                 count,
                 Vec::new(),
@@ -547,4 +547,60 @@ mod tests {
             "expected nonbattlefield shuffle replacement to be generated from hand"
         );
     }
+
+    #[test]
+    fn entering_source_global_counter_ability_does_not_modify_its_own_entry() {
+        let alice = PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["Alice".into()], 20);
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Global entry grant")
+            .card_types(vec![CardType::Creature]).build();
+        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let entering = game.create_object_from_definition(&definition, alice, Zone::Stack);
+        let model = ironsmith_core::StaticAbility::enters_with_counters_and_subtypes_for_filter(
+            ObjectFilter::creature(), CounterType::PlusOnePlusOne, Value::Fixed(2), Vec::new(),
+        );
+        let apply = ApplyContinuousEffect::with_spec(ChooseSpec::SpecificObject(entering),
+            Modification::AddAbility(StaticAbility::from_model(model)), Until::Forever);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        apply.execute(&mut game, &mut ctx).unwrap();
+        let entered = game.move_object_with_etb_processing(entering, Zone::Battlefield).unwrap().new_id;
+        assert_eq!(game.counter_count(entered, CounterType::PlusOnePlusOne), 0,
+            "CR 614.12: a general subset replacement on the entrant cannot modify its own entry");
+        let later = game.create_object_from_definition(&definition, alice, Zone::Stack);
+        let later = game.move_object_with_etb_processing(later, Zone::Battlefield).unwrap().new_id;
+        assert_eq!(game.counter_count(later, CounterType::PlusOnePlusOne), 2,
+            "the same granted ability must affect another creature once its source is on the battlefield");
+    }
+
+
+    #[test]
+    fn resolved_spell_characteristic_effects_survive_resolution_but_not_bounce() {
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Modified spell")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2)).build();
+        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let spell = game.create_object_from_definition(&definition, alice, Zone::Stack);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        for modification in [
+            Modification::SetPower { value: Value::Fixed(7), sublayer: crate::continuous::PtSublayer::Setting },
+            Modification::ChangeController(bob),
+            Modification::AddAbility(StaticAbility::flying()),
+        ] {
+            ApplyContinuousEffect::with_spec(ChooseSpec::SpecificObject(spell), modification, Until::Forever)
+                .execute(&mut game, &mut ctx).unwrap();
+        }
+        let permanent = game.move_object_with_etb_processing(spell, Zone::Battlefield).unwrap().new_id;
+        assert_eq!(game.calculated_power(permanent), Some(7));
+        assert_eq!(game.current_controller(permanent), Some(bob));
+        assert!(game.object_has_static_ability_id(permanent, crate::static_abilities::StaticAbilityId::Flying));
+        let hand = game.move_object_by_effect(permanent, Zone::Hand).unwrap();
+        let returned = game.move_object_with_etb_processing(hand, Zone::Battlefield).unwrap().new_id;
+        assert_eq!(game.calculated_power(returned), Some(2));
+        assert_eq!(game.current_controller(returned), Some(alice));
+        assert!(!game.object_has_static_ability_id(returned, crate::static_abilities::StaticAbilityId::Flying));
+    }
+
 }

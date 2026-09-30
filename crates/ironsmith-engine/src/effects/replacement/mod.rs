@@ -26,3 +26,6 @@ pub(crate) use register_zone_replacement::zone_replacement_action;
 
 mod register_enter_with_counters;
 pub use register_enter_with_counters::RegisterEnterWithCountersReplacementEffect;
+
+mod execute_payload;
+pub(crate) use execute_payload::execute_replacement_payload;

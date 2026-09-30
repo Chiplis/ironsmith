@@ -187,6 +187,18 @@ fn parse_put_counter_count_value(
                     value
                 }
             };
+            // "equal to its power on each creature ...": a pronoun amount is
+            // complete before the placement target; reading the whole clause
+            // would count the recipients instead.
+            if let Some(value_tokens) = value_tokens
+                && value_tokens
+                    .first()
+                    .is_some_and(|token| token.as_word() == Some("its"))
+                && let Some((value, used)) = parse_value(value_tokens)
+                && used == value_tokens.len()
+            {
+                return Ok((preserve_surface(value), 3));
+            }
             if let Some(value) = parse_add_mana_equal_amount_value(tokens)
                 .or_else(|| parse_equal_to_aggregate_filter_value(tokens))
                 .or_else(|| parse_equal_to_number_of_filter_value(tokens))

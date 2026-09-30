@@ -519,8 +519,11 @@ fn execute_delayed_untap_step_actions(
     game: &mut GameState,
     active_players: &[PlayerId],
     decision_maker: &mut impl DecisionMaker,
-) {
+) -> Result<(), crate::effects::ExecutionError> {
     for &player in active_players {
+        if decision_maker.awaiting_choice() {
+            return Ok(());
+        }
         let event = crate::triggers::TriggerEvent::new_with_provenance(
             crate::events::phase::PermanentsUntapStepEvent::new(player),
             crate::provenance::ProvNodeId::default(),
@@ -537,10 +540,11 @@ fn execute_delayed_untap_step_actions(
                 crate::effects::ExecutionContext::new(source, action.controller, decision_maker);
             ctx.source_snapshot = action.ability_source_snapshot;
             ctx.tagged_objects = action.tagged_objects;
+            ctx.tagged_players = action.tagged_players;
             if let Some(x_value) = action.x_value {
                 ctx = ctx.with_x(x_value);
             }
-            if let Ok(events) = crate::game_loop::execute_resolution_program(
+            let events = crate::game_loop::execute_resolution_program(
                 game,
                 &mut ctx,
                 action.controller,
@@ -548,24 +552,47 @@ fn execute_delayed_untap_step_actions(
                 &action.effects,
                 None,
                 &[],
-            ) {
-                game.effect_store.pending_trigger_events.extend(events);
+            )
+            .map_err(|error| {
+                crate::effects::ExecutionError::InternalError(format!(
+                    "delayed untap action failed: {error}"
+                ))
+            })?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(());
             }
+            game.effect_store.pending_trigger_events.extend(events);
         }
     }
+    Ok(())
 }
 
 /// Executes the untap step for the active player.
 /// Untaps all permanents controlled by the active player (except those that don't untap).
 pub fn execute_untap_step(game: &mut GameState) {
     let mut dm = crate::decision::SelectFirstDecisionMaker;
-    execute_untap_step_with(game, &mut dm);
+    execute_untap_step_with(game, &mut dm).expect("untap step execution failed");
 }
 
 /// Executes the untap step for the active player with an explicit decision maker.
 ///
 /// This variant prompts for optional "you may choose not to untap ..." abilities.
-pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl DecisionMaker) {
+pub fn execute_untap_step_with(
+    game: &mut GameState,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<(), crate::effects::ExecutionError> {
+    let checkpoint = game.clone();
+    let result = execute_untap_step_inner(game, decision_maker);
+    if result.is_err() || decision_maker.awaiting_choice() {
+        *game = checkpoint;
+    }
+    result
+}
+
+fn execute_untap_step_inner(
+    game: &mut GameState,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<(), crate::effects::ExecutionError> {
     use crate::decisions::context::BooleanContext;
     use crate::effect::Until;
     use crate::static_abilities::StaticAbilityId;
@@ -609,7 +636,10 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
     // Delayed instructions with "as you untap your permanents" timing are
     // turn-based actions, not triggered abilities. They resolve here without
     // using the stack, before any permanent actually becomes untapped.
-    execute_delayed_untap_step_actions(game, &active_players, decision_maker);
+    execute_delayed_untap_step_actions(game, &active_players, decision_maker)?;
+    if decision_maker.awaiting_choice() {
+        return Ok(());
+    }
 
     // The delayed action can move a static-ability source away before the
     // simultaneous untap, so rebuild the calculated state it may have changed.
@@ -665,6 +695,9 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
         permanents
             .iter()
             .filter_map(|&id| {
+                if decision_maker.awaiting_choice() {
+                    return None;
+                }
                 let obj = game.object(id)?;
                 let chars = game.current_characteristics(id)?;
                 // Check if the permanent has "doesn't untap during your untap step"
@@ -702,6 +735,9 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
             .collect()
     };
 
+    if decision_maker.awaiting_choice() {
+        return Ok(());
+    }
     let should_untap = if may_have_untap_static_abilities {
         apply_untap_step_limits(
             game,
@@ -713,6 +749,10 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
     } else {
         should_untap
     };
+
+    if decision_maker.awaiting_choice() {
+        return Ok(());
+    }
 
     // Second pass: untap eligible permanents. Only the active player's
     // permanents have been under their controller continuously since that
@@ -726,14 +766,13 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
             // CR 502.3 / 603.2: the permanent "becomes untapped" (Inspired).
             // No player gets priority in the untap step, so the event waits
             // for the upkeep trigger drain (CR 502.4).
-            if crate::events::processing::process_untap(game, id, &mut *decision_maker) {
-                game.queue_trigger_event(
-                    crate::provenance::ProvNodeId::default(),
-                    crate::triggers::TriggerEvent::new_with_provenance(
-                        crate::events::other::PermanentUntappedEvent::new(id),
-                        crate::provenance::ProvNodeId::default(),
-                    ),
-                );
+            let outcome =
+                crate::events::processing::process_untap(game, id, &mut *decision_maker)?;
+            if decision_maker.awaiting_choice() {
+                return Ok(());
+            }
+            for event in outcome.events {
+                game.queue_trigger_event(event.provenance(), event);
             }
         }
         if game
@@ -761,6 +800,7 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
 
     // No priority during untap step
     game.turn.priority_player = None;
+    Ok(())
 }
 
 /// "Players can't untap more than N <filter> during their untap steps"
@@ -844,6 +884,9 @@ fn apply_untap_step_limits(
                 .into_iter()
                 .filter(|id| candidates.contains(id))
                 .collect();
+            if decision_maker.awaiting_choice() {
+                return should_untap;
+            }
             chosen.dedup();
             chosen.truncate(max);
             for id in &candidates {
@@ -1606,7 +1649,7 @@ mod tests {
         game.tap(artifact);
 
         let mut dm = AlwaysYesDecisionMaker;
-        execute_untap_step_with(&mut game, &mut dm);
+        execute_untap_step_with(&mut game, &mut dm).unwrap();
 
         assert!(
             !game.is_tapped(artifact),
@@ -1629,7 +1672,7 @@ mod tests {
         game.tap(artifact);
 
         let mut dm = AlwaysNoDecisionMaker;
-        execute_untap_step_with(&mut game, &mut dm);
+        execute_untap_step_with(&mut game, &mut dm).unwrap();
 
         assert!(
             game.is_tapped(artifact),
@@ -1669,7 +1712,7 @@ mod tests {
         );
 
         let mut dm = AlwaysYesDecisionMaker;
-        execute_untap_step_with(&mut game, &mut dm);
+        execute_untap_step_with(&mut game, &mut dm).unwrap();
 
         assert!(
             game.is_tapped(doesnt_untap_artifact),
@@ -1702,7 +1745,7 @@ mod tests {
         game.tap(alices_artifact);
 
         let mut dm = AlwaysYesDecisionMaker;
-        execute_untap_step_with(&mut game, &mut dm);
+        execute_untap_step_with(&mut game, &mut dm).unwrap();
 
         assert!(
             !game.is_tapped(alices_artifact),
@@ -1732,7 +1775,7 @@ mod tests {
         game.set_summoning_sick(creature);
 
         let mut dm = AlwaysYesDecisionMaker;
-        execute_untap_step_with(&mut game, &mut dm);
+        execute_untap_step_with(&mut game, &mut dm).unwrap();
 
         assert!(!game.is_tapped(creature));
         assert!(
@@ -1755,7 +1798,7 @@ mod tests {
         game.phase_out(phases_in);
 
         let mut dm = AlwaysYesDecisionMaker;
-        execute_untap_step_with(&mut game, &mut dm);
+        execute_untap_step_with(&mut game, &mut dm).unwrap();
 
         assert!(game.is_phased_out(phases_out));
         assert!(!game.is_phased_out(phases_in));
@@ -1867,7 +1910,7 @@ mod tests {
             .add_cant_untap(cant_untap_artifact);
 
         let mut dm = AlwaysYesDecisionMaker;
-        execute_untap_step_with(&mut game, &mut dm);
+        execute_untap_step_with(&mut game, &mut dm).unwrap();
 
         assert!(
             !game.is_tapped(doesnt_untap_artifact),
@@ -1915,7 +1958,7 @@ mod tests {
         game.turn.active_player = bob;
         game.turn.phase = Phase::Beginning;
         game.turn.step = Some(Step::Untap);
-        execute_untap_step_with(&mut game, &mut dm);
+        execute_untap_step_with(&mut game, &mut dm).unwrap();
         assert_eq!(
             game.object(land).map(|object| object.zone),
             Some(Zone::Battlefield),
@@ -1925,7 +1968,7 @@ mod tests {
         assert_eq!(game.effect_store.delayed_triggers.len(), 1);
 
         game.turn.active_player = alice;
-        execute_untap_step_with(&mut game, &mut dm);
+        execute_untap_step_with(&mut game, &mut dm).unwrap();
 
         let returned = game
             .find_object_by_stable_id(stable_id)
@@ -1978,24 +2021,24 @@ mod tests {
         game.turn.active_player = bob;
         game.turn.phase = Phase::Beginning;
         game.turn.step = Some(Step::Untap);
-        execute_untap_step_with(&mut game, &mut dm);
+        execute_untap_step_with(&mut game, &mut dm).unwrap();
         assert!(
             game.is_tapped(relic),
             "another player's untap step should not untap Alice's tapped artifact"
         );
 
         game.next_turn();
-        execute_untap_step_with(&mut game, &mut dm);
+        execute_untap_step_with(&mut game, &mut dm).unwrap();
         assert!(
             game.is_tapped(relic),
             "controller's next untap step should keep the artifact tapped once"
         );
 
         game.next_turn();
-        execute_untap_step_with(&mut game, &mut dm);
+        execute_untap_step_with(&mut game, &mut dm).unwrap();
 
         game.next_turn();
-        execute_untap_step_with(&mut game, &mut dm);
+        execute_untap_step_with(&mut game, &mut dm).unwrap();
         assert!(
             !game.is_tapped(relic),
             "the restriction should be consumed after that untap step"

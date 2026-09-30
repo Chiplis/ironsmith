@@ -313,7 +313,7 @@ fn run(def: &CardDefinition, seats: usize, accept: bool, negative: bool) -> Resu
         }
         let before_life: Vec<_> = g.players.iter().map(|p| p.life).collect();
         let before_hands = hand_counts(&g);
-        ironsmith::game_loop::add_saga_lore_counters_with_dm(&mut g, &mut q, &mut dm);
+        ironsmith::game_loop::add_saga_lore_counters_with_dm(&mut g, &mut q, &mut dm).unwrap();
         evidence["lore_after_rule_action"] = json!(count(&g, source, CounterType::Lore));
         let want_lore = if negative { 1 } else { 2 };
         if count(&g, source, CounterType::Lore) != want_lore {

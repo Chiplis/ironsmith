@@ -324,7 +324,22 @@ pub fn parse_deal_damage_with_amount(
             Ok(EffectAst::subject_verb_damage(amount, target))
         }
         combat_grammar::CombatDamageTargetShape::EachOfTarget { target_tokens } => {
-            let target = parse_target_phrase(target_tokens)?;
+            let target = if target_tokens
+                .first()
+                .is_some_and(|token| token.as_word() == Some("those"))
+                && target_tokens
+                    .iter()
+                    .any(|token| matches!(token.as_word(), Some("player" | "players")))
+            {
+                // A mixed object/player antecedent set: the self-replacement
+                // rewrite substitutes the antecedent's whole target spec.
+                TargetAst::Tagged(
+                    crate::tag::CompilerReferenceTag::It.bind(),
+                    span_from_tokens(target_tokens),
+                )
+            } else {
+                parse_target_phrase(target_tokens)?
+            };
             Ok(EffectAst::subject_verb_damage(amount, target))
         }
         combat_grammar::CombatDamageTargetShape::PlayerGroup(target) => {

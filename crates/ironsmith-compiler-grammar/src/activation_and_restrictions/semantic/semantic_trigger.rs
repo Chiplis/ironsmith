@@ -4110,6 +4110,45 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         }
     }
 
+    // "Whenever <creature> mentors a creature": the mentor ability's
+    // keyword-action event names the creature that got the counter (CR
+    // 702.134), so "that creature" in the effect binds to it.
+    if let Some(mentor_word_idx) =
+        trigger_keyword_action_word(&words, crate::events::KeywordActionKind::Mentor)
+        && mentor_word_idx > 0
+        && mentor_word_idx + 1 < words.len()
+    {
+        let subject_words = &words[..mentor_word_idx];
+        let subject_end = word_view
+            .token_index_after_words(mentor_word_idx)
+            .unwrap_or(mentor_word_idx);
+        let source_filter = if is_source_reference_words(subject_words) {
+            Some(ObjectFilter::source())
+        } else {
+            parse_trigger_subject_filter_lexed(&tokens[..subject_end])?
+        };
+        if let Some(source_filter) = source_filter {
+            let tail_start = word_view
+                .token_index_after_words(mentor_word_idx + 1)
+                .unwrap_or(tokens.len());
+            let tail_tokens = trim_commas(tokens.get(tail_start..).unwrap_or_default());
+            let object_filter = parse_object_filter_lexed(&tail_tokens, false).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported mentor object filter in trigger clause (clause: '{}')",
+                    words.join(" ")
+                ))
+            })?;
+            return Ok(TriggerSpec::KeywordActionTaggedObject {
+                action: crate::events::KeywordActionKind::Mentor,
+                player: PlayerFilter::Any,
+                source_filter,
+                object_tag: crate::tag::CompilerReferenceTag::It.bind(),
+                object_filter,
+                during_your_main_phase: false,
+            });
+        }
+    }
+
     if trigger_pattern_accepts(&words, THIS_EXPLOITS_TRIGGER_PATTERN) {
         return Ok(TriggerSpec::KeywordActionFromSource {
             action: crate::events::KeywordActionKind::Exploit,

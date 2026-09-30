@@ -5,10 +5,8 @@ use crate::effect::{Effect, EffectOutcome, Until, Value};
 use crate::effects::helpers::{resolve_player_filter, resolve_single_object_for_effect};
 use crate::effects::{ApplyContinuousEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
-use crate::events::processing::process_life_gain_with_event_with_dm;
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, PlayerFilter};
-use crate::triggers::TriggerEvent;
 use crate::types::CardType;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -142,9 +140,9 @@ impl ExchangeValuesEffect {
         next_value: i32,
     ) -> Result<EffectOutcome, ExecutionError> {
         match current {
-            ResolvedExchangeValue::LifeTotal { player, value } => {
-                Self::apply_life_total_change(game, ctx, player, value, next_value)
-            }
+            ResolvedExchangeValue::LifeTotal { .. } => Err(ExecutionError::InternalError(
+                "life exchange must be resolved before stat commits".into(),
+            )),
             ResolvedExchangeValue::Stat { object, kind, .. } => {
                 // CR 701.12g creates the setting effect even when the
                 // current values are equal; later P/T layers still apply.
@@ -168,59 +166,30 @@ impl ExchangeValuesEffect {
         }
     }
 
-    fn apply_life_total_change(
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        player: crate::ids::PlayerId,
-        current: i32,
+    fn life_proposal(
+        current: ResolvedExchangeValue,
         next_value: i32,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        if current == next_value {
-            return Ok(EffectOutcome::resolved());
+        ctx: &ExecutionContext,
+    ) -> Option<crate::events::Event> {
+        let ResolvedExchangeValue::LifeTotal { player, value } = current else {
+            return None;
+        };
+        if value == next_value {
+            return None;
         }
-
-        let mut outcome = EffectOutcome::resolved();
-        if next_value > current {
-            let gained = process_life_gain_with_event_with_dm(
-                game,
-                player,
-                (next_value - current) as u32,
-                ctx.decision_maker,
-            );
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            if gained > 0 {
-                game.gain_life(player, gained);
-            }
-            if gained > 0 {
-                outcome = outcome.with_event(TriggerEvent::new_with_provenance(
-                    crate::events::LifeGainEvent::new(player, gained),
-                    ctx.provenance,
-                ));
-            }
+        let amount = value.abs_diff(next_value);
+        Some(if next_value > value {
+            crate::events::Event::new_with_provenance(
+                crate::events::LifeGainEvent::new(player, amount).with_source(ctx.source),
+                ctx.provenance,
+            )
         } else {
-            let lost = crate::events::processing::process_life_loss_with_event_with_dm(
-                game,
-                player,
-                (current - next_value) as u32,
-                false,
-                ctx.decision_maker,
-            );
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            let lost = game.lose_life(player, lost);
-            if lost > 0 {
-                outcome = outcome.with_event(TriggerEvent::new_with_provenance(
-                    crate::events::LifeLossEvent::from_effect(player, lost),
-                    ctx.provenance,
-                ));
-            }
-        }
-
-        Ok(outcome)
+            crate::events::Event::new_with_provenance(
+                crate::events::LifeLossEvent::from_effect(player, amount), ctx.provenance,
+            )
+        })
     }
+
 }
 
 impl EffectExecutor for ExchangeValuesEffect {
@@ -251,16 +220,37 @@ impl EffectExecutor for ExchangeValuesEffect {
             return Ok(EffectOutcome::prevented());
         }
 
-        let left_outcome = self.apply_resolved_value(game, ctx, left, right_value)?;
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+        let checkpoint = game.clone();
+        let result = (|| {
+            let sides = [(left, right_value), (right, left_value)];
+            let proposals = sides.iter().filter_map(|(value, next)| {
+                Self::life_proposal(*value, *next, ctx)
+            }).collect();
+            // Replacement matching and decisions must see the old stat values,
+            // regardless of which operand was authored first.
+            let mut outcomes = vec![crate::effects::life::life_change::execute_life_changes(
+                game, ctx, proposals,
+            )?];
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            for (value, next) in sides {
+                if matches!(value, ResolvedExchangeValue::Stat { .. }) {
+                    outcomes.push(self.apply_resolved_value(game, ctx, value, next)?);
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(EffectOutcome::count(0));
+                    }
+                }
+            }
+            let mut outcome = EffectOutcome::aggregate(outcomes);
+            outcome.value = crate::effect::OutcomeValue::None;
+            Ok(outcome)
+        })();
+        if ctx.decision_maker.awaiting_choice() || result.is_err() {
+            *game = checkpoint;
         }
-        let right_outcome = self.apply_resolved_value(game, ctx, right, left_value)?;
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        let outcomes = vec![left_outcome, right_outcome];
-        Ok(EffectOutcome::aggregate(outcomes))
+        result
+
     }
 }
 
@@ -368,4 +358,83 @@ mod tests {
         assert_eq!(game.player(alice).expect("alice exists").life, 20);
         assert_eq!(game.calculated_toughness(source), Some(13));
     }
+
+    #[test]
+    fn exchange_life_and_stat_runs_instead_payload_without_original_loss() {
+        use crate::events::WouldLoseLifeMatcher;
+        use crate::replacement::{ReplacementAction, ReplacementEffect};
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature(&mut game, "Exchange", alice, 0, 13);
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::with_matcher(source, alice, WouldLoseLifeMatcher::you(),
+                ReplacementAction::Instead(vec![Effect::gain_life(5)])),
+        );
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let outcome = ExchangeValuesEffect::new(
+            ExchangeValueOperand::Toughness(ChooseSpec::Source),
+            ExchangeValueOperand::LifeTotal(PlayerFilter::You), Until::Forever,
+        ).execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(game.player(alice).unwrap().life, 25);
+        assert_eq!(game.calculated_toughness(source), Some(20));
+        assert_eq!(outcome.events.len(), 1);
+        assert!(outcome.events[0].downcast::<crate::events::LifeGainEvent>().is_some());
+    }
+
+    #[test]
+    fn exchange_stat_first_keeps_old_stat_during_pending_life_choice() {
+        use crate::events::WouldLoseLifeMatcher;
+        use crate::replacement::{ReplacementAction, ReplacementEffect};
+        struct Pending { pending: bool, source: crate::ids::ObjectId }
+        impl crate::decision::DecisionMaker for Pending {
+            fn decide_options(&mut self, game: &GameState,
+                _: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> {
+                assert_eq!(game.calculated_toughness(self.source), Some(13));
+                self.pending = true;
+                Vec::new()
+            }
+            fn awaiting_choice(&self) -> bool { self.pending }
+        }
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature(&mut game, "Exchange", alice, 0, 13);
+        for _ in 0..2 {
+            game.effect_store.replacement_effects.add_resolution_effect(
+                ReplacementEffect::with_matcher(source, alice, WouldLoseLifeMatcher::you(), ReplacementAction::Double),
+            );
+        }
+        let mut dm = Pending { pending: false, source };
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        let outcome = ExchangeValuesEffect::new(
+            ExchangeValueOperand::Toughness(ChooseSpec::Source),
+            ExchangeValueOperand::LifeTotal(PlayerFilter::You), Until::Forever,
+        ).execute(&mut game, &mut ctx).unwrap();
+        assert!(ctx.decision_maker.awaiting_choice());
+        assert!(outcome.events.is_empty());
+        assert_eq!(game.player(alice).unwrap().life, 20);
+        assert_eq!(game.calculated_toughness(source), Some(13));
+    }
+
+
+    #[test]
+    fn exchange_replacement_payload_error_restores_both_operands() {
+        use crate::events::WouldLoseLifeMatcher;
+        use crate::replacement::{ReplacementAction, ReplacementEffect};
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature(&mut game, "Exchange", alice, 0, 13);
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::with_matcher(source, alice, WouldLoseLifeMatcher::you(),
+                ReplacementAction::Instead(vec![Effect::gain_life(5), Effect::gain_life(Value::X)])),
+        );
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let result = ExchangeValuesEffect::new(
+            ExchangeValueOperand::Toughness(ChooseSpec::Source),
+            ExchangeValueOperand::LifeTotal(PlayerFilter::You), Until::Forever,
+        ).execute(&mut game, &mut ctx);
+        assert!(result.is_err());
+        assert_eq!(game.player(alice).unwrap().life, 20);
+        assert_eq!(game.calculated_toughness(source), Some(13));
+    }
+
 }

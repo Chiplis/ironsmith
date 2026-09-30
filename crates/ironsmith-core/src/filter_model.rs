@@ -1525,6 +1525,12 @@ impl PlayerFilter {
         Self::Target(Box::new(Self::Opponent))
     }
 
+    /// "another target player": a second player target distinct from the
+    /// player target announced earlier in the same ability.
+    pub fn another_target_player() -> Self {
+        Self::Target(Box::new(Self::excluding(Self::Any, Self::target_player())))
+    }
+
     pub fn excluding(base: PlayerFilter, excluded: PlayerFilter) -> Self {
         Self::Excluding {
             base: Box::new(base),

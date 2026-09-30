@@ -701,6 +701,7 @@ pub(super) fn player_filter_for_turn_value(player: PlayerAst) -> Option<PlayerFi
         PlayerAst::LowestLifeTied => Some(PlayerFilter::LowestLifeTied),
         PlayerAst::Target => Some(PlayerFilter::target_player()),
         PlayerAst::TargetOpponent => Some(PlayerFilter::target_opponent()),
+        PlayerAst::AnotherTarget => Some(PlayerFilter::another_target_player()),
         PlayerAst::Opponent => Some(PlayerFilter::Opponent),
         PlayerAst::PlayerToYourLeft => Some(PlayerFilter::PlayerToYourLeft),
         PlayerAst::PlayerToYourRight => Some(PlayerFilter::PlayerToYourRight),

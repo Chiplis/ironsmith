@@ -241,6 +241,37 @@ pub(super) fn compile_return_to_hand(
     {
         replace_iterated_player_with_target_player_in_choose_spec(&mut spec);
     }
+    // "That player returns a card from their graveyard to their hand": the
+    // named actor, not the resolving ability's controller, picks which card
+    // returns. A non-target selection otherwise defaults to the controller
+    // (or the iterated player inside a player loop), so make the actor's
+    // choice explicit before the move.
+    let mut actor_choice_prelude = Vec::new();
+    if from_graveyard
+        && !spec.is_target()
+        && !ctx.iterated_player
+        && let Some(actor) = actor_surface.as_ref()
+        && !matches!(actor, PlayerFilter::You)
+        && let ChooseSpec::Object(filter) = spec.base()
+        && !filter.tagged_constraints.iter().any(|constraint| {
+            matches!(
+                constraint.relation,
+                crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            )
+        })
+    {
+        let tag = ctx.next_tag("returned_choice");
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            filter.clone(),
+            spec.count(),
+            actor.clone(),
+            tag.clone(),
+        )
+        .with_count_value_opt(spec.count_value().cloned())
+        .in_zone(Zone::Graveyard);
+        actor_choice_prelude.push(Effect::new(choose));
+        spec = ChooseSpec::Tagged(tag.as_str().into());
+    }
     let move_effect = if from_graveyard {
         let mut effect =
             crate::effects::ReturnFromGraveyardToHandEffect::new(spec.clone(), *random);
@@ -277,7 +308,9 @@ pub(super) fn compile_return_to_hand(
     } else {
         PlayerFilter::AliasedOwnerOf(ObjectRef::Target)
     });
-    Ok((vec![effect], choices))
+    let mut effects = actor_choice_prelude;
+    effects.push(effect);
+    Ok((effects, choices))
 }
 
 /// Preserve a mandatory complete-set discard after subject/player lowering.
@@ -499,7 +532,13 @@ pub(super) fn compile_subject_verb_late(
                         Effect::deal_damage(resolved_amount.clone(), spec)
                     }
                 })?;
-            if let TargetAst::Player(filter, explicit_target_span) = target {
+            if let TargetAst::Player(filter, _) = target
+                && matches!(filter, PlayerFilter::IteratedPlayer)
+                && !ctx.iterated_player
+            {
+                // "deals damage to that player": the recipient is the existing
+                // player antecedent, not a newly announced target. Keep it.
+            } else if let TargetAst::Player(filter, explicit_target_span) = target {
                 ctx.last_player_filter = Some(if explicit_target_span.is_some() {
                     PlayerFilter::Target(Box::new(filter.clone()))
                 } else {
@@ -585,15 +624,33 @@ pub(super) fn compile_subject_verb_late(
                 Some(crate::target::SourceReferenceSurface::ThisPermanentType(text))
                     if text.eq_ignore_ascii_case("it")
             );
+            // A bare `it` whose nearest object antecedent is a discarded card
+            // ("Target player discards two cards. If this spell was kicked,
+            // it deals 3 damage to that player") cannot be the damage
+            // source: discarded cards sit in a graveyard and the sentence
+            // names the resolving spell or ability.
             let source_spec = if source_is_bare_it && matches!(
                 source_spec.base(),
-                ChooseSpec::Tagged(tag) if tag.as_str() == "blocking"
+                ChooseSpec::Tagged(tag)
+                    if tag.as_str() == "blocking"
+                        || tag.as_str() == "discarded"
+                        || tag.as_str().starts_with("discarded_")
             ) {
                 ChooseSpec::Source
             } else {
                 source_spec
             };
-            let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
+            // "This creature deals damage equal to its power": when the damage
+            // subject is the ability's own source, the possessive names that
+            // subject, never an object an activation cost introduced ("{T},
+            // Unattach <Equipment>: This creature deals damage equal to its
+            // power ...").
+            let amount = if matches!(source_spec.base(), ChooseSpec::Source) {
+                bind_it_characteristic_to_damage_source_subject(amount)
+            } else {
+                amount.clone()
+            };
+            let amount = resolve_value_it_tag(&amount, &current_reference_env(ctx))?;
             let mut damage_target_spec = if source == target {
                 source_spec.clone()
             } else {
@@ -745,7 +802,11 @@ pub(super) fn compile_subject_verb_late(
                 effects.push(damage_effect);
             }
 
-            if let TargetAst::Player(filter, _) | TargetAst::PlayerOrPlaneswalker(filter, _) =
+            if let TargetAst::Player(PlayerFilter::IteratedPlayer, _) = target
+                && !ctx.iterated_player
+            {
+                // "deals damage to that player": keep the existing antecedent.
+            } else if let TargetAst::Player(filter, _) | TargetAst::PlayerOrPlaneswalker(filter, _) =
                 target
             {
                 ctx.last_player_filter = Some(PlayerFilter::Target(Box::new(filter.clone())));
@@ -2802,4 +2863,34 @@ fn lower_actor_chosen_exile_target(
         push_choice(&mut choices, choice);
     }
     Ok(Some((prelude, choices)))
+}
+
+fn bind_it_characteristic_to_damage_source_subject(value: &Value) -> Value {
+    // Only the bare possessive pronoun ("its power"); a definite description
+    // ("that creature's power") names its own antecedent.
+    let is_it = |spec: &ChooseSpec| {
+        matches!(
+            spec.base(),
+            ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+        ) && spec.surface_hints().iter().any(|hint| {
+            matches!(
+                hint,
+                crate::target::ChooseSpecSurfaceHint::SourceReference(
+                    crate::target::SourceReferenceSurface::ThisPermanentType(text)
+                ) if text.eq_ignore_ascii_case("it")
+            )
+        })
+    };
+    let source = |spec: &ChooseSpec| {
+        ChooseSpec::Source.with_surface_hints(spec.surface_hints().iter().cloned())
+    };
+    match value {
+        Value::SurfaceHinted { value, hints } => Value::SurfaceHinted {
+            value: Box::new(bind_it_characteristic_to_damage_source_subject(value)),
+            hints: hints.clone(),
+        },
+        Value::PowerOf(spec) if is_it(spec) => Value::PowerOf(Box::new(source(spec))),
+        Value::ToughnessOf(spec) if is_it(spec) => Value::ToughnessOf(Box::new(source(spec))),
+        other => other.clone(),
+    }
 }

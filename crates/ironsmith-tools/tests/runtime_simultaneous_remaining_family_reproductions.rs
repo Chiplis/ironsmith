@@ -399,14 +399,14 @@ fn run(
             let advances = if def.name() == "Origin of Thor" { 2 } else { 1 };
             if variant == 2 {
                 start_next_turn(&mut g, &mut q, &mut dm)?;
-                ironsmith::game_loop::add_saga_lore_counters_with_dm(&mut g, &mut q, &mut dm);
+                ironsmith::game_loop::add_saga_lore_counters_with_dm(&mut g, &mut q, &mut dm).unwrap();
                 error = resolve_all(&mut g, &mut q, &mut dm).err();
             } else {
                 let mut final_error = None;
                 for i in 0..advances {
                     next_own_turn(&mut g, &mut q, &mut dm)?;
                     dm.target = Some(Target::Object(creatures[0]));
-                    ironsmith::game_loop::add_saga_lore_counters_with_dm(&mut g, &mut q, &mut dm);
+                    ironsmith::game_loop::add_saga_lore_counters_with_dm(&mut g, &mut q, &mut dm).unwrap();
                     let lore = count(&g, source, CounterType::Lore);
                     if lore != i as u32 + 2 {
                         return Err("Saga real lore progression differs".into());

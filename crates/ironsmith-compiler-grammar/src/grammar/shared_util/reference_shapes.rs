@@ -173,6 +173,9 @@ pub fn parse_subject_words(words: &[&str]) -> SubjectAst {
     if prefix_one_of(slice, &[&["you"], &["your"]]) {
         return SubjectAst::Player(PlayerAst::You);
     }
+    if prefix_one_of(slice, &[&["another", "target", "player"]]) {
+        return SubjectAst::Player(PlayerAst::AnotherTarget);
+    }
     if prefix_one_of(slice, &[&["target", "opponent"], &["target", "opponents"]]) {
         return SubjectAst::Player(PlayerAst::TargetOpponent);
     }

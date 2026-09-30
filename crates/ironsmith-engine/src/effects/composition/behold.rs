@@ -210,31 +210,6 @@ impl EffectExecutor for BeholdEffect {
                 &filter_ctx,
                 &description,
             );
-            if chosen.len() < required {
-                // The owner claims the offered hidden hand cards it left out
-                // are not of the subtype, checked once each is opened.
-                let hand: Vec<ObjectId> = game
-                    .player(chooser)
-                    .map(|player| {
-                        player
-                            .hand
-                            .iter()
-                            .copied()
-                            .filter(|id| *id != ctx.source)
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                let chosen_in_hand: Vec<ObjectId> = revealed_from_hand.clone();
-                let battlefield_chosen = chosen.len() - chosen_in_hand.len();
-                game.record_hidden_shortfall_obligations(
-                    &hand,
-                    &chosen_in_hand,
-                    required - battlefield_chosen,
-                    &filter,
-                    &filter_ctx,
-                    &description,
-                );
-            }
             // Every peer opened the chosen hand cards before this replay.
             game.mark_hidden_cards_publicly_revealed(&revealed_from_hand);
         }

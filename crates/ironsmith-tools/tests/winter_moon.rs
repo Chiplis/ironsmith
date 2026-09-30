@@ -122,7 +122,7 @@ fn board(player: PlayerId) -> Board {
 fn untap_step(game: &mut GameState, dm: &mut PickNamed) {
     game.turn.phase = ironsmith::game_state::Phase::Beginning;
     game.turn.step = Some(ironsmith::game_state::Step::Untap);
-    ironsmith::turn::execute_untap_step_with(game, dm);
+    ironsmith::turn::execute_untap_step_with(game, dm).unwrap();
 }
 
 #[test]

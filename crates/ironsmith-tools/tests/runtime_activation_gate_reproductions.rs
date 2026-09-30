@@ -297,7 +297,7 @@ fn setup(
                 n as u32,
                 None,
                 None,
-            );
+            ).unwrap();
         }
         "opponent_graveyard" => put(
             &mut game,

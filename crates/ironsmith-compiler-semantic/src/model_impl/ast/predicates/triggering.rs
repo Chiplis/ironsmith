@@ -22,4 +22,5 @@ pub enum TriggeringPredicateAst {
         symbol: Option<ManaSymbol>,
     },
     TriggeringSpellColoredManaSpentToCastAtLeast(u32),
+    TriggeringSpellWasKicked,
 }

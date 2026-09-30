@@ -1215,6 +1215,10 @@ fn resolve_event_value(
             {
                 return Ok(prevented_event.amount as i32);
             }
+            if let Some(placement) = triggering_event.downcast::<crate::events::PutCountersEvent>() {
+                return i32::try_from(placement.count).map_err(|_| ExecutionError::UnresolvableValue(
+                    "counter placement amount exceeds the supported value range".into()));
+            }
             if let Some(markers_event) = triggering_event.downcast::<MarkersChangedEvent>() {
                 return Ok(markers_event.amount as i32);
             }
@@ -1226,6 +1230,10 @@ fn resolve_event_value(
             }
             if let Some(keyword_action_event) = triggering_event.downcast::<KeywordActionEvent>() {
                 return Ok(keyword_action_event.amount as i32);
+            }
+            if let Some(created) = triggering_event.downcast::<crate::events::CreateTokensEvent>() {
+                return i32::try_from(created.total_count()).map_err(|_| ExecutionError::UnresolvableValue(
+                    "token creation amount exceeds the supported value range".into()));
             }
             Err(ExecutionError::UnresolvableValue(
                 "EventValue(Amount) requires a numeric triggering event".to_string(),

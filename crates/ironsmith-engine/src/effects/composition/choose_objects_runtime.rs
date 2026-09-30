@@ -1517,11 +1517,8 @@ pub(crate) fn run_choose_objects(
             });
         }
 
-        // `rules_min` is the rules' requirement before clamping to the local
-        // candidate count, which differs between peers holding placeholders
-        // and the owner (see `record_hidden_shortfall_obligations`).
-        let (base_min, max, rules_min) = if binds_undefined_x {
-            (0, candidates.len(), 0)
+        let (base_min, max) = if binds_undefined_x {
+            (0, candidates.len())
         } else if effect.count.dynamic_x || effect.count_value.is_some() {
             let x = if let Some(count_value) = effect.count_value.as_ref() {
                 let previous_iterated_player = ctx.iteration.iterated_player;
@@ -1543,14 +1540,13 @@ pub(crate) fn run_choose_objects(
             let optional_dynamic_choice = effect.count.up_to_x
                 || (effect.is_search && effect.search_mode == SearchSelectionMode::Optional);
             if optional_dynamic_choice {
-                (0, x.min(candidates.len()), 0)
+                (0, x.min(candidates.len()))
             } else {
                 let bounded = x.min(candidates.len());
-                (bounded, bounded, x)
+                (bounded, bounded)
             }
         } else {
-            let (min, max) = compute_choice_bounds(effect.count, candidates.len());
-            (min, max, effect.count.min)
+            compute_choice_bounds(effect.count, candidates.len())
         };
         if max == 0 && !hidden_hand_choice {
             if binds_undefined_x {
@@ -1580,7 +1576,6 @@ pub(crate) fn run_choose_objects(
         let search_required_count = compute_search_required_count(effect.search_mode, max);
         let allow_hidden_partial =
             effect.is_search && has_hidden_search_zones && has_search_stated_quality;
-        let allow_hidden_partial_search = allow_hidden_partial;
         let min = if effect.is_search {
             if allow_hidden_partial {
                 0
@@ -1911,23 +1906,6 @@ pub(crate) fn run_choose_objects(
                 .collect();
             game.record_hidden_identity_obligations(
                 &hand_placeholders,
-                &hand_zone_filter(effect),
-                &filter_ctx,
-                &claim_description,
-            );
-        }
-        if hidden_hand_choice {
-            // Fewer than the rules require: the owner claims the other
-            // offered hidden hand cards do not match, checked once each is
-            // opened (see `game_state::hidden_hand_choices`).
-            let filter_ctx = choice_filter_context(effect, game, ctx, chooser_id);
-            let hand_ids =
-                hand_candidate_ids(effect, game, ctx, &filter_ctx, chooser_id).unwrap_or_default();
-            let rules_min = if allow_hidden_partial_search { 0 } else { rules_min };
-            game.record_hidden_shortfall_obligations(
-                &hand_ids,
-                &chosen,
-                rules_min,
                 &hand_zone_filter(effect),
                 &filter_ctx,
                 &claim_description,
@@ -3160,6 +3138,87 @@ mod tests {
             ctx.get_tagged("chosen").is_none(),
             "stale chosen-object tags must be cleared while waiting for the real selection"
         );
+    }
+
+    #[test]
+    fn hidden_hand_partial_selection_does_not_restrict_unselected_cards() {
+        struct SelectCards(Vec<ObjectId>);
+        impl DecisionMaker for SelectCards {
+            fn decide_objects(
+                &mut self,
+                _game: &GameState,
+                context: &crate::decisions::context::SelectObjectsContext,
+            ) -> Vec<ObjectId> {
+                assert!(context.allow_partial_completion);
+                self.0.clone()
+            }
+        }
+
+        // Exercise both an empty answer (the Grazer failure) and a partial
+        // answer, from the owner's and a peer's views of the same hand.
+        for known in [false, true] {
+            for selected_count in [0, 1] {
+                let mut game = setup_game();
+                let alice = PlayerId::from_index(0);
+                let source = game.new_object_id();
+                let land = crate::cards::CardDefinitionBuilder::new(
+                    CardId::from_raw(120_002),
+                    "Hidden Land",
+                )
+                .card_types(vec![CardType::Land])
+                .build();
+                let creature = crate::cards::CardDefinitionBuilder::new(
+                    CardId::from_raw(120_003),
+                    "Wrong Type",
+                )
+                .card_types(vec![CardType::Creature])
+                .build();
+                let cards: Vec<_> = (0..2)
+                    .map(|slot| {
+                        let id = game.create_hidden_card_placeholder(
+                            alice,
+                            Zone::Hand,
+                            slot,
+                            format!("ziffle:selection:{slot}"),
+                        );
+                        if known {
+                            game.reveal_hidden_card_with_definition(id, &land).unwrap();
+                        }
+                        id
+                    })
+                    .collect();
+                let mut dm = SelectCards(cards[..selected_count].to_vec());
+                let mut ctx =
+                    ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+                let effect = ChooseObjectsEffect::new(
+                    ObjectFilter::default().with_type(CardType::Land),
+                    2,
+                    PlayerFilter::You,
+                    "chosen",
+                )
+                .in_zone(Zone::Hand);
+                let outcome = run_choose_objects(&effect, &mut game, &mut ctx).unwrap();
+                assert_eq!(
+                    outcome.value,
+                    crate::effect::OutcomeValue::Objects(cards[..selected_count].to_vec())
+                );
+                for &id in &cards[selected_count..] {
+                    assert!(!game.has_hidden_identity_obligation(id));
+                    assert!(
+                        game.hidden_identity_obligation_violation(id, &land)
+                            .is_none()
+                    );
+                    game.reveal_hidden_card_with_definition(id, &land).unwrap();
+                }
+                for &id in &cards[..selected_count] {
+                    assert!(game.has_hidden_identity_obligation(id));
+                    assert!(
+                        game.hidden_identity_obligation_violation(id, &creature)
+                            .is_some()
+                    );
+                }
+            }
+        }
     }
 
     #[test]

@@ -436,6 +436,10 @@ impl EffectOutcome {
                     total_count += n;
                 }
                 (OutcomeStatus::Succeeded, OutcomeValue::None) => {}
+                // A canceled original event with an explicit zero quantity
+                // does not make successful sibling counts unknowable. Its
+                // payload events/facts are still retained by aggregation.
+                (OutcomeStatus::Prevented | OutcomeStatus::Replaced, OutcomeValue::Count(0)) => {}
                 other => non_count_meaningful.push((other.0, other.1.clone())),
             }
         }
@@ -4960,6 +4964,30 @@ mod tests {
 
         assert_eq!(outcome.status, OutcomeStatus::Succeeded);
         assert_eq!(outcome.value, OutcomeValue::Count(3));
+    }
+
+    #[test]
+    fn summing_counts_keeps_successful_quantities_with_canceled_zero_siblings() {
+        for status in [OutcomeStatus::Prevented, OutcomeStatus::Replaced] {
+            let mut canceled = EffectOutcome::count(0).with_event(
+                crate::triggers::TriggerEvent::new_with_provenance(
+                    crate::events::LifeGainEvent::new(PlayerId::from_index(0), 1),
+                    crate::provenance::ProvNodeId::default(),
+                ),
+            );
+            canceled.status = status;
+            let outcome = EffectOutcome::aggregate_summing_counts([
+                EffectOutcome::count(2),
+                canceled.clone(),
+                EffectOutcome::count(3),
+            ]);
+            assert_eq!(outcome.status, OutcomeStatus::Succeeded);
+            assert_eq!(outcome.count_or_zero(), 5);
+            assert_eq!(outcome.events, canceled.events);
+            let only_canceled = EffectOutcome::aggregate_summing_counts([canceled]);
+            assert_eq!(only_canceled.status, status);
+            assert_eq!(only_canceled.count_or_zero(), 0);
+        }
     }
 
     #[test]

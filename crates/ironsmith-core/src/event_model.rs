@@ -73,6 +73,10 @@ pub enum KeywordActionKind {
     Airbend,
     /// A player takes the initiative (CR 725.2).
     TakeInitiative,
+    /// A creature's mentor ability put a +1/+1 counter on a creature
+    /// (CR 702.134): that creature "mentors" the creature that got the
+    /// counter.
+    Mentor,
 }
 
 impl KeywordActionKind {
@@ -153,6 +157,7 @@ impl KeywordActionKind {
             "unlock" | "unlocks" | "unlocked" | "unlocking" => Some(Self::UnlockDoor),
             "visit" | "visits" | "visited" | "visiting" => Some(Self::VisitAttraction),
             "vote" | "votes" | "voting" => Some(Self::Vote),
+            "mentors" => Some(Self::Mentor),
             _ => None,
         }
     }
@@ -224,6 +229,7 @@ impl KeywordActionKind {
             Self::VisitAttraction => "visit an Attraction",
             Self::Vote => "vote",
             Self::TakeInitiative => "take the initiative",
+            Self::Mentor => "mentor",
         }
     }
 
@@ -294,6 +300,7 @@ impl KeywordActionKind {
             Self::VisitAttraction => "visits an Attraction",
             Self::Vote => "votes",
             Self::TakeInitiative => "takes the initiative",
+            Self::Mentor => "mentors",
         }
     }
 }

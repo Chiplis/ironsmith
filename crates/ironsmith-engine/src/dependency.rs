@@ -2102,6 +2102,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::TriggeringSpellManaSpentToCastAtLeast { .. }
         | C::ColoredManaSpentToCastThisSpellAtLeast(_)
         | C::TriggeringSpellColoredManaSpentToCastAtLeast(_)
+        | C::TriggeringSpellWasKicked
         | C::ItIsNight
         | C::FirstCombatPhaseOfTurn
         | C::SourceControllersMainPhase

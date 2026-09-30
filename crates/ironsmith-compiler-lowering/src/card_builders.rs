@@ -710,11 +710,23 @@ impl CardDefinitionBuilder {
         self.with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
                 trigger: crate::triggers::Trigger::this_attacks(),
+                // CR 702.134: the creature that got the counter was
+                // mentored. Record it on a keyword-action event so "whenever
+                // <creature> mentors a creature" can name that creature.
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                    crate::effect::Effect::put_counters(
-                        crate::object::CounterType::PlusOnePlusOne,
+                    crate::effect::Effect::with_id(
+                        0,
+                        crate::effect::Effect::put_counters(
+                            crate::object::CounterType::PlusOnePlusOne,
+                            1,
+                            target.clone(),
+                        ),
+                    ),
+                    crate::effect::Effect::emit_keyword_action_with_affected_object_memory_tag(
+                        crate::events::KeywordActionKind::Mentor,
                         1,
-                        target.clone(),
+                        crate::effect::EffectId(0),
+                        crate::tag::CompilerReferenceTag::It.as_str(),
                     ),
                 ]),
                 choices: vec![target],

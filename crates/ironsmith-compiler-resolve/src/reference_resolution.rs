@@ -355,6 +355,7 @@ fn track_effect_player(
     let refs = lowering_reference_frame(frame);
     let filter = match player {
         PlayerAst::Target if allow_target => PlayerFilter::target_player(),
+        PlayerAst::AnotherTarget if allow_target => PlayerFilter::another_target_player(),
         PlayerAst::TargetOpponent if allow_target_opponent => {
             PlayerFilter::Target(Box::new(PlayerFilter::Opponent))
         }
@@ -367,7 +368,10 @@ fn track_effect_player(
             .is_some_and(|existing| !is_you_player_filter(existing));
     if !preserve_existing_non_you {
         frame.last_player_filter = Some(
-            if matches!(player, PlayerAst::Target | PlayerAst::TargetOpponent) {
+            if matches!(
+                player,
+                PlayerAst::Target | PlayerAst::TargetOpponent | PlayerAst::AnotherTarget
+            ) {
                 filter
             } else {
                 as_followup_player_alias(filter)
@@ -393,7 +397,21 @@ fn predicate_bound_player_filter(predicate: &PredicateAst) -> Option<PlayerFilte
 fn track_target_player(target: &TargetAst, frame: &mut ReferenceFrame) {
     match target {
         TargetAst::Player(filter, explicit_target_span) => {
-            frame.last_player_filter = Some(if matches!(filter, PlayerFilter::IteratedPlayer) {
+            // "that player" (bare, or as the AliasedTarget discourse marker)
+            // re-mentions the current player antecedent; it must not replace
+            // it with an unresolved placeholder.
+            let is_that_player_marker = matches!(filter, PlayerFilter::IteratedPlayer)
+                || matches!(
+                    filter,
+                    PlayerFilter::AliasedTarget(inner)
+                        if matches!(inner.as_ref(), PlayerFilter::IteratedPlayer)
+                )
+                // An unannounced `Target(Any)` recipient ("deals damage to
+                // that player") is a back-reference, not a new target.
+                || (explicit_target_span.is_none()
+                    && *filter == PlayerFilter::target_player()
+                    && frame.last_player_filter.is_some());
+            frame.last_player_filter = Some(if is_that_player_marker {
                 frame
                     .last_player_filter
                     .clone()
@@ -560,6 +578,10 @@ fn maybe_tag_target(
     };
     if let Some(tag) = current_object_tag.as_ref() {
         frame.last_object_tag = Some(tag.clone());
+        // An announced target stays nameable by a later definite
+        // description ("the creature you control") even after newer
+        // antecedents replace the ordinary last-object reference.
+        remember_explicit_object_target_binding(target, frame);
     }
     track_target_player(target, frame);
     if let (Some(tag), TargetAst::Object(filter, Some(_), _)) = (current_object_tag, target)
@@ -1111,6 +1133,13 @@ fn resolve_definite_object_references_in_effect(
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach {
                 target, ..
             })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
+                target, ..
+            })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget {
+                target,
+                ..
+            })
             | SubjectVerbActionAst::Characteristics(
                 CharacteristicActionAst::SetBasePowerToughness { target, .. },
             )
@@ -1500,11 +1529,22 @@ fn advance_reference_frame_for_effect(
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "amassed"));
                     }
                 }
-                SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount }) => {
+                SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount })
+                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
+                    count: amount,
+                }) => {
                     maybe_tag_value_object_target(amount, frame, id_gen, "targeted");
                 }
                 SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { target }) => {
                     maybe_tag_target(target, frame, id_gen, "airbent")?;
+                }
+                SubjectVerbActionAst::KeywordActions(KeywordActionAst::Earthbend { .. }) => {
+                    // Earthbend targets a land you control; lowering tags that
+                    // target with the reserved `earthbend_N` result, so "that
+                    // land" names the earthbent land.
+                    if frame.auto_tag_object_targets {
+                        frame.last_object_tag = Some(next_reference_tag(id_gen, "earthbend"));
+                    }
                 }
                 SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target }) => {
                     maybe_tag_target(target, frame, id_gen, "explored")?;
@@ -2182,6 +2222,7 @@ fn advance_reference_frame_for_effect(
                     target,
                     zone,
                     attached_to,
+                    destination_player_surface,
                     ..
                 }) => {
                     let refs = lowering_reference_frame(frame);
@@ -2233,6 +2274,23 @@ fn advance_reference_frame_for_effect(
                         }
                     }
                     track_target_player(target, frame);
+                    // "Put target cards from a player's graveyard on top of
+                    // their library. That player ...": with no earlier player
+                    // antecedent, the moved targets' owner is the discourse
+                    // player.
+                    if frame.last_player_filter.is_none()
+                        && spec.is_target()
+                        && destination_player_surface.is_some()
+                        && matches!(
+                            zone,
+                            crate::zone::Zone::Library
+                                | crate::zone::Zone::Hand
+                                | crate::zone::Zone::Graveyard
+                        )
+                    {
+                        frame.last_player_filter =
+                            Some(PlayerFilter::AliasedOwnerOf(ObjectRef::Target));
+                    }
                 }
                 SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PutOntoBattlefield { target, .. }) => {
                     maybe_tag_target(target, frame, id_gen, "moved")?;
@@ -3079,6 +3137,33 @@ fn explicit_exiled_object_tag(effects: &[EffectAst]) -> Option<crate::TagKey> {
     None
 }
 
+/// "The sacrificed creature" / "the exiled card" parse to the shared
+/// additional-cost placeholder. Once a producer (an activation or spell cost,
+/// or an earlier sacrifice in this sequence) has bound that placeholder,
+/// every remaining use in this effect names the same concrete object,
+/// including uses inside values, conditions, and nested branches that the
+/// individual lowering routes would not otherwise resolve.
+fn bind_additional_cost_object_placeholder(effect: &mut EffectAst, env: &ReferenceEnv) {
+    use ironsmith_core::tag::TagKeyWalk;
+    let placeholder = crate::tag::CompilerReferenceTag::AdditionalCostObject.as_str();
+    let Some(concrete) = env
+        .snapshot_tag_aliases
+        .iter()
+        .find(|(alias, _)| alias.as_str() == placeholder)
+        .map(|(_, concrete)| concrete.clone())
+    else {
+        return;
+    };
+    if concrete.as_str() == placeholder {
+        return;
+    }
+    effect.map_tag_keys(&mut |tag| {
+        if tag.as_str() == placeholder {
+            *tag = concrete.clone();
+        }
+    });
+}
+
 fn annotate_effect_sequence_with_env_internal(
     effects: Vec<EffectAst>,
     mut current_env: ReferenceEnv,
@@ -3095,6 +3180,7 @@ fn annotate_effect_sequence_with_env_internal(
     let imported_exile_cost_tag_index = cost_tag_index_from_env(&current_env, "exile_cost_");
 
     while let Some(mut effect) = effects.next() {
+        bind_additional_cost_object_placeholder(&mut effect, &current_env);
         let tag_id_floor = id_gen.next_tag_id;
         let in_env = current_env.clone();
         // In a trailing condition such as "put the exiled card ... if it's a
@@ -3183,6 +3269,13 @@ fn annotate_effect_sequence_with_env_internal(
                 resolution_env.last_object_tag = gate.in_env.last_object_tag.clone();
             }
             resolution_env.last_player_filter = gate.in_env.last_player_filter.clone();
+            // A target player named inside the gated branch was chosen when
+            // the spell or ability was put on the stack, so it exists even
+            // when the branch does not run ("If you win, target player
+            // discards two cards. Otherwise, that player discards a card.").
+            if let Some(target_player) = gated_branch_declared_target_player(&gate.effect) {
+                resolution_env.last_player_filter = RefState::Known(target_player);
+            }
         }
         resolve_definite_object_references_in_effect(
             &mut effect,
@@ -3643,6 +3736,34 @@ fn typed_result_gate_action(effect: &EffectAst) -> Option<PriorEffectAction> {
         IfResultPredicate::PriorEffectResult(surface) => Some(surface.action),
         _ => None,
     }
+}
+
+/// The first explicitly targeted player subject declared inside a result
+/// gate's branch ("If you win, target player discards two cards").
+fn gated_branch_declared_target_player(gate: &EffectAst) -> Option<PlayerFilter> {
+    fn declared(effect: &EffectAst) -> Option<PlayerFilter> {
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst { subject, .. }) = effect {
+            match subject.player {
+                PlayerAst::Target => return Some(PlayerFilter::target_player()),
+                PlayerAst::TargetOpponent => return Some(PlayerFilter::target_opponent()),
+                _ => {}
+            }
+        }
+        let mut found = None;
+        for_each_nested_effects(effect, true, |nested| {
+            if found.is_none() {
+                found = nested.iter().find_map(declared);
+            }
+        });
+        found
+    }
+    let mut found = None;
+    for_each_nested_effects(gate, true, |nested| {
+        if found.is_none() {
+            found = nested.iter().find_map(declared);
+        }
+    });
+    found
 }
 
 fn result_gate_surface(effect: &EffectAst) -> Option<(&IfResultPredicate, bool)> {

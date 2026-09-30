@@ -860,6 +860,41 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
         return Ok(Some(effects));
     }
 
+    // "the creature you control gains indestructible" (after "target
+    // creature you control"): a definite singular description names one
+    // earlier object rather than every object it describes. Keep it a
+    // reference so reference resolution can bind it to that object.
+    if leading_become_effect.is_none()
+        && leading_base_pt_effect.is_none()
+        && pump_effect.is_none()
+        && following_grant.is_none()
+        && following_pump_effect.is_none()
+        && following_base_pt_effect.is_none()
+        && following_become_effect.is_none()
+        && !grant_is_choice
+        && is_definite_singular_object_subject(&crate::lexer::token_word_refs(real_subject_tokens))
+        && let Ok(target @ TargetAst::Object(_, None, Some(_))) =
+            parse_target_phrase(real_subject_tokens)
+    {
+        let mut effects = effects;
+        if losing {
+            effects.push(EffectAst::subject_verb_remove_abilities_from_target(
+                target,
+                abilities,
+                duration.clone(),
+            ));
+        } else {
+            effects.push(subject_verb_grant_abilities_to_target_with_optional_condition(
+                target,
+                abilities,
+                duration.clone(),
+                &duration_condition,
+            ));
+        }
+        effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
+        return Ok(Some(effects));
+    }
+
     let filter =
         if let Some(filter) = parse_bare_card_type_subtype_union_filter(real_subject_tokens) {
             filter

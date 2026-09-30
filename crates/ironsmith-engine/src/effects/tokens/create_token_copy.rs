@@ -223,6 +223,342 @@ fn build_token_copy_object(
     Ok(token)
 }
 
+fn execute_token_instruction(
+    effect: &CreateTokenCopyEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<EffectOutcome, ExecutionError> {
+    let controller_id = resolve_player_filter(game, &effect.controller, ctx)?;
+    if !game
+        .player(controller_id)
+        .is_some_and(|player| player.is_in_game())
+    {
+        return Ok(EffectOutcome::with_objects(Vec::new()));
+    }
+    let base_count = resolve_value(game, &effect.count, ctx)?.max(0) as u32;
+
+    // A sacrificed copy source has already left the battlefield. Its tag
+    // carries the calculated snapshot captured while paying the cost, so
+    // use that identity and LKI directly instead of relocating the object
+    // by stable id into its new zone.
+    let departed_snapshot =
+        effect
+            .target
+            .sacrificed_object_kind()
+            .and_then(|_| match effect.target.base() {
+                ChooseSpec::Tagged(tag) => ctx.get_tagged(tag.as_str()).cloned(),
+                _ => None,
+            });
+    // A source that left its zone is a new object even if the physical card
+    // can still be found by stable id. Copy its recorded characteristics.
+    let departed_snapshot = departed_snapshot.or_else(|| {
+        (matches!(effect.target.base(), ChooseSpec::Source) && game.object(ctx.source).is_none())
+            .then(|| ctx.source_snapshot.clone())
+            .flatten()
+    });
+    let target_id = if let Some(snapshot) = departed_snapshot.as_ref() {
+        snapshot.object_id
+    } else {
+        let resolved = resolve_objects_for_effect(game, ctx, &effect.target);
+        match resolved.as_ref().ok().and_then(|ids| ids.first()) {
+            Some(id) => *id,
+            None => {
+                // A tagged copy source may already have left its zone
+                // ("if that creature dies this way" runs after the
+                // destroy) — fall back to the tag's LKI snapshot. The tag
+                // may sit on the spec itself or in filter constraints.
+                let constraint_tag = match effect.target.base() {
+                    ChooseSpec::Tagged(tag) => Some(tag.clone()),
+                    ChooseSpec::Object(filter) => filter
+                        .tagged_constraints
+                        .iter()
+                        .find(|constraint| {
+                            constraint.relation
+                                == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                        })
+                        .map(|constraint| constraint.tag.clone()),
+                    _ => None,
+                };
+                if let Some(tag) = constraint_tag
+                    && let Some(snapshot) = ctx.get_tagged(tag.as_str())
+                {
+                    snapshot.object_id
+                } else {
+                    return Err(ExecutionError::InvalidTarget);
+                }
+            }
+        }
+    };
+
+    // Resolve target object, falling back to stored LKI snapshots when needed.
+    let resolved_target_id = target_id;
+    let target_object = departed_snapshot
+        .is_none()
+        .then(|| game.object(resolved_target_id).cloned())
+        .flatten();
+    let mut stored_snapshot = departed_snapshot;
+    if target_object.is_none() {
+        if stored_snapshot.is_some() {
+            // Typed sacrificed sources always prefer the cost-time LKI.
+        } else if let Some(snapshot) = ctx.target_snapshots.get(&target_id) {
+            stored_snapshot = Some(snapshot.clone());
+        } else {
+            match effect.target.base() {
+                ChooseSpec::Tagged(tag) => {
+                    if let Some(snapshot) = ctx.get_tagged(tag.as_str()) {
+                        stored_snapshot = Some(snapshot.clone());
+                    }
+                }
+                ChooseSpec::Source => {
+                    if let Some(snapshot) = &ctx.source_snapshot {
+                        stored_snapshot = Some(snapshot.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    if stored_snapshot.is_none()
+        && let Some(target) = target_object.as_ref()
+    {
+        stored_snapshot = Some(ObjectSnapshot::from_object_with_calculated_characteristics(
+            target, game,
+        ));
+    }
+    let copy_snapshot = stored_snapshot.as_ref();
+    if target_object.is_none() && copy_snapshot.is_none() {
+        return Err(ExecutionError::ObjectNotFound(target_id));
+    }
+    let (configured_attack_player, attack_player_only) = match &effect.attack_target_mode {
+        Some(CopyAttackTargetMode::Player(player_filter)) => {
+            (Some(resolve_player_filter(game, player_filter, ctx)?), true)
+        }
+        Some(CopyAttackTargetMode::PlayerOrPlaneswalkerControlledBy(player_filter)) => (
+            Some(resolve_player_filter(game, player_filter, ctx)?),
+            false,
+        ),
+        None => (None, false),
+    };
+    let required_attack_player = effect
+        .must_attack_player_this_turn
+        .as_ref()
+        .map(|player| resolve_player_filter(game, player, ctx))
+        .transpose()?;
+    let cleanup_options = TokenCleanupOptions::new(
+        effect.exile_at_end_of_combat,
+        false,
+        effect.sacrifice_at_next_end_step,
+        effect.exile_at_next_end_step,
+        effect.next_end_step_player.clone(),
+    );
+    let entry_options =
+        TokenEntryOptions::new(effect.enters_attacking && configured_attack_player.is_none());
+    let mut static_abilities_to_grant =
+        Vec::with_capacity(effect.granted_static_abilities.len() + usize::from(effect.has_haste));
+    if effect.has_haste {
+        static_abilities_to_grant.push(StaticAbility::haste());
+    }
+    static_abilities_to_grant.extend(effect.granted_static_abilities.iter().cloned());
+
+    let (half_power, half_toughness) = match effect.pt_adjustment {
+        Some(CopyPtAdjustment::HalfRoundUp) => {
+            let (power, toughness) = if let Some(snapshot) = copy_snapshot {
+                (snapshot.power.unwrap_or(0), snapshot.toughness.unwrap_or(0))
+            } else {
+                let target = target_object
+                    .as_ref()
+                    .expect("target object should exist when no snapshot is available");
+                (target.power().unwrap_or(0), target.toughness().unwrap_or(0))
+            };
+            ((power + 1) / 2, (toughness + 1) / 2)
+        }
+        None => (0, 0),
+    };
+    let resolved_base_power_toughness =
+        if let Some((power, toughness)) = &effect.set_base_power_toughness_value {
+            Some((
+                resolve_value(game, power, ctx)?,
+                resolve_value(game, toughness, ctx)?,
+            ))
+        } else {
+            effect.set_base_power_toughness
+        };
+
+    let token_preview = build_token_copy_object(
+        effect,
+        ObjectId::from_raw(0),
+        controller_id,
+        target_object.as_ref(),
+        copy_snapshot,
+        resolved_target_id,
+        half_power,
+        half_toughness,
+        resolved_base_power_toughness,
+        &static_abilities_to_grant,
+    )?;
+    let replacement = crate::events::processing::process_token_creation_for_token_with_event(
+        game,
+        controller_id,
+        base_count,
+        Some(token_preview.clone()),
+        ctx.cause.clone(),
+        ctx,
+    )?;
+    let replacement = match replacement {
+        crate::events::processing::TokenCreationReplacementResult::Proceed {
+            event,
+            provenance,
+        } => {
+            ctx.provenance = provenance;
+            event
+        }
+        crate::events::processing::TokenCreationReplacementResult::Finished(outcome) => {
+            return Ok(outcome);
+        }
+    };
+    let controller_id = replacement.controller;
+    let token_preview = replacement.token.clone().unwrap_or(token_preview);
+    let count = (replacement.count as usize).min(remaining_token_slots(game, controller_id));
+
+    let mut created_ids = Vec::with_capacity(count);
+    let mut events = Vec::with_capacity(count);
+
+    for _ in 0..count {
+        let id = game.new_object_id();
+        let mut token = build_token_copy_object(
+            effect,
+            id,
+            controller_id,
+            target_object.as_ref(),
+            copy_snapshot,
+            resolved_target_id,
+            half_power,
+            half_toughness,
+            resolved_base_power_toughness,
+            &static_abilities_to_grant,
+        )?;
+        token.zone = Zone::Command;
+        let token_is_creature = token.is_creature();
+
+        game.add_object(token);
+        let entry_result = game.move_object_with_etb_processing_with_entry_options(
+            id,
+            Zone::Battlefield,
+            &mut ctx.decision_maker,
+            effect.enters_tapped,
+            true,
+        );
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::with_objects(Vec::new()));
+        }
+        let Some(entry_result) = entry_result else {
+            game.remove_object(id);
+            continue;
+        };
+        let entered_id = entry_result.new_id;
+        created_ids.push(entered_id);
+        let entered_battlefield = game
+            .object(entered_id)
+            .is_some_and(|obj| obj.zone == Zone::Battlefield);
+
+        if entered_battlefield {
+            let entered_is_creature = game.current_is_creature(entered_id);
+            let tracks_creature_etb = entered_is_creature || token_is_creature;
+            apply_token_battlefield_entry(
+                game,
+                ctx,
+                entered_id,
+                controller_id,
+                tracks_creature_etb,
+                entry_options,
+                Zone::Command,
+                entry_result.enters_tapped,
+                &mut events,
+            )?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::with_objects(Vec::new()));
+            }
+
+            // CR 506.3a/b/f, 508.4: only a creature controlled by an
+            // attacking player, during combat, becomes attacking.
+            if let Some(attack_player) = configured_attack_player
+                && crate::effects::combat::can_enter_attacking(game, entered_id)
+            {
+                let chosen_target = if attack_player_only {
+                    game.player(attack_player)
+                        .is_some_and(|player| player.is_in_game())
+                        .then_some(AttackTarget::Player(attack_player))
+                } else {
+                    let targets = attack_targets_for_player(game, attack_player);
+                    (!targets.is_empty())
+                        .then(|| choose_attack_target(game, ctx, attack_player, &targets))
+                        .flatten()
+                };
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::with_objects(Vec::new()));
+                }
+                if let Some(chosen_target) = chosen_target {
+                    let combat = game.combat.get_or_insert_with(Default::default);
+                    combat.attackers.push(AttackerInfo {
+                        creature: entered_id,
+                        target: chosen_target,
+                    });
+                }
+            }
+        }
+    }
+
+    let primary_created_count = created_ids.len() as u32;
+    if primary_created_count > 0 {
+        game.queue_trigger_event(
+            ctx.provenance,
+            crate::triggers::TriggerEvent::new_with_provenance(
+                crate::events::CreateTokensEvent::with_token_cause(
+                    controller_id,
+                    primary_created_count,
+                    token_preview,
+                    ctx.cause.clone(),
+                ),
+                ctx.provenance,
+            ),
+        );
+    }
+
+    let additional_ids = create_replacement_additional_tokens(
+        game,
+        ctx,
+        controller_id,
+        &replacement.additional_tokens,
+        &mut events,
+    )?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(EffectOutcome::with_objects(Vec::new()));
+    }
+    created_ids.extend(additional_ids);
+
+    // Follow-up instructions apply to the complete creation event, including
+    // additional tokens supplied by replacement effects.
+    for &id in &created_ids {
+        if game
+            .object(id)
+            .is_some_and(|object| object.zone == Zone::Battlefield)
+        {
+            if let Some(player) = required_attack_player {
+                game.effect_store.attack_player_requirements.push((
+                    id,
+                    player,
+                    game.turn.turn_number,
+                ));
+            }
+            schedule_token_cleanup(game, ctx, id, controller_id, cleanup_options.clone())?;
+        }
+    }
+
+    Ok(EffectOutcome::with_objects(created_ids.clone())
+        .with_result_objects(created_ids)
+        .with_events(events))
+}
+
 impl EffectExecutor for CreateTokenCopyEffect {
     fn supports_simultaneous_player_action(&self) -> bool {
         true
@@ -244,306 +580,9 @@ impl EffectExecutor for CreateTokenCopyEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let controller_id = resolve_player_filter(game, &self.controller, ctx)?;
-        if !game
-            .player(controller_id)
-            .is_some_and(|player| player.is_in_game())
-        {
-            return Ok(EffectOutcome::with_objects(Vec::new()));
-        }
-        let base_count = resolve_value(game, &self.count, ctx)?.max(0) as u32;
-
-        // A sacrificed copy source has already left the battlefield. Its tag
-        // carries the calculated snapshot captured while paying the cost, so
-        // use that identity and LKI directly instead of relocating the object
-        // by stable id into its new zone.
-        let departed_snapshot =
-            self.target
-                .sacrificed_object_kind()
-                .and_then(|_| match self.target.base() {
-                    ChooseSpec::Tagged(tag) => ctx.get_tagged(tag.as_str()).cloned(),
-                    _ => None,
-                });
-        // A source that left its zone is a new object even if the physical card
-        // can still be found by stable id. Copy its recorded characteristics.
-        let departed_snapshot = departed_snapshot.or_else(|| {
-            (matches!(self.target.base(), ChooseSpec::Source) && game.object(ctx.source).is_none())
-                .then(|| ctx.source_snapshot.clone())
-                .flatten()
-        });
-        let target_id = if let Some(snapshot) = departed_snapshot.as_ref() {
-            snapshot.object_id
-        } else {
-            let resolved = resolve_objects_for_effect(game, ctx, &self.target);
-            match resolved.as_ref().ok().and_then(|ids| ids.first()) {
-                Some(id) => *id,
-                None => {
-                    // A tagged copy source may already have left its zone
-                    // ("if that creature dies this way" runs after the
-                    // destroy) — fall back to the tag's LKI snapshot. The tag
-                    // may sit on the spec itself or in filter constraints.
-                    let constraint_tag = match self.target.base() {
-                        ChooseSpec::Tagged(tag) => Some(tag.clone()),
-                        ChooseSpec::Object(filter) => filter
-                            .tagged_constraints
-                            .iter()
-                            .find(|constraint| {
-                                constraint.relation
-                                    == crate::filter::TaggedOpbjectRelation::IsTaggedObject
-                            })
-                            .map(|constraint| constraint.tag.clone()),
-                        _ => None,
-                    };
-                    if let Some(tag) = constraint_tag
-                        && let Some(snapshot) = ctx.get_tagged(tag.as_str())
-                    {
-                        snapshot.object_id
-                    } else {
-                        return Err(ExecutionError::InvalidTarget);
-                    }
-                }
-            }
-        };
-
-        // Resolve target object, falling back to stored LKI snapshots when needed.
-        let resolved_target_id = target_id;
-        let target_object = departed_snapshot
-            .is_none()
-            .then(|| game.object(resolved_target_id).cloned())
-            .flatten();
-        let mut stored_snapshot = departed_snapshot;
-        if target_object.is_none() {
-            if stored_snapshot.is_some() {
-                // Typed sacrificed sources always prefer the cost-time LKI.
-            } else if let Some(snapshot) = ctx.target_snapshots.get(&target_id) {
-                stored_snapshot = Some(snapshot.clone());
-            } else {
-                match self.target.base() {
-                    ChooseSpec::Tagged(tag) => {
-                        if let Some(snapshot) = ctx.get_tagged(tag.as_str()) {
-                            stored_snapshot = Some(snapshot.clone());
-                        }
-                    }
-                    ChooseSpec::Source => {
-                        if let Some(snapshot) = &ctx.source_snapshot {
-                            stored_snapshot = Some(snapshot.clone());
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-        if stored_snapshot.is_none()
-            && let Some(target) = target_object.as_ref()
-        {
-            stored_snapshot = Some(ObjectSnapshot::from_object_with_calculated_characteristics(
-                target, game,
-            ));
-        }
-        let copy_snapshot = stored_snapshot.as_ref();
-        if target_object.is_none() && copy_snapshot.is_none() {
-            return Err(ExecutionError::ObjectNotFound(target_id));
-        }
-        let (configured_attack_player, attack_player_only) = match &self.attack_target_mode {
-            Some(CopyAttackTargetMode::Player(player_filter)) => {
-                (Some(resolve_player_filter(game, player_filter, ctx)?), true)
-            }
-            Some(CopyAttackTargetMode::PlayerOrPlaneswalkerControlledBy(player_filter)) => (
-                Some(resolve_player_filter(game, player_filter, ctx)?),
-                false,
-            ),
-            None => (None, false),
-        };
-        let required_attack_player = self
-            .must_attack_player_this_turn
-            .as_ref()
-            .map(|player| resolve_player_filter(game, player, ctx))
-            .transpose()?;
-        let cleanup_options = TokenCleanupOptions::new(
-            self.exile_at_end_of_combat,
-            false,
-            self.sacrifice_at_next_end_step,
-            self.exile_at_next_end_step,
-            self.next_end_step_player.clone(),
-        );
-        let entry_options = TokenEntryOptions::new(
-            self.enters_attacking && configured_attack_player.is_none(),
-        );
-        let mut static_abilities_to_grant =
-            Vec::with_capacity(self.granted_static_abilities.len() + usize::from(self.has_haste));
-        if self.has_haste {
-            static_abilities_to_grant.push(StaticAbility::haste());
-        }
-        static_abilities_to_grant.extend(self.granted_static_abilities.iter().cloned());
-
-        let (half_power, half_toughness) = match self.pt_adjustment {
-            Some(CopyPtAdjustment::HalfRoundUp) => {
-                let (power, toughness) = if let Some(snapshot) = copy_snapshot {
-                    (snapshot.power.unwrap_or(0), snapshot.toughness.unwrap_or(0))
-                } else {
-                    let target = target_object
-                        .as_ref()
-                        .expect("target object should exist when no snapshot is available");
-                    (target.power().unwrap_or(0), target.toughness().unwrap_or(0))
-                };
-                ((power + 1) / 2, (toughness + 1) / 2)
-            }
-            None => (0, 0),
-        };
-        let resolved_base_power_toughness =
-            if let Some((power, toughness)) = &self.set_base_power_toughness_value {
-                Some((
-                    resolve_value(game, power, ctx)?,
-                    resolve_value(game, toughness, ctx)?,
-                ))
-            } else {
-                self.set_base_power_toughness
-            };
-
-        let token_preview = build_token_copy_object(
-            self,
-            ObjectId::from_raw(0),
-            controller_id,
-            target_object.as_ref(),
-            copy_snapshot,
-            resolved_target_id,
-            half_power,
-            half_toughness,
-            resolved_base_power_toughness,
-            &static_abilities_to_grant,
-        )?;
-        let replacement = crate::events::processing::process_token_creation_for_token_with_event(
-            game,
-            controller_id,
-            base_count,
-            Some(token_preview.clone()),
-            ctx.cause.clone(),
-            &mut ctx.decision_maker,
-        );
-        let count = (replacement.count as usize).min(remaining_token_slots(game, controller_id));
-
-        let mut created_ids = Vec::with_capacity(count);
-        let mut events = Vec::with_capacity(count);
-
-        for _ in 0..count {
-            let id = game.new_object_id();
-            let mut token = build_token_copy_object(
-                self,
-                id,
-                controller_id,
-                target_object.as_ref(),
-                copy_snapshot,
-                resolved_target_id,
-                half_power,
-                half_toughness,
-                resolved_base_power_toughness,
-                &static_abilities_to_grant,
-            )?;
-            token.zone = Zone::Command;
-            let token_is_creature = token.is_creature();
-
-            game.add_object(token);
-            let Some(entry_result) = game.move_object_with_etb_processing_with_entry_options(
-                id,
-                Zone::Battlefield,
-                &mut ctx.decision_maker,
-                self.enters_tapped,
-                true,
-            ) else {
-                game.remove_object(id);
-                continue;
-            };
-            let entered_id = entry_result.new_id;
-            created_ids.push(entered_id);
-            let entered_battlefield = game
-                .object(entered_id)
-                .is_some_and(|obj| obj.zone == Zone::Battlefield);
-
-            if entered_battlefield {
-                let entered_is_creature = game.current_is_creature(entered_id);
-                let tracks_creature_etb = entered_is_creature || token_is_creature;
-                apply_token_battlefield_entry(
-                    game,
-                    ctx,
-                    entered_id,
-                    controller_id,
-                    tracks_creature_etb,
-                    entry_options,
-                    Zone::Command,
-                    entry_result.enters_tapped,
-                    &mut events,
-                )?;
-
-                // CR 506.3a/b/f, 508.4: only a creature controlled by an
-                // attacking player, during combat, becomes attacking.
-                if let Some(attack_player) = configured_attack_player
-                    && crate::effects::combat::can_enter_attacking(game, entered_id)
-                {
-                    let chosen_target = if attack_player_only {
-                        game.player(attack_player)
-                            .is_some_and(|player| player.is_in_game())
-                            .then_some(AttackTarget::Player(attack_player))
-                    } else {
-                        let targets = attack_targets_for_player(game, attack_player);
-                        (!targets.is_empty())
-                            .then(|| choose_attack_target(game, ctx, attack_player, &targets))
-                            .flatten()
-                    };
-                    if let Some(chosen_target) = chosen_target {
-                        let combat = game.combat.get_or_insert_with(Default::default);
-                        combat.attackers.push(AttackerInfo {
-                            creature: entered_id,
-                            target: chosen_target,
-                        });
-                    }
-                }
-            }
-        }
-
-        let primary_created_count = created_ids.len() as u32;
-        if primary_created_count > 0 {
-            game.queue_trigger_event(
-                ctx.provenance,
-                crate::triggers::TriggerEvent::new_with_provenance(
-                    crate::events::CreateTokensEvent::with_token_cause(
-                        controller_id,
-                        primary_created_count,
-                        token_preview,
-                        ctx.cause.clone(),
-                    ),
-                    ctx.provenance,
-                ),
-            );
-        }
-
-        let additional_ids = create_replacement_additional_tokens(
-            game,
-            ctx,
-            controller_id,
-            &replacement.additional_tokens,
-            &mut events,
-        )?;
-        created_ids.extend(additional_ids);
-
-        // Follow-up instructions apply to the complete creation event, including
-        // additional tokens supplied by replacement effects.
-        for &id in &created_ids {
-            if game
-                .object(id)
-                .is_some_and(|object| object.zone == Zone::Battlefield)
-            {
-                if let Some(player) = required_attack_player {
-                    game.effect_store.attack_player_requirements.push((
-                        id,
-                        player,
-                        game.turn.turn_number,
-                    ));
-                }
-                schedule_token_cleanup(game, ctx, id, controller_id, cleanup_options.clone())?;
-            }
-        }
-
-        Ok(EffectOutcome::with_objects(created_ids).with_events(events))
+        super::lifecycle::execute_token_instruction_atomically(game, ctx, |game, ctx| {
+            execute_token_instruction(self, game, ctx)
+        })
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -1232,6 +1271,7 @@ mod tests {
         let source = create_creature(&mut game, "Ability Source", alice);
         let _charlie_walker = create_planeswalker(&mut game, "Charlie Walker", charlie);
         game.combat = Some(CombatState::default());
+        game.turn.phase = crate::game_state::Phase::Combat;
 
         let mut ctx = ExecutionContext::new_default(source, alice)
             .with_targets(vec![ResolvedTarget::Object(creature_id)]);
@@ -1303,6 +1343,8 @@ mod tests {
             ],
             ..CombatState::default()
         });
+
+        game.turn.phase = crate::game_state::Phase::Combat;
 
         let composed_myriad = Effect::for_players(
             PlayerFilter::excluding(PlayerFilter::Opponent, PlayerFilter::Defending),

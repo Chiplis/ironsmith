@@ -2649,8 +2649,17 @@ impl CardDefinitionBuilder {
         self.with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger: Trigger::this_attacks(),
+                // CR 702.134: record the mentored creature on a keyword-action
+                // event for "whenever <creature> mentors a creature".
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                    Effect::plus_one_counters(1, target.clone()),
+                    Effect::with_id(0, Effect::plus_one_counters(1, target.clone())),
+                    Effect::new(
+                        crate::effects::EmitKeywordActionEffect::new(
+                            crate::events::KeywordActionKind::Mentor,
+                            1,
+                        )
+                        .with_affected_object_memory_tag(crate::effect::EffectId(0), "__it__"),
+                    ),
                 ]),
                 choices: vec![target],
                 intervening_if: None,

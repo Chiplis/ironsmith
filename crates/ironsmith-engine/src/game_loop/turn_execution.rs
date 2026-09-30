@@ -205,7 +205,7 @@ pub(super) fn generate_damage_triggers(
             let (damage_event, life_loss_event) = combat_damage_trigger_events(game, event);
             trigger_events.extend(damage_event);
             trigger_events.extend(life_loss_event);
-            trigger_events.extend(combat_lifelink_trigger_event(game, event));
+            trigger_events.extend(combat_lifelink_trigger_events(event));
         }
         // Delayed triggers ("whenever that creature deals combat damage to a
         // player this turn") watch these events too; the simultaneous path
@@ -234,10 +234,10 @@ pub(super) fn generate_damage_triggers(
                 &mut damage_batch_groups,
             );
         }
-        if let Some(life_loss_event) = life_loss_event {
-            queue_triggers_from_event(game, trigger_queue, life_loss_event, true);
+        for life_event in life_loss_event {
+            queue_triggers_from_event(game, trigger_queue, life_event, true);
         }
-        if let Some(life_gain_event) = combat_lifelink_trigger_event(game, event) {
+        for life_gain_event in combat_lifelink_trigger_events(event) {
             queue_triggers_from_event(game, trigger_queue, life_gain_event, true);
         }
 
@@ -350,9 +350,16 @@ fn can_batch_combat_damage_trigger_events(game: &GameState) -> bool {
 fn combat_damage_trigger_events(
     game: &mut GameState,
     event: &CombatDamageEvent,
-) -> (Option<TriggerEvent>, Option<TriggerEvent>) {
+) -> (Option<TriggerEvent>, Vec<TriggerEvent>) {
     if event.amount == 0 {
-        return (None, None);
+        return (
+            None,
+            event
+                .consequence_outcome
+                .as_ref()
+                .map(|outcome| outcome.events.clone())
+                .unwrap_or_default(),
+        );
     }
     let damage_target = match event.target {
         DamageEventTarget::Player(p) => EventDamageTarget::Player(p),
@@ -393,39 +400,21 @@ fn combat_damage_trigger_events(
         damage_event = damage_event.with_source_snapshot(snapshot.clone());
     }
 
-    let life_loss_event = match event.target {
-        DamageEventTarget::Player(player_id) if event.life_lost > 0 => {
-            let provenance = game
-                .provenance_graph_mut()
-                .alloc_root_event(crate::events::EventKind::LifeLoss);
-            Some(TriggerEvent::new_with_provenance(
-                LifeLossEvent::new(player_id, event.life_lost, true),
-                provenance,
-            ))
-        }
-        _ => None,
-    };
-
-    (Some(damage_event), life_loss_event)
+    let life_events = event
+        .consequence_outcome
+        .as_ref()
+        .map(|outcome| outcome.events.clone())
+        .unwrap_or_default();
+    (Some(damage_event), life_events)
 }
 
-/// CR 702.15b: combat damage from a lifelink source causes a life-gain event.
-fn combat_lifelink_trigger_event(
-    game: &mut GameState,
-    event: &CombatDamageEvent,
-) -> Option<TriggerEvent> {
-    let (player, amount) = event.lifelink_gain?;
-    let provenance = game
-        .provenance_graph_mut()
-        .alloc_root_event(crate::events::EventKind::LifeGain);
-    let mut life_gain = TriggerEvent::new_with_provenance(
-        crate::events::LifeGainEvent::new(player, amount).with_source(event.source),
-        provenance,
-    );
-    if let Some(snapshot) = &event.source_snapshot {
-        life_gain = life_gain.with_source_snapshot(snapshot.clone());
-    }
-    Some(life_gain)
+/// Forward the actual lifelink event or its replacement payload notifications.
+fn combat_lifelink_trigger_events(event: &CombatDamageEvent) -> Vec<TriggerEvent> {
+    event
+        .lifelink_outcome
+        .as_ref()
+        .map(|outcome| outcome.events.clone())
+        .unwrap_or_default()
 }
 
 /// Queue combat-damage and life-loss triggers for a batch of combat damage events.
@@ -474,8 +463,17 @@ mod tests {
                 target: DamageEventTarget::Player(bob),
                 amount: 3,
                 life_lost: 3,
+                consequence_outcome: Some(
+                    crate::effect::EffectOutcome::count(3).with_event(
+                        crate::triggers::TriggerEvent::new_with_provenance(
+                            crate::events::LifeLossEvent::new(bob, 3, true),
+                            game.provenance_graph_mut()
+                                .alloc_root_event(crate::events::EventKind::LifeLoss),
+                        ),
+                    ),
+                ),
                 result: DamageResult::default(),
-                lifelink_gain: None,
+                lifelink_outcome: None,
             },
             CombatDamageEvent {
                 source_snapshot: None,
@@ -484,8 +482,17 @@ mod tests {
                 target: DamageEventTarget::Player(bob),
                 amount: 4,
                 life_lost: 4,
+                consequence_outcome: Some(
+                    crate::effect::EffectOutcome::count(4).with_event(
+                        crate::triggers::TriggerEvent::new_with_provenance(
+                            crate::events::LifeLossEvent::new(bob, 4, true),
+                            game.provenance_graph_mut()
+                                .alloc_root_event(crate::events::EventKind::LifeLoss),
+                        ),
+                    ),
+                ),
                 result: DamageResult::default(),
-                lifelink_gain: None,
+                lifelink_outcome: None,
             },
         ];
         let before = game.work_counters();
@@ -561,8 +568,17 @@ mod tests {
                 target: DamageEventTarget::Player(bob),
                 amount: 2,
                 life_lost: 2,
+                consequence_outcome: Some(
+                    crate::effect::EffectOutcome::count(2).with_event(
+                        crate::triggers::TriggerEvent::new_with_provenance(
+                            crate::events::LifeLossEvent::new(bob, 2, true),
+                            game.provenance_graph_mut()
+                                .alloc_root_event(crate::events::EventKind::LifeLoss),
+                        ),
+                    ),
+                ),
                 result: DamageResult::default(),
-                lifelink_gain: None,
+                lifelink_outcome: None,
             },
             CombatDamageEvent {
                 source_snapshot: None,
@@ -571,8 +587,17 @@ mod tests {
                 target: DamageEventTarget::Player(charlie),
                 amount: 2,
                 life_lost: 2,
+                consequence_outcome: Some(
+                    crate::effect::EffectOutcome::count(2).with_event(
+                        crate::triggers::TriggerEvent::new_with_provenance(
+                            crate::events::LifeLossEvent::new(charlie, 2, true),
+                            game.provenance_graph_mut()
+                                .alloc_root_event(crate::events::EventKind::LifeLoss),
+                        ),
+                    ),
+                ),
                 result: DamageResult::default(),
-                lifelink_gain: None,
+                lifelink_outcome: None,
             },
         ];
         let mut trigger_queue = TriggerQueue::new();

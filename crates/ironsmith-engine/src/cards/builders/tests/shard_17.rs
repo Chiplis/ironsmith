@@ -808,7 +808,7 @@ pub(super) fn sengir_the_dark_baron_another_player_loses_game_gains_life_from_tu
     assert_eq!(game.player(bob).expect("bob exists").life, 15);
     stage_life_loss(&mut game, bob, 16);
     assert_eq!(game.player(bob).expect("bob exists").life, -1);
-    game.add_player_counters_with_source(bob, crate::object::CounterType::Poison, 10, None, None);
+    game.add_player_counters_with_source(bob, crate::object::CounterType::Poison, 10, None, None).unwrap();
 
     assert!(
         crate::rules::state_based::apply_state_based_actions(&mut game),

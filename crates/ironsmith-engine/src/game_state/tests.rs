@@ -251,7 +251,11 @@ fn cloned_state_cows_hot_battlefield_maps() {
     let damaged = ObjectId::from_raw(10_022);
     let summoning_sick = ObjectId::from_raw(10_023);
     let monstrous = ObjectId::from_raw(10_024);
-    let suspected = ObjectId::from_raw(10_025);
+    let suspected_card = CardDefinitionBuilder::new(CardId::new(), "Suspected clone fixture")
+        .card_types(vec![CardType::Creature]).build();
+    let suspected = game.create_object_from_definition(
+        &suspected_card, PlayerId::from_index(0), Zone::Battlefield,
+    );
 
     game.tap(tapped);
     game.mark_damage(damaged, 2);
@@ -707,7 +711,11 @@ fn cloned_state_cows_cast_permission_flags() {
     let mut game = GameState::new(vec!["Alice".to_string()], 20);
     let madness = ObjectId::from_raw(10_008);
     let foretold = ObjectId::from_raw(10_009);
-    let adventure = ObjectId::from_raw(10_010);
+    let adventure_card = CardDefinitionBuilder::new(CardId::new(), "Adventure clone fixture")
+        .card_types(vec![CardType::Creature]).build();
+    let adventure = game.create_object_from_definition(
+        &adventure_card, PlayerId::from_index(0), Zone::Exile,
+    );
 
     game.set_madness_exiled(madness);
     let mut hypothetical = game.clone();

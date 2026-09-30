@@ -967,9 +967,9 @@ impl ContinuousEffectManager {
         }
     }
 
-    /// Transfer only continuous effects created by this entry's replacement
-    /// programs to the new permanent incarnation. Existing spell effects do
-    /// not survive an ordinary zone change.
+    /// Transfer the selected continuous effects to a new permanent identity.
+    /// Callers select only entry-program effects or a rules-defined exception
+    /// to the ordinary loss of effects across zone changes.
     pub(crate) fn retarget_entry_effects(
         &mut self,
         ids: &[ContinuousEffectId],
@@ -1004,6 +1004,20 @@ impl ContinuousEffectManager {
         if changed {
             self.revision += 1;
         }
+    }
+
+    /// CR 400.7a: resolved characteristic/control changes follow a permanent
+    /// spell to the permanent it becomes. Static effects keep their own scope.
+    pub(crate) fn retarget_resolved_permanent_spell(&mut self, old: ObjectId, new: ObjectId) {
+        let ids = self.effects.iter().filter_map(|effect| {
+            let EffectSourceType::Resolution { locked_targets } = &effect.source_type else {
+                return None;
+            };
+            (locked_targets.contains(&old)
+                || matches!(effect.applies_to, EffectTarget::Specific(id) if id == old))
+                .then_some(effect.id)
+        }).collect::<Vec<_>>();
+        self.retarget_entry_effects(&ids, old, new);
     }
 
     /// CR 702.140f: effects that modified a mutating creature spell apply to

@@ -3601,7 +3601,7 @@ impl WasmGame {
                     entered_id,
                     &mut self.trigger_queue,
                     dm,
-                );
+                ).map_err(|error| error.to_string())?;
             }
 
             entered_id

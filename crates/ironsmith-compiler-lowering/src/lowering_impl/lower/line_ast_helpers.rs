@@ -265,6 +265,9 @@ pub fn extract_previous_replacement_target(effect: &crate::effect::Effect) -> Op
     if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageEffect>() {
         return Some(damage.target.clone());
     }
+    if let Some(damage) = effect.downcast_ref::<crate::effects::DealDistributedDamageEffect>() {
+        return Some(damage.target.clone());
+    }
     if let Some(destroy) = effect.downcast_ref::<crate::effects::DestroyEffect>() {
         return Some(destroy.spec.clone());
     }

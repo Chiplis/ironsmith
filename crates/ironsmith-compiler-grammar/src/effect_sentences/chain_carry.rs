@@ -2579,9 +2579,47 @@ pub fn bind_prevention_followup(effects: &mut Vec<EffectAst>, sentence: &[OwnedL
     match action {
         SubjectVerbActionAst::DamagePrevention(
             DamagePreventionActionAst::PreventNextTimeDamage {
-                follow_up_effects, ..
+                source,
+                reflect_damage_to_source_controller,
+                follow_up_effects,
+                ..
             },
         ) if follow_up_effects.is_empty() => {
+            // "If/When damage is prevented this way, ~ deals that much damage
+            // to that source's controller": the source is the one this shield
+            // chose, which only the shield knows when the damage is prevented.
+            if !*reflect_damage_to_source_controller
+                && !matches!(source, crate::cards::builders::PreventNextTimeDamageSourceAst::Filter(_))
+                && let Some(tail) =
+                    sequence_grammar::parse_prevention_source_controller_reflect_followup_shape(
+                        sentence,
+                    )
+            {
+                *reflect_damage_to_source_controller = true;
+                let amount = Value::EventValue(crate::effect::EventValueSpec::Amount);
+                match tail {
+                    sequence_grammar::PreventionSourceControllerReflectTail::None => {}
+                    sequence_grammar::PreventionSourceControllerReflectTail::DrawThatMany => {
+                        follow_up_effects.push(EffectAst::subject_verb(
+                            SubjectVerbRoleAst::AffectedPlayer,
+                            PlayerAst::You,
+                            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
+                                count: amount,
+                            }),
+                        ));
+                    }
+                    sequence_grammar::PreventionSourceControllerReflectTail::GainThatMuchLife => {
+                        follow_up_effects.push(EffectAst::subject_verb(
+                            SubjectVerbRoleAst::AffectedPlayer,
+                            PlayerAst::You,
+                            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife {
+                                amount,
+                            }),
+                        ));
+                    }
+                }
+                return true;
+            }
             if sequence_grammar::parse_prevention_gain_life_followup_shape(sentence) {
                 follow_up_effects.push(EffectAst::subject_verb(
                     SubjectVerbRoleAst::AffectedPlayer,

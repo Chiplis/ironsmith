@@ -838,11 +838,12 @@ pub(super) fn test_monarch_changes_when_creature_deals_combat_damage_to_monarch(
         target: DamageEventTarget::Player(bob),
         amount: 3,
         life_lost: 3,
+        consequence_outcome: Some(crate::effect::EffectOutcome::count(3).with_event(crate::triggers::TriggerEvent::new_with_provenance(crate::events::LifeLossEvent::new(bob, 3, true), game.provenance_graph_mut().alloc_root_event(crate::events::EventKind::LifeLoss)))),
         result: DamageResult {
             damage_dealt: 3,
             ..DamageResult::default()
         },
-        lifelink_gain: None,
+        lifelink_outcome: None,
     }];
 
     generate_damage_triggers(&mut game, &events, &mut trigger_queue);
@@ -2260,7 +2261,7 @@ pub(super) fn dream_tides_prevents_creatures_from_untapping_during_untap_step() 
     game.turn.phase = Phase::Beginning;
     game.turn.step = Some(crate::game_state::Step::Untap);
     let mut dm = AutoPassDecisionMaker;
-    crate::turn::execute_untap_step_with(&mut game, &mut dm);
+    crate::turn::execute_untap_step_with(&mut game, &mut dm).unwrap();
 
     assert!(
         game.is_tapped(bob_creature),

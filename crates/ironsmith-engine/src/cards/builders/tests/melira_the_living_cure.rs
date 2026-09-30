@@ -24,7 +24,7 @@ fn melira_limits_actual_poison_received_to_one_each_turn() {
 
     let mut game = crate::tests::test_helpers::setup_two_player_game();
     let alice = PlayerId::from_index(0);
-    game.add_player_counters_with_source(alice, CounterType::Poison, 2, None, None);
+    game.add_player_counters_with_source(alice, CounterType::Poison, 2, None, None).unwrap();
     assert_eq!(game.player(alice).unwrap().poison_counters, 2);
     let melira = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
     game.update_replacement_effects();
@@ -32,7 +32,7 @@ fn melira_limits_actual_poison_received_to_one_each_turn() {
     let first = game
         .add_player_counters_with_source(alice, CounterType::Poison, 4, Some(melira), Some(alice))
         .expect("the first poison event should still add one counter");
-    let first_markers = first
+    let first_markers = first.events[0]
         .downcast::<crate::events::MarkersChangedEvent>()
         .expect("player counters should emit a markers-changed event");
     assert_eq!(first_markers.amount, 1);
@@ -50,7 +50,7 @@ fn melira_limits_actual_poison_received_to_one_each_turn() {
             Some(melira),
             Some(alice),
         )
-        .is_none(),
+        .unwrap().events.is_empty(),
         "additional poison placements in the same turn should be replaced with zero"
     );
     assert_eq!(game.player(alice).unwrap().poison_counters, 3);
@@ -63,20 +63,20 @@ fn melira_limits_actual_poison_received_to_one_each_turn() {
         Some(melira),
         Some(alice),
     );
-    assert!(next_turn.is_some(), "the allowance must reset next turn");
+    assert!(!next_turn.unwrap().events.is_empty(), "the allowance must reset next turn");
     assert_eq!(game.player(alice).unwrap().poison_counters, 4);
 
     game.move_object_by_effect(melira, Zone::Graveyard);
     game.update_replacement_effects();
     assert!(
         game.add_player_counters_with_source(alice, CounterType::Poison, 3, None, None)
-            .is_none(),
+            .unwrap().events.is_empty(),
         "the established turn lock must survive after Melira leaves the battlefield"
     );
     assert_eq!(game.player(alice).unwrap().poison_counters, 4);
 
     game.turn_store.turn_history.clear_for_new_turn();
-    game.add_player_counters_with_source(alice, CounterType::Poison, 3, None, None);
+    game.add_player_counters_with_source(alice, CounterType::Poison, 3, None, None).unwrap();
     assert_eq!(
         game.player(alice).unwrap().poison_counters,
         7,

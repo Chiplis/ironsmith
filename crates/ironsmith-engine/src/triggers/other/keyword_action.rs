@@ -376,6 +376,21 @@ impl TriggerMatcher for KeywordActionTrigger {
                 _ => format!("Whenever a player exerts {source}"),
             };
         }
+        if self.action == KeywordActionKind::Mentor
+            && let Some(source_filter) = &self.source_filter
+        {
+            let object = self
+                .tagged_object_filter
+                .as_ref()
+                .map(|(_, object_filter)| {
+                    ensure_singular_noun_phrase_article(object_filter.description())
+                })
+                .unwrap_or_else(|| "a creature".to_string());
+            return format!(
+                "Whenever {} mentors {object}",
+                source_filter.description()
+            );
+        }
         if self.action == KeywordActionKind::Crew
             && let Some(source_filter) = &self.source_filter
         {

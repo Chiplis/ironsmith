@@ -8,6 +8,8 @@ mod for_each_counter_kind_put_or_remove;
 mod move_all_counters;
 mod move_counters;
 mod move_one_counter;
+mod player_counter_placement;
+mod object_counter_placement;
 mod proliferate;
 mod put_counter_of_chosen_kind;
 mod put_counters;
@@ -18,6 +20,8 @@ mod remove_up_to_any_counters;
 mod remove_up_to_counters;
 
 pub use double_counters::DoubleCountersEffect;
+pub(crate) use player_counter_placement::execute_player_counter_placement;
+pub(crate) use object_counter_placement::execute_object_counter_placement;
 pub use for_each_counter_kind_put_or_remove::ForEachCounterKindPutOrRemoveEffect;
 pub use move_all_counters::MoveAllCountersEffect;
 pub use move_counters::MoveCountersEffect;
@@ -60,26 +64,8 @@ pub(crate) fn put_moved_counters(
     to_id: ObjectId,
     counter_type: CounterType,
     count: u32,
-) -> Option<crate::triggers::TriggerEvent> {
-    if count == 0 {
-        return None;
-    }
-    let final_count = crate::events::processing::process_put_counters_with_event_with_dm(
-        game,
-        to_id,
-        counter_type,
-        count,
-        ctx.cause.clone(),
-        &mut *ctx.decision_maker,
-    );
-    if final_count == 0 {
-        return None;
-    }
-    game.add_counters_with_source(
-        to_id,
-        counter_type,
-        final_count,
-        Some(ctx.source),
-        Some(ctx.controller),
-    )
+) -> Result<crate::effect::EffectOutcome, crate::effects::ExecutionError> {
+    let event = crate::events::Event::put_counters(to_id, counter_type, count, ctx.cause.clone())
+        .with_provenance(ctx.provenance);
+    execute_object_counter_placement(game, ctx, event)
 }

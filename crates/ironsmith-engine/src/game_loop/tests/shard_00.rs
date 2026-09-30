@@ -2210,6 +2210,7 @@ pub(super) fn deal_test_combat_damage_to_player(
     let keywords = crate::rules::damage::source_damage_keywords(game, source, None);
     let mut damage_dealt = 0u32;
     let mut life_lost = 0u32;
+    let mut consequence_outcomes = Vec::new();
     for assignment in processed.assignments {
         let applied = crate::rules::damage::apply_processed_damage_assignment(
             game,
@@ -2222,6 +2223,7 @@ pub(super) fn deal_test_combat_damage_to_player(
         assert!(applied.applied, "combat damage assignment should apply");
         damage_dealt = damage_dealt.saturating_add(assignment.amount);
         life_lost = life_lost.saturating_add(applied.life_lost);
+        consequence_outcomes.extend(applied.consequence_outcome);
     }
 
     CombatDamageEvent {
@@ -2231,11 +2233,12 @@ pub(super) fn deal_test_combat_damage_to_player(
         target: DamageEventTarget::Player(player),
         amount: damage_dealt,
         life_lost,
+        consequence_outcome: Some(crate::effect::EffectOutcome::aggregate(consequence_outcomes)),
         result: DamageResult {
             damage_dealt,
             ..DamageResult::default()
         },
-        lifelink_gain: None,
+        lifelink_outcome: None,
     }
 }
 

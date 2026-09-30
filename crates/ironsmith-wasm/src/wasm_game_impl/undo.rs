@@ -1513,7 +1513,7 @@ impl WasmGame {
                     entered_id,
                     &mut self.trigger_queue,
                     &mut dm,
-                );
+                ).map_err(|error| JsValue::from_str(&error.to_string()))?;
             }
 
             entered_id

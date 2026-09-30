@@ -276,6 +276,9 @@ fn link_spell_cast_mana_spent_predicate(
                     TriggeringPredicateAst::TriggeringSpellColoredManaSpentToCastAtLeast(amount),
                 )
             }
+            PredicateAst::TargetWasKicked => {
+                PredicateAst::Triggering(TriggeringPredicateAst::TriggeringSpellWasKicked)
+            }
             PredicateAst::Not(inner) => PredicateAst::Not(Box::new(retarget(*inner))),
             PredicateAst::And(left, right) => {
                 PredicateAst::And(Box::new(retarget(*left)), Box::new(retarget(*right)))

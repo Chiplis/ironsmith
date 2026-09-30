@@ -13,74 +13,91 @@ impl EffectExecutor for MoveOneCounterEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let target_pair = if ctx.target_assignments.is_empty() && ctx.targets.len() >= 2 {
-            ctx.resolve_two_object_targets()
-        } else {
-            let from = resolve_objects_for_effect(game, ctx, &self.from)?;
-            let to = resolve_objects_for_effect(game, ctx, &self.to)?;
-            from.first().copied().zip(to.first().copied())
-        };
-        let Some((from_id, to_id)) = target_pair else {
-            return Ok(EffectOutcome::target_invalid());
-        };
-        if game.object(to_id).is_none() {
-            return Ok(EffectOutcome::count(0));
-        }
-
-        let available_counters = game
-            .object(from_id)
-            .map(|obj| {
-                obj.counters
-                    .iter()
-                    .filter(|(_, count)| **count > 0)
-                    // CR 122.5: only a counter that can be put onto the second
-                    // object can be moved.
-                    .filter(|(ct, _)| super::move_destination_can_receive_counters(game, to_id, **ct))
-                    .map(|(ct, count)| (*ct, *count))
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        if available_counters.is_empty() {
-            return Ok(EffectOutcome::count(0));
-        }
-
-        let spec = CounterRemovalSpec::new(ctx.source, from_id, 1, available_counters);
-        let selections = make_decision_with_fallback(
-            game,
-            &mut ctx.decision_maker,
-            ctx.controller,
-            Some(ctx.source),
-            spec,
-            FallbackStrategy::Maximum,
-        );
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-
-        for (counter_type, to_remove) in selections {
-            if to_remove == 0 {
-                continue;
-            }
-            let Some((removed, remove_event)) = game.remove_counters(
-                from_id,
-                counter_type,
-                1,
-                Some(ctx.source),
-                Some(ctx.controller),
-            ) else {
-                continue;
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = (|| {
+            let target_pair = if ctx.target_assignments.is_empty() && ctx.targets.len() >= 2 {
+                ctx.resolve_two_object_targets()
+            } else {
+                let from = resolve_objects_for_effect(game, ctx, &self.from)?;
+                let to = resolve_objects_for_effect(game, ctx, &self.to)?;
+                from.first().copied().zip(to.first().copied())
             };
-            if removed == 0 {
-                continue;
+            let Some((from_id, to_id)) = target_pair else {
+                return Ok(EffectOutcome::target_invalid());
+            };
+            if game.object(to_id).is_none() {
+                return Ok(EffectOutcome::count(0));
             }
-            let mut outcome = EffectOutcome::count(1).with_event(remove_event);
-            if let Some(add_event) = super::put_moved_counters(game, ctx, to_id, counter_type, 1) {
-                outcome = outcome.with_event(add_event);
-            }
-            return Ok(outcome);
-        }
 
-        Ok(EffectOutcome::count(0))
+            let available_counters = game
+                .object(from_id)
+                .map(|obj| {
+                    obj.counters
+                        .iter()
+                        .filter(|(_, count)| **count > 0)
+                        // CR 122.5: only a counter that can be put onto the second
+                        // object can be moved.
+                        .filter(|(ct, _)| {
+                            super::move_destination_can_receive_counters(game, to_id, **ct)
+                        })
+                        .map(|(ct, count)| (*ct, *count))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            if available_counters.is_empty() {
+                return Ok(EffectOutcome::count(0));
+            }
+
+            let spec = CounterRemovalSpec::new(ctx.source, from_id, 1, available_counters);
+            let selections = make_decision_with_fallback(
+                game,
+                &mut ctx.decision_maker,
+                ctx.controller,
+                Some(ctx.source),
+                spec,
+                FallbackStrategy::Maximum,
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+
+            for (counter_type, to_remove) in selections {
+                if to_remove == 0 {
+                    continue;
+                }
+                let Some((removed, remove_event)) = game.remove_counters(
+                    from_id,
+                    counter_type,
+                    1,
+                    Some(ctx.source),
+                    Some(ctx.controller),
+                ) else {
+                    continue;
+                };
+                if removed == 0 {
+                    continue;
+                }
+                let mut outcome = EffectOutcome::count(1).with_event(remove_event);
+                let placed = super::put_moved_counters(game, ctx, to_id, counter_type, 1)?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::count(0));
+                }
+                outcome = EffectOutcome::aggregate([outcome, placed]);
+                outcome.set_value(crate::effect::OutcomeValue::Count(1));
+                return Ok(outcome);
+            }
+
+            Ok(EffectOutcome::count(0))
+        })();
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+        }
+        result
     }
 }
 

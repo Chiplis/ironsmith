@@ -1488,6 +1488,15 @@ pub fn parse_conditional_sentence_family_lexed(
 pub fn parse_persistent_no_maximum_hand_size_player_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerFilter> {
+    parse_persistent_no_maximum_hand_size_lexed(tokens).map(|(player, _)| player)
+}
+
+/// Parse a resolving "no maximum hand size" rule together with its authored
+/// duration ("for the rest of the game", "until your next turn", "until end
+/// of turn", "this turn").
+pub fn parse_persistent_no_maximum_hand_size_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<(PlayerFilter, crate::effect::Until)> {
     let words = token_word_refs(tokens);
     let (player, subject_words) = if crate::word_primitives::parse_sequence_prefix(&words, &["you"])
     {
@@ -1499,23 +1508,20 @@ pub fn parse_persistent_no_maximum_hand_size_player_lexed(
     } else {
         return None;
     };
-    crate::word_primitives::parse_choice_sequence_complete(
-        &words[subject_words..],
-        &[
-            &["have", "has"],
-            &["no"],
-            &["maximum"],
-            &["hand"],
-            &["size"],
-            &["for"],
-            &["the"],
-            &["rest"],
-            &["of"],
-            &["the"],
-            &["game"],
-        ],
-    )
-    .then_some(player)
+    let rest = &words[subject_words..];
+    if !crate::word_primitives::parse_choice_sequence_prefix(
+        rest,
+        &[&["have", "has"], &["no"], &["maximum"], &["hand"], &["size"]],
+    ) {
+        return None;
+    }
+    let until = match &rest[5..] {
+        ["for", "the", "rest", "of", "the", "game"] => crate::effect::Until::Forever,
+        ["until", "your", "next", "turn"] => crate::effect::Until::YourNextTurn,
+        ["until", "end", "of", "turn"] | ["this", "turn"] => crate::effect::Until::EndOfTurn,
+        _ => return None,
+    };
+    Some((player, until))
 }
 
 /// The player who retains mana in "<subject> don't lose this mana as steps and
@@ -1614,10 +1620,10 @@ pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
         return Ok(None);
     }
 
-    if let Some(player) = parse_persistent_no_maximum_hand_size_player_lexed(tokens) {
+    if let Some((player, until)) = parse_persistent_no_maximum_hand_size_lexed(tokens) {
         return Ok(Some(vec![EffectAst::subject_verb_cant(
             crate::effect::Restriction::no_maximum_hand_size(player),
-            crate::effect::Until::Forever,
+            until,
             None,
         )]));
     }

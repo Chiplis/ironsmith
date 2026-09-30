@@ -2992,8 +2992,9 @@ pub(super) fn test_generate_damage_triggers_emits_life_loss_for_player_damage() 
         target: DamageEventTarget::Player(PlayerId::from_index(1)),
         amount: 3,
         life_lost: 3,
+        consequence_outcome: Some(crate::effect::EffectOutcome::count(3).with_event(crate::triggers::TriggerEvent::new_with_provenance(crate::events::LifeLossEvent::new(PlayerId::from_index(1), 3, true), game.provenance_graph_mut().alloc_root_event(crate::events::EventKind::LifeLoss)))),
         result: DamageResult::default(),
-        lifelink_gain: None,
+        lifelink_outcome: None,
     }];
 
     generate_damage_triggers(&mut game, &events, &mut trigger_queue);
@@ -3316,20 +3317,20 @@ pub(super) fn exert_attack_choice_draws_card_and_skips_only_next_untap() {
         "accepting the exert prompt should resolve the linked draw trigger"
     );
     game.next_turn();
-    crate::turn::execute_untap_step_with(&mut game, &mut dm);
+    crate::turn::execute_untap_step_with(&mut game, &mut dm).unwrap();
 
     game.next_turn();
-    crate::turn::execute_untap_step_with(&mut game, &mut dm);
+    crate::turn::execute_untap_step_with(&mut game, &mut dm).unwrap();
     assert!(
         game.is_tapped(source_id),
         "the exerted attacker should stay tapped during its controller's next untap step"
     );
 
     game.next_turn();
-    crate::turn::execute_untap_step_with(&mut game, &mut dm);
+    crate::turn::execute_untap_step_with(&mut game, &mut dm).unwrap();
 
     game.next_turn();
-    crate::turn::execute_untap_step_with(&mut game, &mut dm);
+    crate::turn::execute_untap_step_with(&mut game, &mut dm).unwrap();
     assert!(
         !game.is_tapped(source_id),
         "the exert restriction should wear off after that untap step"

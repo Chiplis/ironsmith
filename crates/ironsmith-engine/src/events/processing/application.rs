@@ -91,7 +91,7 @@ pub(super) fn apply_trait_replacement(
             if prevented > 0 {
                 queue_damage_prevented_event(game, &event, effect, &damage, prevented);
             }
-            game.effect_store.prevention_effects.queue_follow_up(
+            queue_prevention_follow_up(game,
                 crate::prevention::PreventionFollowUp {
                     source: effect.source,
                     controller: effect.controller,
@@ -128,7 +128,7 @@ pub(super) fn apply_trait_replacement(
             if prevented > 0 {
                 queue_damage_prevented_event(game, &event, effect, &damage, prevented);
             }
-            game.effect_store.prevention_effects.queue_follow_up(
+            queue_prevention_follow_up(game,
                 crate::prevention::PreventionFollowUp {
                     source: effect.source,
                     controller: effect.controller,
@@ -164,7 +164,7 @@ pub(super) fn apply_trait_replacement(
             );
             for follow_up in result.follow_ups {
                 let follow_up_damage = damage.with_amount(follow_up.prevented);
-                game.effect_store.prevention_effects.queue_follow_up(
+                queue_prevention_follow_up(game,
                     follow_up,
                     follow_up_damage,
                     event.provenance(),
@@ -1239,6 +1239,20 @@ fn apply_trait_modification(
             };
             Some(event.rewrap(modified))
         }
+        EventKind::LifeLoss => {
+            let life_loss = downcast_event::<crate::events::LifeLossEvent>(event.inner())?;
+            let amount = match modification {
+                EventModification::Multiply(factor) => life_loss.amount.saturating_mul(*factor),
+                EventModification::Add(delta) => life_loss.amount.saturating_add_signed(*delta),
+                EventModification::Subtract(delta) => life_loss.amount.saturating_sub(*delta),
+                EventModification::SetTo(value) => *value,
+                EventModification::SetToAtLeast(value) => {
+                    life_loss.amount.max(resolve_value_for_replacement(value, game, effect.source))
+                }
+                EventModification::ReduceToZero => 0,
+            };
+            Some(event.rewrap(life_loss.with_amount(amount)))
+        }
         EventKind::PutCounters => {
             let put_counters = downcast_event::<PutCountersEvent>(event.inner())?;
             let modified = match modification {
@@ -1950,4 +1964,21 @@ fn sunburst_entry_counter_type(
     } else {
         CounterType::Charge
     }
+}
+
+/// Retain the prevention source even if another assignment removes it before
+/// the additional effect executes after the simultaneous damage event.
+fn queue_prevention_follow_up(
+    game: &mut GameState,
+    follow_up: crate::prevention::PreventionFollowUp,
+    damage: crate::events::DamageEvent,
+    provenance: crate::provenance::ProvNodeId,
+) {
+    let source_snapshot = game.object(follow_up.source)
+        .filter(|_| !game.is_phased_out(follow_up.source))
+        .map(|object| crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
+        .or_else(|| game.turn_store.turn_history.departed_object_snapshot(follow_up.source).cloned());
+    game.effect_store.prevention_effects.queue_follow_up_with_source_snapshot(
+        follow_up, damage, provenance, source_snapshot,
+    );
 }

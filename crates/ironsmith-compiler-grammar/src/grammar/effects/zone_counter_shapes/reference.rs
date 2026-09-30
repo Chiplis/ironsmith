@@ -84,6 +84,7 @@ pub fn player_filter_for_half_reference(player: PlayerAst) -> Option<PlayerFilte
         PlayerAst::Teammate => Some(PlayerFilter::Teammate),
         PlayerAst::Target => Some(PlayerFilter::target_player()),
         PlayerAst::TargetOpponent => Some(PlayerFilter::target_opponent()),
+        PlayerAst::AnotherTarget => Some(PlayerFilter::another_target_player()),
         PlayerAst::That => Some(PlayerFilter::IteratedPlayer),
         PlayerAst::Chosen => Some(PlayerFilter::ChosenPlayer),
         PlayerAst::Defending => Some(PlayerFilter::Defending),

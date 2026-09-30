@@ -275,6 +275,19 @@ fn triggering_spell_mana_spent_at_least(
         .is_some_and(|obj| mana_pool_amount(&obj.mana_spent_to_cast, symbol) >= amount)
 }
 
+fn triggering_spell_was_kicked(game: &GameState, triggering_event: Option<&TriggerEvent>) -> bool {
+    let Some(spell_cast) =
+        triggering_event.and_then(|event| event.downcast::<crate::events::SpellCastEvent>())
+    else {
+        return false;
+    };
+    if let Some(snapshot) = spell_cast.snapshot.as_ref() {
+        return snapshot.optional_costs_paid.was_kicked();
+    }
+    game.object(spell_cast.spell)
+        .is_some_and(|obj| obj.optional_costs_paid.was_kicked())
+}
+
 fn triggering_spell_colored_mana_spent_at_least(
     game: &GameState,
     triggering_event: Option<&TriggerEvent>,
@@ -2024,13 +2037,22 @@ fn player_poison_counters_or_more(game: &GameState, player_id: PlayerId, count: 
         .unwrap_or(false)
 }
 
-fn player_has_no_opponent_with_more_life_than(game: &GameState, player_id: PlayerId) -> bool {
+/// "No opponent has more life than <player>": "opponent" is relative to the
+/// ability's controller (the only player an unqualified "opponent" can be
+/// anchored to), so the controller's own life total and teammates' life
+/// totals never falsify the condition.
+fn player_has_no_opponent_with_more_life_than(
+    game: &GameState,
+    controller: PlayerId,
+    player_id: PlayerId,
+) -> bool {
     let Some(life) = game.player(player_id).map(|p| p.life) else {
         return false;
     };
     game.players
         .iter()
         .filter(|candidate| candidate.is_in_game())
+        .filter(|candidate| game.are_opponents(controller, candidate.id))
         .all(|candidate| candidate.id == player_id || life >= candidate.life)
 }
 
@@ -3719,7 +3741,9 @@ fn evaluate_condition_in_context(
         Condition::PlayerHasNoOpponentWithMoreLifeThan { player } => Ok(ctx
             .matching_players(game, player)?
             .into_iter()
-            .any(|player_id| player_has_no_opponent_with_more_life_than(game, player_id))),
+            .any(|player_id| {
+                player_has_no_opponent_with_more_life_than(game, ctx.controller, player_id)
+            })),
         Condition::PlayerHasMoreLifeThanEachOtherPlayer { player } => Ok(ctx
             .matching_players(game, player)?
             .into_iter()
@@ -4166,6 +4190,9 @@ fn evaluate_condition_in_context(
         Condition::TriggeringSpellColoredManaSpentToCastAtLeast(amount) => Ok(
             triggering_spell_colored_mana_spent_at_least(game, shared.triggering_event, *amount),
         ),
+        Condition::TriggeringSpellWasKicked => {
+            Ok(triggering_spell_was_kicked(game, shared.triggering_event))
+        }
         Condition::YouControlMoreCreaturesThanTargetSpellController => {
             let Some(ctx) = ctx.execution() else {
                 return Ok(false);

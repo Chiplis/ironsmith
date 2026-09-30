@@ -198,12 +198,13 @@ mod tests {
             ReplacementAction::Instead(vec![Effect::set_life_total(5)]),
         )
         .optional();
-        let decline = replacement
-            .optional_decline_effect()
-            .expect("optional replacement has decline choice");
-        game.effect_store
+        let registered = game.effect_store
             .replacement_effects
             .add_resolution_effect(replacement);
+        let decline = game.effect_store.replacement_effects
+            .get_effect(registered).unwrap()
+            .optional_decline_effect()
+            .expect("optional replacement has decline choice");
         game.effect_store
             .replacement_effects
             .add_resolution_effect(decline);

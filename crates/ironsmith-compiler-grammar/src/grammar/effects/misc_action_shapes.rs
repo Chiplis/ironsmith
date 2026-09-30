@@ -282,6 +282,7 @@ fn player_filter_for_library_count(player: PlayerAst) -> Option<PlayerFilter> {
         PlayerAst::Any => PlayerFilter::Any,
         PlayerAst::Target => PlayerFilter::target_player(),
         PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
+        PlayerAst::AnotherTarget => PlayerFilter::another_target_player(),
         PlayerAst::That => PlayerFilter::IteratedPlayer,
         PlayerAst::ThatPlayerOrTargetController => PlayerFilter::target_player(),
         PlayerAst::Defending => PlayerFilter::Defending,

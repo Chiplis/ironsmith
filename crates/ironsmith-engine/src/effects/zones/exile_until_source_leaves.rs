@@ -217,7 +217,7 @@ mod tests {
     fn test_exile_until_respects_destination_replacement() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
-        let source = game.new_object_id();
+        let source = create_enchantment_on_battlefield(&mut game, "Exiling source", alice);
         let creature_id = create_creature_on_battlefield(&mut game, "Elite Vanguard", alice);
 
         game.effect_store.replacement_effects.add_resolution_effect(
@@ -237,7 +237,7 @@ mod tests {
         assert!(game.exile.is_empty());
         assert_eq!(game.get_exiled_with_source_links(source).len(), 0);
         assert_eq!(game.players[0].hand.len(), 1);
-        assert!(game.battlefield.is_empty());
+        assert_eq!(game.battlefield, vec![source]);
     }
 
     #[test]

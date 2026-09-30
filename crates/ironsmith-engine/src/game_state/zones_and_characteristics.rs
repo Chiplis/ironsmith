@@ -198,11 +198,37 @@ impl GameState {
         preparing_entry: bool,
         entry_event: Option<&crate::events::EnterBattlefieldEvent>,
         decision_maker: &mut dyn crate::decision::DecisionMaker,
-    ) -> Result<AsEntersProgramExecution, crate::game_loop::GameLoopError> {
+    ) -> Result<AsEntersProgramExecution, crate::effects::ExecutionError> {
         if programs.is_empty() {
             return Ok(AsEntersProgramExecution::default());
         }
+        // Replay begins with the entire list. Per-program checkpoints cannot
+        // undo a preceding program's payments or one-shot consumption.
+        let checkpoint = self.clone();
+        let result = self.execute_immediate_effect_programs_inner(
+            source,
+            controller,
+            programs,
+            preparing_entry,
+            entry_event,
+            decision_maker,
+        );
+        if result.is_err() || decision_maker.awaiting_choice() {
+            *self = checkpoint;
+            return result.map(|_| AsEntersProgramExecution::default());
+        }
+        result
+    }
 
+    fn execute_immediate_effect_programs_inner(
+        &mut self,
+        source: ObjectId,
+        controller: PlayerId,
+        programs: Vec<crate::resolution::ResolutionProgram>,
+        preparing_entry: bool,
+        entry_event: Option<&crate::events::EnterBattlefieldEvent>,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Result<AsEntersProgramExecution, crate::effects::ExecutionError> {
         let initial_effect_ids: std::collections::HashSet<_> = self
             .effect_store
             .continuous_effects
@@ -231,7 +257,7 @@ impl GameState {
                     .with_provenance(provenance);
             context.replacement.entry_counter_source = preparing_entry.then_some(source);
             context.replacement.entry_event = entry_event.cloned().map(Box::new);
-            let _ = crate::game_loop::execute_resolution_program(
+            let _ = crate::game_loop::execute_resolution_program_typed(
                 self,
                 &mut context,
                 controller,
@@ -338,14 +364,18 @@ impl GameState {
                 break;
             };
             applied.insert(identity);
-            let execution = self.execute_immediate_effect_programs(
-                source,
-                controller,
-                vec![program],
-                !for_turn_face_up,
-                None,
-                decision_maker,
-            )?;
+            let execution = self
+                .execute_immediate_effect_programs(
+                    source,
+                    controller,
+                    vec![program],
+                    !for_turn_face_up,
+                    None,
+                    decision_maker,
+                )
+                .map_err(|error| {
+                    crate::game_loop::GameLoopError::ResolutionFailed(error.to_string())
+                })?;
             combined.ran |= execution.ran;
             combined
                 .continuous_effects
@@ -395,14 +425,18 @@ impl GameState {
             .iter()
             .filter_map(as_transforms_effect_program_from_ability)
             .collect::<Vec<_>>();
-        let execution = self.execute_immediate_effect_programs(
-            source,
-            controller,
-            programs,
-            false,
-            None,
-            decision_maker,
-        )?;
+        let execution = self
+            .execute_immediate_effect_programs(
+                source,
+                controller,
+                programs,
+                false,
+                None,
+                decision_maker,
+            )
+            .map_err(|error| {
+                crate::game_loop::GameLoopError::ResolutionFailed(error.to_string())
+            })?;
         if let Some(object) = self.object_mut(source) {
             merge_retained_tagged_objects(
                 &mut object.cast_tagged_objects,
@@ -1009,6 +1043,9 @@ impl GameState {
 
         let sticker_identity = new_object.stable_id;
         self.add_object(new_object);
+        if old_zone == Zone::Stack && new_zone == Zone::Battlefield {
+            self.effect_store.continuous_effects.retarget_resolved_permanent_spell(old_id, new_id);
+        }
         self.move_stickers_to_new_object(sticker_identity, new_id, new_zone);
         if new_zone == Zone::Battlefield {
             self.note_attraction_entered_battlefield(new_id);
@@ -1816,14 +1853,6 @@ impl GameState {
                     if hidden_hand_choice {
                         self.record_hidden_identity_obligations(
                             &revealed,
-                            &spec.filter,
-                            &filter_ctx,
-                            "reveal cards matching the filter",
-                        );
-                        self.record_hidden_shortfall_obligations(
-                            &candidate_ids,
-                            &revealed,
-                            if spec.optional { 0 } else { spec.count.min },
                             &spec.filter,
                             &filter_ctx,
                             "reveal cards matching the filter",
@@ -2877,6 +2906,7 @@ impl GameState {
         if !self.objects.contains_key(&id) {
             return;
         }
+        self.battlefield_flags_mut().saga_entry_lore_processed.remove(&id);
         if let Some(stable_id) = self.object(id).map(|object| object.stable_id) {
             self.remove_stickers(stable_id);
         }
@@ -3382,7 +3412,7 @@ impl GameState {
     /// This method adds the counters and returns the event that should be used
     /// to check for triggers (like saga chapter abilities).
     ///
-    /// Returns None if the object doesn't exist.
+    /// Returns None for zero counters or an absent or phased-out object.
     pub fn add_counters(
         &mut self,
         id: ObjectId,
@@ -3390,7 +3420,7 @@ impl GameState {
         amount: u32,
     ) -> Option<crate::triggers::TriggerEvent> {
         // CR 702.26b: ordinary effects cannot change phased-out permanents.
-        if self.is_phased_out(id) {
+        if amount == 0 || self.is_phased_out(id) {
             return None;
         }
         self.mark_continuous_state_dirty();
@@ -3547,9 +3577,7 @@ impl GameState {
             .unwrap_or(0)
     }
 
-    /// Add counters to a player and emit a unified marker event when applicable.
-    ///
-    /// Counter types with dedicated rules fields and generic player counter types share this path.
+    /// Add player counters, returning every notification and replacement outcome.
     pub fn add_player_counters_with_source(
         &mut self,
         player_id: PlayerId,
@@ -3557,15 +3585,13 @@ impl GameState {
         amount: u32,
         source: Option<ObjectId>,
         source_controller: Option<PlayerId>,
-    ) -> Option<crate::triggers::TriggerEvent> {
+    ) -> Result<crate::effect::EffectOutcome, crate::effects::ExecutionError> {
         let mut dm = crate::decision::SelectFirstDecisionMaker;
-        self.add_player_counters_with_source_with_dm(
-            player_id, counter_type, amount, source, source_controller, &mut dm,
-        )
+        self.add_player_counters_with_source_with_dm(player_id, counter_type, amount, source, source_controller, &mut dm)
     }
 
-    /// Add player counters after the supplied decision maker has answered any
-    /// replacement choices. A pending choice does not place counters or emit an event.
+    /// Resolve player-counter choices and commit only the resolved event.
+    /// Pending/error operations restore their state and return no partial events.
     pub fn add_player_counters_with_source_with_dm(
         &mut self,
         player_id: PlayerId,
@@ -3574,55 +3600,13 @@ impl GameState {
         source: Option<ObjectId>,
         source_controller: Option<PlayerId>,
         dm: &mut dyn crate::decision::DecisionMaker,
-    ) -> Option<crate::triggers::TriggerEvent> {
-        if amount == 0 {
-            return None;
-        }
-
-        if matches!(counter_type, crate::object::CounterType::Poison)
-            && !self.can_get_poison_counters(player_id)
-        {
-            return None;
-        }
-
-        let cause = match (source, source_controller) {
-            (Some(source), Some(controller)) => {
-                crate::events::cause::EventCause::from_effect(source, controller)
-            }
-            _ => crate::events::cause::EventCause::effect(),
-        };
-        let amount = crate::events::processing::process_player_counters_with_event_with_dm(
-            self,
-            player_id,
-            counter_type,
-            amount,
-            cause,
-            dm,
-        );
-        if dm.awaiting_choice() || amount == 0 {
-            return None;
-        }
-
-        if matches!(counter_type, crate::object::CounterType::Poison) {
-            let current = self.player(player_id)?.poison_counters;
-            self.write_shared_poison(player_id, current.saturating_add(amount));
-        } else {
-            self.player_mut(player_id)?
-                .add_counters(counter_type, amount);
-        }
-        let event_provenance = self
-            .provenance_graph_mut()
-            .alloc_root_event(crate::events::EventKind::MarkersChanged);
-        Some(crate::triggers::TriggerEvent::new_with_provenance(
-            crate::events::MarkersChangedEvent::added(
-                counter_type,
-                player_id,
-                amount,
-                source,
-                source_controller,
-            ),
-            event_provenance,
-        ))
+    ) -> Result<crate::effect::EffectOutcome, crate::effects::ExecutionError> {
+        let mut cause = crate::events::cause::EventCause::effect();
+        cause.source = source;
+        cause.source_controller = source_controller;
+        let mut ctx = crate::effects::ExecutionContext::new(source.unwrap_or(ObjectId::from_raw(0)), source_controller.unwrap_or(player_id), dm).with_cause(cause.clone());
+        let event = crate::events::Event::put_player_counters(player_id, counter_type, amount, cause);
+        crate::effects::counters::execute_player_counter_placement(self, &mut ctx, event)
     }
 
     /// Remove counters from a player and emit a unified marker event when applicable.
@@ -5054,6 +5038,25 @@ mod chosen_option_tests {
 
         assert!(result.enters_tapped);
         assert!(game.is_tapped(result.new_id));
+    }
+
+    #[test]
+    fn zero_counter_placement_does_not_mutate_or_publish_an_event() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = crate::ids::PlayerId::from_index(0);
+        let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Counter recipient")
+            .card_types(vec![crate::types::CardType::Creature])
+            .build();
+        let recipient = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.take_pending_trigger_events();
+        let counter = crate::object::CounterType::PlusOnePlusOne;
+        assert!(game.add_counters(recipient, counter, 0).is_none());
+        assert!(!game.object(recipient).unwrap().counters.contains_key(&counter));
+        assert!(game.take_pending_trigger_events().is_empty());
+        let event = game.add_counters(recipient, counter, 1).unwrap();
+        let placed = event.downcast::<crate::events::CounterPlacedEvent>().unwrap();
+        assert_eq!((placed.permanent, placed.counter_type, placed.amount), (recipient, counter, 1));
+        assert_eq!(game.counter_count(recipient, counter), 1);
     }
 
     fn counter_count(game: &GameState, object: ObjectId) -> u32 {

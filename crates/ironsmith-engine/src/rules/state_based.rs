@@ -2067,6 +2067,24 @@ pub(crate) fn apply_state_based_actions_from_actions_with(
     all_effects: &[crate::continuous::ContinuousEffect],
     decision_maker: &mut dyn crate::decision::DecisionMaker,
 ) -> bool {
+    let checkpoint = game.clone();
+    let applied = prepare_and_apply_state_based_actions(game, actions, all_effects, decision_maker);
+    if decision_maker.awaiting_choice() {
+        *game = checkpoint;
+        return false;
+    }
+    applied
+}
+
+fn prepare_and_apply_state_based_actions(
+    game: &mut GameState,
+    actions: Vec<StateBasedAction>,
+    all_effects: &[crate::continuous::ContinuousEffect],
+    decision_maker: &mut dyn crate::decision::DecisionMaker,
+) -> bool {
+    if decision_maker.awaiting_choice() {
+        return false;
+    }
     game.clear_empty_library_draw_attempts_since_sba();
     if actions.is_empty() {
         return false;
@@ -2163,6 +2181,9 @@ pub(crate) fn apply_state_based_actions_from_actions_with(
         {
             unreplaced_losses.push(*player);
         }
+        if decision_maker.awaiting_choice() {
+            return false;
+        }
         any_applied = true;
     }
     for action in other_actions {
@@ -2186,6 +2207,9 @@ pub(crate) fn apply_state_based_actions_from_actions_with(
             &simultaneous_zone_changes,
             decision_maker,
         );
+        if decision_maker.awaiting_choice() {
+            return false;
+        }
         any_applied = true;
     }
     for player in unreplaced_losses {
@@ -2211,6 +2235,10 @@ pub(crate) fn apply_state_based_actions_with_legend_choices(
     all_effects: &[crate::continuous::ContinuousEffect],
     decision_maker: &mut dyn crate::decision::DecisionMaker,
 ) -> bool {
+    let checkpoint = game.clone();
+    if decision_maker.awaiting_choice() {
+        return false;
+    }
     let lookback =
         if game.may_have_triggered_abilities_for_event_kind(crate::events::EventKind::ZoneChange) {
             game.trigger_source_lookback_snapshots()
@@ -2220,9 +2248,17 @@ pub(crate) fn apply_state_based_actions_with_legend_choices(
     game.set_simultaneous_event_lookback(Some(lookback));
     for (keep, group) in legend_keeps {
         apply_legend_rule_choice_from_group_with_decision_maker(game, *keep, group, decision_maker);
+        if decision_maker.awaiting_choice() {
+            *game = checkpoint;
+            return false;
+        }
     }
     let applied =
         apply_state_based_actions_from_actions_with(game, actions, all_effects, decision_maker);
+    if decision_maker.awaiting_choice() {
+        *game = checkpoint;
+        return false;
+    }
     game.set_simultaneous_event_lookback(None);
     applied || !legend_keeps.is_empty()
 }
@@ -2331,7 +2367,20 @@ pub fn apply_legend_rule_choice_from_group_with_decision_maker(
     candidates: &[ObjectId],
     decision_maker: &mut dyn crate::decision::DecisionMaker,
 ) {
-    if !candidates.contains(&keep) {
+    let checkpoint = game.clone();
+    prepare_and_apply_legend_rule_choice(game, keep, candidates, decision_maker);
+    if decision_maker.awaiting_choice() {
+        *game = checkpoint;
+    }
+}
+
+fn prepare_and_apply_legend_rule_choice(
+    game: &mut GameState,
+    keep: ObjectId,
+    candidates: &[ObjectId],
+    decision_maker: &mut dyn crate::decision::DecisionMaker,
+) {
+    if decision_maker.awaiting_choice() || !candidates.contains(&keep) {
         return;
     }
 
@@ -2397,6 +2446,9 @@ pub fn apply_legend_rule_choice_from_group_with_decision_maker(
             decision_maker,
             Some(snapshot.clone()),
         );
+        if decision_maker.awaiting_choice() {
+            return;
+        }
         if let ZoneChangeOutcome::Proceed(final_zone) = outcome {
             prepared.push((id, final_zone, snapshot));
         }
@@ -2659,6 +2711,9 @@ fn apply_single_sba_with_snapshots(
                     decision_maker,
                     snapshot.clone(),
                 );
+                if decision_maker.awaiting_choice() {
+                    return;
+                }
                 if let ZoneChangeOutcome::Proceed(final_zone) = outcome {
                     prepared.push((obj_id, final_zone, snapshot));
                 }
@@ -3377,7 +3432,7 @@ mod tests {
     }
 
     #[test]
-    fn legend_rule_leavers_share_pre_event_lki_and_batch_trigger_event() {
+    fn legend_rule_leavers_share_lookback_but_keep_per_object_trigger_events() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = PlayerId::from_index(0);
         let legend = legendary_creature_definition(407, "Doomed Legends");
@@ -3404,11 +3459,14 @@ mod tests {
                 .triggering_event
                 .downcast::<crate::events::zones::ZoneChangeEvent>()
                 .expect("dies trigger should retain its zone-change event");
-            assert_eq!(
-                zone_change.snapshots().len(),
-                2,
-                "each departing legend should see the full simultaneous legend-rule batch"
-            );
+            assert_eq!(zone_change.snapshots().len(), 1,
+                "each self-dies trigger must refer to its own departing object");
+            assert_eq!(zone_change.snapshots()[0].stable_id, entry.source_stable_id);
+            let lookback = entry.triggering_event.lookback_source_snapshots();
+            for departed in &legends[1..] {
+                assert!(lookback.iter().any(|snapshot| snapshot.object_id == *departed),
+                    "every trigger must retain both departing sources' pre-event information");
+            }
         }
     }
 
@@ -4635,4 +4693,93 @@ mod tests {
         assert!(apply_state_based_actions(&mut game));
         assert_eq!(game.sector_designation(independent_copy), None);
     }
+
+    fn check_sba_replacement_pause(mode: u8) {
+        struct Answers { calls: usize, pause: bool, pending: bool }
+        impl crate::decision::DecisionMaker for Answers {
+            fn decide_options(&mut self, _: &GameState,
+                _: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> {
+                self.calls += 1;
+                self.pending = self.pause && self.calls == 2;
+                if self.pending { Vec::new() } else { vec![0] }
+            }
+            fn awaiting_choice(&self) -> bool { self.pending }
+        }
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let definition = legendary_creature_definition(90407, "Pending Legends");
+        let mut legends = (0..4).map(|index| {
+            if mode == 1 {
+                world_permanent(&mut game, alice, "Pending World")
+            } else if (mode == 2 && index > 0) || (mode == 3 && index > 1) {
+                let card = creature_card(90408 + index, "Pending Death", 2, 0);
+                game.create_object_from_card(&card, alice, Zone::Battlefield)
+            } else {
+                game.create_object_from_definition(&definition, alice, Zone::Battlefield)
+            }
+        }).collect::<Vec<_>>();
+        if mode == 1 { legends.rotate_right(1); }
+        let apply = |game: &mut GameState, dm: &mut Answers| {
+            if mode == 0 {
+                apply_legend_rule_choice_from_group_with_decision_maker(game, legends[0], &legends, dm);
+            } else {
+                let effects = crate::static_ability_processor::get_all_continuous_effects(game);
+                let actions = check_state_based_actions_with_effects(game, &effects);
+                let applied = if mode == 3 {
+                    apply_state_based_actions_with_legend_choices(game, actions,
+                        &[(legends[0], legends[..2].to_vec())], &effects, dm)
+                } else {
+                    apply_state_based_actions_from_actions_with(game, actions, &effects, dm)
+                };
+                assert_eq!(applied, !dm.awaiting_choice());
+            }
+        };
+        let mut shields = Vec::new();
+        for object in &legends[1..] {
+            shields.push(game.effect_store.replacement_effects.add_one_shot_effect(
+                crate::replacement::ReplacementEffect::with_matcher(*object, alice,
+                    crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+                        crate::target::ObjectFilter::specific(*object), Some(Zone::Battlefield), Some(Zone::Graveyard)),
+                    crate::replacement::ReplacementAction::InteractiveChooseDestination {
+                        destinations: vec![Zone::Exile, Zone::Graveyard], description: "Choose destination".into(),
+                    }),
+            ));
+        }
+        let mut dm = Answers { calls: 0, pause: true, pending: false };
+        apply(&mut game, &mut dm);
+        assert!(dm.pending);
+        assert_eq!(dm.calls, 2);
+        for object in &legends { assert_eq!(game.object(*object).map(|object| object.zone), Some(Zone::Battlefield)); }
+        for shield in &shields { assert!(game.effect_store.replacement_effects.get_effect(*shield).is_some()); }
+        assert!(game.take_pending_trigger_events().is_empty());
+        dm.calls = 0; dm.pause = false; dm.pending = false;
+        apply(&mut game, &mut dm);
+        assert_eq!(game.battlefield.len(), 1);
+        for object in &legends[1..] {
+            let moved = game.current_object_id_after_zone_change(*object).unwrap();
+            assert_eq!(game.object(moved).unwrap().zone, Zone::Exile);
+        }
+        for shield in &shields { assert!(game.effect_store.replacement_effects.get_effect(*shield).is_none()); }
+    }
+
+    #[test]
+    fn legend_rule_pending_replacement_keeps_every_candidate_and_one_shot() {
+        check_sba_replacement_pause(0);
+    }
+
+    #[test]
+    fn world_rule_pending_replacement_keeps_every_candidate_and_one_shot() {
+        check_sba_replacement_pause(1);
+    }
+
+    #[test]
+    fn creature_deaths_pending_replacement_roll_back_the_whole_sba_check() {
+        check_sba_replacement_pause(2);
+    }
+
+    #[test]
+    fn pending_nonlegend_replacement_restores_earlier_legend_group() {
+        check_sba_replacement_pause(3);
+    }
+
 }

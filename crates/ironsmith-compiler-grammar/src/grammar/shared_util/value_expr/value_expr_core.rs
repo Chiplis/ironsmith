@@ -882,7 +882,9 @@ pub(super) fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
     ) {
         let mut filter = ObjectFilter::default().with_subtype(crate::Subtype::Curse);
         filter.zone = Some(crate::zone::Zone::Battlefield);
-        filter.attached_to_player = Some(PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Any)));
+        filter.attached_to_player = Some(PlayerFilter::AliasedTarget(Box::new(
+            PlayerFilter::IteratedPlayer,
+        )));
         return Some((Value::Count(filter), filter_end));
     }
     // A possessive target-controller hand is a player-relative zone scope,

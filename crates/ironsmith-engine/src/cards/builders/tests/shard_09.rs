@@ -2123,7 +2123,7 @@ pub(super) fn fall_from_favor_keeps_enchanted_creature_tapped_when_controller_is
     game.turn.step = Some(crate::game_state::Step::Untap);
 
     let mut dm = crate::decision::SelectFirstDecisionMaker;
-    crate::turn::execute_untap_step_with(&mut game, &mut dm);
+    crate::turn::execute_untap_step_with(&mut game, &mut dm).unwrap();
 
     assert!(
         game.is_tapped(enchanted_creature),
@@ -2141,7 +2141,7 @@ pub(super) fn fall_from_favor_allows_enchanted_creature_to_untap_when_controller
     game.turn.phase = crate::game_state::Phase::Beginning;
     game.turn.step = Some(crate::game_state::Step::Untap);
     let mut dm = crate::decision::SelectFirstDecisionMaker;
-    crate::turn::execute_untap_step_with(&mut game, &mut dm);
+    crate::turn::execute_untap_step_with(&mut game, &mut dm).unwrap();
 
     assert!(
         !game.is_tapped(enchanted_creature),

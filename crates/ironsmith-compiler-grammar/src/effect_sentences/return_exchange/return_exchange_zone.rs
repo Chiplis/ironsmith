@@ -111,13 +111,16 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
             DelayedReturnTimingAst::EndOfCombat
         }
     });
-    let under_that_player_control =
-        destination.controller == crate::grammar::effects::ReturnControllerShape::ThatPlayer;
+    let under_chosen_opponent_control =
+        destination.controller == crate::grammar::effects::ReturnControllerShape::AnOpponent;
+    let under_that_player_control = under_chosen_opponent_control
+        || destination.controller == crate::grammar::effects::ReturnControllerShape::ThatPlayer;
     let return_controller = match destination.controller {
         crate::grammar::effects::ReturnControllerShape::Preserve => ReturnControllerAst::Preserve,
         crate::grammar::effects::ReturnControllerShape::You => ReturnControllerAst::You,
         crate::grammar::effects::ReturnControllerShape::Owner => ReturnControllerAst::Owner,
-        crate::grammar::effects::ReturnControllerShape::ThatPlayer => {
+        crate::grammar::effects::ReturnControllerShape::ThatPlayer
+        | crate::grammar::effects::ReturnControllerShape::AnOpponent => {
             // The exact player is carried by the actor of the generic
             // PutOntoBattlefield action below, so no new controller model is
             // needed here.
@@ -590,6 +593,17 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                             return Err(CardTextError::ParseError(format!(
                                 "unsupported modified return under that player's control (clause: '{clause_text}')"
                             )));
+                        }
+                        if under_chosen_opponent_control {
+                            // The chosen opponent is the "that player"
+                            // antecedent of the put action below.
+                            choice_prefix.push(EffectAst::subject_verb_choose_player(
+                                PlayerAst::You,
+                                PlayerFilter::Opponent,
+                                crate::tag::CompilerReferenceTag::It.bind(),
+                                false,
+                                0,
+                            ));
                         }
                         EffectAst::subject_verb_put_onto_battlefield(
                             PlayerAst::That,

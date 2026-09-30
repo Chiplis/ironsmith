@@ -201,7 +201,7 @@ fn u075_payments_redistribution_and_opposing_poison_queries_use_team_pools() {
     assert_eq!(team_pool(&game, &seats[0..2]), vec![(30, 0), (30, 0)]);
     assert_eq!(team_pool(&game, &seats[2..4]), vec![(18, 0), (18, 0)]);
 
-    game.add_player_counters_with_source(seats[2], CounterType::Poison, 4, None, None);
+    game.add_player_counters_with_source(seats[2], CounterType::Poison, 4, None, None).unwrap();
     let source = game.new_object_id();
     let mut ctx = EffectContext::new_default(source, seats[0]);
     Effect::gain_life_player(
@@ -240,11 +240,11 @@ fn u075_life_restrictions_on_one_head_protect_the_whole_team() {
 fn u075_poison_is_shared_uses_the_team_threshold_and_any_loss_propagates() {
     let (mut game, seats) = players(4);
     enable(&mut game, &seats, 2);
-    game.add_player_counters_with_source(seats[0], CounterType::Poison, 7, None, None);
+    game.add_player_counters_with_source(seats[0], CounterType::Poison, 7, None, None).unwrap();
     assert_eq!(team_pool(&game, &seats[0..2]), vec![(30, 7), (30, 7)]);
     game.remove_player_counters_with_source(seats[1], CounterType::Poison, 2, None, None);
     assert_eq!(team_pool(&game, &seats[0..2]), vec![(30, 5), (30, 5)]);
-    game.add_player_counters_with_source(seats[1], CounterType::Poison, 10, None, None);
+    game.add_player_counters_with_source(seats[1], CounterType::Poison, 10, None, None).unwrap();
 
     let actions = check_state_based_actions(&game);
     assert_eq!(

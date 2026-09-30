@@ -766,6 +766,9 @@ fn compiler_activation_cost_component_reference(
             }
             reference
         }
+        CompilerCost::ExileTopLibrary { .. } => Some(CompilerActivationCostObjectReference::Tagged(
+            (crate::tag::CompilerReferenceTag::CostExiledTop.bind()).into(),
+        )),
         CompilerCost::ReturnChosenToHand { .. } => {
             let tag = crate::tag::CompilerCostObjectTag::ReturnToHand.key(counters.return_to_hand);
             counters.return_to_hand += 1;
@@ -818,6 +821,14 @@ pub fn compiler_activation_cost_reference_imports(
             if crate::tag::CompilerCostObjectTag::Sacrifice.matches(&tag) {
                 imports.snapshot_tag_aliases.push((
                     (crate::tag::CompilerReferenceTag::AdditionalCostObject.bind()).into(),
+                    tag,
+                ));
+            } else if crate::tag::CompilerCostObjectTag::Discard.matches(&tag) {
+                // A filtered or random discard payment tags its card under
+                // its own `discard_cost_N` key; "the discarded card" names
+                // that paid card through the canonical discarded-cost alias.
+                imports.snapshot_tag_aliases.push((
+                    (crate::tag::CompilerReferenceTag::DiscardedCost.bind()).into(),
                     tag,
                 ));
             }

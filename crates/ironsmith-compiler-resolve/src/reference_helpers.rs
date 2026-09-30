@@ -71,6 +71,14 @@ fn is_exiled_collection_reference_tag(tag: &str) -> bool {
     tag == "exiled" || tag.starts_with("exiled_") || tag.starts_with("__sentence_helper_exiled")
 }
 
+/// The card an activation cost just exiled ("Exile the top card of your
+/// library: ... the exiled card's mana value"). Unlike the source's linked
+/// exile set, this names exactly the paid object.
+fn is_cost_exiled_reference_tag(tag: &TagKey) -> bool {
+    crate::tag::CompilerCostObjectTag::Exile.matches(tag)
+        || tag.as_str() == crate::tag::CompilerReferenceTag::CostExiledTop.as_str()
+}
+
 pub fn is_you_player_filter(filter: &PlayerFilter) -> bool {
     match filter {
         PlayerFilter::You => true,
@@ -159,6 +167,7 @@ pub fn resolve_non_target_player_filter(
                 "target player requires explicit targeting".to_string(),
             )),
         },
+        PlayerAst::AnotherTarget => Ok(PlayerFilter::another_target_player()),
         PlayerAst::Opponent => Ok(PlayerFilter::Opponent),
         PlayerAst::PlayerToYourLeft => Ok(PlayerFilter::PlayerToYourLeft),
         PlayerAst::PlayerToYourRight => Ok(PlayerFilter::PlayerToYourRight),
@@ -194,6 +203,40 @@ pub fn resolve_non_target_player_filter(
             )?))
         }
         PlayerAst::ThatPlayerOrTargetController => {
+            // "that player" can only fall back to a target's controller when
+            // the discourse has no non-target player antecedent. A trigger's
+            // event player ("deal combat damage to a player, ... that
+            // player's library") is such an antecedent.
+            // With no player antecedent at all, "that player" is the
+            // event's player (bound per damaged/iterated player at runtime),
+            // exactly as a bare "that player" would be.
+            // An earlier object antecedent other than the trigger's event
+            // object ("Exile target creature. Its controller manifests ...")
+            // keeps the target-controller reading.
+            if refs.known_last_player_filter().is_none()
+                && refs.known_last_object_tag().is_none_or(|tag| {
+                    tag.as_str() == crate::tag::CompilerReferenceTag::Triggering.as_str()
+                })
+            {
+                return resolve_non_target_player_filter(PlayerAst::That, refs);
+            }
+            if let Some(filter) = refs.known_last_player_filter()
+                && !matches!(
+                    filter,
+                    PlayerFilter::Target(_)
+                        | PlayerFilter::AliasedTarget(_)
+                        | PlayerFilter::ControllerOf(_)
+                        | PlayerFilter::AliasedControllerOf(_)
+                        | PlayerFilter::OwnerOf(_)
+                        | PlayerFilter::AliasedOwnerOf(_)
+                        | PlayerFilter::TargetPlayerOrControllerOfTarget
+                        | PlayerFilter::DamagedPlayer
+                        | PlayerFilter::You
+                        | PlayerFilter::Any
+                )
+            {
+                return resolve_non_target_player_filter(PlayerAst::That, refs);
+            }
             Ok(PlayerFilter::TargetPlayerOrControllerOfTarget)
         }
         PlayerAst::TriggeringSourceController => Ok(PlayerFilter::ControllerOf(ObjectRef::tagged(
@@ -1004,6 +1047,11 @@ pub fn resolve_it_tag(
             )
             && let Some(player_filter) = refs.known_last_player_filter().cloned()
         {
+            if looked_at_hand_antecedent(refs).is_some() {
+                // "Look at that player's hand ... from among those cards":
+                // the looked-at cards are still in that player's hand.
+                resolved.zone = Some(Zone::Hand);
+            }
             if resolved.owner.is_none() {
                 resolved.owner = Some(as_followup_player_alias(player_filter));
             }
@@ -1109,7 +1157,10 @@ pub fn resolve_it_tag_key(tag: &TagKey, refs: &ReferenceEnv) -> Result<TagKey, C
         // object cannot replace the source's persistent linked exile set.
         return Ok(refs
             .known_last_object_tag()
-            .filter(|known| is_exiled_collection_reference_tag(known.as_str()))
+            .filter(|known| {
+                is_exiled_collection_reference_tag(known.as_str())
+                    || is_cost_exiled_reference_tag(known)
+            })
             .cloned()
             .unwrap_or_else(|| tag.clone()));
     }
@@ -2039,10 +2090,12 @@ pub fn resolve_target_spec_with_choices(
         }
         _ => choose_spec_for_target(target),
     };
-    if let TargetAst::Object(_filter, explicit_target_span, reference_span) = target
+    if let TargetAst::Object(filter, explicit_target_span, reference_span) = target
         && refs.iterated_object
         && explicit_target_span.is_none()
         && reference_span.is_some()
+        // "this creature" names the source even inside an object loop.
+        && !filter.source
     {
         // An implicit demonstrative inside a `for each ...` object loop (for
         // example, "attach ... to that creature") denotes the current

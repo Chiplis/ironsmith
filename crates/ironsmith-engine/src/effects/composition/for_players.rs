@@ -413,27 +413,8 @@ impl crate::effects::CostExecutableEffect for ForPlayersEffect {
     }
 }
 
-impl EffectExecutor for ForPlayersEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
-    fn as_cost_executable(&self) -> Option<&dyn crate::effects::CostExecutableEffect> {
-        (!self.effects.is_empty()
-            && self
-                .effects
-                .iter()
-                .all(|effect| effect.0.as_cost_executable().is_some()))
-        .then_some(self as &dyn crate::effects::CostExecutableEffect)
-    }
-
-    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
-        for effect in &self.effects {
-            visitor(effect);
-        }
-    }
-
-    fn execute(
+impl ForPlayersEffect {
+    fn execute_players(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
@@ -491,6 +472,9 @@ impl EffectExecutor for ForPlayersEffect {
                         let outcome = execute_effect(game, effect, ctx)?;
                         outcomes_by_player[player_index].push(outcome.clone());
                         outcomes.push(outcome);
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(());
+                        }
                     }
                     let iteration_outcome = EffectOutcome::aggregate_summing_counts(
                         outcomes_by_player[player_index].iter().cloned(),
@@ -498,6 +482,9 @@ impl EffectExecutor for ForPlayersEffect {
                     stop = self.stop_after_first_happened && iteration_outcome.something_happened();
                     Ok::<(), ExecutionError>(())
                 })?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::count(0));
+                }
                 if self.sequential {
                     merge_tagged_object_sets(&mut completed_tags, &ctx.tagged_objects);
                 }
@@ -875,6 +862,49 @@ impl EffectExecutor for ForPlayersEffect {
     }
 }
 
+impl EffectExecutor for ForPlayersEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
+    fn as_cost_executable(&self) -> Option<&dyn crate::effects::CostExecutableEffect> {
+        (!self.effects.is_empty()
+            && self
+                .effects
+                .iter()
+                .all(|effect| effect.0.as_cost_executable().is_some()))
+        .then_some(self as &dyn crate::effects::CostExecutableEffect)
+    }
+
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
+        for effect in &self.effects {
+            visitor(effect);
+        }
+    }
+
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = self.execute_players(game, ctx);
+        let pending = ctx.decision_maker.awaiting_choice();
+        if pending || result.is_err() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
+        }
+        if pending {
+            return Ok(EffectOutcome::count(0));
+        }
+        result
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1134,7 +1164,9 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
         let source = game.new_object_id();
-        let mut ctx = ExecutionContext::new_default(source, alice);
+        let provenance = game.provenance_graph_mut().alloc_root_event(crate::events::EventKind::LifeLoss);
+        let mut ctx = ExecutionContext::new_default(source, alice).with_provenance(provenance);
+        assert_ne!(provenance, crate::provenance::ProvNodeId::default());
 
         let result = ForPlayersEffect::new(
             PlayerFilter::Any,
@@ -1697,4 +1729,144 @@ mod tests {
             "two tokens for each of two opponents must feed the plural follow-up"
         );
     }
+    #[test]
+    fn later_player_token_payload_pause_or_error_restores_prior_units_and_players() {
+        struct Answers {
+            pending: bool,
+            pause: bool,
+        }
+        impl crate::decision::DecisionMaker for Answers {
+            fn decide_boolean(
+                &mut self,
+                _: &GameState,
+                _: &crate::decisions::context::BooleanContext,
+            ) -> bool {
+                self.pending = self.pause;
+                !self.pause
+            }
+            fn awaiting_choice(&self) -> bool {
+                self.pending
+            }
+        }
+        for sequential in [false, true] {
+            for error in [false, true] {
+                let mut game = setup_game();
+                let alice = PlayerId::from_index(0);
+                let bob = PlayerId::from_index(1);
+                let token = crate::cards::CardDefinitionBuilder::new(
+                    crate::ids::CardId::new(),
+                    "Quantified token",
+                )
+                .token()
+                .card_types(vec![crate::types::CardType::Creature])
+                .power_toughness(crate::card::PowerToughness::fixed(1, 1))
+                .build();
+                let source = game.create_object_from_definition(
+                    &token,
+                    alice,
+                    crate::zone::Zone::Battlefield,
+                );
+                let final_payload = if error {
+                    Effect::gain_life(crate::effect::Value::X)
+                } else {
+                    Effect::may(vec![Effect::gain_life(1)])
+                };
+                let shield =
+                    game.effect_store
+                        .replacement_effects
+                        .add_one_shot_effect(crate::replacement::ReplacementEffect::with_matcher(
+                        source,
+                        bob,
+                        crate::events::tokens::matchers::WouldCreateTokensUnderControlMatcher::new(
+                            PlayerFilter::You,
+                        ),
+                        crate::replacement::ReplacementAction::Instead(vec![
+                            Effect::gain_life(3),
+                            final_payload,
+                        ]),
+                    ));
+                game.take_pending_trigger_events();
+                let allocation_start = game.next_object_id_counter();
+                let mut dm = Answers {
+                    pending: false,
+                    pause: true,
+                };
+                let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+                ctx.tag_player("retained", alice);
+                let mut effect = ForPlayersEffect::new(
+                    PlayerFilter::Any,
+                    vec![
+                        Effect::new(crate::effects::GainLifeEffect::new(
+                            2,
+                            crate::target::ChooseSpec::Player(PlayerFilter::IteratedPlayer),
+                        )),
+                        Effect::new(crate::effects::CreateTokenEffect::new(
+                            token,
+                            1,
+                            PlayerFilter::IteratedPlayer,
+                        )),
+                    ],
+                );
+                effect.sequential = sequential;
+                let outcome = effect.execute(&mut game, &mut ctx);
+                if error {
+                    assert!(matches!(outcome, Err(ExecutionError::UnresolvableValue(_))));
+                } else {
+                    assert!(ctx.decision_maker.awaiting_choice());
+                    assert!(outcome.unwrap().events.is_empty());
+                }
+                assert_eq!(
+                    game.player(alice).unwrap().life,
+                    20,
+                    "earlier action/player must be restored; sequential={sequential}, error={error}"
+                );
+                assert_eq!(game.player(bob).unwrap().life, 20);
+                assert_eq!(game.battlefield.len(), 1);
+                assert_eq!(game.next_object_id_counter(), allocation_start);
+                assert!(
+                    game.effect_store
+                        .replacement_effects
+                        .get_effect(shield)
+                        .is_some()
+                );
+                assert!(game.take_pending_trigger_events().is_empty());
+                assert!(ctx.effect_outcomes.is_empty());
+                assert!(ctx.iteration.iterated_player.is_none());
+                assert_eq!(
+                    ctx.tagged_players
+                        .get(&crate::tag::TagKey::from("retained"))
+                        .unwrap(),
+                    &vec![alice]
+                );
+                if !error {
+                    drop(ctx);
+                    dm.pause = false;
+                    dm.pending = false;
+                    let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+                    let outcome = effect.execute(&mut game, &mut ctx).unwrap();
+                    assert!(!ctx.decision_maker.awaiting_choice());
+                    assert_eq!(game.player(alice).unwrap().life, 22);
+                    assert_eq!(game.player(bob).unwrap().life, 26);
+                    assert_eq!(game.battlefield.len(), 2);
+                    assert!(
+                        game.effect_store
+                            .replacement_effects
+                            .get_effect(shield)
+                            .is_none()
+                    );
+                    assert_eq!(
+                        outcome
+                            .events
+                            .iter()
+                            .filter(|event| event
+                                .downcast::<crate::events::LifeGainEvent>()
+                                .is_some())
+                            .count(),
+                        4
+                    );
+                }
+            }
+        }
+    }
+
 }

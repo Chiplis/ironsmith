@@ -305,6 +305,11 @@ impl EffectExecutor for MoveToZoneEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::context::ExecutionContextCheckpoint::capture(ctx);
         // CR 603.10a: objects this instruction moves together share one
         // pre-event look-back, so a leaves-the-battlefield observer moved in
         // the same event sees every other object leave.
@@ -312,6 +317,14 @@ impl EffectExecutor for MoveToZoneEffect {
             && crate::effects::helpers::begin_simultaneous_zone_change_lookback(game);
         let outcome = self.execute_with_shared_lookback(game, ctx);
         crate::effects::helpers::end_simultaneous_zone_change_lookback(game, pinned_lookback);
+        let pending = ctx.decision_maker.awaiting_choice();
+        if pending || outcome.is_err() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
+        }
+        if pending {
+            return Ok(EffectOutcome::count(0));
+        }
         outcome
     }
 
@@ -375,6 +388,9 @@ impl SharedLookbackExecute for MoveToZoneEffect {
         let resolved = resolve_objects_for_effect(game, ctx, &self.target);
         ctx.iteration.iterated_player = saved_iterated_player;
         let mut object_ids = resolved?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         // When a tag snapshot carries a stale ObjectId (the tagged object
         // changed zones since the snapshot was taken), resolve through
         // stable_id so the move can find the actual game object.
@@ -473,6 +489,9 @@ impl SharedLookbackExecute for MoveToZoneEffect {
             && self.zone == Zone::Library
         {
             object_ids = order_library_move_objects(game, ctx, object_ids, order, self.to_top)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
         }
         let configured_attack_player = match &self.attack_target_mode {
             Some(MoveToZoneAttackTargetMode::PlayerOrPlaneswalkerControlledBy(player_filter)) => {
@@ -499,6 +518,9 @@ impl SharedLookbackExecute for MoveToZoneEffect {
             None
         };
 
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         for object_id in object_ids {
             let Some(obj) = game.object(object_id) else {
                 continue;
@@ -554,6 +576,9 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                 &mut ctx.decision_maker,
                 &additional_effects,
             );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
 
             match result {
                 EventOutcome::Prevented => {
@@ -705,6 +730,9 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                     .map(|(object, options, _, _)| (*object, options.clone()))
                     .collect(),
             );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
             for ((object_id, _, target_lki_before_move, source_lki_before_move), outcome) in
                 battlefield_entries.into_iter().zip(entry_outcomes)
             {
@@ -723,6 +751,9 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                                     game, ctx, new_id,
                                 )
                             };
+                            if ctx.decision_maker.awaiting_choice() {
+                                return Ok(EffectOutcome::count(0));
+                            }
                             if let Some(target) = target {
                                 let combat = game.combat.get_or_insert_with(Default::default);
                                 combat.attackers.push(AttackerInfo {
@@ -1235,4 +1266,128 @@ mod tests {
         );
         assert!(game.players[0].graveyard.is_empty());
     }
+    #[test]
+    fn later_pending_destination_restores_all_moves_and_context_memory() {
+        struct Answers { calls: usize, pause: bool, pending: bool }
+        impl crate::decision::DecisionMaker for Answers {
+            fn decide_options(&mut self, _: &GameState,
+                _: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> {
+                self.calls += 1;
+                self.pending = self.pause && self.calls == 2;
+                if self.pending { Vec::new() } else { vec![0] }
+            }
+            fn awaiting_choice(&self) -> bool { self.pending }
+        }
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let cards = (0..3).map(|_| create_named_creature_in_zone(&mut game, alice, "Pending move", Zone::Hand)).collect::<Vec<_>>();
+        let mut shields = Vec::new();
+        for card in &cards {
+            shields.push(game.effect_store.replacement_effects.add_one_shot_effect(
+                ReplacementEffect::with_matcher(*card, alice,
+                    crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+                        ObjectFilter::specific(*card), Some(Zone::Hand), Some(Zone::Graveyard)),
+                    ReplacementAction::InteractiveChooseDestination {
+                        destinations: vec![Zone::Exile, Zone::Graveyard], description: "Choose destination".into(),
+                    }),
+            ));
+        }
+        let snapshots = cards.iter().map(|card| ObjectSnapshot::from_object(game.object(*card).unwrap(), &game)).collect::<Vec<_>>();
+        let mut dm = Answers { calls: 0, pause: true, pending: false };
+        let mut ctx = ExecutionContext::new(cards[0], alice, &mut dm);
+        ctx.target_snapshots.insert(cards[0], snapshots[0].clone());
+        ctx.tag_objects("batch", snapshots);
+        // Earlier LKI must also be restored when a provisional move refreshes
+        // it from the object's more recent characteristics.
+        game.object_mut(cards[0]).unwrap().add_counters(CounterType::Charge, 3);
+        let effect = MoveToZoneEffect::to_graveyard(ChooseSpec::Tagged("batch".into()));
+        let outcome = effect.execute(&mut game, &mut ctx).unwrap();
+        assert!(ctx.decision_maker.awaiting_choice());
+        for card in &cards { assert_eq!(game.object(*card).map(|object| object.zone), Some(Zone::Hand)); }
+        for shield in &shields { assert!(game.effect_store.replacement_effects.get_effect(*shield).is_some()); }
+        assert!(ctx.get_tagged_all(SOURCE_EXILED_TAG).is_none());
+        assert_eq!(ctx.target_snapshots[&cards[0]].counters.get(&CounterType::Charge), None);
+        assert_eq!(ctx.get_tagged_all("batch").unwrap().len(), 3);
+        assert!(ctx.get_tagged_all("__source_exiled_this_resolution__").is_none());
+        assert_eq!(outcome.count_or_zero(), 0);
+        assert!(game.take_pending_trigger_events().is_empty());
+        drop(ctx);
+        assert_eq!(dm.calls, 2);
+        dm.calls = 0; dm.pause = false; dm.pending = false;
+        let mut ctx = ExecutionContext::new(cards[0], alice, &mut dm);
+        let snapshots = cards.iter().map(|card| ObjectSnapshot::from_object(game.object(*card).unwrap(), &game)).collect();
+        ctx.tag_objects("batch", snapshots);
+        let outcome = effect.execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(outcome.affected_objects().unwrap().len(), 3);
+        assert_eq!(ctx.get_tagged_all(SOURCE_EXILED_TAG).unwrap().len(), 3);
+        for before in ctx.get_tagged_all("batch").unwrap() {
+            assert!(outcome.affected_objects().unwrap().iter().any(|moved| {
+                game.object(*moved).is_some_and(|object| object.stable_id == before.stable_id && object.zone == Zone::Exile)
+            }));
+        }
+        for shield in &shields { assert!(game.effect_store.replacement_effects.get_effect(*shield).is_none()); }
+        drop(ctx);
+        assert_eq!(dm.calls, 3);
+    }
+
+    #[test]
+    fn arriving_counter_error_restores_move_and_refreshed_context_snapshot() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let card = create_named_creature_in_zone(&mut game, alice, "Counter error", Zone::Hand);
+        let snapshot = ObjectSnapshot::from_object(game.object(card).unwrap(), &game);
+        let mut ctx = ExecutionContext::new_default(card, alice);
+        ctx.target_snapshots.insert(card, snapshot);
+        game.object_mut(card).unwrap().add_counters(CounterType::Charge, 3);
+        let effect = MoveToZoneEffect::to_exile(ChooseSpec::SpecificObject(card))
+            .with_entry_counter(ironsmith_core::BattlefieldEntryCounterSpec::new(
+                CounterType::Charge, crate::effect::Value::X,
+                ironsmith_core::BattlefieldEntryCounterSurface::Inline));
+        let error = effect.execute(&mut game, &mut ctx).unwrap_err();
+        assert!(matches!(error, ExecutionError::UnresolvableValue(_)));
+        assert_eq!(game.object(card).unwrap().zone, Zone::Hand);
+        assert!(game.exile.is_empty());
+        assert_eq!(ctx.target_snapshots[&card].counters.get(&CounterType::Charge), None);
+        assert!(ctx.get_tagged_all(SOURCE_EXILED_TAG).is_none());
+        assert!(game.take_pending_trigger_events().is_empty());
+    }
+
+    #[test]
+    fn pending_library_order_stops_before_destination_replacement_prompt() {
+        struct PendingOrder { pending: bool }
+        impl crate::decision::DecisionMaker for PendingOrder {
+            fn decide_order(&mut self, _: &GameState, _: &OrderContext) -> Vec<crate::ids::ObjectId> {
+                self.pending = true;
+                Vec::new()
+            }
+            fn decide_options(&mut self, _: &GameState,
+                _: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> {
+                panic!("no replacement prompt may follow an unanswered ordering prompt");
+            }
+            fn awaiting_choice(&self) -> bool { self.pending }
+        }
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let cards = (0..2).map(|_| create_named_creature_in_zone(&mut game, alice, "Order pending", Zone::Hand)).collect::<Vec<_>>();
+        let snapshots = cards.iter().map(|card| ObjectSnapshot::from_object(game.object(*card).unwrap(), &game)).collect();
+        for card in &cards {
+            game.effect_store.replacement_effects.add_effect(ReplacementEffect::with_matcher(*card, alice,
+                crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+                    ObjectFilter::specific(*card), Some(Zone::Hand), Some(Zone::Library)),
+                ReplacementAction::InteractiveChooseDestination {
+                    destinations: vec![Zone::Exile, Zone::Library], description: "Choose destination".into(),
+                }));
+        }
+        let mut dm = PendingOrder { pending: false };
+        let mut ctx = ExecutionContext::new(cards[0], alice, &mut dm);
+        ctx.tag_objects("batch", snapshots);
+        let mut effect = MoveToZoneEffect::new(ChooseSpec::Tagged("batch".into()), Zone::Library, true);
+        effect.library_order = Some(LibraryPlacementOrder::ChosenBy(crate::target::PlayerFilter::You));
+        let outcome = effect.execute(&mut game, &mut ctx).unwrap();
+        assert!(ctx.decision_maker.awaiting_choice());
+        assert_eq!(outcome.count_or_zero(), 0);
+        for card in cards { assert_eq!(game.object(card).unwrap().zone, Zone::Hand); }
+        assert!(game.take_pending_trigger_events().is_empty());
+    }
+
 }

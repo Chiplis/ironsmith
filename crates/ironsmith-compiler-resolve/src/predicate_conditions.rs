@@ -866,6 +866,9 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::Triggering(
             TriggeringPredicateAst::TriggeringSpellColoredManaSpentToCastAtLeast(amount),
         ) => Condition::TriggeringSpellColoredManaSpentToCastAtLeast(*amount),
+        PredicateAst::Triggering(TriggeringPredicateAst::TriggeringSpellWasKicked) => {
+            Condition::TriggeringSpellWasKicked
+        }
         PredicateAst::SnowManaOfAnySpellColorSpentToCastThisSpell => {
             Condition::SnowManaOfAnySpellColorSpentToCastThisSpell
         }

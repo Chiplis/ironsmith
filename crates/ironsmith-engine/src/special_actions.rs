@@ -532,6 +532,11 @@ pub enum SpecialAction {
 /// Errors that can occur when attempting to perform a special action.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ActionError {
+    /// An effect performed as part of this action failed.
+    ExecutionFailure {
+        source: ObjectId,
+        error: crate::effects::ExecutionError,
+    },
     /// The player cancelled payment; the action transaction has been restored.
     Cancelled,
     /// You don't have priority.
@@ -589,6 +594,7 @@ pub enum ActionError {
 impl std::fmt::Display for ActionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            ActionError::ExecutionFailure { source, error } => write!(f, "Effect for object {} failed: {error}", source.0),
             ActionError::Cancelled => f.write_str("Action cancelled"),
             ActionError::NotYourPriority => f.write_str("You do not have priority"),
             ActionError::WrongPhase { required, actual } => {
@@ -627,7 +633,14 @@ impl std::fmt::Display for ActionError {
     }
 }
 
-impl std::error::Error for ActionError {}
+impl std::error::Error for ActionError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::ExecutionFailure { error, .. } => Some(error),
+            _ => None,
+        }
+    }
+}
 
 /// Check if a special action can be performed.
 pub fn can_perform(
@@ -714,6 +727,10 @@ pub fn perform(
 ) -> Result<(), ActionError> {
     can_perform(&action, game, player, &mut *decision_maker)?;
     let checkpoint = game.clone();
+    let restore_on_pending = matches!(
+        &action,
+        SpecialAction::TurnFaceUp { .. } | SpecialAction::Suspend { .. }
+    );
     let mut announced_x = None;
     if let Some(payment) = action.payment_spec(game, player)? {
         // CR 601.2f / 702.37: a turn-face-up cost with {X} (Bane of the
@@ -722,11 +739,8 @@ pub fn perform(
         if matches!(action, SpecialAction::TurnFaceUp { .. })
             && let Some(max_x) = special_action_payment_max_x(game, player, &payment)
         {
-            let ctx = crate::decisions::context::NumberContext::x_value(
-                player,
-                payment.source,
-                max_x,
-            );
+            let ctx =
+                crate::decisions::context::NumberContext::x_value(player, payment.source, max_x);
             let chosen = decision_maker.decide_number(game, &ctx).min(max_x);
             if decision_maker.awaiting_choice() {
                 return Ok(());
@@ -741,12 +755,18 @@ pub fn perform(
             announced_x,
             decision_maker,
         ) {
-            if !decision_maker.awaiting_choice() {
+            if !decision_maker.awaiting_choice() || restore_on_pending {
                 *game = checkpoint;
+            }
+            if restore_on_pending && decision_maker.awaiting_choice() {
+                return Ok(());
             }
             return Err(error);
         }
         if decision_maker.awaiting_choice() {
+            if restore_on_pending {
+                *game = checkpoint;
+            }
             return Ok(());
         }
     }
@@ -757,11 +777,17 @@ pub fn perform(
         object.x_value = Some(announced_x.unwrap_or(0));
     }
     let result = finish_special_action(action, game, player, decision_maker);
-    if result.is_err() && !decision_maker.awaiting_choice() {
+    if (result.is_err() && !decision_maker.awaiting_choice())
+        || (restore_on_pending && decision_maker.awaiting_choice())
+    {
         *game = checkpoint;
+    }
+    if restore_on_pending && decision_maker.awaiting_choice() {
+        return Ok(());
     }
     result
 }
+
 
 fn finish_special_action(
     action: SpecialAction,
@@ -780,7 +806,7 @@ fn finish_special_action(
             permanent_id,
             method,
         } => finish_turn_face_up(game, player, permanent_id, method, &mut *decision_maker),
-        SpecialAction::Suspend { card_id } => perform_suspend(game, player, card_id),
+        SpecialAction::Suspend { card_id } => perform_suspend(game, player, card_id, decision_maker),
         SpecialAction::Foretell { card_id } => perform_foretell(game, player, card_id),
         SpecialAction::Plot { card_id } => perform_plot(game, player, card_id),
         SpecialAction::ActivateManaAbility {
@@ -1477,40 +1503,53 @@ fn finish_turn_face_up(
         return Err(ActionError::NoSuchAbility);
     }
 
-    let _ = game.execute_as_enters_effect_programs_for_turn_face_up(
-        permanent_id,
-        player,
-        decision_maker,
-    );
+    game.execute_as_enters_effect_programs_for_turn_face_up(permanent_id, player, decision_maker)
+        .map_err(|error| ActionError::ExecutionFailure {
+            source: permanent_id,
+            error: crate::effects::ExecutionError::InternalError(error.to_string()),
+        })?;
+    if decision_maker.awaiting_choice() {
+        return Ok(());
+    }
 
     game.apply_power_toughness_choice_as_enters_or_turns_face_up(
         permanent_id,
         player,
         decision_maker,
     );
+    if decision_maker.awaiting_choice() {
+        return Ok(());
+    }
 
     // CR 702.37b: megamorph puts a +1/+1 counter on the permanent; that is an
     // ordinary counter placement, so counter replacements apply and a
     // counter-placed event fires (CR 122.6, 614.1).
     if spec.megamorph && game.object(permanent_id).is_some() {
-        let count = crate::events::processing::process_put_counters_with_event_with_dm(
-            game,
-            permanent_id,
-            crate::object::CounterType::PlusOnePlusOne,
-            1,
-            crate::events::cause::EventCause::from_special_action(Some(permanent_id), player),
-            &mut *decision_maker,
-        );
-        if count > 0
-            && let Some(event) = game.add_counters_with_source(
+        let outcome = {
+            let cause =
+                crate::events::cause::EventCause::from_special_action(Some(permanent_id), player);
+            let event = crate::events::Event::put_counters(
                 permanent_id,
                 crate::object::CounterType::PlusOnePlusOne,
-                count,
-                Some(permanent_id),
-                Some(player),
+                1,
+                cause.clone(),
             )
-        {
-            game.queue_trigger_event(event.provenance(), event);
+            .with_provenance(action_provenance);
+            let mut ctx =
+                crate::effects::ExecutionContext::new(permanent_id, player, decision_maker)
+                    .with_cause(cause);
+            ctx.provenance = action_provenance;
+            crate::effects::counters::execute_object_counter_placement(game, &mut ctx, event)
+        }
+        .map_err(|error| ActionError::ExecutionFailure {
+            source: permanent_id,
+            error,
+        })?;
+        if decision_maker.awaiting_choice() {
+            return Ok(());
+        }
+        for event in outcome.events {
+            game.queue_trigger_event(action_provenance, event);
         }
     }
 
@@ -1537,6 +1576,7 @@ fn finish_turn_face_up(
 
     Ok(())
 }
+
 
 // === Unlock Room Door ===
 
@@ -1747,6 +1787,7 @@ fn perform_suspend(
     game: &mut GameState,
     player: PlayerId,
     card_id: ObjectId,
+    decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
     let (time, _cost) = {
         let object = game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
@@ -1761,8 +1802,36 @@ fn perform_suspend(
             crate::events::cause::EventCause::from_special_action(Some(card_id), player),
         )
         .ok_or(ActionError::ObjectNotFound)?;
-    let _ = game.add_counters(new_id, crate::object::CounterType::Time, time);
-
+    let action_provenance = game.provenance_graph_mut().alloc_root(
+        crate::provenance::ProvenanceNodeKind::EffectExecution {
+            source: new_id,
+            controller: player,
+        },
+    );
+    let cause = crate::events::cause::EventCause::from_special_action(Some(new_id), player);
+    let event = crate::events::Event::put_counters(
+        new_id,
+        crate::object::CounterType::Time,
+        time,
+        cause.clone(),
+    )
+    .with_provenance(action_provenance);
+    let outcome = {
+        let mut ctx =
+            crate::effects::ExecutionContext::new(new_id, player, decision_maker).with_cause(cause);
+        ctx.provenance = action_provenance;
+        crate::effects::counters::execute_object_counter_placement(game, &mut ctx, event)
+    }
+    .map_err(|error| ActionError::ExecutionFailure {
+        source: card_id,
+        error,
+    })?;
+    if decision_maker.awaiting_choice() {
+        return Ok(());
+    }
+    for event in outcome.events {
+        game.queue_trigger_event(action_provenance, event);
+    }
     Ok(())
 }
 
@@ -5493,5 +5562,411 @@ mod phyrexian_component_choice_tests {
             assert_eq!(game.player(alice).unwrap().life, expected_life);
             assert_eq!(game.player(alice).unwrap().mana_pool.white, expected_white);
         }
+    }
+}
+
+#[cfg(test)]
+mod replacement_counter_face_up_tests {
+    use super::*;
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::ids::CardId;
+    use crate::object::CounterType;
+    use crate::static_abilities::StaticAbility;
+    use crate::types::CardType;
+
+    #[derive(Default)]
+    struct Answers {
+        pause: bool,
+        pending: bool,
+        calls: usize,
+    }
+    impl crate::decision::DecisionMaker for Answers {
+        fn awaiting_choice(&self) -> bool {
+            self.pending
+        }
+        fn decide_boolean(
+            &mut self,
+            _: &GameState,
+            _: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            assert!(!self.pending, "continued past a pending counter payload");
+            self.calls += 1;
+            self.pending = self.pause;
+            !self.pause
+        }
+    }
+
+    fn check_counter_application(mode: usize) {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        let card = CardBuilder::new(CardId::new(), "Face-up counter recipient")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let permanent = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.object_mut(permanent).unwrap().abilities_mut().push(
+            crate::ability::Ability::static_ability(StaticAbility::megamorph(
+                ManaCost::from_symbols(vec![ManaSymbol::Green]).into(),
+            )),
+        );
+        game.object_mut(permanent)
+            .unwrap()
+            .apply_face_down_cast_overlay();
+        game.set_face_down(permanent);
+        game.set_manifested(permanent);
+        let redirected = game.create_object_from_card(&card, bob, Zone::Battlefield);
+        let source = game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Counter replacement")
+                .card_types(vec![CardType::Enchantment])
+                .build(),
+            alice,
+            Zone::Battlefield,
+        );
+        let mut replacement = StaticAbility::double_counters_replacement(
+            crate::target::ObjectFilter::creature(),
+            Some(CounterType::PlusOnePlusOne),
+            "Replace face-up counter".into(),
+        )
+        .generate_replacement_effect(source, alice)
+        .unwrap();
+        replacement.replacement = match mode {
+            0 => crate::replacement::ReplacementAction::Redirect {
+                target: crate::replacement::RedirectTarget::ToObject(redirected),
+                which: crate::replacement::RedirectWhich::First,
+            },
+            1 => crate::replacement::ReplacementAction::Instead(vec![
+                crate::effect::Effect::gain_life(2),
+            ]),
+            2 => crate::replacement::ReplacementAction::Instead(vec![
+                crate::effect::Effect::gain_life(2),
+                crate::effect::Effect::gain_life(crate::effect::Value::X),
+            ]),
+            _ => crate::replacement::ReplacementAction::Instead(vec![
+                crate::effect::Effect::gain_life(2),
+                crate::effect::Effect::may(vec![crate::effect::Effect::gain_life(1)]),
+                crate::effect::Effect::may(vec![crate::effect::Effect::gain_life(3)]),
+            ]),
+        };
+        let one_shot = game
+            .effect_store
+            .replacement_effects
+            .add_one_shot_effect(replacement);
+        game.player_mut(alice)
+            .unwrap()
+            .mana_pool
+            .add(ManaSymbol::Green, 1);
+        let action = SpecialAction::TurnFaceUp {
+            permanent_id: permanent,
+            method: TurnFaceUpMethod::MegamorphAbility,
+        };
+        let mut dm = Answers {
+            pause: mode == 3,
+            ..Default::default()
+        };
+        let result = perform(action.clone(), &mut game, alice, &mut dm);
+        assert_eq!(result.is_err(), mode == 2);
+        assert_eq!(
+            game.counter_count(permanent, CounterType::PlusOnePlusOne),
+            0
+        );
+        if mode >= 2 {
+            assert_eq!(dm.pending, mode == 3);
+            assert!(game.is_face_down(permanent));
+            assert_eq!(game.player(alice).unwrap().life, 20);
+            assert_eq!(game.player(alice).unwrap().mana_pool.total(), 1);
+            assert!(
+                game.effect_store
+                    .replacement_effects
+                    .get_effect(one_shot)
+                    .is_some()
+            );
+            assert!(game.take_pending_trigger_events().is_empty());
+            if mode == 2 {
+                return;
+            }
+            assert_eq!(dm.calls, 1);
+            let mut dm = Answers::default();
+            perform(action, &mut game, alice, &mut dm).unwrap();
+            assert_eq!(dm.calls, 2);
+            assert_eq!(game.player(alice).unwrap().life, 26);
+        } else if mode == 1 {
+            assert_eq!(game.player(alice).unwrap().life, 22);
+        } else {
+            assert_eq!(
+                game.counter_count(redirected, CounterType::PlusOnePlusOne),
+                1
+            );
+        }
+        assert!(!game.is_face_down(permanent));
+        assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0);
+        assert!(
+            game.effect_store
+                .replacement_effects
+                .get_effect(one_shot)
+                .is_none()
+        );
+        let events = game.take_pending_trigger_events();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.kind() == crate::events::EventKind::TurnedFaceUp)
+                .count(),
+            1
+        );
+        if mode == 0 {
+            let marker = events
+                .iter()
+                .filter_map(|event| event.downcast::<crate::events::MarkersChangedEvent>())
+                .next()
+                .unwrap();
+            assert_eq!(
+                marker.location,
+                crate::marker::MarkerLocation::Object(redirected)
+            );
+            assert_eq!(marker.source, Some(permanent));
+            assert_eq!(marker.source_controller, Some(alice));
+        } else {
+            assert_eq!(
+                events
+                    .iter()
+                    .filter(|event| event.kind() == crate::events::EventKind::LifeGain)
+                    .count(),
+                if mode == 3 { 3 } else { 1 }
+            );
+            assert!(!events.iter().any(|event| {
+                event
+                    .downcast::<crate::events::MarkersChangedEvent>()
+                    .is_some_and(|marker| marker.is_added())
+            }));
+        }
+    }
+
+    #[test]
+    fn megamorph_counter_application_preserves_redirect() {
+        check_counter_application(0);
+    }
+    #[test]
+    fn megamorph_counter_application_executes_instead() {
+        check_counter_application(1);
+    }
+    #[test]
+    fn megamorph_counter_application_propagates_error_and_restores_cost() {
+        check_counter_application(2);
+    }
+    #[test]
+    fn megamorph_counter_application_pauses_and_replays_without_partial_commit() {
+        check_counter_application(3);
+    }
+}
+
+#[cfg(test)]
+mod replacement_suspend_tests {
+    use super::*;
+    use crate::card::CardBuilder;
+    use crate::ids::CardId;
+    use crate::object::CounterType;
+    use crate::replacement::{RedirectTarget, RedirectWhich, ReplacementAction, ReplacementEffect};
+
+    struct Answers {
+        pause: bool,
+        pending: bool,
+        calls: usize,
+    }
+    impl crate::decision::DecisionMaker for Answers {
+        fn decide_boolean(
+            &mut self,
+            _: &GameState,
+            _: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            assert!(!self.pending);
+            self.calls += 1;
+            self.pending = self.pause;
+            !self.pause
+        }
+        fn awaiting_choice(&self) -> bool {
+            self.pending
+        }
+    }
+
+    fn check_suspend(mode: usize) {
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+        game.turn.phase = crate::game_state::Phase::FirstMain;
+        game.turn.step = None;
+        let card = CardBuilder::new(CardId::new(), "Suspend subject")
+            .card_types(vec![crate::types::CardType::Creature])
+            .build();
+        let card_id = game.create_object_from_card(&card, alice, Zone::Hand);
+        game.object_mut(card_id).unwrap().alternative_casts =
+            vec![crate::alternative_cast::AlternativeCastingMethod::Suspend {
+                time: 2,
+                cost: crate::mana::ManaCost::from_symbols(vec![crate::mana::ManaSymbol::Green]),
+            }]
+            .into();
+        let stable_id = game.object(card_id).unwrap().stable_id;
+        let source = game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Replacement source").build(),
+            alice,
+            Zone::Battlefield,
+        );
+        let recipient = game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Redirected recipient").build(),
+            bob,
+            Zone::Battlefield,
+        );
+        let action = match mode {
+            0 => ReplacementAction::Double,
+            1 => ReplacementAction::Redirect {
+                target: RedirectTarget::ToObject(recipient),
+                which: RedirectWhich::First,
+            },
+            2 => ReplacementAction::Instead(vec![crate::effect::Effect::gain_life(2)]),
+            3 => ReplacementAction::Instead(vec![
+                crate::effect::Effect::gain_life(2),
+                crate::effect::Effect::gain_life(crate::effect::Value::X),
+            ]),
+            _ => ReplacementAction::Instead(vec![
+                crate::effect::Effect::gain_life(2),
+                crate::effect::Effect::may(vec![crate::effect::Effect::gain_life(3)]),
+            ]),
+        };
+        let one_shot = game.effect_store.replacement_effects.add_one_shot_effect(
+            ReplacementEffect::with_matcher(
+                source,
+                alice,
+                crate::events::counters::matchers::WouldPutCountersMatcher::new(
+                    crate::target::ObjectFilter::default().in_zone(Zone::Exile),
+                    Some(CounterType::Time),
+                ),
+                action,
+            ),
+        );
+        game.player_mut(alice)
+            .unwrap()
+            .mana_pool
+            .add(crate::mana::ManaSymbol::Green, 1);
+        game.take_pending_trigger_events();
+        let mut dm = Answers {
+            pause: mode == 4,
+            pending: false,
+            calls: 0,
+        };
+        let result = perform(
+            SpecialAction::Suspend { card_id },
+            &mut game,
+            alice,
+            &mut dm,
+        );
+        assert_eq!(result.is_err(), mode == 3);
+        if mode >= 3 {
+            assert_eq!(game.object(card_id).unwrap().zone, Zone::Hand);
+            assert!(game.exile.is_empty());
+            assert_eq!(game.player(alice).unwrap().mana_pool.total(), 1);
+            assert_eq!(game.player(alice).unwrap().life, 20);
+            assert_eq!(game.counter_count(recipient, CounterType::Time), 0);
+            assert!(
+                game.effect_store
+                    .replacement_effects
+                    .get_effect(one_shot)
+                    .is_some()
+            );
+            assert!(game.take_pending_trigger_events().is_empty());
+            if mode == 3 {
+                return;
+            }
+            assert!(dm.pending);
+            assert_eq!(dm.calls, 1);
+            let mut replay = Answers {
+                pause: false,
+                pending: false,
+                calls: 0,
+            };
+            perform(
+                SpecialAction::Suspend { card_id },
+                &mut game,
+                alice,
+                &mut replay,
+            )
+            .unwrap();
+            assert_eq!(replay.calls, 1);
+        }
+        let exiled = game.find_object_by_stable_id(stable_id).unwrap();
+        assert_eq!(game.object(exiled).unwrap().zone, Zone::Exile);
+        assert_eq!(
+            game.counter_count(exiled, CounterType::Time),
+            if mode == 0 { 4 } else { 0 }
+        );
+        assert_eq!(
+            game.counter_count(recipient, CounterType::Time),
+            if mode == 1 { 2 } else { 0 }
+        );
+        assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0);
+        assert_eq!(
+            game.player(alice).unwrap().life,
+            match mode {
+                2 => 22,
+                4 => 25,
+                _ => 20,
+            }
+        );
+        assert!(
+            game.effect_store
+                .replacement_effects
+                .get_effect(one_shot)
+                .is_none()
+        );
+        let events = game.take_pending_trigger_events();
+        let markers: Vec<_> = events
+            .iter()
+            .filter_map(|event| event.downcast::<crate::events::MarkersChangedEvent>())
+            .collect();
+        assert_eq!(markers.len(), usize::from(mode <= 1));
+        if let Some(marker) = markers.first() {
+            assert_eq!(
+                marker.location,
+                crate::marker::MarkerLocation::Object(if mode == 1 { recipient } else { exiled })
+            );
+            assert_eq!(marker.source, Some(exiled));
+            assert_eq!(marker.source_controller, Some(alice));
+        }
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.kind() == crate::events::EventKind::LifeGain)
+                .count(),
+            match mode {
+                2 => 1,
+                4 => 2,
+                _ => 0,
+            }
+        );
+    }
+    #[test]
+    fn suspend_counter_application_commits_modified_amount() {
+        check_suspend(0);
+    }
+    #[test]
+    fn suspend_counter_application_commits_redirected_recipient() {
+        check_suspend(1);
+    }
+    #[test]
+    fn suspend_counter_application_executes_instead() {
+        check_suspend(2);
+    }
+    #[test]
+    fn suspend_counter_application_propagates_error_and_restores_cost_and_zone() {
+        check_suspend(3);
+    }
+    #[test]
+    fn suspend_counter_application_pauses_and_replays_without_partial_commit() {
+        check_suspend(4);
     }
 }

@@ -24,6 +24,9 @@ pub enum ForEachParticipantScope {
     PlayerExceptTarget,
     PlayerExceptItsController,
     PlayerOnYourTeam,
+    /// "each of your teammates" / "each teammate": every player on your team
+    /// other than you (only meaningful in team formats).
+    Teammate,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -262,6 +265,19 @@ pub fn parse_participant_clause_shape(
             scope,
             participant_is_actor,
             inner_tokens,
+        });
+    }
+    if let Some((_, rest)) = primitives::parse_prefix(
+        tokens,
+        alt((
+            primitives::phrase(&["each", "of", "your", "teammates"]),
+            primitives::phrase(&["each", "teammate"]),
+        )),
+    ) {
+        return Some(ForEachParticipantClauseShape {
+            scope: ForEachParticipantScope::Teammate,
+            participant_is_actor: true,
+            inner_tokens: trim(rest),
         });
     }
     if let Some((_, rest)) = primitives::parse_prefix(

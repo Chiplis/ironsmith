@@ -29,6 +29,10 @@ pub struct ReplacementEffect {
     /// Unique identifier for this effect
     pub id: ReplacementEffectId,
 
+    /// Identity of a persistent manager registration. Static/ephemeral
+    /// effects leave this unset because their transient IDs can change.
+    registration_id: Option<ReplacementEffectId>,
+
     /// The source that created this effect
     pub source: ObjectId,
 
@@ -71,17 +75,30 @@ impl ReplacementEffectId {
 /// to recognize the same replacement effect for CR 614.5, especially when a
 /// replacement creates nested events that move objects and refresh state.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ReplacementEffectKey {
-    pub source: ObjectId,
-    pub controller: PlayerId,
-    pub static_ability_instance: Option<StaticAbilityInstanceId>,
-    pub matcher: Option<String>,
-    pub replacement: String,
+pub enum ReplacementEffectKey {
+    /// Separate resolutions remain separate even when their source and text match.
+    Registered(ReplacementEffectId),
+    /// Regenerated and event-local effects retain their structural identity.
+    Regenerated {
+        source: ObjectId,
+        controller: PlayerId,
+        static_ability_instance: Option<StaticAbilityInstanceId>,
+        matcher: Option<String>,
+        replacement: String,
+    },
 }
 
 impl ReplacementEffect {
     pub fn application_key(&self) -> ReplacementEffectKey {
-        ReplacementEffectKey {
+        // Accepting and declining are two choices for the same effect, not
+        // independent opportunities to replace the event.
+        if let ReplacementAction::DeclineOptional(key) = &self.replacement {
+            return key.clone();
+        }
+        if let Some(id) = self.registration_id {
+            return ReplacementEffectKey::Registered(id);
+        }
+        ReplacementEffectKey::Regenerated {
             source: self.source,
             controller: self.controller,
             static_ability_instance: self.static_ability_instance,
@@ -613,10 +630,19 @@ impl ReplacementEffectManager {
     }
 
     /// Add a new replacement effect.
-    pub fn add_effect(&mut self, mut effect: ReplacementEffect) -> ReplacementEffectId {
+    pub fn add_effect(&mut self, effect: ReplacementEffect) -> ReplacementEffectId {
+        self.register_effect(effect, true)
+    }
+
+    fn register_effect(
+        &mut self,
+        mut effect: ReplacementEffect,
+        persistent: bool,
+    ) -> ReplacementEffectId {
         let id = ReplacementEffectId::new(self.next_id);
         self.next_id += 1;
         effect.id = id;
+        effect.registration_id = persistent.then_some(id);
         self.effects.push(effect);
         id
     }
@@ -777,7 +803,7 @@ impl ReplacementEffectManager {
     /// These effects are regenerated each state refresh, so they are tracked
     /// separately from resolution-based effects.
     pub fn add_static_ability_effect(&mut self, effect: ReplacementEffect) -> ReplacementEffectId {
-        let id = self.add_effect(effect);
+        let id = self.register_effect(effect, false);
         self.effect_sources
             .insert(id.0, ReplacementEffectSource::StaticAbility);
         id
@@ -1005,6 +1031,7 @@ impl ReplacementEffect {
     ) -> Self {
         Self {
             id: ReplacementEffectId(0),
+            registration_id: None,
             source,
             controller,
             replacement,
@@ -1024,6 +1051,7 @@ impl ReplacementEffect {
     ) -> Self {
         Self {
             id: ReplacementEffectId(0),
+            registration_id: None,
             source,
             controller,
             replacement,
@@ -1051,9 +1079,13 @@ impl ReplacementEffect {
         self
     }
 
+    /// Build the alternative for declining this same effect. For persistent
+    /// effects, derive this from the registered effect so it carries the
+    /// registration identity rather than the pre-registration fingerprint.
     pub fn optional_decline_effect(&self) -> Option<Self> {
         self.optional.then(|| Self {
             id: ReplacementEffectId(0),
+            registration_id: None,
             source: self.source,
             controller: self.controller,
             replacement: ReplacementAction::DeclineOptional(self.application_key()),
@@ -1167,6 +1199,53 @@ impl ReplacementEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn registration_identity_distinguishes_instances_and_survives_payload_changes() {
+        let mut manager = ReplacementEffectManager::new();
+        let effect = ReplacementEffect::with_matcher(
+            ObjectId::from_raw(1),
+            PlayerId::from_index(0),
+            WouldGainLifeMatcher::you(),
+            ReplacementAction::Double,
+        );
+        let first = manager.add_resolution_effect(effect.clone());
+        let second = manager.add_resolution_effect(effect.clone());
+        let key = manager.get_effect(first).unwrap().application_key();
+        assert_ne!(key, manager.get_effect(second).unwrap().application_key());
+        let mut changed = manager.get_effect(first).unwrap().clone();
+        changed.replacement = ReplacementAction::Prevent;
+        assert_eq!(key, changed.application_key());
+
+        let static_id = manager.add_static_ability_effect(effect.clone());
+        let static_key = manager.get_effect(static_id).unwrap().application_key();
+        manager.clear_static_ability_effects();
+        let regenerated_id = manager.add_static_ability_effect(effect);
+        assert_ne!(static_id, regenerated_id);
+        assert_eq!(
+            static_key,
+            manager
+                .get_effect(regenerated_id)
+                .unwrap()
+                .application_key()
+        );
+        assert_eq!(key, manager.get_effect(first).unwrap().application_key());
+    }
+
+    #[test]
+    fn optional_alternatives_share_only_their_own_registered_parent_identity() {
+        let mut manager = ReplacementEffectManager::new();
+        let effect = ReplacementEffect::with_matcher(
+            ObjectId::from_raw(1), PlayerId::from_index(0),
+            WouldGainLifeMatcher::you(), ReplacementAction::Double,
+        ).optional();
+        let first = manager.add_resolution_effect(effect.clone());
+        let second = manager.add_resolution_effect(effect);
+        let decline = manager.get_effect(first).unwrap().optional_decline_effect().unwrap();
+        let declined = manager.add_resolution_effect(decline);
+        assert_eq!(manager.get_effect(first).unwrap().application_key(), manager.get_effect(declined).unwrap().application_key());
+        assert_ne!(manager.get_effect(second).unwrap().application_key(), manager.get_effect(declined).unwrap().application_key());
+    }
 
     /// CR 701.19c: "can't be regenerated" removes regeneration shields only,
     /// not other one-shot replacements sourced from the same permanent.

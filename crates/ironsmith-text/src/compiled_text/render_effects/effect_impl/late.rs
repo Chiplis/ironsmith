@@ -2930,6 +2930,16 @@
             rendered.push_str(
                 ". If damage is prevented this way, this spell deals that much damage to that source's controller",
             );
+            if let [follow_up] = prevent_next_time.follow_up_effects.as_slice()
+                && let Some(draw) = follow_up.downcast_ref::<crate::effects::DrawCardsEffect>()
+                && matches!(draw.player, crate::target::PlayerFilter::You)
+                && matches!(
+                    draw.count.unhinted(),
+                    crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount)
+                )
+            {
+                rendered.push_str(" and you draw that many cards");
+            }
         }
         if prevention_gain_life_follow_up(&prevent_next_time.follow_up_effects).is_some() {
             rendered.push_str(". You gain life equal to the damage prevented this way");

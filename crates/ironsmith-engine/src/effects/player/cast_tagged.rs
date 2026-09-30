@@ -513,6 +513,139 @@ mod tests {
     }
 
     #[test]
+    fn tagged_land_plays_preserve_resolved_saga_entry_counters() {
+        use crate::events::MarkersChangedEvent;
+        use crate::object::CounterType;
+        use crate::replacement::ReplacementAction;
+        use crate::types::Subtype;
+
+        // Exercise both live notification callers: playing the original and
+        // playing a newly created copy. Non-Saga and ordinary Saga controls
+        // ensure this helper no longer owns any counter placement.
+        for as_copy in [false, true] {
+            for mode in 0..3 {
+                let mut game = setup_game();
+                let alice = PlayerId::from_index(0);
+                let card = CardBuilder::new(CardId::new(), "Tagged entry land")
+                    .card_types(vec![CardType::Land])
+                    .subtypes(if mode == 0 {
+                        vec![]
+                    } else {
+                        vec![Subtype::Saga]
+                    })
+                    .build();
+                let original = game.create_object_from_card(&card, alice, Zone::Exile);
+                let source = game.create_object_from_card(
+                    &CardBuilder::new(CardId::new(), "Entry replacement source").build(),
+                    alice,
+                    Zone::Battlefield,
+                );
+                let prevention = if mode == 2 {
+                    let mut replacement =
+                        crate::static_abilities::StaticAbility::double_counters_replacement(
+                            ObjectFilter::default()
+                                .with_type(CardType::Land)
+                                .with_subtype(Subtype::Saga),
+                            Some(CounterType::Lore),
+                            "Prevent entry lore".into(),
+                        )
+                        .generate_replacement_effect(source, alice)
+                        .unwrap();
+                    replacement.replacement = ReplacementAction::Prevent;
+                    Some(
+                        game.effect_store
+                            .replacement_effects
+                            .add_one_shot_effect(replacement),
+                    )
+                } else {
+                    None
+                };
+                let snapshot = ObjectSnapshot::from_object(game.object(original).unwrap(), &game);
+                let mut tags = std::collections::HashMap::new();
+                tags.insert(TagKey::from("it"), vec![snapshot]);
+                game.take_pending_trigger_events();
+                let mut dm = SelectFirstDecisionMaker;
+                let mut ctx = ExecutionContext::new(source, alice, &mut dm).with_tagged_objects(tags);
+                let mut effect = CastTaggedEffect::new("it", PlayerFilter::You).allow_land();
+                if as_copy {
+                    effect = effect.as_copy();
+                }
+                let outcome = effect.execute(&mut game, &mut ctx).unwrap();
+                assert!(!ctx.decision_maker.awaiting_choice());
+                let crate::effect::OutcomeValue::Objects(ids) = outcome.value else {
+                    panic!("expected a completed land play");
+                };
+                assert_eq!(ids.len(), 1);
+                let entered = ids[0];
+                assert!(game.battlefield.contains(&entered));
+                assert_eq!(
+                    game.counter_count(entered, CounterType::Lore),
+                    u32::from(mode == 1)
+                );
+                assert_eq!(game.has_processed_saga_entry_lore(entered), mode != 0);
+                assert_eq!(game.player(alice).unwrap().lands_played_this_turn, 1);
+                if as_copy {
+                    assert_eq!(game.object(original).unwrap().zone, Zone::Exile);
+                } else {
+                    assert!(game.object(original).is_none());
+                }
+                if let Some(prevention) = prevention {
+                    assert!(
+                        game.effect_store
+                            .replacement_effects
+                            .get_effect(prevention)
+                            .is_none()
+                    );
+                }
+                let mut events = outcome.events;
+                events.extend(game.take_pending_trigger_events());
+                assert_eq!(
+                    events
+                        .iter()
+                        .filter(|event| event.kind() == crate::events::EventKind::LandPlayed)
+                        .count(),
+                    1
+                );
+                assert_eq!(
+                    events
+                        .iter()
+                        .filter(|event| event.kind() == crate::events::EventKind::EnterBattlefield)
+                        .count(),
+                    1
+                );
+                let placements = events
+                    .iter()
+                    .filter_map(|event| {
+                        if let Some(counter) = event.downcast::<crate::events::CounterPlacedEvent>() {
+                            Some((counter.permanent, counter.counter_type, counter.amount))
+                        } else if let Some(marker) = event.downcast::<MarkersChangedEvent>() {
+                            if let (
+                                crate::marker::MarkerLocation::Object(object),
+                                crate::marker::Marker::Counter(kind),
+                            ) = (&marker.location, &marker.marker)
+                            {
+                                marker.is_added().then_some((*object, *kind, marker.amount))
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(
+                    placements,
+                    if mode == 1 {
+                        vec![(entered, CounterType::Lore, 1)]
+                    } else {
+                        vec![]
+                    }
+                );
+            }
+        }
+    }
+
+    #[test]
     fn cast_tagged_land_is_invalid_without_play_permission() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);

@@ -356,7 +356,14 @@ pub(super) fn bind_self_replacement_condition_to_previous_target(
         Some(TargetAst::Object(filter, None, _)) => filter.source,
         _ => false,
     };
-    if has_local_it_condition && previous_target_is_source {
+    // Only a bare pronoun repeats the source; a typed demonstrative ("If
+    // that land is a Forest" after "put a counter on this creature") names
+    // an earlier antecedent such as the landfall trigger's land.
+    let has_local_pronoun_condition = crate::word_primitives::any_sequence_occurs(
+        &words,
+        &[&["if", "it"], &["if", "its"], &["if", "it's"]],
+    );
+    if has_local_pronoun_condition && previous_target_is_source {
         return rebind_it_match_to_source(predicate);
     }
     if !has_local_it_condition || !previous_target.is_some_and(target_is_explicitly_chosen) {

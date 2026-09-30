@@ -54,7 +54,7 @@ fn resolve_entry_counter_chapter(
         .insert(crate::CounterType::Lore, 1);
 
     let mut queue = crate::triggers::TriggerQueue::new();
-    crate::game_loop::add_saga_lore_counters(&mut game, &mut queue);
+    crate::game_loop::add_saga_lore_counters(&mut game, &mut queue).unwrap();
     assert_eq!(
         queue.entries.len(),
         1,

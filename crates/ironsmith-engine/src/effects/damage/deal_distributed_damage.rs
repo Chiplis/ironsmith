@@ -228,8 +228,12 @@ impl DealDistributedDamageEffect {
                 false,
                 ctx.provenance,
                 ctx.cause.clone(),
+                &ctx.replacement,
                 &mut *ctx.decision_maker,
-            ));
+            )?);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
         }
 
         if outcomes.is_empty() && self.distribution == DamageDistributionMode::EvenRoundedDown {
@@ -248,7 +252,16 @@ impl EffectExecutor for DealDistributedDamageEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_resolved_source(game, ctx)
+        let checkpoint = game.clone();
+        let result = self.execute_with_resolved_source(game, ctx);
+        if ctx.decision_maker.awaiting_choice() {
+            *game = checkpoint;
+            return Ok(EffectOutcome::count(0));
+        }
+        if result.is_err() {
+            *game = checkpoint;
+        }
+        result
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

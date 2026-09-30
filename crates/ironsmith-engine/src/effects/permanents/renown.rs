@@ -16,58 +16,75 @@ impl EffectExecutor for RenownEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if game.object(ctx.source).is_none() || game.is_renowned(ctx.source) {
-            return Ok(EffectOutcome::count(0));
-        }
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = (|| {
+            if !game
+                .object(ctx.source)
+                .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
+                || game.is_phased_out(ctx.source)
+                || game.is_renowned(ctx.source)
+            {
+                return Ok(EffectOutcome::count(0));
+            }
 
-        game.set_renowned(ctx.source);
-        if let Some(stable_id) = game.object(ctx.source).map(|o| o.stable_id) {
-            game.record_ui_effect_event(
-                "level_up",
-                Some(ctx.controller),
-                None,
-                vec![stable_id],
-                Some(i64::from(self.amount)),
-                Some("renown".to_string()),
-            );
-        }
-
-        let mut outcome = EffectOutcome::count(1);
-        // Putting the counters is an event that counter replacement effects
-        // (Hardened Scales, Doubling Season) modify (CR 614.1).
-        let final_count = if self.amount > 0 {
-            crate::events::processing::process_put_counters_with_event_with_dm(
-                game,
+            let event = crate::events::Event::put_counters(
                 ctx.source,
                 CounterType::PlusOnePlusOne,
                 self.amount,
                 ctx.cause.clone(),
-                &mut *ctx.decision_maker,
             )
-        } else {
-            0
-        };
-        if final_count > 0
-            && let Some(counter_event) = game.add_counters_with_source(
-                ctx.source,
-                CounterType::PlusOnePlusOne,
-                final_count,
-                Some(ctx.source),
-                Some(ctx.controller),
-            )
-        {
-            outcome = outcome.with_event(counter_event);
+            .with_provenance(ctx.provenance);
+            let placement =
+                crate::effects::counters::execute_object_counter_placement(game, ctx, event)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            // A replacement payload can make the original permanent leave.
+            // The later instruction cannot designate that departed object.
+            if !game
+                .object(ctx.source)
+                .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
+                || game.is_phased_out(ctx.source)
+            {
+                let mut outcome = placement;
+                outcome.set_value(crate::effect::OutcomeValue::Count(0));
+                return Ok(outcome);
+            }
+            // Becoming renowned follows counter placement, even when that
+            // placement was prevented or replaced (CR 702.112).
+            game.set_renowned(ctx.source);
+            if let Some(stable_id) = game.object(ctx.source).map(|o| o.stable_id) {
+                game.record_ui_effect_event(
+                    "level_up",
+                    Some(ctx.controller),
+                    None,
+                    vec![stable_id],
+                    Some(i64::from(self.amount)),
+                    Some("renown".to_string()),
+                );
+            }
+            let mut outcome = EffectOutcome::aggregate([EffectOutcome::count(1), placement]);
+            outcome.set_value(crate::effect::OutcomeValue::Count(1));
+            outcome = outcome.with_event(TriggerEvent::new_with_provenance(
+                KeywordActionEvent::new(
+                    KeywordActionKind::Renown,
+                    ctx.controller,
+                    ctx.source,
+                    self.amount,
+                ),
+                ctx.provenance,
+            ));
+            Ok(outcome)
+        })();
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
         }
-        outcome = outcome.with_event(TriggerEvent::new_with_provenance(
-            KeywordActionEvent::new(
-                KeywordActionKind::Renown,
-                ctx.controller,
-                ctx.source,
-                self.amount,
-            ),
-            ctx.provenance,
-        ));
-        Ok(outcome)
+        result
     }
 }
 
@@ -94,6 +111,56 @@ mod tests {
             .power_toughness(PowerToughness::fixed(2, 2))
             .build();
         game.create_object_from_card(&card, owner, Zone::Battlefield)
+    }
+
+    #[test]
+    fn renown_counter_payload_departure_does_not_recreate_old_designation() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature(&mut game, alice, 1);
+        let mut replacement = crate::static_abilities::StaticAbility::double_counters_replacement(
+            crate::target::ObjectFilter::creature(),
+            Some(CounterType::PlusOnePlusOne),
+            "Destroy instead of placing counters".into(),
+        )
+        .generate_replacement_effect(source, alice)
+        .unwrap();
+        replacement.replacement =
+            crate::replacement::ReplacementAction::Instead(vec![crate::effect::Effect::destroy(
+                crate::target::ChooseSpec::Source,
+            )]);
+        game.effect_store
+            .replacement_effects
+            .add_resolution_effect(replacement);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let outcome = RenownEffect::new(2).execute(&mut game, &mut ctx).unwrap();
+        assert!(game.object(source).is_none());
+        assert!(!game.is_renowned(source));
+        assert_eq!(outcome.count_or_zero(), 0);
+        assert!(!outcome.events.iter().any(|event| {
+            event
+                .downcast::<KeywordActionEvent>()
+                .is_some_and(|action| action.action == KeywordActionKind::Renown)
+        }));
+        // Destruction publishes departures through the game's pending queue;
+        // other payloads return their notifications in EffectOutcome.
+        let queued = game.take_pending_trigger_events();
+        let actual_events: Vec<_> = outcome.events.iter().chain(queued.iter()).collect();
+        assert_eq!(
+            actual_events
+                .iter()
+                .filter_map(|event| event.downcast::<crate::events::ZoneChangeEvent>())
+                .filter(|change| change.from == Zone::Battlefield
+                    && change.to == Zone::Graveyard
+                    && change.objects.contains(&source))
+                .count(),
+            1
+        );
+        assert!(!actual_events.iter().any(|event| {
+            event
+                .downcast::<KeywordActionEvent>()
+                .is_some_and(|action| action.action == KeywordActionKind::Renown)
+        }));
     }
 
     #[test]

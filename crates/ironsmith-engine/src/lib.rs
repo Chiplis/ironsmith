@@ -168,7 +168,6 @@ pub use events::processing::{
     process_etb_with_event,
     process_event_with_chosen_replacement_trait,
     process_event_with_chosen_replacement_trait_and_applied_effects,
-    process_life_gain_with_event,
     process_put_counters_with_event,
     process_token_creation_with_event,
     // Event-based processing functions

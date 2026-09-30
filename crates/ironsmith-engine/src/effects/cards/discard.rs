@@ -311,9 +311,6 @@ impl DiscardEffect {
             .filter(|id| hand_cards.contains(id))
             .collect();
 
-        // The number of cards the rules require this choice to take; a hidden
-        // hand choice answered with fewer claims no other card matches.
-        let mut rules_min = 0usize;
         let cards_to_discard = if !self.random
             && !self.any_number
             && required == hand_cards.len()
@@ -340,7 +337,6 @@ impl DiscardEffect {
                 return Ok(EffectOutcome::count(0));
             }
             let min_required = usize::from(one_or_more && !hidden_hand_choice);
-            rules_min = usize::from(one_or_more);
             let spec = ChooseObjectsSpec::new(
                 ctx.source,
                 if one_or_more {
@@ -390,10 +386,6 @@ impl DiscardEffect {
                     })
             }
         } else {
-            // The unclamped count: `required` is clamped to the locally
-            // offered cards, which differ between peers (see
-            // `record_hidden_shortfall_obligations`).
-            rules_min = count;
             let spec = ChooseObjectsSpec::new(
                 ctx.source,
                 format!(
@@ -452,18 +444,6 @@ impl DiscardEffect {
         {
             game.record_hidden_identity_obligations(
                 &cards_to_discard,
-                filter,
-                filter_ctx,
-                "discard a card matching the filter",
-            );
-            let full_hand: Vec<_> = game
-                .player(player_id)
-                .map(|player| player.hand.to_vec())
-                .unwrap_or_default();
-            game.record_hidden_shortfall_obligations(
-                &full_hand,
-                &cards_to_discard,
-                rules_min,
                 filter,
                 filter_ctx,
                 "discard a card matching the filter",
@@ -543,41 +523,9 @@ impl DiscardEffect {
             }
         }
 
-        let batch_cards: Vec<_> = successful_discards
-            .iter()
-            .map(|(card_id, _, _)| *card_id)
-            .collect();
-        let batch_snapshots: Vec<_> = successful_discards
-            .iter()
-            .filter_map(|(_, snapshot, _)| snapshot.clone())
-            .collect();
-        let mut discard_events = Vec::new();
-        for (batch_index, (card_id, pre_discard_snapshot, final_zone)) in
-            successful_discards.into_iter().enumerate()
-        {
-            // Each observation needs its own identity: turn history stages
-            // events by provenance before the trigger queue processes them.
-            let discard_provenance = game
-                .alloc_child_event_provenance(ctx.provenance, crate::events::EventKind::Discard);
-            discard_events.push(crate::triggers::TriggerEvent::new_with_provenance(
-                DiscardEvent::with_cause(card_id, player_id, cause.clone())
-                    .with_destination(final_zone),
-                discard_provenance,
-            ));
-            let mut event = CardDiscardedEvent::with_cause(player_id, card_id, cause.clone())
-                .with_batch(batch_cards.clone(), batch_snapshots.clone(), batch_index);
-            if let Some(snapshot) = pre_discard_snapshot {
-                event = event.with_snapshot(snapshot);
-            }
-            let discarded_provenance = game.alloc_child_event_provenance(
-                ctx.provenance,
-                crate::events::EventKind::CardDiscarded,
-            );
-            discard_events.push(crate::triggers::TriggerEvent::new_with_provenance(
-                event,
-                discarded_provenance,
-            ));
-        }
+        let discard_events = completed_discard_events(
+            game, player_id, cause, ctx.provenance, successful_discards,
+        );
 
         if let Some(tag) = &self.tag
             && !discarded_snapshots.is_empty()
@@ -1433,4 +1381,49 @@ mod tests {
             random.card_filter.as_ref()
         ));
     }
+}
+
+/// Report each completed discard once, including its event-time batch and destination.
+pub(crate) fn completed_discard_events(
+    game: &mut GameState,
+    player_id: crate::ids::PlayerId,
+    cause: crate::events::cause::EventCause,
+    provenance: crate::provenance::ProvNodeId,
+    successful_discards: Vec<(crate::ids::ObjectId, Option<ObjectSnapshot>, Zone)>,
+) -> Vec<crate::triggers::TriggerEvent> {
+    let batch_cards: Vec<_> = successful_discards
+        .iter()
+        .map(|(card_id, _, _)| *card_id)
+        .collect();
+    let batch_snapshots: Vec<_> = successful_discards
+        .iter()
+        .filter_map(|(_, snapshot, _)| snapshot.clone())
+        .collect();
+    let mut discard_events = Vec::new();
+    for (batch_index, (card_id, pre_discard_snapshot, final_zone)) in
+        successful_discards.into_iter().enumerate()
+    {
+        // Each observation needs its own identity: turn history stages
+        // events by provenance before the trigger queue processes them.
+        let discard_provenance =
+            game.alloc_child_event_provenance(provenance, crate::events::EventKind::Discard);
+        discard_events.push(crate::triggers::TriggerEvent::new_with_provenance(
+            DiscardEvent::with_cause(card_id, player_id, cause.clone())
+                .with_destination(final_zone),
+            discard_provenance,
+        ));
+        let mut event = CardDiscardedEvent::with_cause(player_id, card_id, cause.clone())
+            .with_batch(batch_cards.clone(), batch_snapshots.clone(), batch_index);
+        if let Some(snapshot) = pre_discard_snapshot {
+            event = event.with_snapshot(snapshot);
+        }
+        let discarded_provenance =
+            game.alloc_child_event_provenance(provenance, crate::events::EventKind::CardDiscarded);
+        discard_events.push(crate::triggers::TriggerEvent::new_with_provenance(
+            event,
+            discarded_provenance,
+        ));
+    }
+
+    discard_events
 }

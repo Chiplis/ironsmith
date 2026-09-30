@@ -178,6 +178,8 @@ struct SyncObject {
     summoning_sick: bool,
     monstrous: bool,
     renowned: bool,
+    #[serde(default)]
+    saga_entry_lore_processed: bool,
     saddled: bool,
     flipped: bool,
     face_down: bool,
@@ -288,6 +290,8 @@ struct PublicAuditObject {
     summoning_sick: bool,
     monstrous: bool,
     renowned: bool,
+    #[serde(default)]
+    saga_entry_lore_processed: bool,
     saddled: bool,
     flipped: bool,
     face_down: bool,
@@ -2586,6 +2590,7 @@ impl WasmGame {
                     summoning_sick: self.game.is_summoning_sick(id),
                     monstrous: self.game.is_monstrous(id),
                     renowned: self.game.is_renowned(id),
+                    saga_entry_lore_processed: self.game.has_processed_saga_entry_lore(id),
                     saddled: self.game.is_saddled(id),
                     flipped: self.game.is_flipped(id),
                     face_down: self.game.is_face_down(id),
@@ -3455,6 +3460,7 @@ impl WasmGame {
                     summoning_sick: self.game.is_summoning_sick(id),
                     monstrous: self.game.is_monstrous(id),
                     renowned: self.game.is_renowned(id),
+                    saga_entry_lore_processed: self.game.has_processed_saga_entry_lore(id),
                     saddled: self.game.is_saddled(id),
                     flipped: self.game.is_flipped(id),
                     face_down: self.game.is_face_down(id) || self.game.is_face_down_conspiracy(id),
@@ -4352,6 +4358,9 @@ impl WasmGame {
             }
             if object.renowned {
                 self.game.set_renowned(id);
+            }
+            if object.saga_entry_lore_processed {
+                self.game.mark_saga_entry_lore_processed(id);
             }
             // Battlefield designations that aren't counters (CR 716.2b,
             // 709.5d-e, 719.3).
@@ -6309,7 +6318,7 @@ mod sync_checkpoint_tests {
             4,
             None,
             None,
-        );
+        ).unwrap();
         host.game
             .set_shared_team_member_order(0, vec![seats[1], seats[0]])
             .unwrap();
@@ -7212,4 +7221,53 @@ mod sync_checkpoint_tests {
             "bob-slot-0"
         );
     }
+    #[test]
+    fn sync_checkpoint_preserves_zero_counter_saga_entry_completion() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let mut definition = CardDefinition::new(
+            ironsmith::CardBuilder::new(CardId::new(), "Checkpoint Saga Fixture")
+                .card_types(vec![CardType::Enchantment])
+                .subtypes(vec![ironsmith::types::Subtype::Saga])
+                .build(),
+        );
+        definition.abilities.push(ironsmith::Ability::triggered(
+            ironsmith::triggers::Trigger::saga_chapter(vec![1]),
+            vec![ironsmith::Effect::gain_life(1)],
+        ));
+        host.registry.register(definition.clone());
+        let saga = host.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        host.game.mark_saga_entry_lore_processed(saga);
+        assert_eq!(host.game.counter_count(saga, ironsmith::CounterType::Lore), 0);
+        let checkpoint = host.build_sync_checkpoint();
+        let stored = checkpoint.objects.iter().find(|object| object.id == saga.0).unwrap();
+        assert!(stored.saga_entry_lore_processed);
+        // Older checkpoint object shapes remain readable with explicit default state.
+        let mut legacy = serde_json::to_value(stored).unwrap();
+        legacy.as_object_mut().unwrap().remove("sagaEntryLoreProcessed");
+        let legacy: SyncObject = serde_json::from_value(legacy).unwrap();
+        assert!(!legacy.saga_entry_lore_processed);
+        let mut guest = WasmGame::new();
+        guest.registry.register(definition.clone());
+        guest.apply_sync_checkpoint(checkpoint).unwrap();
+        assert!(guest.game.has_processed_saga_entry_lore(saga));
+        let mut queue = ironsmith::triggers::TriggerQueue::new();
+        let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
+        ironsmith::game_loop::handle_saga_enters_battlefield(&mut guest.game, saga, &mut queue, &mut dm).unwrap();
+        assert_eq!(guest.game.counter_count(saga, ironsmith::CounterType::Lore), 0);
+        assert!(queue.is_empty());
+        let exported = guest.build_sync_checkpoint();
+        assert!(exported.objects.iter().find(|object| object.id == saga.0).unwrap().saga_entry_lore_processed);
+        // Positive control: this registered fixture really has a chapter, so
+        // losing the completion flag would place lore and queue that chapter.
+        let fresh = guest.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        assert!(!guest.game.has_processed_saga_entry_lore(fresh));
+        ironsmith::game_loop::handle_saga_enters_battlefield(&mut guest.game, fresh, &mut queue, &mut dm).unwrap();
+        assert_eq!(guest.game.counter_count(fresh, ironsmith::CounterType::Lore), 1);
+        assert_eq!(queue.entries.len(), 1);
+
+    }
+
 }

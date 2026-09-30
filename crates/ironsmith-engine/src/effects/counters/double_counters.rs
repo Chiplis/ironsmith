@@ -3,7 +3,6 @@
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_players_from_spec};
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
-use crate::events::processing::process_put_counters_with_event_with_dm;
 use crate::game_state::GameState;
 use crate::object::CounterType;
 use crate::target::ChooseSpec;
@@ -42,114 +41,107 @@ impl EffectExecutor for DoubleCountersEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if double_counters_targets_players(&self.target) {
-            let player_ids = resolve_players_from_spec(game, &self.target, ctx)?;
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = (|| {
+            if double_counters_targets_players(&self.target) {
+                let player_ids = resolve_players_from_spec(game, &self.target, ctx)?;
+                let mut outcomes = Vec::new();
+                for player_id in player_ids {
+                    for (counter_type, count) in
+                        player_counter_counts(game, player_id, self.counter_type)?
+                    {
+                        let event = crate::events::Event::put_player_counters(
+                            player_id,
+                            counter_type,
+                            count,
+                            ctx.cause.clone(),
+                        )
+                        .with_provenance(ctx.provenance);
+                        outcomes.push(crate::effects::counters::execute_player_counter_placement(
+                            game, ctx, event,
+                        )?);
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(EffectOutcome::aggregate_summing_counts(outcomes));
+                        }
+                    }
+                }
+
+                return Ok(if outcomes.is_empty() {
+                    EffectOutcome::resolved()
+                } else {
+                    EffectOutcome::aggregate_summing_counts(outcomes)
+                });
+            }
+
+            let target_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
+            if target_ids.is_empty() {
+                return Ok(EffectOutcome::resolved());
+            }
+
             let mut outcomes = Vec::new();
-            for player_id in player_ids {
-                for (counter_type, count) in
-                    player_counter_counts(game, player_id, self.counter_type)?
-                {
-                    if let Some(event) = game.add_player_counters_with_source_with_dm(
-                        player_id,
+            // One doubling is one simultaneous counter-placing event (CR 603.2c).
+            let mut counter_batch: Option<crate::provenance::ProvNodeId> = None;
+            for target_id in target_ids {
+                let counters = game
+                    .object(target_id)
+                    .map(|object| {
+                        object
+                            .counters
+                            .iter()
+                            .filter_map(|(counter_type, count)| {
+                                (*count > 0
+                                    && self
+                                        .counter_type
+                                        .is_none_or(|wanted| wanted == *counter_type))
+                                .then_some((*counter_type, *count))
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+
+                for (counter_type, count) in counters {
+                    let event = crate::events::Event::put_counters(
+                        target_id,
                         counter_type,
                         count,
-                        Some(ctx.source),
-                        Some(ctx.controller),
-                        ctx.decision_maker,
-                    ) {
-                        outcomes.push(EffectOutcome::count(count as i32).with_event(event));
-                    }
+                        ctx.cause.clone(),
+                    )
+                    .with_provenance(ctx.provenance);
+                    let mut outcome = super::execute_object_counter_placement(game, ctx, event)?;
                     if ctx.decision_maker.awaiting_choice() {
-                        return Ok(EffectOutcome::aggregate_summing_counts(outcomes));
+                        return Ok(EffectOutcome::count(0));
                     }
+                    for event in &mut outcome.events {
+                        if event.kind() == crate::events::EventKind::MarkersChanged {
+                            let batch = *counter_batch.get_or_insert_with(|| {
+                                game.alloc_child_event_provenance(
+                                    ctx.provenance,
+                                    crate::events::EventKind::MarkersChanged,
+                                )
+                            });
+                            *event = event.clone().with_simultaneous_batch(batch);
+                        }
+                    }
+                    outcomes.push(outcome);
                 }
             }
 
-            return Ok(if outcomes.is_empty() {
+            let outcome = if outcomes.is_empty() {
                 EffectOutcome::resolved()
             } else {
                 EffectOutcome::aggregate_summing_counts(outcomes)
-            });
-        }
-
-        let target_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
-        if target_ids.is_empty() {
-            return Ok(EffectOutcome::resolved());
-        }
-
-        let mut outcomes = Vec::new();
-        let mut affected_objects = Vec::new();
-        // One doubling is one simultaneous counter-placing event (CR 603.2c).
-        let mut counter_batch: Option<crate::provenance::ProvNodeId> = None;
-        for target_id in target_ids {
-            let counters = game
-                .object(target_id)
-                .map(|object| {
-                    object
-                        .counters
-                        .iter()
-                        .filter_map(|(counter_type, count)| {
-                            (*count > 0
-                                && self
-                                    .counter_type
-                                    .is_none_or(|wanted| wanted == *counter_type))
-                            .then_some((*counter_type, *count))
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-
-            for (counter_type, count) in counters {
-                let final_count = process_put_counters_with_event_with_dm(
-                    game,
-                    target_id,
-                    counter_type,
-                    count,
-                    ctx.cause.clone(),
-                    &mut *ctx.decision_maker,
-                );
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::aggregate_summing_counts(outcomes));
-                }
-                if final_count == 0 {
-                    outcomes.push(EffectOutcome::prevented());
-                    continue;
-                }
-                if let Some(event) = game
-                    .add_counters_with_source(
-                        target_id,
-                        counter_type,
-                        final_count,
-                        Some(ctx.source),
-                        Some(ctx.controller),
-                    )
-                    .map(|event| {
-                    let batch = *counter_batch.get_or_insert_with(|| {
-                        game.alloc_child_event_provenance(
-                            ctx.provenance,
-                            crate::events::EventKind::MarkersChanged,
-                        )
-                    });
-                    event.with_simultaneous_batch(batch)
-                })
-                {
-                    affected_objects.push(target_id);
-                    outcomes.push(EffectOutcome::count(final_count as i32).with_event(event));
-                }
+            };
+            Ok(outcome)
+        })();
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
             }
         }
-
-        let mut outcome = if outcomes.is_empty() {
-            EffectOutcome::resolved()
-        } else {
-            EffectOutcome::aggregate_summing_counts(outcomes)
-        };
-        if !affected_objects.is_empty() {
-            affected_objects.sort_unstable();
-            affected_objects.dedup();
-            outcome = outcome.with_affected_objects_from_game(game, affected_objects);
-        }
-        Ok(outcome)
+        result
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

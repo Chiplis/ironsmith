@@ -1399,6 +1399,23 @@ fn subject_verb_grant_abilities_all_with_optional_condition(
     }
 }
 
+/// "the creature you control", "the artifact an opponent controls": a
+/// definite, singular object description with at most a control qualifier.
+fn is_definite_singular_object_subject(words: &[&str]) -> bool {
+    let ["the", noun, tail @ ..] = words else {
+        return false;
+    };
+    matches!(
+        *noun,
+        "creature" | "artifact" | "enchantment" | "land" | "planeswalker" | "permanent"
+    ) && matches!(
+        tail,
+        [] | ["you", "control"]
+            | ["you", "don't" | "dont", "control"]
+            | ["an", "opponent", "controls"]
+    )
+}
+
 fn tagged_subject_target(tokens: &[OwnedLexToken]) -> TargetAst {
     let words = crate::lexer::parser_token_word_refs(tokens);
     if words.first() == Some(&"those") {
@@ -1879,6 +1896,21 @@ fn parse_simple_ability_modifier_clause_lexed(
         } else {
             EffectAst::subject_verb_grant_abilities_to_target(target, abilities, duration)
                 .with_set_quantifier_surface(pronoun_set_quantifier_surface(&subject_word_refs))
+        }));
+    }
+
+    // "the creature you control gains indestructible" (after "target
+    // creature you control"): a definite singular description names one
+    // earlier object, not every object matching the description. Keep it a
+    // reference so reference resolution can bind it to that object.
+    if !is_choice
+        && is_definite_singular_object_subject(&subject_word_refs)
+        && let Ok(target @ TargetAst::Object(_, None, Some(_))) = parse_target_phrase(subject_tokens)
+    {
+        return Ok(Some(if losing {
+            EffectAst::subject_verb_remove_abilities_from_target(target, abilities, duration)
+        } else {
+            EffectAst::subject_verb_grant_abilities_to_target(target, abilities, duration)
         }));
     }
 

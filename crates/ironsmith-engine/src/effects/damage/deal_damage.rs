@@ -17,8 +17,8 @@ use crate::events::LifeLossEvent;
 use crate::events::combat::{CreatureAttackedEvent, CreatureBecameBlockedEvent};
 use crate::events::processing::{
     ProcessedDamageResult, SimultaneousDamageEvent,
-    process_damage_assignments_with_event_with_source_snapshot_opts_with_dm,
-    process_simultaneous_damage_assignments_with_event_with_dm,
+    process_damage_assignments_with_event_with_source_snapshot_opts_with_scope,
+    process_simultaneous_damage_assignments_with_event_with_scope,
 };
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectRef, PlayerFilter};
@@ -54,8 +54,9 @@ pub(crate) fn apply_processed_damage_outcome(
     source_is_combat: bool,
     provenance: crate::provenance::ProvNodeId,
     cause: crate::events::cause::EventCause,
+    replacement_scope: &crate::effects::ReplacementExecutionContext,
     dm: &mut dyn crate::decision::DecisionMaker,
-) -> EffectOutcome {
+) -> Result<EffectOutcome, ExecutionError> {
     apply_processed_damage_outcome_opts(
         game,
         source,
@@ -66,6 +67,7 @@ pub(crate) fn apply_processed_damage_outcome(
         false,
         provenance,
         cause,
+        replacement_scope,
         dm,
     )
 }
@@ -81,10 +83,12 @@ pub(crate) fn apply_processed_damage_outcome_opts(
     unpreventable: bool,
     provenance: crate::provenance::ProvNodeId,
     cause: crate::events::cause::EventCause,
+    replacement_scope: &crate::effects::ReplacementExecutionContext,
     dm: &mut dyn crate::decision::DecisionMaker,
-) -> EffectOutcome {
-    crate::events::processing::with_deferred_prevention_follow_ups(game, dm, |game, dm| {
-        let processed = process_damage_assignments_with_event_with_source_snapshot_opts_with_dm(
+) -> Result<EffectOutcome, ExecutionError> {
+    let checkpoint = game.clone();
+    let result = crate::events::processing::with_deferred_prevention_follow_ups(game, dm, |game, dm| {
+        let processed = process_damage_assignments_with_event_with_source_snapshot_opts_with_scope(
             game,
             source,
             initial_target,
@@ -94,9 +98,10 @@ pub(crate) fn apply_processed_damage_outcome_opts(
             cause.clone(),
             source_snapshot,
             dm,
-        );
+            replacement_scope,
+        )?;
         if dm.awaiting_choice() {
-            return EffectOutcome::count(0);
+            return Ok(EffectOutcome::count(0));
         }
 
         apply_processed_damage_results(
@@ -108,9 +113,18 @@ pub(crate) fn apply_processed_damage_outcome_opts(
             source_is_combat,
             provenance,
             cause,
+            replacement_scope,
             dm,
         )
-    })
+    });
+    if dm.awaiting_choice() {
+        *game = checkpoint;
+        return Ok(EffectOutcome::count(0));
+    }
+    if result.is_err() {
+        *game = checkpoint;
+    }
+    result
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -124,8 +138,9 @@ fn apply_simultaneous_damage_outcome_opts(
     unpreventable: bool,
     provenance: crate::provenance::ProvNodeId,
     cause: crate::events::cause::EventCause,
+    replacement_scope: &crate::effects::ReplacementExecutionContext,
     dm: &mut dyn crate::decision::DecisionMaker,
-) -> EffectOutcome {
+) -> Result<EffectOutcome, ExecutionError> {
     apply_simultaneous_damage_assignments_opts(
         game,
         source,
@@ -138,6 +153,7 @@ fn apply_simultaneous_damage_outcome_opts(
         unpreventable,
         provenance,
         cause,
+        replacement_scope,
         dm,
     )
 }
@@ -154,9 +170,11 @@ fn apply_simultaneous_damage_assignments_opts(
     unpreventable: bool,
     provenance: crate::provenance::ProvNodeId,
     cause: crate::events::cause::EventCause,
+    replacement_scope: &crate::effects::ReplacementExecutionContext,
     dm: &mut dyn crate::decision::DecisionMaker,
-) -> EffectOutcome {
-    crate::events::processing::with_deferred_prevention_follow_ups(game, dm, |game, dm| {
+) -> Result<EffectOutcome, ExecutionError> {
+    let checkpoint = game.clone();
+    let result = crate::events::processing::with_deferred_prevention_follow_ups(game, dm, |game, dm| {
         let events = assignments
             .into_iter()
             .map(|(target, amount)| SimultaneousDamageEvent {
@@ -170,9 +188,9 @@ fn apply_simultaneous_damage_assignments_opts(
             })
             .collect::<Vec<_>>();
         let processed =
-            process_simultaneous_damage_assignments_with_event_with_dm(game, &events, dm);
+            process_simultaneous_damage_assignments_with_event_with_scope(game, &events, dm, replacement_scope)?;
         if dm.awaiting_choice() {
-            return EffectOutcome::count(0);
+            return Ok(EffectOutcome::count(0));
         }
         // Several sources dealing damage at once ("each creature you control
         // deals damage ...") share the enclosing simultaneous action.
@@ -189,9 +207,18 @@ fn apply_simultaneous_damage_assignments_opts(
             source_is_combat,
             provenance,
             cause,
+            replacement_scope,
             dm,
         )
-    })
+    });
+    if dm.awaiting_choice() {
+        *game = checkpoint;
+        return Ok(EffectOutcome::count(0));
+    }
+    if result.is_err() {
+        *game = checkpoint;
+    }
+    result
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -204,9 +231,11 @@ fn apply_processed_damage_results(
     source_is_combat: bool,
     provenance: crate::provenance::ProvNodeId,
     cause: crate::events::cause::EventCause,
+    replacement_scope: &crate::effects::ReplacementExecutionContext,
     dm: &mut dyn crate::decision::DecisionMaker,
-) -> EffectOutcome {
-    let source_controller = game.object(source)
+) -> Result<EffectOutcome, ExecutionError> {
+    let source_controller = game
+        .object(source)
         .filter(|_| !game.is_phased_out(source))
         .map(|obj| game.controller_of(obj))
         .or_else(|| source_snapshot.map(|snapshot| snapshot.controller));
@@ -216,9 +245,17 @@ fn apply_processed_damage_results(
     let mut total_damage_dealt = 0u32;
     let mut affected_objects = Vec::new();
     let mut any_replacement_prevented = false;
-    let mut lifelink_event = None;
+    let mut lifelink_outcome = None;
     for processed in processed_results {
         any_replacement_prevented |= processed.replacement_prevented;
+        if let Some(mut payload) = processed.payload_outcome {
+            if let Some(batch) = simultaneous_batch {
+                for event in &mut payload.events {
+                    *event = event.clone().with_simultaneous_batch(batch);
+                }
+            }
+            outcomes.push(payload);
+        }
         for assignment in processed.assignments {
             let target_snapshot = match assignment.target {
                 DamageTarget::Object(object_id) => game.object(object_id).map(|obj| {
@@ -234,17 +271,12 @@ fn apply_processed_damage_results(
                 }
                 DamageTarget::Player(_) => 0,
             };
-            let applied = crate::rules::damage::apply_processed_damage_assignment_with_dm(
-                game,
-                source,
-                assignment.target,
-                assignment.amount,
-                keywords,
-                cause.clone(),
-                dm,
-            );
+            let applied = crate::rules::damage::apply_processed_damage_assignment_with_scope(
+                game, source, assignment.target, assignment.amount, keywords,
+                cause.clone(), dm, replacement_scope, source_snapshot, provenance,
+            )?;
             if dm.awaiting_choice() {
-                return EffectOutcome::count(0);
+                return Ok(EffectOutcome::count(0));
             }
             if !applied.applied {
                 continue;
@@ -284,17 +316,15 @@ fn apply_processed_damage_results(
                 outcome = outcome.with_event(event);
             }
 
-            if let DamageTarget::Player(player_id) = assignment.target
-                && applied.life_lost > 0
-            {
-                let mut event = TriggerEvent::new_with_provenance(
-                    LifeLossEvent::new(player_id, applied.life_lost, true),
-                    provenance,
-                );
+            if let Some(mut consequence_outcome) = applied.consequence_outcome {
                 if let Some(batch) = simultaneous_batch {
-                    event = event.with_simultaneous_batch(batch);
+                    for event in &mut consequence_outcome.events {
+                        *event = event.clone().with_simultaneous_batch(batch);
+                    }
                 }
-                outcome = outcome.with_event(event);
+                let damage_summary = outcome.value.clone();
+                outcome = EffectOutcome::aggregate([outcome, consequence_outcome]);
+                outcome.value = damage_summary;
             }
 
             outcomes.push(outcome);
@@ -305,28 +335,23 @@ fn apply_processed_damage_results(
         && total_damage_dealt > 0
         && let Some(controller) = source_controller
     {
-        let life_to_gain = crate::events::processing::process_life_gain_with_event_with_dm(
+        let mut life_ctx = ExecutionContext::new(source, controller, &mut *dm);
+        life_ctx.provenance = provenance;
+        life_ctx.cause = cause.clone();
+        life_ctx.source_snapshot = source_snapshot.cloned();
+        life_ctx.replacement = replacement_scope.clone();
+        let gain = crate::effects::life::life_change::execute_life_change(
             game,
-            controller,
-            total_damage_dealt,
-            dm,
-        );
-        if dm.awaiting_choice() {
-            return EffectOutcome::count(0);
-        }
-        if life_to_gain > 0 {
-            game.gain_life(controller, life_to_gain);
-            let mut event = TriggerEvent::new_with_provenance(
-                LifeGainEvent::new(controller, life_to_gain).with_source(source),
+            &mut life_ctx,
+            crate::events::Event::new_with_provenance(
+                LifeGainEvent::new(controller, total_damage_dealt).with_source(source),
                 provenance,
-            );
-            if game.object(source).is_none()
-                && let Some(snapshot) = source_snapshot
-            {
-                event = event.with_source_snapshot(snapshot.clone());
-            }
-            lifelink_event = Some(event);
+            ),
+        )?;
+        if life_ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
         }
+        lifelink_outcome = Some(gain);
     }
 
     let mut outcome = if outcomes.is_empty() && any_replacement_prevented {
@@ -339,10 +364,12 @@ fn apply_processed_damage_results(
     if !affected_objects.is_empty() {
         outcome = outcome.with_affected_objects_from_game(game, affected_objects);
     }
-    if let Some(event) = lifelink_event {
-        outcome = outcome.with_event(event);
+    if let Some(gain) = lifelink_outcome {
+        let damage_summary = outcome.value.clone();
+        outcome = EffectOutcome::aggregate([outcome, gain]);
+        outcome.value = damage_summary;
     }
-    outcome
+    Ok(outcome)
 }
 
 /// CR 120.4a / 120.10: excess damage dealt to a permanent. A permanent that
@@ -460,8 +487,9 @@ impl ExcessDamageRedirectExt for DealDamageEffect {
             self.unpreventable,
             ctx.provenance,
             ctx.cause.clone(),
+            &ctx.replacement,
             &mut *ctx.decision_maker,
-        )))
+        )?))
     }
 }
 
@@ -504,8 +532,9 @@ impl EffectExecutor for DealDamageEffect {
                     self.unpreventable,
                     ctx.provenance,
                     ctx.cause.clone(),
+                    &ctx.replacement,
                     &mut *ctx.decision_maker,
-                ));
+                )?);
             }
             return Ok(EffectOutcome::target_invalid());
         }
@@ -526,8 +555,9 @@ impl EffectExecutor for DealDamageEffect {
                         self.unpreventable,
                         ctx.provenance,
                         ctx.cause.clone(),
+                        &ctx.replacement,
                         &mut *ctx.decision_maker,
-                    ));
+                    )?);
                 }
                 return Ok(EffectOutcome::target_invalid());
             }
@@ -565,8 +595,9 @@ impl EffectExecutor for DealDamageEffect {
                         self.unpreventable,
                         ctx.provenance,
                         ctx.cause.clone(),
+                        &ctx.replacement,
                         &mut *ctx.decision_maker,
-                    ));
+                    )?);
                 }
                 AttackEventTarget::Planeswalker(object_id) => {
                     if game.object(object_id).is_none()
@@ -584,8 +615,9 @@ impl EffectExecutor for DealDamageEffect {
                         self.unpreventable,
                         ctx.provenance,
                         ctx.cause.clone(),
+                        &ctx.replacement,
                         &mut *ctx.decision_maker,
-                    ));
+                    )?);
                 }
                 AttackEventTarget::Battle(object_id) => {
                     if game.object(object_id).is_none()
@@ -603,8 +635,9 @@ impl EffectExecutor for DealDamageEffect {
                         self.unpreventable,
                         ctx.provenance,
                         ctx.cause.clone(),
+                        &ctx.replacement,
                         &mut *ctx.decision_maker,
-                    ));
+                    )?);
                 }
                 // CR 506.4c: it isn't attacking anything.
                 AttackEventTarget::Nothing => return Ok(EffectOutcome::target_invalid()),
@@ -624,8 +657,9 @@ impl EffectExecutor for DealDamageEffect {
                 self.unpreventable,
                 ctx.provenance,
                 ctx.cause.clone(),
+                &ctx.replacement,
                 &mut *ctx.decision_maker,
-            ));
+            )?);
         }
 
         // "Each player" is one simultaneous damage event per matching player,
@@ -649,8 +683,9 @@ impl EffectExecutor for DealDamageEffect {
                 self.unpreventable,
                 ctx.provenance,
                 ctx.cause.clone(),
+                &ctx.replacement,
                 &mut *ctx.decision_maker,
-            ));
+            )?);
         }
 
         // A triggered damage follow-up can refer to the exact participant of
@@ -700,8 +735,9 @@ impl EffectExecutor for DealDamageEffect {
                 self.unpreventable,
                 ctx.provenance,
                 ctx.cause.clone(),
+                &ctx.replacement,
                 &mut *ctx.decision_maker,
-            ));
+            )?);
         }
 
         if matches!(
@@ -758,8 +794,9 @@ impl EffectExecutor for DealDamageEffect {
                         self.unpreventable,
                         ctx.provenance,
                         ctx.cause.clone(),
+                        &ctx.replacement,
                         &mut *ctx.decision_maker,
-                    ))
+                    )?)
                 };
             }
         }
@@ -801,8 +838,9 @@ impl EffectExecutor for DealDamageEffect {
                 self.unpreventable,
                 ctx.provenance,
                 ctx.cause.clone(),
+                &ctx.replacement,
                 &mut *ctx.decision_maker,
-            ));
+            )?);
         }
 
         let controller_of_specific = match &self.target {
@@ -846,8 +884,9 @@ impl EffectExecutor for DealDamageEffect {
                 self.unpreventable,
                 ctx.provenance,
                 ctx.cause.clone(),
+                &ctx.replacement,
                 &mut *ctx.decision_maker,
-            ));
+            )?);
         }
 
         if matches!(
@@ -869,8 +908,9 @@ impl EffectExecutor for DealDamageEffect {
                 self.unpreventable,
                 ctx.provenance,
                 ctx.cause.clone(),
+                &ctx.replacement,
                 &mut *ctx.decision_maker,
-            ));
+            )?);
         }
 
         let resolved_objects = resolve_objects_for_effect(game, ctx, &self.target)
@@ -907,8 +947,9 @@ impl EffectExecutor for DealDamageEffect {
                 self.unpreventable,
                 ctx.provenance,
                 ctx.cause.clone(),
+                &ctx.replacement,
                 &mut *ctx.decision_maker,
-            ));
+            )?);
         }
         if let Some(object_id) = resolved_objects.first().copied() {
             if let Some(outcome) = self.deal_with_excess_redirect(game, ctx, object_id, amount)? {
@@ -924,8 +965,9 @@ impl EffectExecutor for DealDamageEffect {
                 self.unpreventable,
                 ctx.provenance,
                 ctx.cause.clone(),
+                &ctx.replacement,
                 &mut *ctx.decision_maker,
-            ));
+            )?);
         }
 
         // Otherwise, use pre-resolved targets from ctx.targets
@@ -949,8 +991,9 @@ impl EffectExecutor for DealDamageEffect {
                         self.unpreventable,
                         ctx.provenance,
                         ctx.cause.clone(),
+                        &ctx.replacement,
                         &mut *ctx.decision_maker,
-                    ));
+                    )?);
                 }
                 ResolvedTarget::Object(object_id) => {
                     if game.object(*object_id).is_some() {
@@ -967,8 +1010,9 @@ impl EffectExecutor for DealDamageEffect {
                             self.unpreventable,
                             ctx.provenance,
                             ctx.cause.clone(),
+                            &ctx.replacement,
                             &mut *ctx.decision_maker,
-                        ));
+                        )?);
                     }
                 }
             }
@@ -992,6 +1036,302 @@ impl EffectExecutor for DealDamageEffect {
         "target for damage"
     }
 }
+
+#[cfg(test)]
+mod replacement_scope_tests {
+    use super::*;
+    use crate::effect::{Effect, OutcomeValue};
+    use crate::events::damage::matchers::DamageFromSourceMatcher;
+    use crate::ids::{CardId, PlayerId};
+    use crate::replacement::{EventModification, ReplacementAction, ReplacementEffect};
+    use crate::target::ObjectFilter;
+    use crate::zone::Zone;
+
+    fn source(game: &mut GameState, alice: PlayerId, lifelink: bool) -> crate::ids::ObjectId {
+        let mut card = crate::cards::CardDefinitionBuilder::new(CardId::new(), "Damage source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2));
+        if lifelink {
+            card = card.with_ability(crate::ability::Ability::static_ability(
+                crate::static_abilities::StaticAbility::lifelink(),
+            ));
+        }
+        game.create_object_from_definition(&card.build(), alice, Zone::Battlefield)
+    }
+
+    #[test]
+    fn damage_preserves_parent_temporary_effects_and_both_suppression_carriers() {
+        for mask in 0..4 {
+            let alice = PlayerId::from_index(0);
+            let bob = PlayerId::from_index(1);
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let source = source(&mut game, alice, false);
+            let global = game.effect_store.replacement_effects.add_resolution_effect(
+                ReplacementEffect::with_matcher(
+                    source,
+                    alice,
+                    DamageFromSourceMatcher::new(ObjectFilter::specific(source)),
+                    ReplacementAction::Modify(EventModification::Multiply(2)),
+                ),
+            );
+            let temporary = ReplacementEffect::with_matcher(
+                source,
+                alice,
+                DamageFromSourceMatcher::new(ObjectFilter::specific(source)),
+                ReplacementAction::Modify(EventModification::Multiply(3)),
+            );
+            let key = temporary.application_key();
+            let mut dm = crate::decision::SelectFirstDecisionMaker;
+            let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+            ctx.replacement
+                .additional_replacement_effects
+                .push(temporary);
+            if mask & 1 != 0 {
+                ctx.replacement
+                    .suppressed_replacement_effects
+                    .insert(global);
+            }
+            if mask & 2 != 0 {
+                ctx.replacement
+                    .suppressed_replacement_effect_keys
+                    .insert(key.clone());
+            }
+            let expected =
+                3 * if mask & 1 == 0 { 2 } else { 1 } * if mask & 2 == 0 { 3 } else { 1 };
+            let outcome = DealDamageEffect::new(3, ChooseSpec::SpecificPlayer(bob))
+                .execute(&mut game, &mut ctx)
+                .unwrap();
+            assert_eq!(outcome.value, OutcomeValue::Count(expected));
+            assert_eq!(game.player(bob).unwrap().life, 20 - expected);
+            assert_eq!(ctx.replacement.additional_replacement_effects.len(), 1);
+            assert_eq!(
+                ctx.replacement
+                    .suppressed_replacement_effects
+                    .contains(&global),
+                mask & 1 != 0
+            );
+            assert_eq!(
+                ctx.replacement
+                    .suppressed_replacement_effect_keys
+                    .contains(&key),
+                mask & 2 != 0
+            );
+            let mut events = outcome.events;
+            events.extend(game.take_pending_trigger_events());
+            let damage = events
+                .iter()
+                .filter_map(|event| event.downcast::<DamageEvent>())
+                .collect::<Vec<_>>();
+            assert_eq!(damage.len(), 1);
+            assert_eq!(damage[0].amount, expected as u32);
+            assert_eq!(damage[0].target, DamageTarget::Player(bob));
+        }
+    }
+
+    #[test]
+    fn damage_life_infect_and_wither_consequences_preserve_parent_scope() {
+        for kind in 0..3 {
+            for suppress in [false, true] {
+                let alice = PlayerId::from_index(0);
+                let bob = PlayerId::from_index(1);
+                let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+                let source = source(&mut game, alice, false);
+                if kind > 0 {
+                    game.object_mut(source).unwrap().abilities_mut().push(
+                        crate::ability::Ability::static_ability(if kind == 1 {
+                            crate::static_abilities::StaticAbility::infect()
+                        } else {
+                            crate::static_abilities::StaticAbility::wither()
+                        }),
+                    );
+                }
+                let victim = game.create_object_from_definition(
+                    &crate::cards::CardDefinitionBuilder::new(CardId::new(), "Counter recipient")
+                        .card_types(vec![CardType::Creature])
+                        .power_toughness(crate::card::PowerToughness::fixed(10, 10))
+                        .build(),
+                    bob,
+                    Zone::Battlefield,
+                );
+                let replacement = match kind {
+                    0 => ReplacementEffect::with_matcher(
+                        source,
+                        alice,
+                        crate::events::WouldLoseLifeMatcher::new(PlayerFilter::Specific(bob)),
+                        ReplacementAction::Modify(EventModification::Multiply(2)),
+                    ),
+                    1 => crate::static_abilities::StaticAbility::double_player_counters_replacement(
+                        PlayerFilter::Specific(bob),
+                        Some(crate::CounterType::Poison),
+                        "Double poison".into(),
+                    )
+                    .generate_replacement_effect(source, alice)
+                    .unwrap(),
+                    _ => crate::static_abilities::StaticAbility::double_counters_replacement(
+                        ObjectFilter::specific(victim),
+                        Some(crate::CounterType::MinusOneMinusOne),
+                        "Double wither".into(),
+                    )
+                    .generate_replacement_effect(source, alice)
+                    .unwrap(),
+                };
+                let key = replacement.application_key();
+                let mut dm = crate::decision::SelectFirstDecisionMaker;
+                let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+                ctx.replacement
+                    .additional_replacement_effects
+                    .push(replacement);
+                if suppress {
+                    ctx.replacement
+                        .suppressed_replacement_effect_keys
+                        .insert(key);
+                }
+                let target = if kind == 2 {
+                    ChooseSpec::SpecificObject(victim)
+                } else {
+                    ChooseSpec::SpecificPlayer(bob)
+                };
+                let outcome = DealDamageEffect::new(3, target)
+                    .execute(&mut game, &mut ctx)
+                    .unwrap();
+                assert_eq!(outcome.value, OutcomeValue::Count(3));
+                let actual = if suppress { 3 } else { 6 };
+                assert_eq!(
+                    game.player(bob).unwrap().life,
+                    if kind == 0 { 20 - actual } else { 20 }
+                );
+                assert_eq!(
+                    game.player(bob).unwrap().poison_counters,
+                    if kind == 1 { actual as u32 } else { 0 }
+                );
+                assert_eq!(
+                    game.counter_count(victim, crate::CounterType::MinusOneMinusOne),
+                    if kind == 2 { actual as u32 } else { 0 }
+                );
+                assert_eq!(game.damage_on(victim), 0);
+                let mut events = outcome.events;
+                events.extend(game.take_pending_trigger_events());
+                assert_eq!(
+                    events
+                        .iter()
+                        .filter_map(|event| event.downcast::<DamageEvent>())
+                        .count(),
+                    1
+                );
+                let markers = events
+                    .iter()
+                    .filter_map(|event| event.downcast::<crate::events::MarkersChangedEvent>())
+                    .filter(|event| event.is_added())
+                    .collect::<Vec<_>>();
+                assert_eq!(markers.len(), usize::from(kind != 0));
+                if kind > 0 {
+                    assert_eq!(markers[0].amount, actual as u32);
+                    assert_eq!(markers[0].source, Some(source));
+                    assert_eq!(markers[0].source_controller, Some(alice));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn nested_single_and_simultaneous_damage_retain_history_and_lifelink_scope() {
+        for simultaneous in [false, true] {
+            for departed in [false, true] {
+                let alice = PlayerId::from_index(0);
+                let bob = PlayerId::from_index(1);
+                let carol = PlayerId::from_index(2);
+                let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Carol".into()], 20);
+                let source = source(&mut game, alice, true);
+                let target = if simultaneous {
+                    ChooseSpec::EachPlayer(PlayerFilter::Opponent)
+                } else {
+                    ChooseSpec::SpecificPlayer(bob)
+                };
+                let replacement = game.effect_store.replacement_effects.add_resolution_effect(
+                    ReplacementEffect::with_matcher(
+                        source,
+                        alice,
+                        DamageFromSourceMatcher::new(ObjectFilter::specific(source)),
+                        ReplacementAction::Instead(vec![Effect::deal_damage(2, target)]),
+                    ),
+                );
+                let snapshot =
+                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                        game.object(source).unwrap(),
+                        &game,
+                    );
+                if departed {
+                    game.move_object(
+                        source,
+                        Zone::Exile,
+                        crate::events::cause::EventCause::effect(),
+                    )
+                    .unwrap();
+                }
+                game.take_pending_trigger_events();
+                let mut dm = crate::decision::SelectFirstDecisionMaker;
+                let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+                ctx.source_snapshot = Some(snapshot);
+                ctx.replacement
+                    .additional_replacement_effects
+                    .push(ReplacementEffect::with_matcher(
+                        source,
+                        alice,
+                        crate::events::WouldGainLifeMatcher::new(PlayerFilter::Specific(alice)),
+                        ReplacementAction::Modify(EventModification::Multiply(2)),
+                    ));
+                let outcome = DealDamageEffect::new(5, ChooseSpec::SpecificPlayer(bob))
+                    .execute(&mut game, &mut ctx)
+                    .unwrap();
+                assert_eq!(outcome.value, OutcomeValue::Count(0));
+                assert_eq!(game.player(bob).unwrap().life, 18);
+                assert_eq!(
+                    game.player(carol).unwrap().life,
+                    if simultaneous { 18 } else { 20 }
+                );
+                assert_eq!(
+                    game.player(alice).unwrap().life,
+                    if simultaneous { 28 } else { 24 }
+                );
+                assert!(
+                    game.effect_store
+                        .replacement_effects
+                        .get_effect(replacement)
+                        .is_some()
+                );
+                assert!(ctx.replacement.suppressed_replacement_effects.is_empty());
+                assert!(
+                    ctx.replacement
+                        .suppressed_replacement_effect_keys
+                        .is_empty()
+                );
+                let mut events = outcome.events;
+                events.extend(game.take_pending_trigger_events());
+                let damage = events
+                    .iter()
+                    .filter_map(|event| event.downcast::<DamageEvent>())
+                    .collect::<Vec<_>>();
+                assert_eq!(damage.len(), if simultaneous { 2 } else { 1 });
+                assert!(damage.iter().all(|event| event.amount == 2));
+                let gains = events
+                    .iter()
+                    .filter_map(|event| event.downcast::<LifeGainEvent>())
+                    .collect::<Vec<_>>();
+                assert_eq!(gains.len(), 1);
+                assert_eq!(gains[0].amount, if simultaneous { 8 } else { 4 });
+                assert_eq!(gains[0].player, alice);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "deal_damage_split_history_tests.rs"]
+mod split_history_tests;
+
+#[cfg(test)]
+#[path = "deal_damage_prevention_scope_tests.rs"]
+mod prevention_scope_tests;
 
 #[cfg(test)]
 #[path = "deal_damage_choice_tests.rs"]
@@ -1333,6 +1673,53 @@ mod tests {
     }
 
     #[test]
+    fn noncombat_infect_counter_redirect_instead_and_error_keep_full_outcomes() {
+        for action in 0..3 {
+            let mut game = setup_game();
+            let alice = PlayerId::from_index(0);
+            let bob = PlayerId::from_index(1);
+            let source = create_creature(&mut game, "Infector", 2, 2, alice, vec![StaticAbility::infect()]);
+            let mut replacement = StaticAbility::double_player_counters_replacement(crate::target::PlayerFilter::Specific(bob), Some(CounterType::Poison), "Counter proposal".into()).generate_replacement_effect(source, alice).unwrap();
+            replacement.replacement = if action == 0 { ReplacementAction::Redirect {
+                target: crate::replacement::RedirectTarget::ToPlayer(alice), which: crate::replacement::RedirectWhich::First,
+            } } else {
+                let mut payload = vec![crate::effect::Effect::gain_life(4)];
+                if action == 2 { payload.push(crate::effect::Effect::lose_life(crate::effect::Value::X)); }
+                ReplacementAction::Instead(payload)
+            };
+            let one_shot = game.effect_store.replacement_effects.add_one_shot_effect(replacement);
+            game.take_pending_trigger_events();
+            let mut ctx = ExecutionContext::new_default(source, alice);
+            let result = DealDamageEffect::new(2, ChooseSpec::SpecificPlayer(bob)).execute(&mut game, &mut ctx);
+            if action == 2 {
+                assert!(result.is_err());
+                assert_eq!(game.player(alice).unwrap().life, 20);
+                assert_eq!(game.player(alice).unwrap().poison_counters, 0);
+                assert_eq!(game.player(bob).unwrap().poison_counters, 0);
+                assert!(game.effect_store.replacement_effects.get_effect(one_shot).is_some());
+            } else {
+                let outcome = result.unwrap();
+                assert_eq!(outcome.count_or_zero(), 2, "counter replacements do not change damage dealt");
+                assert_eq!(game.player(alice).unwrap().poison_counters, if action == 0 { 2 } else { 0 });
+                assert_eq!(game.player(bob).unwrap().poison_counters, 0);
+                assert_eq!(game.player(alice).unwrap().life, if action == 0 { 20 } else { 24 });
+                assert_eq!(game.player(bob).unwrap().life, 20);
+                assert_eq!(outcome.events.len(), 2);
+                let damage = outcome.events.iter().find_map(|event| event.downcast::<DamageEvent>()).unwrap();
+                assert_eq!(damage.target, crate::events::DamageTarget::Player(bob));
+                assert_eq!(damage.amount, 2);
+                if action == 0 {
+                    let marker = outcome.events.iter().find_map(|event| event.downcast::<crate::events::MarkersChangedEvent>()).unwrap();
+                    assert_eq!(marker.location, crate::marker::MarkerLocation::Player(alice));
+                    assert_eq!(marker.amount, 2);
+                } else { assert!(outcome.events.iter().any(|event| event.downcast::<crate::events::LifeGainEvent>().is_some())); }
+                assert!(game.effect_store.replacement_effects.get_effect(one_shot).is_none());
+            }
+            assert!(game.take_pending_trigger_events().is_empty());
+        }
+    }
+
+    #[test]
     fn noncombat_infect_damage_to_creature_uses_effect_counter_replacement() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
@@ -1428,4 +1815,269 @@ mod tests {
             "damage history should treat the departed source as the creature it last was"
         );
     }
+
+    #[test]
+    fn damage_life_loss_redirect_preserves_recipient_and_notification() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = create_creature(&mut game, "Damage source", 3, 3, alice, vec![]);
+        game.effect_store
+            .replacement_effects
+            .add_resolution_effect(ReplacementEffect::with_matcher(
+                source,
+                alice,
+                crate::events::WouldLoseLifeMatcher::new(PlayerFilter::Specific(bob)),
+                ReplacementAction::Redirect {
+                    target: crate::replacement::RedirectTarget::ToPlayer(alice),
+                    which: crate::replacement::RedirectWhich::First,
+                },
+            ));
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let outcome = DealDamageEffect::new(3, ChooseSpec::SpecificPlayer(bob))
+            .execute(&mut game, &mut ctx)
+            .unwrap();
+        assert_eq!(game.player(bob).unwrap().life, 20);
+        assert_eq!(game.player(alice).unwrap().life, 17);
+        assert_eq!(outcome.count_or_zero(), 3, "damage is still dealt to Bob");
+        let loss = outcome
+            .events
+            .iter()
+            .find_map(|event| event.downcast::<LifeLossEvent>())
+            .unwrap();
+        assert_eq!(loss.player, alice);
+        assert_eq!(loss.amount, 3);
+        assert!(loss.from_damage);
+        let damage = outcome
+            .events
+            .iter()
+            .find_map(|event| event.downcast::<DamageEvent>())
+            .unwrap();
+        assert_eq!(damage.target, DamageTarget::Player(bob));
+    }
+
+    #[test]
+    fn damage_life_loss_instead_executes_payload_without_original_loss() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = create_creature(&mut game, "Damage source", 3, 3, alice, vec![]);
+        game.effect_store
+            .replacement_effects
+            .add_resolution_effect(ReplacementEffect::with_matcher(
+                source,
+                alice,
+                crate::events::WouldLoseLifeMatcher::new(PlayerFilter::Specific(bob)),
+                ReplacementAction::Instead(vec![crate::effect::Effect::gain_life(4)]),
+            ));
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let outcome = DealDamageEffect::new(3, ChooseSpec::SpecificPlayer(bob))
+            .execute(&mut game, &mut ctx)
+            .unwrap();
+        assert_eq!(game.player(bob).unwrap().life, 20);
+        assert_eq!(game.player(alice).unwrap().life, 24);
+        assert_eq!(outcome.count_or_zero(), 3);
+        assert!(
+            !outcome
+                .events
+                .iter()
+                .any(|event| event.downcast::<LifeLossEvent>().is_some())
+        );
+        let gain = outcome
+            .events
+            .iter()
+            .find_map(|event| event.downcast::<LifeGainEvent>())
+            .unwrap();
+        assert_eq!(gain.player, alice);
+        assert_eq!(gain.amount, 4);
+        assert!(
+            outcome
+                .events
+                .iter()
+                .any(|event| event.downcast::<DamageEvent>().is_some())
+        );
+    }
+
+    #[test]
+    fn damage_life_loss_payload_error_restores_prior_payload_and_one_shot() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = create_creature(&mut game, "Damage source", 3, 3, alice, vec![]);
+        let replacement =
+            game.effect_store
+                .replacement_effects
+                .add_one_shot_effect(ReplacementEffect::with_matcher(
+                    source,
+                    alice,
+                    crate::events::WouldLoseLifeMatcher::new(PlayerFilter::Specific(bob)),
+                    ReplacementAction::Instead(vec![
+                        crate::effect::Effect::gain_life(4),
+                        crate::effect::Effect::lose_life(crate::effect::Value::X),
+                    ]),
+                ));
+        game.take_pending_trigger_events();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let result =
+            DealDamageEffect::new(3, ChooseSpec::SpecificPlayer(bob)).execute(&mut game, &mut ctx);
+        assert!(result.is_err());
+        assert_eq!(game.player(alice).unwrap().life, 20);
+        assert_eq!(game.player(bob).unwrap().life, 20);
+        assert!(
+            game.effect_store
+                .replacement_effects
+                .get_effect(replacement)
+                .is_some()
+        );
+        assert!(game.take_pending_trigger_events().is_empty());
+    }
+
+    #[test]
+    fn damage_instead_payload_error_restores_partial_payload_and_one_shot() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = create_creature(&mut game, "Damage source", 3, 3, alice, vec![]);
+        let replacement =
+            game.effect_store
+                .replacement_effects
+                .add_one_shot_effect(ReplacementEffect::with_matcher(
+                    source,
+                    alice,
+                    crate::events::damage::matchers::DamageFromSourceMatcher::new(
+                        ObjectFilter::specific(source),
+                    ),
+                    ReplacementAction::Instead(vec![
+                        crate::effect::Effect::gain_life(4),
+                        crate::effect::Effect::lose_life(crate::effect::Value::X),
+                    ]),
+                ));
+        game.take_pending_trigger_events();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        assert!(
+            DealDamageEffect::new(3, ChooseSpec::SpecificPlayer(bob))
+                .execute(&mut game, &mut ctx)
+                .is_err()
+        );
+        assert_eq!(game.player(alice).unwrap().life, 20);
+        assert_eq!(game.player(bob).unwrap().life, 20);
+        assert!(
+            game.effect_store
+                .replacement_effects
+                .get_effect(replacement)
+                .is_some()
+        );
+        assert!(game.take_pending_trigger_events().is_empty());
+    }
+
+    #[test]
+    fn damage_prevention_follow_up_error_restores_payload_and_shield() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = create_creature(&mut game, "Damage source", 3, 3, alice, vec![]);
+        game.effect_store.prevention_effects.add_shield(
+            crate::prevention::PreventionShield::prevent_next_n(
+                source,
+                alice,
+                crate::prevention::PreventionTarget::Player(bob),
+                2,
+            )
+            .with_follow_up_effects(vec![
+                crate::effect::Effect::gain_life(4),
+                crate::effect::Effect::lose_life(crate::effect::Value::X),
+            ]),
+        );
+        game.take_pending_trigger_events();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        assert!(
+            DealDamageEffect::new(3, ChooseSpec::SpecificPlayer(bob))
+                .execute(&mut game, &mut ctx)
+                .is_err()
+        );
+        assert_eq!(game.player(alice).unwrap().life, 20);
+        assert_eq!(game.player(bob).unwrap().life, 20);
+        assert_eq!(game.effect_store.prevention_effects.shields().len(), 1);
+        assert_eq!(
+            game.effect_store.prevention_effects.shields()[0].amount_remaining,
+            Some(2)
+        );
+        assert!(game.take_pending_trigger_events().is_empty());
+    }
+
+    #[test]
+    fn damage_instead_payload_retains_reported_events_without_original_damage() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = create_creature(&mut game, "Damage source", 3, 3, alice, vec![]);
+        game.effect_store
+            .replacement_effects
+            .add_resolution_effect(ReplacementEffect::with_matcher(
+                source,
+                alice,
+                crate::events::damage::matchers::DamageFromSourceMatcher::new(ObjectFilter::specific(
+                    source,
+                )),
+                ReplacementAction::Instead(vec![crate::effect::Effect::gain_life(4)]),
+            ));
+        game.take_pending_trigger_events();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let outcome = DealDamageEffect::new(3, ChooseSpec::SpecificPlayer(bob))
+            .execute(&mut game, &mut ctx)
+            .unwrap();
+        assert_eq!(game.player(alice).unwrap().life, 24);
+        assert_eq!(game.player(bob).unwrap().life, 20);
+        assert_eq!(outcome.count_or_zero(), 0);
+        assert_eq!(outcome.status, crate::effect::OutcomeStatus::Replaced);
+        assert_eq!(outcome.events.len(), 1);
+        let gain = outcome.events[0].downcast::<LifeGainEvent>().unwrap();
+        assert_eq!(gain.player, alice);
+        assert_eq!(gain.amount, 4);
+        assert!(
+            game.take_pending_trigger_events().is_empty(),
+            "reported payload must not also be queued"
+        );
+    }
+
+    #[test]
+    fn lifelink_replacement_redirects_the_committed_gain_and_notification() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = create_creature(&mut game, "Lifelink source", 2, 2, alice, vec![StaticAbility::lifelink()]);
+        let target = create_creature(&mut game, "Target", 2, 5, bob, vec![]);
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::with_matcher(source, alice, crate::events::WouldGainLifeMatcher::you(),
+                ReplacementAction::Redirect { target: crate::replacement::RedirectTarget::ToPlayer(bob), which: crate::replacement::RedirectWhich::First }),
+        );
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let outcome = DealDamageEffect::new(2, ChooseSpec::SpecificObject(target)).execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(game.player(alice).unwrap().life, 20);
+        assert_eq!(game.player(bob).unwrap().life, 22);
+        assert_eq!(game.damage_on(target), 2);
+        assert_eq!(outcome.count_or_zero(), 2);
+        let gain = outcome.events.iter().find_map(|event| event.downcast::<LifeGainEvent>()).unwrap();
+        assert_eq!(gain.player, bob);
+        assert_eq!(gain.source, Some(source));
+    }
+
+    #[test]
+    fn lifelink_payload_error_rolls_back_damage_and_life() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = create_creature(&mut game, "Lifelink source", 2, 2, alice, vec![StaticAbility::lifelink()]);
+        let target = create_creature(&mut game, "Target", 2, 5, bob, vec![]);
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::with_matcher(source, alice, crate::events::WouldGainLifeMatcher::you(),
+                ReplacementAction::Instead(vec![crate::effect::Effect::lose_life(1),
+                    crate::effect::Effect::lose_life(crate::effect::Value::X)])),
+        );
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        assert!(DealDamageEffect::new(2, ChooseSpec::SpecificObject(target)).execute(&mut game, &mut ctx).is_err());
+        assert_eq!(game.player(alice).unwrap().life, 20);
+        assert_eq!(game.damage_on(target), 0);
+    }
+
 }

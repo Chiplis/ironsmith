@@ -657,7 +657,7 @@ fn generate_report() {
                     g.turn.phase = Phase::FirstMain;
                     g.turn.step = None;
                     let mut q = TriggerQueue::new();
-                    ironsmith::game_loop::add_saga_lore_counters_with_dm(&mut g, &mut q, dm);
+                    ironsmith::game_loop::add_saga_lore_counters_with_dm(&mut g, &mut q, dm).unwrap();
                     dm.trace.push(json!({"stage":"normal_lore_counter_step_action","chapter":ch,"lore":g.counter_count(source,ironsmith::object::CounterType::Lore)}));
                     finish(&mut g, &mut q, dm)?;
                     if ch == 2 {

@@ -4,10 +4,8 @@ use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::processing::process_life_gain_with_event_with_dm;
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, PlayerFilter};
-use crate::triggers::TriggerEvent;
 
 /// Effect that exchanges life totals between two players.
 ///
@@ -133,85 +131,25 @@ impl EffectExecutor for ExchangeLifeTotalsEffect {
             return Ok(EffectOutcome::prevented());
         }
 
-        let mut outcome = EffectOutcome::resolved();
-
-        if life2 > life1 {
-            let gained = process_life_gain_with_event_with_dm(
-                game,
-                player1_id,
-                (life2 - life1) as u32,
-                ctx.decision_maker,
-            );
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            if gained > 0 {
-                game.gain_life(player1_id, gained);
-            }
-            if gained > 0 {
-                outcome = outcome.with_event(TriggerEvent::new_with_provenance(
-                    crate::events::LifeGainEvent::new(player1_id, gained),
-                    ctx.provenance,
-                ));
-            }
-        } else if life1 > life2 {
-            let lost = crate::events::processing::process_life_loss_with_event_with_dm(
-                game,
-                player1_id,
-                (life1 - life2) as u32,
-                false,
-                ctx.decision_maker,
-            );
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            let lost = game.lose_life(player1_id, lost);
-            if lost > 0 {
-                outcome = outcome.with_event(TriggerEvent::new_with_provenance(
-                    crate::events::LifeLossEvent::from_effect(player1_id, lost),
-                    ctx.provenance,
-                ));
-            }
+        let difference = life1.abs_diff(life2);
+        let mut proposals = Vec::with_capacity(2);
+        for (player, gains) in [(player1_id, life2 > life1), (player2_id, life1 > life2)] {
+            proposals.push(if gains {
+                crate::events::Event::new_with_provenance(
+                    crate::events::LifeGainEvent::new(player, difference).with_source(ctx.source), ctx.provenance,
+                )
+            } else {
+                crate::events::Event::new_with_provenance(
+                    crate::events::LifeLossEvent::from_effect(player, difference), ctx.provenance,
+                )
+            });
         }
-
-        if life1 > life2 {
-            let gained = process_life_gain_with_event_with_dm(
-                game,
-                player2_id,
-                (life1 - life2) as u32,
-                ctx.decision_maker,
-            );
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            if gained > 0 {
-                game.gain_life(player2_id, gained);
-            }
-            if gained > 0 {
-                outcome = outcome.with_event(TriggerEvent::new_with_provenance(
-                    crate::events::LifeGainEvent::new(player2_id, gained),
-                    ctx.provenance,
-                ));
-            }
-        } else if life2 > life1 {
-            let lost = crate::events::processing::process_life_loss_with_event_with_dm(
-                game,
-                player2_id,
-                (life2 - life1) as u32,
-                false,
-                ctx.decision_maker,
-            );
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            let lost = game.lose_life(player2_id, lost);
-            if lost > 0 {
-                outcome = outcome.with_event(TriggerEvent::new_with_provenance(
-                    crate::events::LifeLossEvent::from_effect(player2_id, lost),
-                    ctx.provenance,
-                ));
-            }
+        let mut outcome = super::life_change::execute_life_changes(game, ctx, proposals)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(outcome);
         }
+        // An exchange has no single "life changed this way" count.
+        outcome.value = crate::effect::OutcomeValue::None;
 
         game.record_ui_effect_event(
             "life_exchange",

@@ -6,7 +6,6 @@ use crate::events::LifeLossEvent;
 use crate::game_state::GameState;
 use crate::object::CounterType;
 use crate::target::PlayerFilter;
-use crate::triggers::TriggerEvent;
 use crate::types::CardType;
 
 /// The sourceless game-rule effect associated with rad counters.
@@ -25,6 +24,21 @@ impl EffectExecutor for RadiationEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let checkpoint = game.clone();
+        let result = self.resolve(game, ctx);
+        if ctx.decision_maker.awaiting_choice() || result.is_err() {
+            *game = checkpoint;
+        }
+        result
+    }
+}
+
+impl RadiationEffect {
+    fn resolve(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
         let player = ctx.controller;
         let rad_count = game
             .player(player)
@@ -33,7 +47,7 @@ impl EffectExecutor for RadiationEffect {
             return Ok(EffectOutcome::resolved());
         }
 
-        let mut outcome =
+        let outcome =
             MillEffect::new(rad_count as i32, PlayerFilter::Specific(player)).execute(game, ctx)?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
@@ -45,32 +59,30 @@ impl EffectExecutor for RadiationEffect {
                 .count()
         });
 
+        let milled_summary = outcome.value.clone();
+        let mut outcomes = vec![outcome];
         for _ in 0..nonland_cards_milled {
             // CR 614.1a: the radiation life loss is a life-loss event.
-            let amount = crate::events::processing::process_life_loss_with_event_with_dm(
+            let mut loss = crate::effects::life::life_change::execute_life_change(
                 game,
-                player,
-                1,
-                false,
-                ctx.decision_maker,
-            );
+                ctx,
+                crate::events::Event::new_with_provenance(
+                    LifeLossEvent::from_radiation(player, 1), ctx.provenance,
+                ),
+            )?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
-            }
-            let lost = game.lose_life(player, amount);
-            if lost > 0 {
-                outcome.events.push(TriggerEvent::new_with_provenance(
-                    LifeLossEvent::from_radiation(player, 1).with_amount(lost),
-                    ctx.provenance,
-                ));
             }
             if let Some((_, event)) =
                 game.remove_player_counters_with_source(player, CounterType::Rad, 1, None, None)
             {
-                outcome.events.push(event);
+                loss.events.push(event);
             }
+            outcomes.push(loss);
         }
 
+        let mut outcome = EffectOutcome::aggregate(outcomes);
+        outcome.value = milled_summary;
         Ok(outcome)
     }
 }

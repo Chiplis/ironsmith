@@ -7,7 +7,6 @@ use crate::effects::{CostExecutableEffect, CostValidationError, ExecutionContext
 use crate::events::LifeGainEvent;
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
-use crate::triggers::TriggerEvent;
 pub use ironsmith_core::GainLifeEffect;
 
 /// Effect that causes a player to gain life.
@@ -41,35 +40,12 @@ impl EffectExecutor for GainLifeEffect {
         let player_id = resolve_player_from_spec(game, &self.player, ctx)?;
         let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
 
-        // Process through replacement effects and check "can't gain life".
-        // CR 616.1: the gaining player orders tied life-gain replacements.
-        let final_amount = crate::events::processing::process_life_gain_with_event_with_dm(
-            game,
-            player_id,
-            amount,
-            &mut *ctx.decision_maker,
-        );
-
-        if final_amount > 0 {
-            game.gain_life(player_id, final_amount);
-        }
-
-        // Create the trigger event only if life was actually gained
-        let outcome = EffectOutcome::count(final_amount as i32);
-        if final_amount > 0 {
-            let mut event = TriggerEvent::new_with_provenance(
-                LifeGainEvent::new(player_id, final_amount).with_source(ctx.source),
-                ctx.provenance,
-            );
-            if game.object(ctx.source).is_none()
-                && let Some(snapshot) = ctx.source_snapshot.as_ref()
-            {
-                event = event.with_source_snapshot(snapshot.clone());
-            }
-            Ok(outcome.with_event(event))
-        } else {
-            Ok(outcome)
-        }
+        super::life_change::execute_life_change(
+            game, ctx,
+            crate::events::Event::new_with_provenance(
+                LifeGainEvent::new(player_id, amount).with_source(ctx.source), ctx.provenance,
+            ),
+        )
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -119,27 +95,12 @@ impl crate::effects::SimultaneousEffectProposal for GainLifeProposal {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let final_amount = crate::events::processing::process_life_gain_with_event_with_dm(
-            game,
-            self.player,
-            self.amount,
-            &mut *ctx.decision_maker,
-        );
-        if final_amount > 0 {
-            game.gain_life(self.player, final_amount);
-            let mut event = TriggerEvent::new_with_provenance(
-                LifeGainEvent::new(self.player, final_amount).with_source(ctx.source),
-                ctx.provenance,
-            );
-            if game.object(ctx.source).is_none()
-                && let Some(snapshot) = ctx.source_snapshot.as_ref()
-            {
-                event = event.with_source_snapshot(snapshot.clone());
-            }
-            Ok(EffectOutcome::count(final_amount as i32).with_event(event))
-        } else {
-            Ok(EffectOutcome::count(0))
-        }
+        super::life_change::execute_life_change(
+            game, ctx,
+            crate::events::Event::new_with_provenance(
+                LifeGainEvent::new(self.player, self.amount).with_source(ctx.source), ctx.provenance,
+            ),
+        )
     }
 }
 

@@ -14,6 +14,33 @@ use crate::target::{ChooseSpec, PlayerFilter};
 use crate::triggers::{Trigger, TriggerEvent};
 use crate::zone::Zone;
 
+/// Token creation, entry choices and replacement payloads are one instruction.
+/// Keep prompt/answer state but restore game and resolution memory on suspension.
+pub(crate) fn execute_token_instruction_atomically<'a>(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext<'a>,
+    execute: impl FnOnce(
+        &mut GameState,
+        &mut ExecutionContext<'a>,
+    ) -> Result<crate::effect::EffectOutcome, ExecutionError>,
+) -> Result<crate::effect::EffectOutcome, ExecutionError> {
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(crate::effect::EffectOutcome::with_objects(Vec::new()));
+    }
+    let checkpoint = game.clone();
+    let context_checkpoint = crate::effects::context::ExecutionContextCheckpoint::capture(ctx);
+    let result = execute(game, ctx);
+    let pending = ctx.decision_maker.awaiting_choice();
+    if pending || result.is_err() {
+        *game = checkpoint;
+        context_checkpoint.restore(ctx);
+    }
+    if pending {
+        return Ok(crate::effect::EffectOutcome::with_objects(Vec::new()));
+    }
+    result
+}
+
 /// Ported MAGE scenarios assume a per-player cap on token permanents.
 pub(crate) const TOKEN_PER_PLAYER_LIMIT: usize = 500;
 
@@ -65,11 +92,13 @@ pub(crate) fn create_replacement_additional_tokens(
             let token_is_creature = token_obj.is_creature();
 
             game.add_object(token_obj);
-            let Some(entry_result) = game.move_object_with_etb_processing_with_dm(
+            let entry_result = game.move_object_with_etb_processing_with_dm(
                 id,
                 Zone::Battlefield,
                 &mut ctx.decision_maker,
-            ) else {
+            );
+            if ctx.decision_maker.awaiting_choice() { return Ok(Vec::new()); }
+            let Some(entry_result) = entry_result else {
                 game.remove_object(id);
                 continue;
             };
@@ -91,6 +120,7 @@ pub(crate) fn create_replacement_additional_tokens(
                     entry_result.enters_tapped,
                     events,
                 )?;
+                if ctx.decision_maker.awaiting_choice() { return Ok(Vec::new()); }
             }
         }
     }

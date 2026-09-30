@@ -1831,6 +1831,9 @@ pub enum Condition {
     },
     ColoredManaSpentToCastThisSpellAtLeast(u32),
     TriggeringSpellColoredManaSpentToCastAtLeast(u32),
+    /// The spell named by the triggering cast event was kicked ("Whenever you
+    /// cast a spell, if that spell was kicked, ...").
+    TriggeringSpellWasKicked,
     YouControlMoreCreaturesThanTargetSpellController,
     TargetHasGreatestPowerAmongCreatures,
     TargetManaValueLteColorsSpentToCastThisSpell,

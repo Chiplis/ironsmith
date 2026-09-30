@@ -407,7 +407,7 @@ pub fn apply_priority_response_with_dm(
                     trigger_queue.add(trigger);
                 }
 
-                handle_saga_enters_battlefield(game, new_id, trigger_queue, decision_maker);
+                handle_saga_enters_battlefield(game, new_id, trigger_queue, decision_maker).map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))?;
             }
 
             // Mark that the player has played a land this turn

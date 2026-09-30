@@ -114,276 +114,304 @@ impl EffectExecutor for ConniveEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        // CR 701.50e: zero is not a connive event, including for replacements.
-        let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
-        if count == 0 {
-            return Ok(EffectOutcome::count(0));
-        }
-        let target_ids = match connive_tagged_object_ids(ctx, &self.target) {
-            Some(ids) => ids,
-            // CR 701.50c: a source that changed zones still connives, using
-            // its last known information.
-            None if matches!(self.target.base(), ChooseSpec::Source)
-                && ctx.source_snapshot.is_some()
-                && resolve_objects_for_effect(game, ctx, &self.target).is_err() =>
-            {
-                vec![ctx.source]
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = (|| {
+            // CR 701.50e: zero is not a connive event, including for replacements.
+            let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
+            if count == 0 {
+                return Ok(EffectOutcome::count(0));
             }
-            None => resolve_objects_for_effect(game, ctx, &self.target)?,
-        };
-        if target_ids.is_empty() {
-            return Ok(EffectOutcome::target_invalid());
-        }
+            let target_ids = match connive_tagged_object_ids(ctx, &self.target) {
+                Some(ids) => ids,
+                // CR 701.50c: a source that changed zones still connives, using
+                // its last known information.
+                None if matches!(self.target.base(), ChooseSpec::Source)
+                    && ctx.source_snapshot.is_some()
+                    && resolve_objects_for_effect(game, ctx, &self.target).is_err() =>
+                {
+                    vec![ctx.source]
+                }
+                None => resolve_objects_for_effect(game, ctx, &self.target)?,
+            };
+            if target_ids.is_empty() {
+                return Ok(EffectOutcome::target_invalid());
+            }
 
-        let mut remaining = target_ids
-            .into_iter()
-            .filter_map(|object_id| {
-                let snapshot = connive_snapshot_for_object(game, ctx, object_id)?;
-                // CR 701.50a-b: the instructed permanent connives even if it
-                // stopped being a creature. Target legality, where relevant,
-                // is handled by the target specification/resolution pipeline.
-                Some(ConniveInstruction {
-                    object_id,
-                    controller: snapshot.controller,
-                    snapshot,
-                })
-            })
-            .collect::<Vec<_>>();
-        if remaining.is_empty() {
-            return Ok(EffectOutcome::target_invalid());
-        }
-
-        let mut events = Vec::new();
-        let mut connived_objects = Vec::new();
-        let player_order = players_in_apnap_order(game);
-
-        for player in player_order {
-            while let Some(candidate_indices) = (!remaining.is_empty()).then(|| {
-                remaining
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(index, instruction)| {
-                        (instruction.controller == player).then_some(index)
+            let mut remaining = target_ids
+                .into_iter()
+                .filter_map(|object_id| {
+                    let snapshot = connive_snapshot_for_object(game, ctx, object_id)?;
+                    // CR 701.50a-b: the instructed permanent connives even if it
+                    // stopped being a creature. Target legality, where relevant,
+                    // is handled by the target specification/resolution pipeline.
+                    Some(ConniveInstruction {
+                        object_id,
+                        controller: snapshot.controller,
+                        snapshot,
                     })
-                    .collect::<Vec<_>>()
-            }) {
-                if candidate_indices.is_empty() {
-                    break;
-                }
+                })
+                .collect::<Vec<_>>();
+            if remaining.is_empty() {
+                return Ok(EffectOutcome::target_invalid());
+            }
 
-                let chosen_index = if candidate_indices.len() == 1 {
-                    candidate_indices[0]
-                } else {
-                    use crate::decisions::make_decision;
-                    use crate::decisions::specs::ChooseObjectsSpec;
+            let mut events = Vec::new();
+            let mut counter_facts = Vec::new();
+            let mut connived_objects = Vec::new();
+            let player_order = players_in_apnap_order(game);
 
-                    let choices = candidate_indices
+            for player in player_order {
+                while let Some(candidate_indices) = (!remaining.is_empty()).then(|| {
+                    remaining
                         .iter()
-                        .map(|&index| remaining[index].object_id)
-                        .collect::<Vec<_>>();
-                    let spec = ChooseObjectsSpec::new(
-                        ctx.source,
-                        "Choose a permanent to connive next",
-                        choices.clone(),
-                        1,
-                        Some(1),
-                    );
-                    let selection: Vec<ObjectId> =
-                        make_decision(game, ctx.decision_maker, player, Some(ctx.source), spec);
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(
-                            EffectOutcome::with_objects(connived_objects).with_events(events)
-                        );
+                        .enumerate()
+                        .filter_map(|(index, instruction)| {
+                            (instruction.controller == player).then_some(index)
+                        })
+                        .collect::<Vec<_>>()
+                }) {
+                    if candidate_indices.is_empty() {
+                        break;
                     }
-                    let normalized = normalize_object_selection(selection, &choices, 1);
-                    let chosen_object = normalized.first().copied().unwrap_or(choices[0]);
-                    candidate_indices
-                        .into_iter()
-                        .find(|index| remaining[*index].object_id == chosen_object)
-                        .unwrap_or(0)
-                };
 
-                let instruction = remaining.remove(chosen_index);
-                let controller = instruction.controller;
-                let target_id = instruction.object_id;
+                    let chosen_index = if candidate_indices.len() == 1 {
+                        candidate_indices[0]
+                    } else {
+                        use crate::decisions::make_decision;
+                        use crate::decisions::specs::ChooseObjectsSpec;
 
-                // CR 614: replacement effects such as Leader, Super-Genius's
-                // ("instead you draw a card, then that creature connives") see
-                // the would-connive event first. The replacement suppresses
-                // itself, so the connive it performs is not replaced again.
-                let would_event = crate::events::Event::new_with_provenance(
-                    KeywordActionEvent::new(
-                        KeywordActionKind::Connive,
-                        controller,
-                        target_id,
-                        count as u32,
-                    )
-                    .with_snapshot(Some(instruction.snapshot.clone())),
-                    ctx.provenance,
-                );
-                let applied_effects = ctx.replacement.suppressed_replacement_effects.clone();
-                let applied_effect_keys =
-                    ctx.replacement.suppressed_replacement_effect_keys.clone();
-                if applied_effects.is_empty() && applied_effect_keys.is_empty() {
-                    game.update_replacement_effects();
-                }
-                match crate::events::processing::process_trait_event_with_dm_and_applied_effects(
-                    game,
-                    would_event,
-                    ctx.decision_maker,
-                    &applied_effects,
-                    &applied_effect_keys,
-                ) {
-                    crate::events::processing::TraitEventResult::Replaced {
-                        effects,
-                        effect_id,
-                        ..
-                    } => {
-                        let replacement_outcome = crate::effects::composition::mechanic_actions::execute_keyword_action_replacement_effects(
+                        let choices = candidate_indices
+                            .iter()
+                            .map(|&index| remaining[index].object_id)
+                            .collect::<Vec<_>>();
+                        let spec = ChooseObjectsSpec::new(
+                            ctx.source,
+                            "Choose a permanent to connive next",
+                            choices.clone(),
+                            1,
+                            Some(1),
+                        );
+                        let selection: Vec<ObjectId> =
+                            make_decision(game, ctx.decision_maker, player, Some(ctx.source), spec);
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(
+                                EffectOutcome::with_objects(connived_objects).with_events(events)
+                            );
+                        }
+                        let normalized = normalize_object_selection(selection, &choices, 1);
+                        let chosen_object = normalized.first().copied().unwrap_or(choices[0]);
+                        candidate_indices
+                            .into_iter()
+                            .find(|index| remaining[*index].object_id == chosen_object)
+                            .unwrap_or(0)
+                    };
+
+                    let instruction = remaining.remove(chosen_index);
+                    let controller = instruction.controller;
+                    let target_id = instruction.object_id;
+
+                    // CR 614: replacement effects such as Leader, Super-Genius's
+                    // ("instead you draw a card, then that creature connives") see
+                    // the would-connive event first. The replacement suppresses
+                    // itself, so the connive it performs is not replaced again.
+                    let would_event = crate::events::Event::new_with_provenance(
+                        KeywordActionEvent::new(
+                            KeywordActionKind::Connive,
+                            controller,
+                            target_id,
+                            count as u32,
+                        )
+                        .with_snapshot(Some(instruction.snapshot.clone())),
+                        ctx.provenance,
+                    );
+                    let applied_effects = ctx.replacement.suppressed_replacement_effects.clone();
+                    let applied_effect_keys =
+                        ctx.replacement.suppressed_replacement_effect_keys.clone();
+                    if applied_effects.is_empty() && applied_effect_keys.is_empty() {
+                        game.update_replacement_effects();
+                    }
+                    match crate::events::processing::process_trait_event_with_dm_and_applied_effects(
+                        game,
+                        would_event,
+                        ctx.decision_maker,
+                        &applied_effects,
+                        &applied_effect_keys,
+                    ) {
+                        crate::events::processing::TraitEventResult::Replaced {
+                            effects,
+                            effect_id,
+                            ..
+                        } => {
+                            let replacement_outcome = crate::effects::composition::mechanic_actions::execute_keyword_action_replacement_effects(
                             game,
                             ctx,
                             effects,
                             effect_id,
                             Some(instruction.snapshot.clone()),
                         )?;
-                        for event in &replacement_outcome.events {
-                            if let Some(keyword) = event.downcast::<KeywordActionEvent>()
-                                && keyword.action == KeywordActionKind::Connive
-                            {
-                                connived_objects.push(keyword.source);
+                            for event in &replacement_outcome.events {
+                                if let Some(keyword) = event.downcast::<KeywordActionEvent>()
+                                    && keyword.action == KeywordActionKind::Connive
+                                {
+                                    connived_objects.push(keyword.source);
+                                }
                             }
+                            events.extend(replacement_outcome.events);
+                            if ctx.decision_maker.awaiting_choice() {
+                                return Ok(EffectOutcome::with_objects(connived_objects)
+                                    .with_events(events));
+                            }
+                            continue;
                         }
-                        events.extend(replacement_outcome.events);
-                        if ctx.decision_maker.awaiting_choice() {
+                        crate::events::processing::TraitEventResult::Prevented => continue,
+                        crate::events::processing::TraitEventResult::NeedsChoice { .. }
+                        | crate::events::processing::TraitEventResult::NeedsInteraction {
+                            ..
+                        } => {
                             return Ok(
                                 EffectOutcome::with_objects(connived_objects).with_events(events)
                             );
                         }
-                        continue;
+                        crate::events::processing::TraitEventResult::Proceed(_)
+                        | crate::events::processing::TraitEventResult::Modified(_) => {}
                     }
-                    crate::events::processing::TraitEventResult::Prevented => continue,
-                    crate::events::processing::TraitEventResult::NeedsChoice { .. }
-                    | crate::events::processing::TraitEventResult::NeedsInteraction { .. } => {
-                        return Ok(
-                            EffectOutcome::with_objects(connived_objects).with_events(events)
-                        );
-                    }
-                    crate::events::processing::TraitEventResult::Proceed(_)
-                    | crate::events::processing::TraitEventResult::Modified(_) => {}
-                }
 
-                // Rule 701.50e: connive N draws N, discards N, then counts nonlands discarded this way.
-                let draw_outcome =
-                    DrawCardsEffect::new(count as i32, PlayerFilter::Specific(controller))
-                        .execute(game, ctx)?;
-                events.extend(draw_outcome.events);
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::with_objects(connived_objects).with_events(events));
-                }
-
-                // Then discard that many cards if possible.
-                let hand_cards: Vec<ObjectId> = game
-                    .player(controller)
-                    .map(|p| p.hand.to_vec())
-                    .unwrap_or_default();
-
-                let required = count.min(hand_cards.len());
-                if required > 0 {
-                    use crate::decisions::make_decision;
-                    use crate::decisions::specs::ChooseObjectsSpec;
-                    use crate::events::processing::execute_discard;
-
-                    let spec = ChooseObjectsSpec::new(
-                        ctx.source,
-                        format!(
-                            "Choose {} card{} to discard for connive",
-                            required,
-                            if required == 1 { "" } else { "s" }
-                        ),
-                        hand_cards.clone(),
-                        required,
-                        Some(required),
-                    )
-                    // Discarded hidden cards are opened publicly before the
-                    // answer is replayed (Madness, discard triggers); see
-                    // `game_state::hidden_hand_choices`.
-                    .with_selection_reveal_policy(
-                        crate::decisions::context::SelectionRevealPolicy::Public,
-                    );
-                    let chosen: Vec<_> =
-                        make_decision(game, ctx.decision_maker, controller, Some(ctx.source), spec);
-                    // The UI surfaces this prompt on a probe pass whose state it
-                    // keeps on screen; committing a fallback discard here would
-                    // show a card discarded (and a counter placed) before the
-                    // player has chosen.
+                    // Rule 701.50e: connive N draws N, discards N, then counts nonlands discarded this way.
+                    let draw_outcome =
+                        DrawCardsEffect::new(count as i32, PlayerFilter::Specific(controller))
+                            .execute(game, ctx)?;
+                    events.extend(draw_outcome.events);
                     if ctx.decision_maker.awaiting_choice() {
                         return Ok(
                             EffectOutcome::with_objects(connived_objects).with_events(events)
                         );
                     }
-                    let selected = normalize_object_selection(chosen, &hand_cards, required);
-                    let mut discarded_nonlands = 0;
-                    for card_to_discard in selected {
-                        let discarded_nonland = game
-                            .object(card_to_discard)
-                            .map(|obj| !obj.has_card_type(CardType::Land))
-                            .unwrap_or(false);
-                        let discard_result = execute_discard(
-                            game,
-                            card_to_discard,
-                            controller,
-                            EventCause::from_effect(ctx.source, ctx.controller),
-                            false,
-                            ctx.provenance,
-                            &mut *ctx.decision_maker,
-                        );
 
-                        if !discard_result.prevented && discarded_nonland {
-                            discarded_nonlands += 1;
+                    // Then discard that many cards if possible.
+                    let hand_cards: Vec<ObjectId> = game
+                        .player(controller)
+                        .map(|p| p.hand.to_vec())
+                        .unwrap_or_default();
+
+                    let required = count.min(hand_cards.len());
+                    if required > 0 {
+                        use crate::decisions::make_decision;
+                        use crate::decisions::specs::ChooseObjectsSpec;
+                        use crate::events::processing::execute_discard;
+
+                        let spec = ChooseObjectsSpec::new(
+                            ctx.source,
+                            format!(
+                                "Choose {} card{} to discard for connive",
+                                required,
+                                if required == 1 { "" } else { "s" }
+                            ),
+                            hand_cards.clone(),
+                            required,
+                            Some(required),
+                        )
+                        // Discarded hidden cards are opened publicly before the
+                        // answer is replayed (Madness, discard triggers); see
+                        // `game_state::hidden_hand_choices`.
+                        .with_selection_reveal_policy(
+                            crate::decisions::context::SelectionRevealPolicy::Public,
+                        );
+                        let chosen: Vec<_> = make_decision(
+                            game,
+                            ctx.decision_maker,
+                            controller,
+                            Some(ctx.source),
+                            spec,
+                        );
+                        // The UI surfaces this prompt on a probe pass whose state it
+                        // keeps on screen; committing a fallback discard here would
+                        // show a card discarded (and a counter placed) before the
+                        // player has chosen.
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(
+                                EffectOutcome::with_objects(connived_objects).with_events(events)
+                            );
+                        }
+                        let selected = normalize_object_selection(chosen, &hand_cards, required);
+                        let mut discarded_nonlands = 0;
+                        let mut successful_discards = Vec::new();
+                        let cause = EventCause::from_effect(ctx.source, ctx.controller);
+                        for card_to_discard in selected {
+                            let snapshot = game.object(card_to_discard)
+                                .map(|object| ObjectSnapshot::from_object(object, game));
+                            let discarded_nonland = snapshot.as_ref()
+                                .is_some_and(|snapshot| !snapshot.card_types.contains(&CardType::Land));
+                            let discard_result = execute_discard(
+                                game,
+                                card_to_discard,
+                                controller,
+                                cause.clone(),
+                                false,
+                                ctx.provenance,
+                                &mut *ctx.decision_maker,
+                            );
+
+                            if ctx.decision_maker.awaiting_choice() {
+                                return Ok(EffectOutcome::count(0));
+                            }
+                            if !discard_result.prevented && discard_result.new_id.is_some() {
+                                if discarded_nonland {
+                                    discarded_nonlands += 1;
+                                }
+                                successful_discards.push((card_to_discard, snapshot, discard_result.final_zone));
+                            }
+                        }
+                        events.extend(super::discard::completed_discard_events(
+                            game, controller, cause, ctx.provenance, successful_discards,
+                        ));
+
+                        if discarded_nonlands > 0 {
+                            let event = crate::events::Event::put_counters(
+                                target_id,
+                                crate::object::CounterType::PlusOnePlusOne,
+                                discarded_nonlands,
+                                ctx.cause.clone(),
+                            )
+                            .with_provenance(ctx.provenance);
+                            let placement =
+                                crate::effects::counters::execute_object_counter_placement(
+                                    game, ctx, event,
+                                )?;
+                            if ctx.decision_maker.awaiting_choice() {
+                                return Ok(EffectOutcome::count(0));
+                            }
+                            events.extend(placement.events);
+                            counter_facts.extend(placement.execution_facts);
                         }
                     }
 
-                    // Route through counter replacements (CR 614.1, 122.6).
-                    let placed = if discarded_nonlands > 0 {
-                        crate::events::processing::process_put_counters_with_event_with_dm(
-                            game,
+                    events.push(TriggerEvent::new_with_provenance(
+                        KeywordActionEvent::new(
+                            KeywordActionKind::Connive,
+                            controller,
                             target_id,
-                            crate::object::CounterType::PlusOnePlusOne,
-                            discarded_nonlands,
-                            ctx.cause.clone(),
-                            &mut *ctx.decision_maker,
+                            count as u32,
                         )
-                    } else {
-                        0
-                    };
-                    if placed > 0
-                        && let Some(event) = game.add_counters_with_source(
-                            target_id,
-                            crate::object::CounterType::PlusOnePlusOne,
-                            placed,
-                            Some(ctx.source),
-                            Some(ctx.controller),
-                        )
-                    {
-                        events.push(event);
-                    }
+                        .with_snapshot(Some(instruction.snapshot)),
+                        ctx.provenance,
+                    ));
+                    connived_objects.push(target_id);
                 }
+            }
 
-                events.push(TriggerEvent::new_with_provenance(
-                    KeywordActionEvent::new(
-                        KeywordActionKind::Connive,
-                        controller,
-                        target_id,
-                        count as u32,
-                    )
-                    .with_snapshot(Some(instruction.snapshot)),
-                    ctx.provenance,
-                ));
-                connived_objects.push(target_id);
+            Ok(EffectOutcome::with_objects(connived_objects)
+                .with_events(events)
+                .with_execution_facts(EffectOutcome::merge_execution_facts(counter_facts)))
+        })();
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
             }
         }
-
-        Ok(EffectOutcome::with_objects(connived_objects).with_events(events))
+        result
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

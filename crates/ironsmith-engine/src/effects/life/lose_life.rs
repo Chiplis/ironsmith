@@ -7,7 +7,6 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::LifeLossEvent;
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, PlayerFilter};
-use crate::triggers::TriggerEvent;
 
 #[derive(Debug)]
 struct LoseLifeProposal {
@@ -33,28 +32,11 @@ impl SimultaneousEffectProposal for LoseLifeProposal {
         if self.amount == 0 {
             return Ok(EffectOutcome::count(0));
         }
-        // CR 614.1a: life-loss replacements (Bloodletter of Aclazotz) modify
-        // the amount; CR 119.8: a player who can't lose life loses none, so
-        // there is no "life lost this way" and no life-loss event.
-        let amount = crate::events::processing::process_life_loss_with_event_with_dm(
-            game,
-            self.player,
-            self.amount,
-            false,
-            ctx.decision_maker,
-        );
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        let lost = game.lose_life(self.player, amount);
-        if lost == 0 {
-            return Ok(EffectOutcome::prevented());
-        }
-        Ok(
-            EffectOutcome::count(lost as i32).with_event(TriggerEvent::new_with_provenance(
-                LifeLossEvent::from_effect(self.player, lost),
-                self.provenance,
-            )),
+        super::life_change::execute_life_change(
+            game, ctx,
+            crate::events::Event::new_with_provenance(
+                LifeLossEvent::from_effect(self.player, self.amount), self.provenance,
+            ),
         )
     }
 }

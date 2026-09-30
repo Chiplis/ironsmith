@@ -50,24 +50,30 @@ impl EffectExecutor for ExperienceCountersEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        let count = resolve_value(game, &self.count, ctx)?.max(0) as u32;
-
-        let mut outcome = EffectOutcome::count(count as i32);
-        if let Some(event) = game.add_player_counters_with_source_with_dm(
-            player_id,
-            CounterType::Experience,
-            count,
-            Some(ctx.source),
-            Some(ctx.controller),
-            ctx.decision_maker,
-        ) {
-            outcome = outcome.with_event(event);
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = (|| {
+            let player = resolve_player_filter(game, &self.player, ctx)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            let count = resolve_value(game, &self.count, ctx)?.max(0) as u32;
+            let event = crate::events::Event::put_player_counters(
+                player,
+                CounterType::Experience,
+                count,
+                ctx.cause.clone(),
+            )
+            .with_provenance(ctx.provenance);
+            crate::effects::counters::execute_player_counter_placement(game, ctx, event)
+        })();
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
         }
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-
-        Ok(outcome)
+        result
     }
 }

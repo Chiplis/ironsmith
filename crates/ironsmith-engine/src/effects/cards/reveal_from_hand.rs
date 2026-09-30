@@ -203,26 +203,6 @@ impl EffectExecutor for RevealFromHandEffect {
                 &filter_ctx,
                 &description,
             );
-            if cards_to_reveal.len() < required {
-                let hand: Vec<ObjectId> = game
-                    .player(ctx.controller)
-                    .map(|p| {
-                        p.hand
-                            .iter()
-                            .copied()
-                            .filter(|id| *id != ctx.source)
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                game.record_hidden_shortfall_obligations(
-                    &hand,
-                    &cards_to_reveal,
-                    required,
-                    &filter,
-                    &filter_ctx,
-                    &description,
-                );
-            }
         }
         if reveal_publicly {
             // Every peer opened the chosen cards before this replay.

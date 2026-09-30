@@ -9,6 +9,7 @@
 
 mod exchange_life_totals;
 mod gain_life;
+pub(crate) mod life_change;
 mod lose_life;
 mod note_life_total;
 mod pay_life;

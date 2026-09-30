@@ -2982,6 +2982,7 @@ pub(crate) fn describe_for_each_tagged_this_way_subject(filter: &ObjectFilter) -
         {
             Some("revealed")
         } else if tag.starts_with("discarded_")
+            || tag.starts_with("discard_cost_")
             || crate::cards::is_sentence_helper_tag(tag, "discarded")
         {
             Some("discarded")

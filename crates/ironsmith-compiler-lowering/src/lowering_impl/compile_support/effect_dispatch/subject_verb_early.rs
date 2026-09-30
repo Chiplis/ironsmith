@@ -521,7 +521,7 @@ pub(super) fn compile_subject_verb_early(
         SubjectVerbActionAst::Library(LibraryActionAst::Mill { count }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let player_filter = subject.clone_player_filter();
-            let count = subject.bind_player_refs_in_value(count, ctx)?;
+            let count = subject.resolve_object_refs_and_bind_player_refs_in_value(count, ctx)?;
             let effect = if matches!(&player_filter, PlayerFilter::You) {
                 Effect::mill(count.clone())
             } else {

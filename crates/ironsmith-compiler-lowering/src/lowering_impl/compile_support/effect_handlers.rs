@@ -912,7 +912,15 @@ pub(super) fn try_compile_timing_and_control_effect(
             (vec![effect], choices)
         }
         EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep { player, effects }) => {
-            let subject = LoweredSubject::resolve_affected_player(*player, ctx, true, true, true)?;
+            // "at the beginning of the next turn's upkeep" names no player,
+            // so it must not displace the body's "that player" antecedent.
+            let subject = LoweredSubject::resolve_affected_player(
+                *player,
+                ctx,
+                true,
+                true,
+                !matches!(player, PlayerAst::Any),
+            )?;
             let player_filter = subject.into_player_filter();
             let mut choices = subject.into_choices();
             let (delayed_effects, nested_choices) =
@@ -934,7 +942,13 @@ pub(super) fn try_compile_timing_and_control_effect(
             (vec![effect], choices)
         }
         EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextDrawStep { player, effects }) => {
-            let subject = LoweredSubject::resolve_affected_player(*player, ctx, true, true, true)?;
+            let subject = LoweredSubject::resolve_affected_player(
+                *player,
+                ctx,
+                true,
+                true,
+                !matches!(player, PlayerAst::Any),
+            )?;
             let player_filter = subject.into_player_filter();
             let mut choices = subject.into_choices();
             let (delayed_effects, nested_choices) =

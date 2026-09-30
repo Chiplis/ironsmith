@@ -634,6 +634,13 @@ pub(super) fn strip_single_graveyard_phrase(filter: &mut ObjectFilter, all_words
         filter.single_graveyard = true;
         all_words.remove(idx);
     }
+    // "cards from a player's graveyard" (articles and apostrophes are already
+    // stripped here): one unspecified player's graveyard, so every chosen card
+    // must share it. A qualified owner ("target/that/each player's") keeps its
+    // qualifier between "from" and "players" and is not matched.
+    if find_phrase_start(all_words.as_slice(), &["from", "players", "graveyard"]).is_some() {
+        filter.single_graveyard = true;
+    }
 }
 
 fn parse_color_count_number_words(words: &[&str]) -> Option<(u32, usize)> {

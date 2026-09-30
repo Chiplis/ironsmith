@@ -1214,6 +1214,11 @@ fn bind_self_attach_destination_to_trigger_object(
             ..
         }) = effect
             && object_tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str()
+            // When the attached object is already the trigger's event object
+            // ("If that enchantment is an Aura, you may attach it to the
+            // token"), the destination is some other antecedent; rebinding
+            // it to the trigger object would attach that object to itself.
+            && object_tag.as_str() != crate::tag::CompilerReferenceTag::Triggering.as_str()
             && is_bare_it(target)
         {
             let span = match target {
@@ -1493,6 +1498,11 @@ fn link_spell_cast_mana_spent_predicate(
         PredicateAst::ColoredManaSpentToCastThisSpellAtLeast(amount) => PredicateAst::Triggering(
             TriggeringPredicateAst::TriggeringSpellColoredManaSpentToCastAtLeast(amount),
         ),
+        // "Whenever you cast a spell, if that spell was kicked": the
+        // demonstrative names the cast spell, not a chosen target.
+        PredicateAst::TargetWasKicked => {
+            PredicateAst::Triggering(TriggeringPredicateAst::TriggeringSpellWasKicked)
+        }
         PredicateAst::Not(inner) => PredicateAst::Not(Box::new(
             link_spell_cast_mana_spent_predicate(trigger, *inner),
         )),
@@ -1557,6 +1567,7 @@ fn link_spell_cast_mana_spent_condition(trigger: &TriggerSpec, condition: Condit
         Condition::ColoredManaSpentToCastThisSpellAtLeast(amount) => {
             Condition::TriggeringSpellColoredManaSpentToCastAtLeast(amount)
         }
+        Condition::TargetWasKicked => Condition::TriggeringSpellWasKicked,
         Condition::SnowManaOfAnySpellColorSpentToCastThisSpell => {
             Condition::TriggeringSpellSnowManaOfAnySpellColorSpentToCast
         }
@@ -1685,6 +1696,64 @@ fn typed_demonstrative_noun(target: &TargetAst) -> Option<&'static str> {
         "spell" => Some("spell"),
         "token" => Some("token"),
         _ => None,
+    }
+}
+
+/// In "Whenever a creature deals damage to enchanted planeswalker, destroy
+/// that creature", the typed demonstrative can only denote the damage source:
+/// the recipient's filter excludes creatures. The ordinary damage-trigger
+/// antecedent is the damaged object, so rebind exactly the demonstratives
+/// whose noun only the source can supply to the triggering (source) object.
+fn bind_damage_source_typed_demonstratives(effects: &mut [EffectAst], trigger: &TriggerSpec) {
+    let (source, recipient) = match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => {
+            return bind_damage_source_typed_demonstratives(effects, trigger);
+        }
+        TriggerSpec::DealsDamageTo { source, target, .. }
+        | TriggerSpec::DealsCombatDamageTo { source, target } => (source, target),
+        _ => return,
+    };
+    let recipient_excludes_creature = !recipient.card_types.is_empty()
+        && !recipient
+            .card_types
+            .contains(&crate::types::CardType::Creature);
+    let source_is_creature = source
+        .card_types
+        .contains(&crate::types::CardType::Creature);
+    if !recipient_excludes_creature || !source_is_creature {
+        return;
+    }
+    let tag: crate::tag::TagKey = crate::tag::CompilerReferenceTag::Triggering.bind().into();
+
+    fn visit(effect: &mut EffectAst, tag: &crate::tag::TagKey) {
+        if let EffectAst::SubjectVerb(subject_verb) = effect {
+            let target = match &mut subject_verb.action {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { target, .. })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand {
+                    target, ..
+                })
+                | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap { target })
+                | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
+                    target, ..
+                }) => Some(target),
+                _ => None,
+            };
+            if let Some(target) = target
+                && typed_demonstrative_noun(target) == Some("creature")
+            {
+                resolve_typed_demonstrative_it(target, tag);
+            }
+        }
+        for_each_nested_effects_mut(effect, true, |nested| {
+            for child in nested {
+                visit(child, tag);
+            }
+        });
+    }
+
+    for effect in effects {
+        visit(effect, &tag);
     }
 }
 
@@ -3626,6 +3695,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
     }
 
     bind_block_pair_subject(&mut body_effects, Some(&trigger));
+    bind_damage_source_typed_demonstratives(&mut body_effects, &trigger);
     let intervening_if_uses_trigger_object = intervening_if
         .as_ref()
         .is_some_and(predicate_uses_implicit_object_reference);

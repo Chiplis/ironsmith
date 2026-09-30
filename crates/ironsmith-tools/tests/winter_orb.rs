@@ -80,7 +80,7 @@ fn untap(orb_tapped: bool) -> (Vec<bool>, usize) {
     let mut dm = PickNamed("Land B", 0);
     game.turn.phase = ironsmith::game_state::Phase::Beginning;
     game.turn.step = Some(ironsmith::game_state::Step::Untap);
-    ironsmith::turn::execute_untap_step_with(&mut game, &mut dm);
+    ironsmith::turn::execute_untap_step_with(&mut game, &mut dm).unwrap();
     (lands.iter().map(|id| !game.is_tapped(*id)).collect(), dm.1)
 }
 

@@ -2988,7 +2988,7 @@ pub(super) fn battle_for_bretagard_chapters_create_and_copy_distinct_named_token
         saga_id: ObjectId,
         dm: &mut SelectAllObjects,
     ) {
-        add_lore_counter_and_check_chapters(game, saga_id, trigger_queue);
+        add_lore_counter_and_check_chapters(game, saga_id, trigger_queue).unwrap();
         put_triggers_on_stack_with_dm(game, trigger_queue, dm)
             .expect("Battle for Bretagard chapter trigger should go on the stack");
         resolve_stack_entry_with_dm_and_triggers(game, dm, trigger_queue)
@@ -3956,7 +3956,7 @@ pub(super) fn test_saga_etb_adds_lore_counter() {
     let saga_id = game.create_object_from_definition(&saga_def, alice, Zone::Battlefield);
 
     // Add initial lore counter and check chapters (what resolve_stack_entry_full does)
-    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue);
+    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue).unwrap();
 
     // Verify saga has 1 lore counter
     let saga = game.object(saga_id).unwrap();
@@ -3983,7 +3983,7 @@ pub(super) fn test_saga_chapter_one_leaving_stack_does_not_sacrifice() {
     let saga_id = game.create_object_from_definition(&saga_def, alice, Zone::Battlefield);
     let mut dm = SelectFirstDecisionMaker;
 
-    handle_saga_enters_battlefield(&mut game, saga_id, &mut trigger_queue, &mut dm);
+    handle_saga_enters_battlefield(&mut game, saga_id, &mut trigger_queue, &mut dm).unwrap();
     assert_eq!(
         game.object(saga_id)
             .unwrap()
@@ -4050,7 +4050,7 @@ pub(super) fn test_read_ahead_enters_with_choice_and_skips_lower_chapters() {
     let enters = game
         .move_object_with_etb_processing_with_dm(hand_id, Zone::Battlefield, &mut dm)
         .expect("Saga should enter");
-    handle_saga_enters_battlefield(&mut game, enters.new_id, &mut trigger_queue, &mut dm);
+    handle_saga_enters_battlefield(&mut game, enters.new_id, &mut trigger_queue, &mut dm).unwrap();
 
     assert_eq!(
         game.object(enters.new_id)
@@ -4117,7 +4117,7 @@ pub(super) fn scroll_of_isildur_chapter_one_steals_artifact_until_saga_not_contr
         .build();
     let bearer_id = game.create_object_from_card(&bearer, alice, Zone::Battlefield);
 
-    add_lore_counter_and_check_chapters(&mut game, scroll_id, &mut trigger_queue);
+    add_lore_counter_and_check_chapters(&mut game, scroll_id, &mut trigger_queue).unwrap();
     put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
         .expect("Scroll of Isildur chapter I should go on the stack with an artifact target");
     resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
@@ -4199,7 +4199,7 @@ pub(super) fn scroll_of_isildur_chapters_two_and_three_target_tap_stun_and_draw_
     }
     let initial_hand_size = game.player(alice).expect("Alice exists").hand.len();
 
-    add_lore_counter_and_check_chapters(&mut game, scroll_id, &mut trigger_queue);
+    add_lore_counter_and_check_chapters(&mut game, scroll_id, &mut trigger_queue).unwrap();
     put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
         .expect("Scroll of Isildur chapter II should go on the stack with creature targets");
     resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
@@ -4238,7 +4238,7 @@ pub(super) fn scroll_of_isildur_chapters_two_and_three_target_tap_stun_and_draw_
     );
 
     game.tap(alice_creature);
-    add_lore_counter_and_check_chapters(&mut game, scroll_id, &mut trigger_queue);
+    add_lore_counter_and_check_chapters(&mut game, scroll_id, &mut trigger_queue).unwrap();
     put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
         .expect("Scroll of Isildur chapter III should go on the stack");
     resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
@@ -4305,7 +4305,7 @@ pub(super) fn the_aesir_escape_valhalla_chapters_use_exiled_card_mana_value_and_
     let opponent_target_id =
         game.create_object_from_card(&opponent_creature, bob, Zone::Battlefield);
 
-    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue);
+    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue).unwrap();
     put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
         .expect("chapter I should go on the stack");
     resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
@@ -4324,7 +4324,7 @@ pub(super) fn the_aesir_escape_valhalla_chapters_use_exiled_card_mana_value_and_
         "chapter I should gain life equal to the exiled card's mana value"
     );
 
-    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue);
+    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue).unwrap();
     put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
         .expect("chapter II should go on the stack with a legal controlled target");
     resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
@@ -4341,7 +4341,7 @@ pub(super) fn the_aesir_escape_valhalla_chapters_use_exiled_card_mana_value_and_
         "chapter II's target restriction should not put counters on an opponent's creature"
     );
 
-    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue);
+    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue).unwrap();
     put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
         .expect("chapter III should go on the stack");
     resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
@@ -4395,13 +4395,13 @@ pub(super) fn the_aesir_escape_valhalla_chapter_two_requires_a_creature_you_cont
     let opponent_target_id =
         game.create_object_from_card(&opponent_creature, bob, Zone::Battlefield);
 
-    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue);
+    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue).unwrap();
     put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
         .expect("chapter I should go on the stack");
     resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
         .expect("chapter I should resolve");
 
-    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue);
+    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue).unwrap();
     put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
         .expect("chapter II target selection should complete even with no legal target");
 
@@ -4436,7 +4436,7 @@ pub(super) fn the_aesir_escape_valhalla_without_exiled_card_adds_no_counters() {
         .build();
     let target_id = game.create_object_from_card(&target_creature, alice, Zone::Battlefield);
 
-    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue);
+    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue).unwrap();
     put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
         .expect("chapter I should go on the stack");
     resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
@@ -4449,7 +4449,7 @@ pub(super) fn the_aesir_escape_valhalla_without_exiled_card_adds_no_counters() {
     );
     assert!(game.exile.is_empty(), "chapter I should not exile a card");
 
-    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue);
+    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue).unwrap();
     put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
         .expect("chapter II should go on the stack with a legal target");
     resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
@@ -4461,7 +4461,7 @@ pub(super) fn the_aesir_escape_valhalla_without_exiled_card_adds_no_counters() {
         "chapter II should add no counters when chapter I did not exile a card"
     );
 
-    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue);
+    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue).unwrap();
     put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
         .expect("chapter III should go on the stack");
     resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
@@ -4501,7 +4501,7 @@ pub(super) fn test_saga_precombat_main_adds_lore_counter() {
         .add_counters(CounterType::Lore, 1);
 
     // Simulate precombat main phase - add lore counters to sagas
-    add_saga_lore_counters(&mut game, &mut trigger_queue);
+    add_saga_lore_counters(&mut game, &mut trigger_queue).unwrap();
 
     // Verify saga now has 2 lore counters
     let saga = game.object(saga_id).unwrap();
@@ -4553,7 +4553,7 @@ pub(super) fn test_urzas_saga_keeps_chapter_one_mana_ability_after_chapter_two()
     let saga_def = urzas_saga();
     let saga_id = game.create_object_from_definition(&saga_def, alice, Zone::Battlefield);
 
-    handle_saga_enters_battlefield(&mut game, saga_id, &mut trigger_queue, &mut dm);
+    handle_saga_enters_battlefield(&mut game, saga_id, &mut trigger_queue, &mut dm).unwrap();
     put_triggers_on_stack(&mut game, &mut trigger_queue).unwrap();
     resolve_stack_entry(&mut game).expect("Urza's Saga chapter I should resolve");
 
@@ -4571,7 +4571,7 @@ pub(super) fn test_urzas_saga_keeps_chapter_one_mana_ability_after_chapter_two()
         "Urza's Saga chapter I grant has no until-end-of-turn duration"
     );
 
-    add_saga_lore_counters(&mut game, &mut trigger_queue);
+    add_saga_lore_counters(&mut game, &mut trigger_queue).unwrap();
     put_triggers_on_stack(&mut game, &mut trigger_queue).unwrap();
     resolve_stack_entry(&mut game).expect("Urza's Saga chapter II should resolve");
 
@@ -4600,7 +4600,7 @@ pub(super) fn test_saga_final_chapter_waits_for_pending_and_stacked_chapter_abil
         .unwrap()
         .add_counters(CounterType::Lore, 2);
 
-    add_saga_lore_counters(&mut game, &mut trigger_queue);
+    add_saga_lore_counters(&mut game, &mut trigger_queue).unwrap();
     assert_eq!(trigger_queue.entries.len(), 1);
 
     game.refresh_continuous_state();
@@ -4645,7 +4645,7 @@ pub(super) fn test_saga_full_lifecycle() {
     let saga_id = game.create_object_from_definition(&saga_def, alice, Zone::Battlefield);
 
     // Add initial lore counter and check chapters
-    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue);
+    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue).unwrap();
 
     // Verify: 1 lore counter, chapter 1 triggered
     let saga = game.object(saga_id).unwrap();
@@ -4659,7 +4659,7 @@ pub(super) fn test_saga_full_lifecycle() {
     trigger_queue.clear();
 
     // Simulate turn 2 - add lore counter at precombat main
-    add_saga_lore_counters(&mut game, &mut trigger_queue);
+    add_saga_lore_counters(&mut game, &mut trigger_queue).unwrap();
 
     // Verify: 2 lore counters, chapter 2 triggered
     let saga = game.object(saga_id).unwrap();
@@ -4673,7 +4673,7 @@ pub(super) fn test_saga_full_lifecycle() {
     trigger_queue.clear();
 
     // Simulate turn 3 - add lore counter at precombat main (final chapter)
-    add_saga_lore_counters(&mut game, &mut trigger_queue);
+    add_saga_lore_counters(&mut game, &mut trigger_queue).unwrap();
 
     // Verify: 3 lore counters, chapter 3 triggered
     let saga = game.object(saga_id).unwrap();
@@ -4752,7 +4752,7 @@ pub(super) fn test_saga_survives_when_lore_counter_removed() {
     );
 
     // Simulate precombat main phase - saga gets 3rd lore counter (final chapter)
-    add_saga_lore_counters(&mut game, &mut trigger_queue);
+    add_saga_lore_counters(&mut game, &mut trigger_queue).unwrap();
 
     // Verify saga now has 3 lore counters and chapter 3 triggered
     let saga = game.object(saga_id).unwrap();
@@ -4915,7 +4915,7 @@ pub(super) fn test_saga_chapter_triggers_again_after_counter_removed() {
 
     // --- TURN 1: Precombat main phase ---
     // Add lore counter (2 -> 3), Chapter III triggers
-    add_saga_lore_counters(&mut game, &mut trigger_queue);
+    add_saga_lore_counters(&mut game, &mut trigger_queue).unwrap();
 
     assert_eq!(
         game.object(saga_id)
@@ -4962,7 +4962,7 @@ pub(super) fn test_saga_chapter_triggers_again_after_counter_removed() {
     // --- TURN 2: Precombat main phase ---
     // Add lore counter (2 -> 3), Chapter III should trigger AGAIN!
     // This is the key test: the threshold crossing logic should allow re-triggering
-    add_saga_lore_counters(&mut game, &mut trigger_queue);
+    add_saga_lore_counters(&mut game, &mut trigger_queue).unwrap();
 
     assert_eq!(
         game.object(saga_id)
@@ -5315,7 +5315,7 @@ pub(super) fn medomais_prophecy_chapter_three_triggers_only_for_first_named_cast
         .add_counters(CounterType::Lore, 2);
 
     let mut chapter_queue = TriggerQueue::new();
-    add_saga_lore_counters(&mut game, &mut chapter_queue);
+    add_saga_lore_counters(&mut game, &mut chapter_queue).unwrap();
     assert_eq!(chapter_queue.entries.len(), 1);
     assert_eq!(
         chapter_queue.entries[0].ability.trigger.saga_chapters(),

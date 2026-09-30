@@ -83,7 +83,7 @@ pub use executor_trait::{
     SimultaneousEffectProposal, TargetReusePolicy, TargetSelectionProfile,
 };
 pub type EffectContext<'a> = context::ExecutionContext<'a>;
-pub(crate) use context::ExecutionContext;
+pub(crate) use context::{ExecutionContext, ExecutionContextCheckpoint, ReplacementExecutionContext};
 pub use runtime::{execute_effect, resolve_value, validate_target};
 pub(crate) use runtime::{
     match_triggers_at_instruction_boundary, retain_unmatched_outcome_events,

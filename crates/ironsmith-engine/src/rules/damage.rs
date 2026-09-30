@@ -90,10 +90,11 @@ pub(crate) fn source_damage_keywords(
     SourceDamageKeywords::default()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct AppliedDamageAssignment {
     pub applied: bool,
     pub life_lost: u32,
+    pub consequence_outcome: Option<crate::effect::EffectOutcome>,
 }
 
 pub(crate) fn apply_processed_damage_assignment(
@@ -105,7 +106,10 @@ pub(crate) fn apply_processed_damage_assignment(
     cause: crate::events::cause::EventCause,
 ) -> AppliedDamageAssignment {
     let mut dm = crate::decision::SelectFirstDecisionMaker;
-    apply_processed_damage_assignment_with_dm(game, source, target, amount, keywords, cause, &mut dm)
+    apply_processed_damage_assignment_with_dm(
+        game, source, target, amount, keywords, cause, &mut dm,
+    )
+    .expect("damage consequences failed")
 }
 
 /// Apply the consequences of damage with the caller's decision maker. Life
@@ -118,7 +122,36 @@ pub(crate) fn apply_processed_damage_assignment_with_dm(
     keywords: SourceDamageKeywords,
     cause: crate::events::cause::EventCause,
     dm: &mut dyn crate::decision::DecisionMaker,
-) -> AppliedDamageAssignment {
+) -> Result<AppliedDamageAssignment, crate::effects::ExecutionError> {
+    apply_processed_damage_assignment_with_scope(
+        game,
+        source,
+        target,
+        amount,
+        keywords,
+        cause,
+        dm,
+        &crate::effects::ReplacementExecutionContext::default(),
+        None,
+        crate::provenance::ProvNodeId::default(),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn apply_processed_damage_assignment_with_scope(
+    game: &mut GameState,
+    source: ObjectId,
+    target: crate::events::DamageTarget,
+    amount: u32,
+    keywords: SourceDamageKeywords,
+    cause: crate::events::cause::EventCause,
+    dm: &mut dyn crate::decision::DecisionMaker,
+    replacement_scope: &crate::effects::ReplacementExecutionContext,
+    source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+    provenance: crate::provenance::ProvNodeId,
+) -> Result<AppliedDamageAssignment, crate::effects::ExecutionError> {
+    let checkpoint = game.clone();
+    let result = (|| {
     let record_damage_ui_event = |game: &mut GameState| {
         if amount == 0 {
             return;
@@ -155,61 +188,64 @@ pub(crate) fn apply_processed_damage_assignment_with_dm(
                 })
                 .or(cause.source_controller);
             if keywords.has_infect {
-                if let Some(event) = game.add_player_counters_with_source_with_dm(
-                    player_id,
-                    crate::object::CounterType::Poison,
-                    amount,
-                    Some(source),
-                    source_controller,
-                    dm,
-                ) {
-                    game.queue_trigger_event(event.provenance(), event);
-                }
+                let mut ctx = crate::effects::ExecutionContext::new(source, source_controller.unwrap_or(player_id), dm).with_cause(cause.clone());
+                ctx.replacement = replacement_scope.clone();
+                ctx.source_snapshot = source_snapshot.cloned();
+                ctx.provenance = provenance;
+                let event = crate::events::Event::put_player_counters(player_id, crate::object::CounterType::Poison, amount, cause.clone()).with_provenance(provenance);
+                let consequence_outcome = crate::effects::counters::execute_player_counter_placement(game, &mut ctx, event)?;
                 if dm.awaiting_choice() {
-                    return AppliedDamageAssignment::default();
+                    return Ok(AppliedDamageAssignment::default());
                 }
                 record_damage_ui_event(game);
-                return AppliedDamageAssignment {
+                return Ok(AppliedDamageAssignment {
                     applied: true,
                     life_lost: 0,
-                };
+                    consequence_outcome: Some(consequence_outcome),
+                });
             }
 
             if game.player(player_id).is_none() {
-                return AppliedDamageAssignment::default();
+                return Ok(AppliedDamageAssignment::default());
             }
             // Damage is still dealt even when a replacement/restriction stops the life loss.
-            let life_lost = if game.can_damage_cause_life_loss(player_id) {
-                // CR 120.3a / 614.1a: the life loss from damage is a life-loss
-                // event, so "would lose life" replacements modify it.
-                let amount = crate::events::processing::process_life_loss_with_event_with_dm(
-                    game, player_id, amount, true, dm,
-                );
-                if dm.awaiting_choice() {
-                    return AppliedDamageAssignment::default();
+            let consequence_outcome = if game.can_damage_cause_life_loss(player_id) {
+                let controller = source_controller.unwrap_or(player_id);
+                let mut ctx = crate::effects::ExecutionContext::new(source, controller, dm);
+                ctx.cause = cause.clone();
+                ctx.replacement = replacement_scope.clone();
+                ctx.source_snapshot = source_snapshot.cloned();
+                ctx.provenance = provenance;
+                let outcome = crate::effects::life::life_change::execute_life_change(
+                    game,
+                    &mut ctx,
+                    crate::events::Event::life_loss(player_id, amount, true).with_provenance(provenance),
+                )?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(AppliedDamageAssignment::default());
                 }
-                // "Damage that would reduce your life total to less than 1
-                // reduces it to 1 instead": the full damage is still dealt.
-                let amount = if game.damage_cant_reduce_life_below_one(player_id)
-                    && let Some(life) = game.player(player_id).map(|player| player.life)
-                {
-                    amount.min(u32::try_from((life - 1).max(0)).unwrap_or(0))
-                } else {
-                    amount
-                };
-                game.lose_life(player_id, amount)
+                Some(outcome)
             } else {
-                0
+                None
             };
+            let life_lost = consequence_outcome.as_ref().map_or(0, |outcome| {
+                outcome
+                    .events
+                    .iter()
+                    .filter_map(|event| event.downcast::<crate::events::LifeLossEvent>())
+                    .filter(|loss| loss.from_damage)
+                    .fold(0u32, |total, loss| total.saturating_add(loss.amount))
+            });
             record_damage_ui_event(game);
-            AppliedDamageAssignment {
+            Ok(AppliedDamageAssignment {
                 applied: true,
                 life_lost,
-            }
+                consequence_outcome,
+            })
         }
         crate::events::DamageTarget::Object(object_id) => {
             let Some(obj) = game.object(object_id) else {
-                return AppliedDamageAssignment::default();
+                return Ok(AppliedDamageAssignment::default());
             };
 
             let current_card_types = game
@@ -219,7 +255,7 @@ pub(crate) fn apply_processed_damage_assignment_with_dm(
             let is_planeswalker = current_card_types.contains(&CardType::Planeswalker);
             let is_battle = current_card_types.contains(&CardType::Battle);
             if !is_creature && !is_planeswalker && !is_battle {
-                return AppliedDamageAssignment::default();
+                return Ok(AppliedDamageAssignment::default());
             }
 
             if is_planeswalker {
@@ -260,49 +296,49 @@ pub(crate) fn apply_processed_damage_assignment_with_dm(
                 }
             }
 
-            if is_creature && (keywords.has_infect || keywords.has_wither) {
-                let final_count = crate::events::processing::process_put_counters_with_event_with_dm(
-                    game,
-                    object_id,
-                    crate::CounterType::MinusOneMinusOne,
-                    amount,
-                    cause.clone(),
-                    dm,
-                );
+            let consequence_outcome = if is_creature && (keywords.has_infect || keywords.has_wither) {
+                let source_controller = game.current_controller(source).or(cause.source_controller);
+                let mut ctx = crate::effects::ExecutionContext::new(
+                    source, source_controller.unwrap_or_else(|| game.controller_of(game.object(object_id).unwrap())), dm,
+                ).with_cause(cause.clone());
+                ctx.replacement = replacement_scope.clone();
+                ctx.source_snapshot = source_snapshot.cloned();
+                ctx.provenance = provenance;
+                let event = crate::events::Event::put_counters(
+                    object_id, crate::CounterType::MinusOneMinusOne, amount, cause.clone(),
+                ).with_provenance(provenance);
+                let outcome = crate::effects::counters::execute_object_counter_placement(game, &mut ctx, event)?;
                 if dm.awaiting_choice() {
-                    return AppliedDamageAssignment::default();
+                    return Ok(AppliedDamageAssignment::default());
                 }
-                let source_controller = game
-                    .object(source)
-                    .map(|obj| {
-                        game.current_controller(source)
-                            .unwrap_or_else(|| game.controller_of(obj))
-                    })
-                    .or(cause.source_controller);
-                if let Some(event) = game.add_counters_with_source(
-                    object_id,
-                    crate::CounterType::MinusOneMinusOne,
-                    final_count,
-                    Some(source),
-                    source_controller,
-                ) {
-                    game.queue_trigger_event(event.provenance(), event);
+                Some(outcome)
+            } else {
+                if is_creature {
+                    game.mark_damage(object_id, amount);
                 }
-            } else if is_creature {
-                game.mark_damage(object_id, amount);
-            }
+                None
+            };
 
             if is_creature && amount > 0 && keywords.has_deathtouch {
                 game.mark_deathtouch_damage_since_sba(object_id);
             }
 
             record_damage_ui_event(game);
-            AppliedDamageAssignment {
+            Ok(AppliedDamageAssignment {
                 applied: true,
                 life_lost: 0,
-            }
+                consequence_outcome,
+            })
         }
     }
+    })();
+    if result.is_err() || dm.awaiting_choice() {
+        *game = checkpoint;
+        if dm.awaiting_choice() {
+            return Ok(AppliedDamageAssignment::default());
+        }
+    }
+    result
 }
 
 fn build_damage_result(
@@ -725,7 +761,7 @@ mod tests {
     }
 
     #[test]
-    fn test_apply_infect_damage_to_player_queues_markers_changed_event() {
+    fn test_apply_infect_damage_to_player_retains_markers_changed_event() {
         let mut game = test_game_state();
         let mut source = make_creature("Infector", 3, 3);
         add_ability(&mut source, StaticAbility::infect());
@@ -753,11 +789,12 @@ mod tests {
             3
         );
         assert!(
-            game.take_pending_trigger_events()
+            result.consequence_outcome.as_ref().unwrap().events
                 .iter()
                 .any(|event| event.kind() == EventKind::MarkersChanged),
-            "infect damage to a player should queue MarkersChangedEvent"
+            "infect damage must retain MarkersChangedEvent for its caller"
         );
+        assert!(game.take_pending_trigger_events().is_empty());
     }
 
     #[test]

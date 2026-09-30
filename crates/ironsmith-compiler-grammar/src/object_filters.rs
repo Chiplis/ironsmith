@@ -789,6 +789,14 @@ fn preserve_explicit_spell_domain(filter: &mut ObjectFilter, tokens: &[OwnedLexT
                 .checked_sub(1)
                 .and_then(|previous| words.get(previous))
                 .is_some_and(|previous| matches!(*previous, "this" | "that" | "the" | "triggering"))
+            // "the exiled spell's mana value": a possessor inside a value
+            // expression names another object, not this filter's domain.
+            && !words.get(index + 1).is_some_and(|next| {
+                matches!(
+                    *next,
+                    "mana" | "power" | "toughness" | "controller" | "owner" | "name" | "colors"
+                )
+            })
     });
     if has_domain_noun {
         filter.zone = Some(crate::Zone::Stack);

@@ -998,7 +998,7 @@ impl TurnRunner {
 
                 self.pending_untap_choices = None;
                 self.pending_boolean = None;
-                if let Some(prompt) = self.run_untap_step_with_choices(game, Vec::new()) {
+                if let Some(prompt) = self.run_untap_step_with_choices(game, Vec::new())? {
                     self.state = TurnState::Untap;
                     return Ok(TurnAction::Decision(prompt));
                 }
@@ -1026,7 +1026,7 @@ impl TurnRunner {
                     self.pending_untap_choices = Some(pending);
                     return Ok(TurnAction::Decision(prompt));
                 }
-                if let Some(prompt) = self.run_untap_step_with_choices(game, pending.answers) {
+                if let Some(prompt) = self.run_untap_step_with_choices(game, pending.answers)? {
                     return Ok(TurnAction::Decision(prompt));
                 }
                 self.state = finish_step(
@@ -2446,7 +2446,7 @@ impl TurnRunner {
         let mut hypothetical = game.clone();
         let mut hypothetical_triggers = tq.clone();
         let mut dm = QueuedAttackCostDecisionMaker::new(answers.clone());
-        crate::game_loop::add_saga_lore_counters_with_dm(
+        let result = crate::game_loop::add_saga_lore_counters_with_dm(
             &mut hypothetical, &mut hypothetical_triggers, &mut dm,
         );
         if let Some(prompt) = dm.pending_prompt {
@@ -2455,6 +2455,7 @@ impl TurnRunner {
             });
             return Ok(TurnAction::Decision(prompt));
         }
+        result.map_err(|error| GameLoopError::InvalidState(error.to_string()))?;
         *game = hypothetical;
         *tq = hypothetical_triggers;
         // CR 505.5: Attractions follow the completed Saga turn-based action.
@@ -2919,20 +2920,21 @@ impl TurnRunner {
         &mut self,
         game: &mut GameState,
         answers: Vec<AttackCostAnswer>,
-    ) -> Option<DecisionContext> {
+    ) -> Result<Option<DecisionContext>, GameLoopError> {
         let mut hypothetical = game.clone();
         let mut dm = QueuedAttackCostDecisionMaker::new(answers.clone());
-        execute_untap_step_with(&mut hypothetical, &mut dm);
+        execute_untap_step_with(&mut hypothetical, &mut dm)
+            .map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))?;
         if let Some(prompt) = dm.pending_prompt.take() {
             self.pending_untap_choices = Some(PendingUntapChoices {
                 answers,
                 prompt: Some(prompt.clone()),
                 response: None,
             });
-            return Some(prompt);
+            return Ok(Some(prompt));
         }
         *game = hypothetical;
-        None
+        Ok(None)
     }
 
     /// Run a draw-step draw's replacement effects with the answers collected
@@ -3675,6 +3677,79 @@ mod tests {
     use crate::triggers::TriggerQueue;
     use crate::types::CardType;
     use crate::zone::Zone;
+
+    #[test]
+    fn untap_runner_retains_pending_payload_and_propagates_errors_without_publication() {
+        for pause in [false, true] {
+            let player = PlayerId::from_index(0);
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let mut objects = Vec::new();
+            for name in ["First", "Second"] {
+                let id = game.create_object_from_card(
+                    &CardBuilder::new(CardId::new(), name).build(),
+                    player,
+                    Zone::Battlefield,
+                );
+                game.tap(id);
+                objects.push(id);
+            }
+            game.turn.active_player = player;
+            let mut payload = vec![crate::effect::Effect::gain_life(2)];
+            payload.push(if pause {
+                crate::effect::Effect::may(vec![crate::effect::Effect::gain_life(1)])
+            } else {
+                crate::effect::Effect::lose_life(crate::effect::Value::X)
+            });
+            let one_shot = game.effect_store.replacement_effects.add_one_shot_effect(
+                crate::replacement::ReplacementEffect::with_matcher(
+                    objects[1],
+                    player,
+                    crate::events::permanents::matchers::WouldBecomeUntappedMatcher::new(
+                        crate::target::ObjectFilter::specific(objects[1]),
+                    ),
+                    crate::replacement::ReplacementAction::Instead(payload),
+                ),
+            );
+            game.take_pending_trigger_events();
+            let mut runner = TurnRunner::new();
+            let result = runner.run_untap_step_with_choices(&mut game, Vec::new());
+            if pause {
+                assert!(result.unwrap().is_some());
+            } else {
+                assert!(matches!(result, Err(GameLoopError::ResolutionFailed(_))));
+            }
+            assert_eq!(game.player(player).unwrap().life, 20);
+            assert!(objects.iter().all(|object| game.is_tapped(*object)));
+            assert!(
+                game.effect_store
+                    .replacement_effects
+                    .get_effect(one_shot)
+                    .is_some()
+            );
+            assert!(game.take_pending_trigger_events().is_empty());
+            if pause {
+                assert!(
+                    runner
+                        .run_untap_step_with_choices(
+                            &mut game,
+                            vec![AttackCostAnswer::Boolean(true)]
+                        )
+                        .unwrap()
+                        .is_none()
+                );
+                assert_eq!(game.player(player).unwrap().life, 23);
+                assert!(!game.is_tapped(objects[0]));
+                assert!(game.is_tapped(objects[1]));
+                assert!(
+                    game.effect_store
+                        .replacement_effects
+                        .get_effect(one_shot)
+                        .is_none()
+                );
+                assert_eq!(game.take_pending_trigger_events().len(), 3);
+            }
+        }
+    }
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()

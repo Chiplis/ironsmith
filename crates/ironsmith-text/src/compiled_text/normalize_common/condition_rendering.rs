@@ -2270,6 +2270,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::TargetIsTapped => "the target is tapped".to_string(),
         Condition::TargetIsBlocked => "the target is blocked".to_string(),
         Condition::TargetWasKicked => "the target spell was kicked".to_string(),
+        Condition::TriggeringSpellWasKicked => "that spell was kicked".to_string(),
         Condition::ThisSpellWasKicked => "this spell was kicked".to_string(),
         Condition::ThisSpellPaidLabel(label) => {
             if let crate::cost::OptionalCostKind::AlternativeCast(reference) = &label.kind {

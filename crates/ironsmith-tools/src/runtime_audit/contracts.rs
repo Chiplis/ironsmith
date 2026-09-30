@@ -313,6 +313,7 @@ impl Auditor {
             "TriggeringSpellManaSpentToCastAtLeast"
             | "TriggeringSpellColoredManaSpentToCastAtLeast"
             | "TriggeringSpellSnowManaOfAnySpellColorSpentToCast"
+            | "TriggeringSpellWasKicked"
             | "AnotherOpponentControlsPotentialTarget" => scope.cast_event,
             "TriggeringObjectWasEnchanted"
             | "TriggeringObjectHadCounters"

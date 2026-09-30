@@ -4174,8 +4174,20 @@ pub(in crate::compiled_text) fn describe_structural_mentor_keyword(
     {
         return None;
     }
-    let [effect] = triggered.effects.flattened_default_effects() else {
-        return None;
+    // The mentor ability records the mentored creature on a keyword-action
+    // event after placing the counter (CR 702.134).
+    let effect = match triggered.effects.flattened_default_effects() {
+        [effect] => effect,
+        [effect, emit]
+            if emit
+                .downcast_ref::<crate::effects::EmitKeywordActionEffect>()
+                .is_some_and(|emit| emit.action == crate::events::KeywordActionKind::Mentor) =>
+        {
+            effect
+                .downcast_ref::<crate::effects::WithIdEffect>()
+                .map(|with_id| with_id.effect.as_ref())?
+        }
+        _ => return None,
     };
     let put = effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
     if put.counter_type != CounterType::PlusOnePlusOne

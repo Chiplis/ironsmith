@@ -694,7 +694,7 @@ impl GameState {
 
     /// Record that the private cards among `withheld` must *not* satisfy
     /// `filter` once opened: their owner left them out of a forced reveal of
-    /// every matching card, or claimed it had no (more) matching card.
+    /// every matching card.
     ///
     /// Completeness of such an answer cannot be checked while the cards stay
     /// hidden (it would take a zero-knowledge non-membership proof), so it is
@@ -744,93 +744,6 @@ impl GameState {
             })
             .collect();
         self.push_hidden_identity_obligations(obligations);
-    }
-
-    /// A hidden hand choice answered with fewer cards than the rules require
-    /// claims that no other candidate card matches: record a
-    /// [`HiddenIdentityCheck::DoesNotMatch`] obligation for every private
-    /// candidate that was not chosen. Choices of "up to" a number
-    /// (`rules_min == 0`) or answered in full claim nothing.
-    ///
-    /// Everything here is symmetric across peers, since the owner (who
-    /// offered only the cards it knows match) and the other peers (who
-    /// offered placeholders) must record the same entries:
-    ///
-    /// * `hand_ids` is the candidate domain every peer shares: every card in
-    ///   the hands the choice draws from (not the locally offered cards).
-    /// * `rules_min` is the rules' requirement *before* clamping it to a
-    ///   local candidate count (e.g. the "two" of "discard two creature
-    ///   cards"). It is clamped here to the symmetric domain: the private
-    ///   cards passing the identity-free part of `filter` plus the public
-    ///   cards matching `filter`.
-    ///
-    /// Soundness for an honest owner: it chooses `min(rules_min, matches)`;
-    /// if that is below `min(rules_min, domain)` then every match was chosen,
-    /// so every other private candidate indeed does not match.
-    pub(crate) fn record_hidden_shortfall_obligations(
-        &mut self,
-        hand_ids: &[ObjectId],
-        chosen: &[ObjectId],
-        rules_min: usize,
-        filter: &ObjectFilter,
-        filter_ctx: &FilterContext,
-        description: &str,
-    ) {
-        if !filter_depends_on_card_identity(filter) {
-            return;
-        }
-        // Claim subjects must be identical on every peer. Mark a symmetric
-        // superset of every card this choice could leave a claim about: each
-        // private hand card that passes the identity-free part of the filter.
-        let generic = identity_free_filter(filter);
-        let subjects: Vec<ObjectId> = self
-            .all_hand_card_ids()
-            .into_iter()
-            .filter(|id| self.hidden_identity_is_private(*id))
-            .filter(|id| {
-                self.object(*id)
-                    .is_some_and(|object| generic.matches(object, filter_ctx, self))
-            })
-            .collect();
-        self.mark_hidden_claim_subjects(subjects);
-        if rules_min == 0 {
-            return;
-        }
-        let mut private_domain: Vec<ObjectId> = Vec::new();
-        let mut public_matches = 0usize;
-        for &id in hand_ids {
-            if private_domain.contains(&id) {
-                continue;
-            }
-            let Some(object) = self.object(id) else {
-                continue;
-            };
-            if object.zone != Zone::Hand {
-                continue;
-            }
-            if self.hidden_identity_is_private(id) {
-                if generic.matches(object, filter_ctx, self) {
-                    private_domain.push(id);
-                }
-            } else if filter.matches(object, filter_ctx, self) {
-                public_matches += 1;
-            }
-        }
-        let required = rules_min.min(private_domain.len() + public_matches);
-        if chosen.len() >= required {
-            return;
-        }
-        let withheld: Vec<ObjectId> = private_domain
-            .into_iter()
-            .filter(|id| !chosen.contains(id))
-            .collect();
-        self.record_hidden_non_matching_obligations(
-            &withheld,
-            filter,
-            filter_ctx,
-            &format!("claimed no further match for \"{description}\""),
-            false,
-        );
     }
 
     /// Record that the face-down spell `id`, cast from a hidden hand with the

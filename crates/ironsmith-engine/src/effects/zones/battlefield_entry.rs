@@ -476,6 +476,9 @@ pub(crate) fn move_to_battlefield_batch_with_options(
             entering_controller,
             &reserved_objects,
         );
+        if ctx.decision_maker.awaiting_choice() {
+            return vec![BattlefieldEntryOutcome::Prevented; requests.len()];
+        }
         for linked in &result.linked_exile_with_entering {
             if reserved_objects.insert(*linked)
                 && let Some(reservation) = reserve_object_zone_position(&mut working, *linked)
@@ -1505,6 +1508,55 @@ mod tests {
         );
         assert!(dm.prompts.is_empty());
     }
+
+    #[test]
+    fn pending_batch_entry_stops_before_later_prompts_and_rolls_back_payments() {
+        struct Answers { calls: usize, pause_second: bool, pending: bool }
+        impl DecisionMaker for Answers {
+            fn decide_boolean(&mut self, _: &GameState,
+                _: &crate::decisions::context::BooleanContext) -> bool {
+                self.calls += 1;
+                self.pending = self.pause_second && self.calls == 2;
+                !self.pending
+            }
+            fn awaiting_choice(&self) -> bool { self.pending }
+        }
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Batch land")
+            .card_types(vec![crate::types::CardType::Land]).build();
+        let mut requests = Vec::new();
+        let mut shields = Vec::new();
+        for _ in 0..3 {
+            let object = game.create_object_from_card(&card, alice, Zone::Hand);
+            shields.push(game.effect_store.replacement_effects.add_one_shot_effect(
+                crate::replacement::ReplacementEffect::with_matcher(object, alice,
+                    crate::events::zones::matchers::WouldEnterBattlefieldMatcher::new(
+                        crate::target::ObjectFilter::specific(object)),
+                    crate::replacement::ReplacementAction::InteractivePayLifeOrEnterTapped { life_cost: 2 }),
+            ));
+            requests.push((object, BattlefieldEntryOptions::preserve(false)));
+        }
+        let mut dm = Answers { calls: 0, pause_second: true, pending: false };
+        let mut ctx = ExecutionContext::new(requests[0].0, alice, &mut dm);
+        let pending = move_to_battlefield_batch_with_options(&mut game, &mut ctx, requests.clone());
+        drop(ctx);
+        assert_eq!(dm.calls, 2, "a pending prompt must stop the batch immediately");
+        assert!(pending.iter().all(|result| matches!(result, BattlefieldEntryOutcome::Prevented)));
+        assert_eq!(game.player(alice).unwrap().life, 20);
+        for (object, _) in &requests { assert_eq!(game.object(*object).unwrap().zone, Zone::Hand); }
+        for effect in &shields { assert!(game.effect_store.replacement_effects.get_effect(*effect).is_some()); }
+        assert!(game.take_pending_trigger_events().is_empty());
+        dm.calls = 0;
+        dm.pause_second = false;
+        dm.pending = false;
+        let mut ctx = ExecutionContext::new(requests[0].0, alice, &mut dm);
+        let completed = move_to_battlefield_batch_with_options(&mut game, &mut ctx, requests);
+        assert!(completed.iter().all(|result| matches!(result, BattlefieldEntryOutcome::Moved(_))));
+        assert_eq!(game.player(alice).unwrap().life, 14);
+        for effect in &shields { assert!(game.effect_store.replacement_effects.get_effect(*effect).is_none()); }
+    }
+
 }
 
 #[cfg(test)]

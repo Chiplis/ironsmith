@@ -385,6 +385,76 @@ pub struct ExecutionContext<'a> {
     pub(crate) pending_entry_attachment: Option<crate::target::ChooseSpec>,
 }
 
+// Keep the checkpoint's owned fields in one list. The exhaustive context
+// destructure makes a newly added context field a compile error until its
+// rollback behavior is specified here.
+macro_rules! execution_context_checkpoint {
+    ($($field:ident: $field_type:ty),* $(,)?) => {
+        /// Owned resolution state retained while an effect awaits a decision.
+        /// The decision maker keeps its prompt and answers outside rollback.
+        pub(crate) struct ExecutionContextCheckpoint {
+            $($field: $field_type,)*
+        }
+
+        impl ExecutionContextCheckpoint {
+            pub(crate) fn capture(ctx: &ExecutionContext<'_>) -> Self {
+                let ExecutionContext { $($field,)* decision_maker: _ } = ctx;
+                Self { $($field: $field.clone(),)* }
+            }
+
+            pub(crate) fn restore(self, ctx: &mut ExecutionContext<'_>) {
+                $(ctx.$field = self.$field;)*
+            }
+        }
+    };
+}
+
+execution_context_checkpoint! {
+    source: ObjectId,
+    controller: PlayerId,
+    targets: Vec<ResolvedTarget>,
+    announced_targets: Option<Vec<ResolvedTarget>>,
+    targets_are_cost_choices: bool,
+    target_assignments: Vec<TargetAssignment>,
+    target_distributions: Vec<TargetDistribution>,
+    announced_target_assignments: Vec<TargetAssignment>,
+    x_value: Option<u32>,
+    all_targets_legal: bool,
+    effect_outcomes: HashMap<EffectId, EffectOutcome>,
+    vote_results: HashMap<ObjectId, VoteResult>,
+    secret_choice_results: HashMap<ObjectId, SecretChoiceResult>,
+    iteration: IterationContext,
+    optional_costs_paid: OptionalCostsPaid,
+    optional_action: bool,
+    casting_method: crate::alternative_cast::CastingMethod,
+    combat: CombatExecutionContext,
+    ninjutsu_attack_target: Option<crate::combat_state::AttackTarget>,
+    target_snapshots: HashMap<ObjectId, ObjectSnapshot>,
+    source_snapshot: Option<ObjectSnapshot>,
+    tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
+    tagged_players: HashMap<TagKey, Vec<PlayerId>>,
+    face_down_exile_viewers: HashMap<ObjectId, HashSet<PlayerId>>,
+    triggering_event: Option<crate::triggers::TriggerEvent>,
+    event_value_amount: Option<i32>,
+    last_prevention_shield: Option<crate::prevention::PreventionShieldId>,
+    trigger_identity: Option<crate::triggers::TriggerIdentity>,
+    do_this_limit: Option<DoThisLimit>,
+    ability_index: Option<usize>,
+    chosen_modes: Option<Vec<usize>>,
+    cause: EventCause,
+    provenance: ProvNodeId,
+    mana: ManaExecutionContext,
+    replacement: ReplacementExecutionContext,
+    executing_effect: Option<usize>,
+    shared_team_structure_operations: HashSet<(usize, usize, &'static str)>,
+    created_extra_turn_index: Option<usize>,
+    restarted_game: bool,
+    resolution_object_id_floor: Option<ObjectId>,
+    public_search_reveal_tag: Option<TagKey>,
+    pending_entry_attachment: Option<crate::target::ChooseSpec>,
+}
+
+
 impl std::fmt::Debug for ExecutionContext<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ExecutionContext")

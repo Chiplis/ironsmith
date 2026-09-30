@@ -1216,7 +1216,7 @@ fn test_urzas_saga_under_blood_moon_gets_no_lore_counter_or_triggers() {
         .unwrap_or(0);
 
     let mut trigger_queue = crate::triggers::TriggerQueue::new();
-    crate::game_loop::add_saga_lore_counters(&mut game, &mut trigger_queue);
+    crate::game_loop::add_saga_lore_counters(&mut game, &mut trigger_queue).unwrap();
 
     let final_lore = game
         .object(saga_id)

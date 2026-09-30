@@ -23,6 +23,9 @@ pub enum PlayerAst {
     LowestLifeTied,
     Target,
     TargetOpponent,
+    /// "another target player": a new player target distinct from the one
+    /// announced earlier in the same ability.
+    AnotherTarget,
     Opponent,
     PlayerToYourLeft,
     PlayerToYourRight,

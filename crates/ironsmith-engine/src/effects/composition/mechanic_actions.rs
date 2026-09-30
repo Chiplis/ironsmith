@@ -250,25 +250,15 @@ fn put_explore_counter(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     object_id: crate::ids::ObjectId,
-) -> Option<TriggerEvent> {
-    let count = crate::events::processing::process_put_counters_with_event_with_dm(
-        game,
+) -> Result<EffectOutcome, ExecutionError> {
+    let event = crate::events::Event::put_counters(
         object_id,
         CounterType::PlusOnePlusOne,
         1,
         ctx.cause.clone(),
-        &mut *ctx.decision_maker,
-    );
-    if count == 0 {
-        return None;
-    }
-    game.add_counters_with_source(
-        object_id,
-        CounterType::PlusOnePlusOne,
-        count,
-        Some(ctx.source),
-        Some(ctx.controller),
     )
+    .with_provenance(ctx.provenance);
+    crate::effects::counters::execute_object_counter_placement(game, ctx, event)
 }
 
 impl EffectExecutor for ExploreEffect {
@@ -281,283 +271,310 @@ impl EffectExecutor for ExploreEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let target_ids = if let ChooseSpec::Tagged(tag) = self.target.base() {
-            ctx.get_tagged_all(tag)
-                .map(|snapshots| {
-                    snapshots
-                        .iter()
-                        .map(|snapshot| snapshot.object_id)
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default()
-        } else {
-            match crate::effects::helpers::resolve_objects_for_effect(game, ctx, &self.target) {
-                Ok(ids) => ids,
-                // CR 701.44c: a source that changed zones still explores,
-                // using its last known information.
-                Err(ExecutionError::InvalidTarget)
-                    if matches!(self.target.base(), ChooseSpec::Source)
-                        && ctx.source_snapshot.is_some() =>
-                {
-                    vec![ctx.source]
-                }
-                Err(ExecutionError::InvalidTarget) if self.target.is_target() => {
-                    return Ok(EffectOutcome::target_invalid());
-                }
-                Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::count(0)),
-                Err(err) => return Err(err),
-            }
-        };
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        if target_ids.is_empty() {
-            return Ok(if self.target.is_target() {
-                EffectOutcome::target_invalid()
-            } else {
-                EffectOutcome::count(0)
-            });
-        }
-
-        let mut remaining = target_ids
-            .into_iter()
-            .filter_map(|object_id| {
-                let snapshot = explore_snapshot_for_object(game, ctx, object_id);
-                let controller = game
-                    .object(object_id)
-                    .map(|object| game.controller_of(object))
-                    .or_else(|| snapshot.as_ref().map(|snap| snap.controller))?;
-                Some(ExploreInstruction {
-                    object_id,
-                    controller,
-                    snapshot,
-                })
-            })
-            .collect::<Vec<_>>();
-        if remaining.is_empty() {
-            return Ok(if self.target.is_target() {
-                EffectOutcome::target_invalid()
-            } else {
-                EffectOutcome::count(0)
-            });
-        }
-
-        let mut events = Vec::new();
-        let mut explored_objects = Vec::new();
-        let player_order = players_in_apnap_order(game);
-
-        for player in player_order {
-            while let Some(candidate_indices) = (!remaining.is_empty()).then(|| {
-                remaining
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(index, instruction)| {
-                        (instruction.controller == player).then_some(index)
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = (|| {
+            let target_ids = if let ChooseSpec::Tagged(tag) = self.target.base() {
+                ctx.get_tagged_all(tag)
+                    .map(|snapshots| {
+                        snapshots
+                            .iter()
+                            .map(|snapshot| snapshot.object_id)
+                            .collect::<Vec<_>>()
                     })
-                    .collect::<Vec<_>>()
-            }) {
-                if candidate_indices.is_empty() {
-                    break;
+                    .unwrap_or_default()
+            } else {
+                match crate::effects::helpers::resolve_objects_for_effect(game, ctx, &self.target) {
+                    Ok(ids) => ids,
+                    // CR 701.44c: a source that changed zones still explores,
+                    // using its last known information.
+                    Err(ExecutionError::InvalidTarget)
+                        if matches!(self.target.base(), ChooseSpec::Source)
+                            && ctx.source_snapshot.is_some() =>
+                    {
+                        vec![ctx.source]
+                    }
+                    Err(ExecutionError::InvalidTarget) if self.target.is_target() => {
+                        return Ok(EffectOutcome::target_invalid());
+                    }
+                    Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::count(0)),
+                    Err(err) => return Err(err),
                 }
-
-                let chosen_index = if candidate_indices.len() == 1 {
-                    candidate_indices[0]
+            };
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            if target_ids.is_empty() {
+                return Ok(if self.target.is_target() {
+                    EffectOutcome::target_invalid()
                 } else {
-                    let choices = candidate_indices
-                        .iter()
-                        .map(|&index| remaining[index].object_id)
-                        .collect::<Vec<_>>();
-                    let spec = ChooseObjectsSpec::new(
-                        ctx.source,
-                        "Choose a permanent to explore next",
-                        choices.clone(),
-                        1,
-                        Some(1),
-                    );
-                    let selection: Vec<ObjectId> =
-                        make_decision(game, ctx.decision_maker, player, Some(ctx.source), spec);
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(
-                            EffectOutcome::with_objects(explored_objects).with_events(events)
-                        );
-                    }
-                    let normalized = normalize_object_selection(selection, &choices, 1);
-                    let chosen_object = normalized.first().copied().unwrap_or(choices[0]);
-                    candidate_indices
-                        .into_iter()
-                        .find(|index| remaining[*index].object_id == chosen_object)
-                        .unwrap_or(0)
-                };
-
-                let instruction = remaining.remove(chosen_index);
-                let controller = instruction.controller;
-                let pre_snapshot = instruction.snapshot.clone();
-
-                let would_event = Event::new_with_provenance(
-                    KeywordActionEvent::new(
-                        KeywordActionKind::Explore,
-                        controller,
-                        instruction.object_id,
-                        1,
-                    )
-                    .with_snapshot(pre_snapshot.clone()),
-                    ctx.provenance,
-                );
-                let applied_effects = ctx.replacement.suppressed_replacement_effects.clone();
-                let applied_effect_keys =
-                    ctx.replacement.suppressed_replacement_effect_keys.clone();
-                if applied_effects.is_empty() && applied_effect_keys.is_empty() {
-                    game.update_replacement_effects();
-                }
-                match process_trait_event_with_dm_and_applied_effects(
-                    game,
-                    would_event,
-                    ctx.decision_maker,
-                    &applied_effects,
-                    &applied_effect_keys,
-                ) {
-                    TraitEventResult::Replaced {
-                        effects, effect_id, ..
-                    } => {
-                        let replacement_outcome = execute_keyword_action_replacement_effects(
-                            game,
-                            ctx,
-                            effects,
-                            effect_id,
-                            pre_snapshot.clone(),
-                        )?;
-                        for event in &replacement_outcome.events {
-                            if let Some(keyword) =
-                                event.inner().as_any().downcast_ref::<KeywordActionEvent>()
-                                && keyword.action == KeywordActionKind::Explore
-                            {
-                                explored_objects.push(keyword.source);
-                            }
-                        }
-                        events.extend(replacement_outcome.events);
-                        continue;
-                    }
-                    TraitEventResult::Prevented => continue,
-                    TraitEventResult::NeedsChoice { .. }
-                    | TraitEventResult::NeedsInteraction { .. } => {
-                        return Ok(
-                            EffectOutcome::with_objects(explored_objects).with_events(events)
-                        );
-                    }
-                    TraitEventResult::Proceed(_) | TraitEventResult::Modified(_) => {}
-                }
-
-                let revealed_card_id = game
-                    .player(controller)
-                    .and_then(|entry| entry.library.last().copied());
-                let revealed_snapshot = revealed_card_id.and_then(|card_id| {
-                    game.object(card_id)
-                        .map(|object| ObjectSnapshot::from_object(object, game))
+                    EffectOutcome::count(0)
                 });
-                if let Some(card_id) = revealed_card_id {
-                    for viewer_idx in 0..game.players.len() {
-                        let viewer = PlayerId::from_index(viewer_idx as u8);
-                        let view_ctx = crate::decisions::context::ViewCardsContext::new(
-                            viewer,
-                            controller,
-                            Some(ctx.source),
-                            Zone::Library,
-                            "Reveal the top card of a library",
-                        )
-                        .with_public(true);
-                        ctx.decision_maker
-                            .view_cards(game, viewer, &[card_id], &view_ctx);
+            }
+
+            let mut remaining = target_ids
+                .into_iter()
+                .filter_map(|object_id| {
+                    let snapshot = explore_snapshot_for_object(game, ctx, object_id);
+                    let controller = game
+                        .object(object_id)
+                        .map(|object| game.controller_of(object))
+                        .or_else(|| snapshot.as_ref().map(|snap| snap.controller))?;
+                    Some(ExploreInstruction {
+                        object_id,
+                        controller,
+                        snapshot,
+                    })
+                })
+                .collect::<Vec<_>>();
+            if remaining.is_empty() {
+                return Ok(if self.target.is_target() {
+                    EffectOutcome::target_invalid()
+                } else {
+                    EffectOutcome::count(0)
+                });
+            }
+
+            let mut events = Vec::new();
+            let mut counter_facts = Vec::new();
+            let mut explored_objects = Vec::new();
+            let player_order = players_in_apnap_order(game);
+
+            for player in player_order {
+                while let Some(candidate_indices) = (!remaining.is_empty()).then(|| {
+                    remaining
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(index, instruction)| {
+                            (instruction.controller == player).then_some(index)
+                        })
+                        .collect::<Vec<_>>()
+                }) {
+                    if candidate_indices.is_empty() {
+                        break;
                     }
-                    events.push(TriggerEvent::new_with_provenance(
-                        CardRevealedEvent::new(
-                            controller,
-                            card_id,
-                            Zone::Library,
-                            Some(ctx.source),
-                            revealed_snapshot.clone(),
-                        ),
-                        ctx.provenance,
-                    ));
-                }
 
-                let revealed_is_land = revealed_card_id
-                    .and_then(|card_id| game.object(card_id))
-                    .is_some_and(|object| object.has_card_type(crate::types::CardType::Land));
-
-                if let Some(card_id) = revealed_card_id {
-                    if revealed_is_land {
-                        let _ = apply_zone_change(
-                            game,
-                            card_id,
-                            Zone::Library,
-                            Zone::Hand,
-                            ctx.cause.clone(),
-                            &mut *ctx.decision_maker,
-                        );
+                    let chosen_index = if candidate_indices.len() == 1 {
+                        candidate_indices[0]
                     } else {
-                        if game.object(instruction.object_id).is_some()
-                            && let Some(event) =
-                                put_explore_counter(game, ctx, instruction.object_id)
-                        {
-                            events.push(event);
-                        }
-
-                        let choice_ctx = crate::decisions::context::BooleanContext::new(
-                            controller,
-                            Some(ctx.source),
-                            "Put the explored card into your graveyard?".to_string(),
+                        let choices = candidate_indices
+                            .iter()
+                            .map(|&index| remaining[index].object_id)
+                            .collect::<Vec<_>>();
+                        let spec = ChooseObjectsSpec::new(
+                            ctx.source,
+                            "Choose a permanent to explore next",
+                            choices.clone(),
+                            1,
+                            Some(1),
                         );
-                        let put_into_graveyard =
-                            ctx.decision_maker.decide_boolean(game, &choice_ctx);
+                        let selection: Vec<ObjectId> =
+                            make_decision(game, ctx.decision_maker, player, Some(ctx.source), spec);
                         if ctx.decision_maker.awaiting_choice() {
-                            return Ok(EffectOutcome::count(0));
+                            return Ok(
+                                EffectOutcome::with_objects(explored_objects).with_events(events)
+                            );
                         }
-                        if put_into_graveyard {
+                        let normalized = normalize_object_selection(selection, &choices, 1);
+                        let chosen_object = normalized.first().copied().unwrap_or(choices[0]);
+                        candidate_indices
+                            .into_iter()
+                            .find(|index| remaining[*index].object_id == chosen_object)
+                            .unwrap_or(0)
+                    };
+
+                    let instruction = remaining.remove(chosen_index);
+                    let controller = instruction.controller;
+                    let pre_snapshot = instruction.snapshot.clone();
+
+                    let would_event = Event::new_with_provenance(
+                        KeywordActionEvent::new(
+                            KeywordActionKind::Explore,
+                            controller,
+                            instruction.object_id,
+                            1,
+                        )
+                        .with_snapshot(pre_snapshot.clone()),
+                        ctx.provenance,
+                    );
+                    let applied_effects = ctx.replacement.suppressed_replacement_effects.clone();
+                    let applied_effect_keys =
+                        ctx.replacement.suppressed_replacement_effect_keys.clone();
+                    if applied_effects.is_empty() && applied_effect_keys.is_empty() {
+                        game.update_replacement_effects();
+                    }
+                    match process_trait_event_with_dm_and_applied_effects(
+                        game,
+                        would_event,
+                        ctx.decision_maker,
+                        &applied_effects,
+                        &applied_effect_keys,
+                    ) {
+                        TraitEventResult::Replaced {
+                            effects, effect_id, ..
+                        } => {
+                            let replacement_outcome = execute_keyword_action_replacement_effects(
+                                game,
+                                ctx,
+                                effects,
+                                effect_id,
+                                pre_snapshot.clone(),
+                            )?;
+                            for event in &replacement_outcome.events {
+                                if let Some(keyword) =
+                                    event.inner().as_any().downcast_ref::<KeywordActionEvent>()
+                                    && keyword.action == KeywordActionKind::Explore
+                                {
+                                    explored_objects.push(keyword.source);
+                                }
+                            }
+                            events.extend(replacement_outcome.events);
+                            continue;
+                        }
+                        TraitEventResult::Prevented => continue,
+                        TraitEventResult::NeedsChoice { .. }
+                        | TraitEventResult::NeedsInteraction { .. } => {
+                            return Ok(
+                                EffectOutcome::with_objects(explored_objects).with_events(events)
+                            );
+                        }
+                        TraitEventResult::Proceed(_) | TraitEventResult::Modified(_) => {}
+                    }
+
+                    let revealed_card_id = game
+                        .player(controller)
+                        .and_then(|entry| entry.library.last().copied());
+                    let revealed_snapshot = revealed_card_id.and_then(|card_id| {
+                        game.object(card_id)
+                            .map(|object| ObjectSnapshot::from_object(object, game))
+                    });
+                    if let Some(card_id) = revealed_card_id {
+                        for viewer_idx in 0..game.players.len() {
+                            let viewer = PlayerId::from_index(viewer_idx as u8);
+                            let view_ctx = crate::decisions::context::ViewCardsContext::new(
+                                viewer,
+                                controller,
+                                Some(ctx.source),
+                                Zone::Library,
+                                "Reveal the top card of a library",
+                            )
+                            .with_public(true);
+                            ctx.decision_maker
+                                .view_cards(game, viewer, &[card_id], &view_ctx);
+                        }
+                        events.push(TriggerEvent::new_with_provenance(
+                            CardRevealedEvent::new(
+                                controller,
+                                card_id,
+                                Zone::Library,
+                                Some(ctx.source),
+                                revealed_snapshot.clone(),
+                            ),
+                            ctx.provenance,
+                        ));
+                    }
+
+                    let revealed_is_land = revealed_card_id
+                        .and_then(|card_id| game.object(card_id))
+                        .is_some_and(|object| object.has_card_type(crate::types::CardType::Land));
+
+                    if let Some(card_id) = revealed_card_id {
+                        if revealed_is_land {
                             let _ = apply_zone_change(
                                 game,
                                 card_id,
                                 Zone::Library,
-                                Zone::Graveyard,
+                                Zone::Hand,
                                 ctx.cause.clone(),
                                 &mut *ctx.decision_maker,
                             );
-                        }
-                    }
-                } else if game.object(instruction.object_id).is_some()
-                    && let Some(event) = put_explore_counter(game, ctx, instruction.object_id)
-                {
-                    events.push(event);
-                }
+                            if ctx.decision_maker.awaiting_choice() {
+                                return Ok(EffectOutcome::count(0));
+                            }
+                        } else {
+                            if game.object(instruction.object_id).is_some() {
+                                let placement =
+                                    put_explore_counter(game, ctx, instruction.object_id)?;
+                                if ctx.decision_maker.awaiting_choice() {
+                                    return Ok(EffectOutcome::count(0));
+                                }
+                                events.extend(placement.events);
+                                counter_facts.extend(placement.execution_facts);
+                            }
 
-                let action_snapshot = game
-                    .object(instruction.object_id)
-                    .map(|object| ObjectSnapshot::from_object(object, game))
-                    .or(pre_snapshot);
-                let object_tags = revealed_snapshot
-                    .clone()
-                    .map(|snapshot| {
-                        HashMap::from([(
-                            TagKey::from(crate::effects::PUBLIC_REVEALED_TAG),
-                            vec![snapshot],
-                        )])
-                    })
-                    .unwrap_or_default();
-                events.push(TriggerEvent::new_with_provenance(
-                    KeywordActionEvent::new(
-                        KeywordActionKind::Explore,
-                        controller,
-                        instruction.object_id,
-                        1,
-                    )
-                    .with_snapshot(action_snapshot)
-                    .with_object_tags(object_tags),
-                    ctx.provenance,
-                ));
-                explored_objects.push(instruction.object_id);
+                            let choice_ctx = crate::decisions::context::BooleanContext::new(
+                                controller,
+                                Some(ctx.source),
+                                "Put the explored card into your graveyard?".to_string(),
+                            );
+                            let put_into_graveyard =
+                                ctx.decision_maker.decide_boolean(game, &choice_ctx);
+                            if ctx.decision_maker.awaiting_choice() {
+                                return Ok(EffectOutcome::count(0));
+                            }
+                            if put_into_graveyard {
+                                let _ = apply_zone_change(
+                                    game,
+                                    card_id,
+                                    Zone::Library,
+                                    Zone::Graveyard,
+                                    ctx.cause.clone(),
+                                    &mut *ctx.decision_maker,
+                                );
+                                if ctx.decision_maker.awaiting_choice() {
+                                    return Ok(EffectOutcome::count(0));
+                                }
+                            }
+                        }
+                    } else if game.object(instruction.object_id).is_some() {
+                        let placement = put_explore_counter(game, ctx, instruction.object_id)?;
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(EffectOutcome::count(0));
+                        }
+                        events.extend(placement.events);
+                        counter_facts.extend(placement.execution_facts);
+                    }
+
+                    let action_snapshot = game
+                        .object(instruction.object_id)
+                        .map(|object| ObjectSnapshot::from_object(object, game))
+                        .or(pre_snapshot);
+                    let object_tags = revealed_snapshot
+                        .clone()
+                        .map(|snapshot| {
+                            HashMap::from([(
+                                TagKey::from(crate::effects::PUBLIC_REVEALED_TAG),
+                                vec![snapshot],
+                            )])
+                        })
+                        .unwrap_or_default();
+                    events.push(TriggerEvent::new_with_provenance(
+                        KeywordActionEvent::new(
+                            KeywordActionKind::Explore,
+                            controller,
+                            instruction.object_id,
+                            1,
+                        )
+                        .with_snapshot(action_snapshot)
+                        .with_object_tags(object_tags),
+                        ctx.provenance,
+                    ));
+                    explored_objects.push(instruction.object_id);
+                }
+            }
+
+            Ok(EffectOutcome::with_objects(explored_objects)
+                .with_events(events)
+                .with_execution_facts(EffectOutcome::merge_execution_facts(counter_facts)))
+        })();
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
             }
         }
-
-        Ok(EffectOutcome::with_objects(explored_objects).with_events(events))
+        result
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -1454,9 +1471,7 @@ impl EffectExecutor for CipherEffect {
             crate::triggers::Trigger::this_deals_combat_damage_to_player(
                 crate::target::PlayerFilter::Any,
             ),
-            vec![crate::effect::Effect::cast_encoded_card_copy(
-                exiled_id,
-            )],
+            vec![crate::effect::Effect::cast_encoded_card_copy(exiled_id)],
         );
         // CR 702.99a: the encoded card's static ability grants the trigger to
         // the creature (layer 6). It's a continuous effect, not part of the
@@ -1465,18 +1480,16 @@ impl EffectExecutor for CipherEffect {
         let grant = crate::effects::ApplyContinuousEffect::new(
             crate::continuous::EffectTarget::Specific(chosen_creature),
             crate::continuous::Modification::AddAbilityGeneric(ability),
-            crate::effect::Until::ForAsLongAs(
-                ironsmith_core::ContinuousDurationPredicate::all([
-                    ironsmith_core::ContinuousDurationPredicate::ObjectInZone {
-                        object: ironsmith_core::ContinuousDurationObject::Specific(exiled_id),
-                        zone: Zone::Exile,
-                    },
-                    ironsmith_core::ContinuousDurationPredicate::ObjectInZone {
-                        object: ironsmith_core::ContinuousDurationObject::Specific(chosen_creature),
-                        zone: Zone::Battlefield,
-                    },
-                ]),
-            ),
+            crate::effect::Until::ForAsLongAs(ironsmith_core::ContinuousDurationPredicate::all([
+                ironsmith_core::ContinuousDurationPredicate::ObjectInZone {
+                    object: ironsmith_core::ContinuousDurationObject::Specific(exiled_id),
+                    zone: Zone::Exile,
+                },
+                ironsmith_core::ContinuousDurationPredicate::ObjectInZone {
+                    object: ironsmith_core::ContinuousDurationObject::Specific(chosen_creature),
+                    zone: Zone::Battlefield,
+                },
+            ])),
         )
         .with_source_type(crate::continuous::EffectSourceType::Resolution {
             locked_targets: vec![chosen_creature],
@@ -1789,16 +1802,21 @@ impl EffectExecutor for AmplifyEffect {
             .with_type(crate::types::CardType::Creature);
         let hand: Vec<ObjectId> = game
             .player(ctx.controller)
-            .map(|player| player.hand.iter().copied().filter(|&id| id != ctx.source).collect())
+            .map(|player| {
+                player
+                    .hand
+                    .iter()
+                    .copied()
+                    .filter(|&id| id != ctx.source)
+                    .collect()
+            })
             .unwrap_or_default();
         let hidden_hand_choice =
             game.hand_choice_depends_on_hidden_identity(&creature_filter, hand.iter().copied());
         let mut offered = candidates.clone();
         if hidden_hand_choice {
             let filter_ctx = ctx.filter_context(game);
-            for id in
-                game.hidden_hand_placeholder_candidates(&creature_filter, &filter_ctx, hand)
-            {
+            for id in game.hidden_hand_placeholder_candidates(&creature_filter, &filter_ctx, hand) {
                 if !offered.contains(&id) {
                     offered.push(id);
                 }
