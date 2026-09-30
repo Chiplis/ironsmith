@@ -221,6 +221,7 @@
 .zone-pile[data-has-targets="true"] { border-color: #fff; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85), 0 0 14px rgba(255, 255, 255, 0.65); }
 .zone-pile > img { width: 100%; height: 100%; object-fit: cover; }
 .zone-pile-placeholder { display: grid; place-items: center; height: 100%; color: var(--ui-text-muted); }
+.zone-pile-placeholder svg { width: 22px; height: 22px; opacity: 0.72; }
 .zone-pile-slot { position: relative; padding-top: 20px; }
 
 /* A zone holding a card the player may pick normally grows by half (Look skips
@@ -328,6 +329,99 @@
     inset 0 0 6px 2px rgba(255, 255, 255, 0.36);
 }
 .zone-pile-card-row[aria-disabled="true"] { opacity: 0.45; cursor: default; }
+
+/* Compact zone counters ---------------------------------------------------
+   Graveyard/exile cards are small previews, so their counter treatment must
+   stay legible without competing with the card art.  Keep a single flat
+   semantic fill and one crisp rim; the detailed battlefield frame (and its
+   gradients, glow and bevel) is intentionally hidden in this context. */
+.zone-pile-counter-rail .battlefield-counter-chip,
+.zone-pile-counter-rail .battlefield-counter-chip--loyalty,
+.zone-pile-counter-rail .battlefield-counter-chip--power-toughness {
+  box-sizing: border-box;
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  width: auto !important;
+  min-width: 24px;
+  max-width: 100%;
+  height: 16px !important;
+  min-height: 16px !important;
+  aspect-ratio: auto !important;
+  gap: 2px !important;
+  padding: 0 4px !important;
+  overflow: hidden;
+  border: 1px solid var(--counter-stroke, #b7cbe0) !important;
+  border-radius: 3px !important;
+  background: var(--counter-fill, #16202b) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  clip-path: none !important;
+  filter: none !important;
+  opacity: 1 !important;
+  white-space: nowrap;
+}
+
+.zone-pile-counter-rail .battlefield-counter-chip::before,
+.zone-pile-counter-rail .battlefield-counter-chip::after,
+.zone-pile-counter-rail .battlefield-counter-frame {
+  display: none !important;
+  content: none !important;
+}
+
+.zone-pile-counter-rail .battlefield-counter-chip > .battlefield-counter-icon,
+.zone-pile-counter-rail .battlefield-counter-chip > .battlefield-counter-amount,
+.zone-pile-counter-rail .battlefield-counter-chip > .battlefield-counter-symbol {
+  position: relative;
+  inset: auto;
+  left: auto;
+  right: auto;
+  top: auto;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  transform: none;
+}
+
+.zone-pile-counter-rail .battlefield-counter-icon,
+.zone-pile-counter-rail .battlefield-counter-icon--generated {
+  display: block;
+  flex: 0 0 10px;
+  width: 10px !important;
+  height: 10px !important;
+  color: #fff;
+  opacity: 1;
+  filter: none !important;
+  shape-rendering: geometricPrecision;
+}
+
+.zone-pile-counter-rail .battlefield-counter-amount,
+.zone-pile-counter-rail .battlefield-counter-symbol,
+.zone-pile-counter-rail .battlefield-counter-symbol--power {
+  flex: 0 0 auto;
+  min-width: 0;
+  color: #fff;
+  font-size: 11px !important;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1;
+  text-align: center;
+  text-shadow: none !important;
+}
+
+.zone-pile-counter-rail .battlefield-counter-chip:hover,
+.zone-pile-counter-rail .battlefield-counter-chip:focus-visible {
+  background: var(--counter-fill, #16202b) !important;
+  border-color: var(--counter-stroke, #b7cbe0) !important;
+  box-shadow: none !important;
+  filter: none !important;
+}
+
 @media (max-width: 900px) {
   .zone-pile-label { font-size: 8px; }
 }
