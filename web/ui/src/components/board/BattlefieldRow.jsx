@@ -45,12 +45,23 @@ const MAX_BATTLEFIELD_CARD_ZONE_WIDTH_RATIO = 0.155;
 const DESKTOP_PORTRAIT_CARD_ASPECT = 63 / 88;
 const DESKTOP_PORTRAIT_MAX_WIDTH_PX = 72;
 const DESKTOP_PORTRAIT_MAX_ZONE_WIDTH_RATIO = 0.1;
-const BATTLEFIELD_GRID_GAP_PX = 14;
+// Keep one calm, predictable seam between cards. Cards are rendered at 1.15x
+// on desktop, so this logical gap still leaves a visible, compact gutter
+// after the scaled card edges meet.
+const BATTLEFIELD_GRID_GAP_PX = 18;
+// Leave one card-width of breathing room on each side of a dense board. This
+// keeps the first/last card reachable instead of pinning it to an edge where
+// a pointer drag can be clipped by the viewport.
+const BATTLEFIELD_EDGE_GUARD_COLUMNS = 2;
+const BATTLEFIELD_BOTTOM_SCROLL_CLEARANCE_PX = 126;
 const COMPACT_SCROLL_COLUMN_MAX_WIDTH = 200;
 const ABSOLUTE_MIN_CARD_WIDTH = 10;
 const ABSOLUTE_MIN_CARD_HEIGHT = 14;
 const EMPTY_PAPER_SLOT_COLUMNS = 6;
-const DENSE_BATTLEFIELD_THRESHOLD = 48;
+// Once a board needs to wrap beyond a comfortable row, use the continuous
+// matrix layout. Keeping this threshold modest prevents the old spacer-row
+// rhythm from reappearing in ordinary showcase-sized boards.
+const DENSE_BATTLEFIELD_THRESHOLD = 18;
 const DENSE_BATTLEFIELD_MAX_COLUMNS = 24;
 const MOBILE_OBJECT_LONG_PRESS_MS = 380;
 const MOBILE_LONG_PRESS_SUPPRESS_WINDOW_MS = 700;
@@ -999,9 +1010,13 @@ export default function BattlefieldRow({
       frame = window.requestAnimationFrame(() => {
         frame = 0;
         const width = row.clientWidth;
+        const measuredColumns = Math.floor(
+          (width + BATTLEFIELD_GRID_GAP_PX)
+          / (DESKTOP_PORTRAIT_MAX_WIDTH_PX + BATTLEFIELD_GRID_GAP_PX)
+        );
         const next = Math.max(
           EMPTY_PAPER_SLOT_COLUMNS,
-          Math.floor((width + BATTLEFIELD_GRID_GAP_PX) / (DESKTOP_PORTRAIT_MAX_WIDTH_PX + BATTLEFIELD_GRID_GAP_PX))
+          measuredColumns - BATTLEFIELD_EDGE_GUARD_COLUMNS
         );
         setPaperColumnCapacity((current) => (current === next ? current : next));
       });
@@ -1082,7 +1097,7 @@ export default function BattlefieldRow({
     [activeLayoutHolds, cards]
   );
   const usesDensePaperLayout = isPaperBattlefieldLayout
-    && layoutCards.length > DENSE_BATTLEFIELD_THRESHOLD;
+    && layoutCards.length > Math.max(DENSE_BATTLEFIELD_THRESHOLD, paperGridMinSlots);
   const automaticPaperLayout = useMemo(
     () => buildPaperBattlefieldLayout(layoutCards, battlefieldSide, alignStart, {
       singleRow: paperLayoutMode === "single-row",
@@ -1098,16 +1113,20 @@ export default function BattlefieldRow({
     }),
     [alignStart, battlefieldSide, layoutCards, paperGridMinSlots, paperLayoutMode, placementSlots, usesDensePaperLayout]
   );
-  const stableLayoutKey = `${battlefieldSide}:${paperLayoutMode}:${paperGridMinSlots}`;
+  const stableLayoutKey = `${battlefieldSide}:${paperLayoutMode}:${paperGridMinSlots}:${usesDensePaperLayout ? "dense" : "paper"}`;
   const computedPaperLayout = useMemo(() => {
     if (!useDesktopPortraitBattlefield) return automaticPaperLayout;
     const previous = stablePaperLayoutRef.current;
     const layout = retainBattlefieldSlots(layoutCards,
       previous?.key === stableLayoutKey ? previous.layout : null,
-      { columns: paperGridMinSlots, singleRow: paperLayoutMode === "single-row" });
+      {
+        columns: paperGridMinSlots,
+        singleRow: paperLayoutMode === "single-row",
+        dense: usesDensePaperLayout,
+      });
     applyRememberedPlacementSlots(layoutCards, layout.gridPositionById, placementSlots, layout.rowCount, layout.maxCols);
     return layout;
-  }, [automaticPaperLayout, layoutCards, paperGridMinSlots, paperLayoutMode, placementSlots, stableLayoutKey, useDesktopPortraitBattlefield]);
+  }, [automaticPaperLayout, layoutCards, paperGridMinSlots, paperLayoutMode, placementSlots, stableLayoutKey, useDesktopPortraitBattlefield, usesDensePaperLayout]);
   useLayoutEffect(() => {
     stablePaperLayoutRef.current = useDesktopPortraitBattlefield
       ? { key: stableLayoutKey, layout: computedPaperLayout } : null;
@@ -1166,8 +1185,8 @@ export default function BattlefieldRow({
     const gap = Number.isFinite(parsedGap) ? parsedGap : BATTLEFIELD_GRID_GAP_PX;
     const overlap = Number.parseFloat(styles.getPropertyValue("--bf-card-overlap")) || 0;
     const slot = battlefieldGridSlotAtPoint({
-      x,
-      y,
+      x: x + row.scrollLeft,
+      y: y + row.scrollTop,
       left: rect.left,
       top: rect.top + Math.max(0, Number(topSafeInset) || 0),
       width: rect.width,
@@ -2475,11 +2494,19 @@ export default function BattlefieldRow({
         "--bf-top-safe-inset": `${Math.max(0, Number(topSafeInset) || 0)}px`,
         "--bf-gap": `${normalizedLayoutOverride?.gap ?? BATTLEFIELD_GRID_GAP_PX}px`,
         gap: `${normalizedLayoutOverride?.gap ?? BATTLEFIELD_GRID_GAP_PX}px`,
+        rowGap: `${normalizedLayoutOverride?.gap ?? BATTLEFIELD_GRID_GAP_PX}px`,
+        columnGap: `${normalizedLayoutOverride?.gap ?? BATTLEFIELD_GRID_GAP_PX}px`,
         gridTemplateColumns: `repeat(var(--bf-cols, 1), minmax(0, calc(var(--bf-card-width, 72px) - var(--bf-card-overlap, 0px))))`,
         gridTemplateRows: isPaperBattlefieldLayout
           ? `repeat(var(--bf-rows, 1), var(--bf-card-height, 101px))`
           : undefined,
         gridAutoRows: isPaperBattlefieldLayout ? undefined : "var(--bf-card-height, 101px)",
+        // The hand is a fixed bottom rail. Give the battlefield its own
+        // scrollable tail so the final row can be brought above that rail
+        // instead of disappearing underneath it.
+        paddingBottom: isPaperBattlefieldLayout && battlefieldSide === "bottom"
+          ? `${BATTLEFIELD_BOTTOM_SCROLL_CLEARANCE_PX}px`
+          : undefined,
         scrollbarGutter: (allowVerticalScroll || useDesktopPortraitBattlefield) ? "stable" : "auto",
       }}
     >

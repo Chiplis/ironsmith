@@ -118,9 +118,13 @@ export default function TableCore({
   const actionBarHeight = expandedActionBar
     ? (portraitCompactViewport || landscapeMobileViewport || tabletCompactViewport ? compactDecisionBarHeight : desktopDecisionBarHeight)
     : (portraitCompactViewport || landscapeMobileViewport || tabletCompactViewport ? compactPriorityBarHeight : desktopPriorityBarHeight);
+  // Keep a small breathing room below the shared controls on desktop. The
+  // player's battlefield spans this track, so using the full toolbar height
+  // here also becomes top padding on its card grid and leaves an oversized
+  // empty band between the menu and the cards.
   const sharedMiddleBattlefieldInset = portraitCompactViewport || landscapeMobileViewport || tabletCompactViewport
     ? compactPriorityBarHeight
-    : desktopPriorityBarHeight;
+    : (expandedActionBar ? desktopDecisionBarHeight : 18);
   const mergeActionBarIntoMyZone = nonDesktopViewport || tabletCompactViewport;
   const dockStackRailInBoard = !mergeActionBarIntoMyZone && Boolean(zoneActionControls);
   const sharedMiddleControls = !mergeActionBarIntoMyZone && Boolean(middleTopbar || middleAddCardBar);
