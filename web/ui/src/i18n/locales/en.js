@@ -657,6 +657,7 @@ export const ui = {
   "Disputes": "Disputes",
   "Distribute {0} total": "Distribute {0} total",
   "Distribution submitted": "Distribution submitted",
+  "Done Looking": "Done Looking",
   "Done": "Done",
   "double strike": "double strike",
   "Double Strike": "Double Strike",

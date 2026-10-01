@@ -4675,3 +4675,21 @@ html[data-hand-pointer-suspended="true"] * {
   box-shadow: none !important;
 }
 .lobby-chat [role="alert"] { padding: 4px 6px; color: #ffb4a9; }
+
+/* Completion uses the main decision button shape with a blue fill. */
+.decision-done-looking-button.decision-done-looking-button,
+.decision-done-looking-button.decision-done-looking-button:hover,
+.decision-done-looking-button.decision-done-looking-button > * {
+  color: #000 !important;
+  -webkit-text-fill-color: #000 !important;
+  text-shadow: none !important;
+}
+.decision-done-looking-button.decision-done-looking-button,
+.decision-done-looking-button.decision-done-looking-button:hover {
+  border-color: #69b8ff !important;
+  background: #69b8ff !important;
+  box-shadow: 0 0 0 1px rgba(105, 184, 255, 0.72),
+    0 0 16px rgba(105, 184, 255, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.52),
+    inset 0 -2px 0 rgba(14, 80, 116, 0.22) !important;
+}

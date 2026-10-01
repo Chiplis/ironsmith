@@ -1958,11 +1958,11 @@ function MobileBattleDecisionLayer({
             type="button"
             variant="ghost"
             size="sm"
-            className="mobile-decision-primary-button mobile-decision-primary-button--full"
+            className="decision-done-looking-button mobile-decision-primary-button mobile-decision-primary-button--full"
             disabled={!decision}
             onClick={completeViewedCardsStep}
           >
-            <span className="mobile-decision-primary-label">{ui("Done")}</span>
+            <span className="mobile-decision-primary-label">{ui("Done Looking")}</span>
           </Button>
         </div>
       </MobileDecisionOverlay>
@@ -2983,7 +2983,7 @@ function PriorityBar({
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="decision-neon-button decision-main-button decision-submit-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
+                        className="decision-done-looking-button decision-neon-button decision-main-button decision-submit-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
                         style={decisionButtonStyle}
                         data-local-action={localDecisionButton ? "true" : "false"}
                         aria-disabled={peerWaitLocked || !canAdvanceViewedCardsStep}
@@ -3000,7 +3000,7 @@ function PriorityBar({
                           completeViewedCardsStep();
                         }}
                       >
-                        {peerWaiting ? <PeerWaitButtonContent /> : ui("Done")}
+                        {peerWaiting ? <PeerWaitButtonContent /> : ui("Done Looking")}
                       </Button>
                     </PeerWaitPopover>
                   </div>
@@ -3323,7 +3323,7 @@ function PriorityBar({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="decision-neon-button decision-main-button decision-submit-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
+                    className="decision-done-looking-button decision-neon-button decision-main-button decision-submit-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
                     style={decisionButtonStyle}
                     data-local-action={localDecisionButton ? "true" : "false"}
                     aria-disabled={peerWaitLocked || !canAdvanceViewedCardsStep}
@@ -3340,7 +3340,7 @@ function PriorityBar({
                       completeViewedCardsStep();
                     }}
                   >
-                    {peerWaiting ? <PeerWaitButtonContent /> : ui("Done")}
+                    {peerWaiting ? <PeerWaitButtonContent /> : ui("Done Looking")}
                   </Button>
                 </PeerWaitPopover>
               </div>

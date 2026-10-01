@@ -250,7 +250,10 @@ function tryBuildAutoResolveCommand(decision) {
     decision.max === 1 &&
     !(decision.reason || "").toLowerCase().includes("order")
   ) {
-    if (isPaymentSelectOptionsDecision(decision) || isCastOrPlayConfirmDecision(decision)) {
+    const isManaColorChoice = /^choose\b.*\bmana\b/i.test(decision.description || "")
+      && (decision.options || []).every((option) =>
+        /^(white|blue|black|red|green|colorless)$/i.test(option.description || ""));
+    if ((!isManaColorChoice && isPaymentSelectOptionsDecision(decision)) || isCastOrPlayConfirmDecision(decision)) {
       return null;
     }
     const legal = (decision.options || []).filter((o) => o.legal);

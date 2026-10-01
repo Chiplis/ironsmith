@@ -776,6 +776,7 @@ export const ui = {
   "Disputes": "Disputas",
   "Distribute {0} total": "Distribuye {0} en total",
   "Distribution submitted": "Se envió la distribución",
+  "Done Looking": "Terminar de mirar",
   "Done": "Listo",
   "double strike": "daña dos veces",
   "Double Strike": "Daña dos veces",
