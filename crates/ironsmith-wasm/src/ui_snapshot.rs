@@ -4970,7 +4970,6 @@ mod tests {
     }
 
     #[test]
-<<<<<<< HEAD
     fn battlefield_grouping_separates_sickness_and_restores_cancelled_source() {
         let _id_counter_guard = crate::test_id_counter_guard();
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
