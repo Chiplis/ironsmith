@@ -1176,7 +1176,9 @@
     padding: 0 !important;
     min-height: 100%;
     height: 100%;
-    gap: 0 !important;
+    gap: var(--bf-gap, 2px) !important;
+    row-gap: var(--bf-gap, 2px) !important;
+    column-gap: var(--bf-gap, 2px) !important;
     background: transparent !important;
     box-shadow: none !important;
     transform: none !important;
@@ -1198,7 +1200,7 @@
   .mobile-battle-lane .battlefield-row-card {
     position: relative;
     z-index: 2;
-    margin-inline: -3px;
+    margin-inline: 0;
     border-radius: 0;
     overflow: visible;
     pointer-events: auto;

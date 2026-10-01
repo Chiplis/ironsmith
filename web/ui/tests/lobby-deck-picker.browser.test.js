@@ -64,6 +64,17 @@ test('the lobby picker shows catalog decks with art and applies one flatly', asy
     await page.getByRole('button', {name: 'Clear', exact: true}).click();
     assert.equal(await rows.count(), 6);
 
+    // Assigning a deck rerenders the picker, but must not move a catalog list
+    // the user was already browsing.
+    const list = page.locator('[data-deck-catalog-list]');
+    await list.evaluate((element) => {
+      element.style.flex = '0 0 72px';
+      element.scrollTop = element.scrollHeight;
+      element.dispatchEvent(new Event('scroll', {bubbles: true}));
+    });
+    const scrollBeforeApply = await list.evaluate((element) => element.scrollTop);
+    assert.ok(scrollBeforeApply > 0);
+
     // The sheet's chrome draws borders on controls with !important; the flat
     // scope has to win inside it.
     const strokes = await page.locator('.lobby-deck-picker, .lobby-deck-picker *').evaluateAll((nodes) => nodes.filter((node) => {
@@ -76,8 +87,9 @@ test('the lobby picker shows catalog decks with art and applies one flatly', asy
       'rgb(5, 6, 7)',
     );
 
-    await rows.first().getByRole('button', {name: 'Use'}).click();
+    await rows.first().getByRole('button', {name: 'Use'}).evaluate((button) => button.click());
     await page.waitForFunction(() => Boolean(window.__applied));
+    assert.equal(await list.evaluate((element) => element.scrollTop), scrollBeforeApply);
     assert.match(await page.evaluate(() => window.__applied.deckText), /60 Mountain/);
     assert.deepEqual(errors, []);
   } finally {

@@ -75,7 +75,15 @@ function CardDetailsDisclosure({ name, rulesView, onActivate, highlighted, flavo
     <summary>{ui(detailsLabel)}</summary>
     <div className="original-card-details__body">
       <strong>{name}</strong>
-      {(stats || counters) && <p>{[stats, counters].filter(Boolean).join(' · ')}</p>}
+      {(stats || counters) && <p>
+        {stats && <span style={{ display: "block" }}>{ui(stats)}</span>}
+        {String(counters || "")
+          .split("\n")
+          .filter(Boolean)
+          .map((line, index) => (
+            <span key={`${line}-${index}`} style={{ display: "block" }}>{ui(line)}</span>
+          ))}
+      </p>}
       {rulesView.lines.map((line, index) => {
         const actions = rulesView.actions.get(index) || [];
         const action = actions.find(action => !action.payment_pending && action.mana_payment_available !== false);

@@ -29,7 +29,9 @@ export default function TableActionControls({
     exportAuditTranscript,
   } = useGame();
   const { t } = useI18n();
-  const [zone, setZone] = useState("hand");
+  // Start the quick counter showcase on the battlefield so the result is
+  // immediately visible while iterating on its badge styling.
+  const [zone, setZone] = useState("battlefield");
   const [playerIndex, setPlayerIndex] = useState(null);
   const [skipTriggers, setSkipTriggers] = useState(false);
 
