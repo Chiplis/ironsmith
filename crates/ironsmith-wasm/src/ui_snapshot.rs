@@ -810,7 +810,13 @@ impl SnapshotObjectViewCache {
             .as_ref()
             .map(|chars| chars.card_types.contains(&CardType::Creature))
             .unwrap_or_else(|| obj.card_types.contains(&CardType::Creature));
-        let summoning_sick = is_creature && game.is_summoning_sick(obj.id);
+        let summoning_sick = is_creature
+            && game.is_summoning_sick(obj.id)
+            && !game.current_has_static_ability_id(obj.id, StaticAbilityId::Haste)
+            && !game.current_has_static_ability_id(
+                obj.id,
+                StaticAbilityId::CanAttackAsThoughHaste,
+            );
         let tapped = game.is_tapped(obj.id);
         let counter_signature = counter_signature_for_group(obj);
         let key = PermanentObjectViewCacheKey {
