@@ -18,11 +18,14 @@ const context = {
 };
 export function StableSlotsFixture() {
   const [phase, setPhase] = useState(0);
+  const [activating, setActivating] = useState(false);
   const initial = Array.from({ length: 8 }, (_, i) => ({ ...cards[0], id: i + 1, stable_id: i + 1, lane: i < 5 ? "creatures" : "lands" }));
   const current = phase === 0 ? initial : phase === 1 ? initial.filter(c => c.id !== 2)
     : [...initial.filter(c => c.id !== 2), ...Array.from({length: 55}, (_, i) => ({...initial[0], id: i + 20, stable_id: i + 20}))];
-  return <I18nProvider><GameContext.Provider value={{...context, state: {...context.state, snapshot_id: phase}}}><HoverProvider><DragProvider><CombatArrowProvider><TooltipProvider>
+  return <I18nProvider><GameContext.Provider value={{...context, state: {...context.state, snapshot_id: phase, decision: activating ? {...decision, source_id: 1} : decision}}}><HoverProvider><DragProvider><CombatArrowProvider><TooltipProvider>
     <main style={{padding:40}}>
+      <button onClick={() => setActivating(true)}>Activate source</button>
+      <button onClick={() => setActivating(false)}>Cancel activation</button>
       <button onClick={() => setPhase(1)}>Remove object</button>
       <button onClick={() => setPhase(2)}>Add many objects</button>
       <div style={{height:350, marginTop:50}}><BattlefieldRow cards={current} onInspect={()=>{}} activatableMap={new Map()} /></div>

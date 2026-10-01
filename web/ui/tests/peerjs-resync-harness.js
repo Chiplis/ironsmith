@@ -1067,11 +1067,10 @@ export async function startFullUiPeerMatch({
   await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).first().click();
   await waitForVisibleBodyText(hostPage, /Host or join/i, "host shows lobby chooser", 120000);
   await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).last().click();
-  await waitForVisibleBodyText(hostPage, /Share this code/i, "host creates shareable lobby", 120000);
-
-  const lobbyCode = (await visibleBodyText(hostPage)).match(
-    /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
-  )?.[0];
+  const lobby = await waitForFullUiSnapshot(hostPage,
+    snap => snap.multiplayer.mode === 'lobby' && snap.multiplayer.lobbyId,
+    "host creates shareable lobby", 120000);
+  const lobbyCode = lobby.multiplayer.lobbyId;
   assert.ok(lobbyCode, "expected the full UI to create a lobby code");
 
   const guestPage = await openFullUiPage(
@@ -1079,10 +1078,6 @@ export async function startFullUiPeerMatch({
     `${baseUrl}/?lobby=${encodeURIComponent(lobbyCode)}&name=${encodeURIComponent(guestName)}&deck=${guestDeck}`,
     guestLabel,
   );
-  await Promise.all([
-    waitForVisibleBodyText(hostPage, /All players are ready/i, "host sees all players ready", 120000),
-    waitForVisibleBodyText(guestPage, /All players are ready/i, "guest sees all players ready", 120000),
-  ]);
   await Promise.all([
     waitForFullUiSnapshot(
       hostPage,

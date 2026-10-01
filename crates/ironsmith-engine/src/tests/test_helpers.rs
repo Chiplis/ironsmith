@@ -33,7 +33,7 @@ pub(crate) fn enter_fixture_with_dm(
     expected: &str,
 ) -> crate::game_state::EntersResult {
     use crate::events::processing::{EventOutcome, PreparedEventOutcome};
-    let controller = game.object(object).expect("fixture source must exist").controller;
+    let controller = game.controller_of(game.object(object).expect("fixture source must exist"));
     let receipt = game.move_object_with_etb_processing_with_dm(
         object, crate::zone::Zone::Battlefield, decision_maker,
     ).expect("replacement operation must execute successfully in this scenario");

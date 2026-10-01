@@ -7,6 +7,7 @@ import { buildPriorityActionGroups } from "@/lib/priority-action-groups";
 
 /** Strip "Activate CardName: " or "Cast CardName" prefix for compact display. */
 function stripActionPrefix(label) {
+  if (/^Activate now\b/i.test(label)) return label;
   const activateMatch = label.match(/^Activate\s+.+?:\s*(.+)$/i);
   if (activateMatch) return activateMatch[1];
   return label;
@@ -247,6 +248,7 @@ export default function ActionPopover({
         )}
         {actionGroups.map((group, i) => {
           const action = group.firstAction;
+          const rowDisabled = disabled || action?.disabled === true;
           const objId = group.hoverObjectId != null
             ? String(group.hoverObjectId)
             : action?.object_id != null ? String(action.object_id) : null;
@@ -261,14 +263,14 @@ export default function ActionPopover({
                 fontSize: variant === "game" ? "12px" : "14px",
                 minHeight: fitViewport ? "44px" : undefined,
                 fontWeight: variant === "game" ? 600 : 700,
-                opacity: disabled ? 0.5 : 1,
+                opacity: rowDisabled ? 0.5 : 1,
                 lineHeight: 1.4,
                 color: palette.rowText,
                 borderTop: showDivider ? `1px solid ${palette.rowDivider}` : undefined,
                 background: hoveredIdx === i ? palette.rowHoverBg : "transparent",
               }}
               onClick={(e) => {
-                if (disabled || (Date.now() - openedAtRef.current) < 160) return;
+                if (rowDisabled || (Date.now() - openedAtRef.current) < 160) return;
                 e.preventDefault();
                 e.stopPropagation();
                 dispatchHandActionHover(null);
@@ -307,15 +309,15 @@ export default function ActionPopover({
                   return;
                 }
                 if (event.key === "Enter" || event.key === " ") {
-                  if (disabled || (Date.now() - openedAtRef.current) < 160) return;
+                  if (rowDisabled || (Date.now() - openedAtRef.current) < 160) return;
                   event.preventDefault();
                   dispatchHandActionHover(null);
                   onAction(action);
                 }
               }}
               role="button"
-              aria-disabled={disabled || undefined}
-              tabIndex={disabled ? -1 : 0}
+              aria-disabled={rowDisabled || undefined}
+              tabIndex={rowDisabled ? -1 : 0}
             >
               <div
                 style={{

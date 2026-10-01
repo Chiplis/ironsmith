@@ -1,3 +1,4 @@
+import { ManaPaymentEditorProvider } from "@/context/ManaPaymentEditorContext";
 import { improvePayment } from "@/lib/payment-analysis.js";
 import {
   beginActionTrace,
@@ -981,8 +982,12 @@ export function GameProvider({ children }) {
     }
   }, [state]);
 
-  const setPeerState = useCallback((nextState) => {
+  const setPeerState = useCallback((nextState, { replacePresentation = false } = {}) => {
     const visibleState = stabilizePeerUiState(nextState, stateRef.current);
+    if (replacePresentation) {
+      stickyViewedCardsRef.current = null;
+      stickyGameOverRef.current = visibleState?.game_over || null;
+    }
     if (visibleState?.viewed_cards && !isInspectorOnlyViewedCards(visibleState.viewed_cards)) {
       stickyViewedCardsRef.current = visibleState.viewed_cards;
     }
@@ -1495,7 +1500,9 @@ export function GameProvider({ children }) {
       const trivialAutoResolveMs = performance.now() - trivialResolveStartedAt;
       st = autoResolved.state;
       const stickyStartedAt = performance.now();
-      st = applyStickyViewedCards(st, { clear: clearViewedCards });
+      // Background verification and provisional transactions must not mutate
+      // presentation caches before their controller publishes the result.
+      if (publishState) st = applyStickyViewedCards(st, { clear: clearViewedCards });
       const applyStickyViewedCardsMs = performance.now() - stickyStartedAt;
       const totalFinalizeMs = performance.now() - finalizeStartedAt;
       const finalizePerfPayload = {
@@ -1579,8 +1586,8 @@ export function GameProvider({ children }) {
 
   const applySyncedCommand = useCallback(
     async (command, successMessage = "", syncOptions = null) => {
-      const { preState, ...syncContext } = syncOptions || {};
-      const currentGame = gameRef.current;
+      const { preState, runtimeGame, provisional = false, ...syncContext } = syncOptions || {};
+      const currentGame = runtimeGame || gameRef.current;
       if (!currentGame) {
         throw new Error("WASM game is not ready");
       }
@@ -1684,7 +1691,7 @@ export function GameProvider({ children }) {
         return finalized;
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
-        emitSyncFailureNotice("Sync failed", errorMessage);
+        if (!provisional) emitSyncFailureNotice("Sync failed", errorMessage);
         let decisionAfterError = null;
         try {
           const liveState = await currentGame.uiState();
@@ -1713,6 +1720,7 @@ export function GameProvider({ children }) {
               allowOpponentAutomation: false,
               allowTrivialAutomation: false,
               clearViewedCards: true,
+              publishState: syncContext?.publishState !== false,
             });
             rollbackApplied = true;
           } catch {
@@ -1964,7 +1972,7 @@ export function GameProvider({ children }) {
     async (command, successMessage, {
       castingAction = null,
       waitForPaymentReady = false,
-      acceptCurrentPayment = false,
+      paymentTransactionId = null,
       backgroundGeneration = null,
     } = {}) => {
       if (!game) return;
@@ -1986,47 +1994,29 @@ export function GameProvider({ children }) {
           const current = stateRef.current;
           return current?.decision?.kind === "mana_payment"
             && samePlayerId(current.decision.player, current.perspective)
-            && current.mana_payment?.request_hash === payment?.request_hash
-            && (acceptCurrentPayment
+            && (paymentTransactionId != null
+              ? String(current.mana_payment?.transaction_id) === paymentTransactionId
+              : current.mana_payment?.request_hash === payment?.request_hash)
+            && (paymentTransactionId != null
               || current.mana_payment?.plan_id === payment?.plan_id)
-            && (!acceptCurrentPayment || current.mana_payment?.can_confirm !== false);
+            && (command.response?.action !== "confirm" || current.mana_payment?.can_confirm !== false);
         })
         : runWasmInteraction;
       return runInteraction(async () => {
         if (!backgroundIsCurrent()) return;
-        // Replanning may complete between the click and the interaction gate
-        // becoming available. The player accepted this payment request, so use
-        // the newest authoritative plan rather than submitting an obsolete
-        // plan id that would force a rollback.
-        if (acceptCurrentPayment && command?.type === "mana_payment") {
-          let current = stateRef.current;
-          try {
-            current = await game.uiState();
-          } catch {
-            // The normal snapshot remains sufficient if the read races the
-            // worker; the engine will still perform authoritative validation.
-          }
-          const currentPayment = current?.mana_payment;
-          if (
-            current?.decision?.kind === "mana_payment"
-            && samePlayerId(current.decision.player, current.perspective)
-            && currentPayment?.request_hash === payment?.request_hash
-            && currentPayment?.can_confirm !== false
-          ) {
-            command = {
-              ...command,
-              response: {
-                ...command.response,
-                plan_id: String(currentPayment.plan_id),
-                request_hash: String(currentPayment.request_hash),
-              },
-            };
+        // Serialized draft edits are tied to the announced transaction rather
+        // than a render. Exact confirmations validate their reviewed plan below.
+        const exactPaymentConfirmation = command?.type === "mana_payment" && command.response?.action === "confirm";
+        if (!isSnapshotRendered() && !exactPaymentConfirmation && paymentTransactionId == null) return;
+        if (exactPaymentConfirmation) {
+          const liveState = await game.uiState();
+          if (String(liveState.mana_payment?.plan_id) !== String(command.response.plan_id)
+            || String(liveState.mana_payment?.request_hash) !== String(command.response.request_hash)) {
+            await finalizeState(game, liveState);
+            setStatus("The payment plan changed. Review it before paying.");
+            return;
           }
         }
-        // A concurrent board render may still show the previous decision. A
-        // payment confirmation is safe to rebase onto the same request's
-        // current plan; all other clicks must wait for the newer snapshot.
-        if (!isSnapshotRendered() && !acceptCurrentPayment) return;
         const isTargetSubmit = command?.type === "select_targets";
         const currentDecision = stateRef.current?.decision || null;
         const stopAfterEffectOrderingSubmit = (
@@ -2751,6 +2741,10 @@ export function GameProvider({ children }) {
         matchStarted: multiplayer.matchStarted,
         lastAppliedSequence: multiplayer.lastAppliedSequence,
         submittingAction: multiplayer.submittingAction,
+        securityMode: multiplayer.securityMode,
+        verifyingAction: multiplayer.verifyingAction,
+        provisionalSequence: multiplayer.provisionalSequence,
+        pendingVerification: multiplayer.pendingVerification,
         connectionWarnings: (multiplayer.connectionWarnings || []).map((warning) => ({
           peerId: warning.peerId,
           name: warning.name,
@@ -2777,6 +2771,10 @@ export function GameProvider({ children }) {
         ? {
             snapshot_id: state.snapshot_id,
             perspective: state.perspective,
+            phase: state.phase,
+            step: state.step,
+            priority_revision: state.__priority_revision,
+            priority_analysis_complete: state.decision?.analysis_complete,
             decision: summarizeDecision(state.decision || null),
             decisionActions: state.decision?.kind === "priority"
               ? (state.decision.actions || []).map((action, actionIndex) => ({
@@ -2975,7 +2973,11 @@ export function GameProvider({ children }) {
     ]
   );
 
-  return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
+  return <GameContext.Provider value={value}>
+    <ManaPaymentEditorProvider state={state} dispatch={dispatch} cancelBackgroundDispatch={cancelBackgroundDispatch}>
+      {children}
+    </ManaPaymentEditorProvider>
+  </GameContext.Provider>;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

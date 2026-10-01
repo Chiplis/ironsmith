@@ -834,6 +834,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
           submittingAction: false,
         }));
       }
+      if (!dryRun) await servicesRef.current.failOptimisticAction?.(nextSequence, failureReason);
       if (isMatchDisputed(multiplayerRef.current)) {
         if (dryRun || throwOnFailure) throw err;
         setStatus(multiplayerRef.current.matchDisputed?.reason || failureReason, true);
@@ -3297,7 +3298,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
   }
 
   async function validateIncomingRngRequest(conn, message, label) {
-    const session = multiplayerRef.current;
+    let session = multiplayerRef.current;
     assertMatchNotDisputed(session, label);
     if (!session.matchStarted) {
       throw new Error(`${label} received before match start`);
@@ -3306,10 +3307,6 @@ export function usePeerLobbyValidation(base, servicesRef) {
       throw new Error(`${label} belongs to a different match`);
     }
     const seq = Number(message?.seq);
-    const expectedSeq = Number(session.lastAppliedSequence || 0) + 1;
-    if (!Number.isInteger(seq) || seq !== expectedSeq) {
-      throw new Error(`${label} has an invalid action sequence`);
-    }
     if (!String(message?.requirementId || "")) {
       throw new Error(`${label} is missing a requirement id`);
     }
@@ -3323,6 +3320,13 @@ export function usePeerLobbyValidation(base, servicesRef) {
     const actorIndex = normalizePlayerIndex(message?.actorIndex);
     if (actorIndex == null || actorIndex !== requester) {
       throw new Error(`${label} requester is not the acting player`);
+    }
+    await servicesRef.current.waitForProtocolActionHead?.(message, label);
+    session = multiplayerRef.current;
+    assertMatchNotDisputed(session, label);
+    const expectedSeq = Number(session.lastAppliedSequence || 0) + 1;
+    if (!Number.isSafeInteger(seq) || seq !== expectedSeq) {
+      throw new Error(`${label} has an invalid action sequence`);
     }
     const prevStateHash = String(message?.prevStateHash || "");
     if (prevStateHash !== String(auditStateHashRef.current || INITIAL_AUDIT_STATE_HASH)) {
@@ -4727,7 +4731,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	  const applyMatchStart = useCallback(
 	    async (payload, options = {}) => {
       assertRuntimeVersion(payload);
-	      const currentGame = gameRef.current;
+	      let currentGame = gameRef.current;
 	      if (!currentGame || typeof currentGame.startMatch !== "function") {
 	        throw new Error("Game engine is not ready for multiplayer");
 	      }
@@ -4779,6 +4783,9 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	      if (verifiedMode) {
 	        await verifyZiffleCeremoniesForPayload(payload);
 	      }
+      await servicesRef.current.resetOptimisticState?.("Match initialization");
+      servicesRef.current.resetProtocolActionOrder?.("Match initialization");
+      currentGame = gameRef.current;
 	      matchStartPayloadRef.current = cloneMultiplayerPayload(payload);
 	      ensureDirectPeerConnections(payload.players || []);
 	      if (

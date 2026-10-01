@@ -324,6 +324,9 @@ export function usePeerLobbyConnections(base, servicesRef) {
       actionSubmissionStartedAtMsRef.current = 0;
     }
     multiplayerRef.current = normalized;
+    if (Number(previous.lastAppliedSequence || 0) !== Number(normalized.lastAppliedSequence || 0)) {
+      servicesRef.current.notifyProtocolActionHead?.();
+    }
     try { saveRelayLobby(normalized, previous); } catch (error) {
       setStatus(`Could not save reconnect identity. Keep this tab open: ${toErrorMessage(error)}`, true);
     }
@@ -3654,6 +3657,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
     if (hadPending || matchingAppliedActionForIntent(verifiedIntent)) {
       clearPendingActionIntent(key);
     }
+    await servicesRef.current.cancelOptimisticIntent?.(verifiedIntent);
     recordPeerSyncPerf("action_intent_cancel:received", {
       request_id: String(message.requestId || ""),
       sender: message.senderIndex == null ? null : Number(message.senderIndex),

@@ -678,7 +678,13 @@ impl TemporaryStaticAbilityGrants {
         Self { source, next_serial: 0, grants: Vec::new(), origins: Vec::new() }
     }
     pub fn origin(&self, index: usize) -> Option<&TemporaryAbilityOrigin> { self.origins.get(index) }
-    pub fn push(&mut self, grant: TemporaryStaticAbilityGrant) {
+    pub fn push(&mut self, mut grant: TemporaryStaticAbilityGrant) {
+        // A registered keyword is one runtime ability occurrence. Materialize
+        // its payload at registration so layer/query reads clone that ability
+        // rather than allocate a new instance on each calculation.
+        if grant.ability_payload.is_none() {
+            grant.ability_payload = static_ability_from_id(grant.ability);
+        }
         let serial = self.next_serial;
         self.next_serial = serial.checked_add(1).expect("temporary ability identity exhausted");
         self.grants.push(grant);
@@ -3168,6 +3174,38 @@ mod tests {
 #[cfg(test)]
 mod temporary_ability_registration_tests {
     use super::*;
+    #[test]
+    fn scalar_temporary_ability_materialization_preserves_registered_identity() {
+        let mut observations = Vec::new();
+        for ability in [StaticAbilityId::Haste, StaticAbilityId::Flying,
+            StaticAbilityId::Hexproof, StaticAbilityId::Vigilance] {
+            let source = ObjectId::from_raw(90003);
+            let mut grants = TemporaryStaticAbilityGrants::new(source);
+            for _ in 0..2 {
+                grants.push(TemporaryStaticAbilityGrant {
+                    ability, ability_payload: None, expires_end_of_turn: 2,
+                });
+            }
+            assert_ne!(grants.origin(0), grants.origin(1),
+                "independently registered equal keywords retain separate occurrences");
+            let checkpoint = grants.clone();
+            let mut rebuilt = grants.empty_with_allocator();
+            rebuilt.extend_existing(&grants);
+            for slot in 0..2 {
+                let first = grants[slot].materialize().expect("keyword is supported").instance_id();
+                let repeated = grants[slot].materialize().expect("keyword is supported").instance_id();
+                let cloned = checkpoint[slot].materialize().expect("keyword is supported").instance_id();
+                let reconstructed = rebuilt[slot].materialize().expect("keyword is supported").instance_id();
+                observations.push((ability, slot, first, repeated, cloned, reconstructed));
+            }
+            grants.retain(|grant| grant.expires_end_of_turn > 2);
+            assert!(grants.is_empty(), "expiry still removes the registrations");
+        }
+        assert!(observations.iter().all(|(_, _, first, repeated, cloned, rebuilt)|
+            first == repeated && first == cloned && first == rebuilt),
+            "reads, checkpoints and reconstruction must retain each registered ability identity: {observations:?}");
+    }
+
     #[test]
     fn temporary_ability_origins_survive_expiry_checkpoint_and_reconstruction() {
         let source = ObjectId::from_raw(90001);

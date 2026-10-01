@@ -14,7 +14,7 @@ function Fixture() {
   const [backgroundStarts, setBackgroundStarts] = useState(0);
   const [backgroundStops, setBackgroundStops] = useState(0);
   const candidates = [{ id: 10, name: "Island", legal: true }, { id: 11, name: "Swamp", legal: true }];
-  const payment = { plan_id: complete ? "optimized" : "initial", request_hash: "request", planning_complete: complete, can_confirm: true, source_name: "Spell" };
+  const payment = { plan_id: complete ? "optimized" : "initial", request_hash: "request", planning_complete: complete, can_confirm: true, source_name: "Spell", transaction_id: "spell", planned_sources: [{source_id:"10",source_name:"Island",payment_kind:"mana_ability",ability_index:0,expected_mana:{blue:1}}] };
   const decision = search
     ? {kind: "select_objects", player: 0, source_id: 1, description: "Search library", min: 0, max: 1, candidates}
     : {kind: "mana_payment", player: 0, source_id: 2, subject: "Spell", plan_id: payment.plan_id, request_hash: payment.request_hash};

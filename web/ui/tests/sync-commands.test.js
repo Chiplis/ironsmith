@@ -403,3 +403,22 @@ test("every casting method retains its identity across a JSON round trip", () =>
     }
   }
 });
+
+test('deferred priority menus route structured actions to engine validation without inventing menu entries', () => {
+  const decision = { kind: 'priority', player: 0, analysis_complete: false, actions: [] };
+  for (const action_ref of [
+    { kind: 'play_land', land_id: 121 },
+    { kind: 'cast_spell', spell_id: 122, from_zone: 'hand', casting_method: { kind: 'normal' } },
+    { kind: 'activate_ability', source: 123, ability_index: 0 },
+  ]) {
+    const command = { type: 'priority_action', action_ref };
+    assert.equal(isDecisionCommandCompatible(decision, command), true);
+    assert.equal(findPriorityActionForCommand(decision, command), null);
+    assert.equal(isDecisionCommandCompatible({ ...decision, analysis_complete: true }, command), false);
+    assert.equal(isDecisionCommandCompatible({ ...decision, analysis_complete: undefined }, command), false);
+  }
+  assert.equal(isDecisionCommandCompatible(decision, { type: 'priority_action', action_index: 1 }), false);
+  assert.equal(isDecisionCommandCompatible(decision, { type: 'priority_action', action_ref: { kind: 'begin_game' } }), false);
+  assert.equal(isDecisionCommandCompatible(decision, { type: 'priority_action', action_ref: { kind: 'unknown' } }), false);
+  assert.equal(isDecisionCommandCompatible(decision, { type: 'select_objects', object_ids: [121] }), false);
+});

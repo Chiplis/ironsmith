@@ -4618,3 +4618,38 @@ select::-ms-expand {
     padding: 8px;
   }
 }
+
+/* The payment is always editable; exact player selections have a lock marker. */
+.mana-plan-output {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 0.15rem;
+  padding: 0.25rem;
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  cursor: pointer;
+}
+.mana-plan-output:hover, .mana-plan-output:focus-visible { background: var(--muted); }
+.mana-plan-strip-source.is-required, .mana-plan-source.is-required { box-shadow: inset 2px 0 #5cc277; }
+.mana-plan-strip-source.is-pending, .mana-plan-source.is-pending { opacity: 0.65; }
+.mana-plan-add { flex: 0 0 auto; margin: 0.15rem; }
+.mana-plan-life-choices { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; }
+.mana-plan-life-choice { padding: 0.3rem; border: 1px solid var(--border); font-size: 0.7rem; cursor: pointer; }
+.mana-plan-life-choice[aria-pressed="true"] { border-color: #5cc277; background: color-mix(in srgb, #5cc277 12%, transparent); }
+.mana-plan-cost-context, .mana-plan-reservations { font-size: 0.72rem; opacity: 0.8; }
+.mana-plan-strip .mana-plan-life-choices { flex: 0 1 auto; max-width: 200px; }
+.mana-plan-strip .mana-plan-source-index { flex: 0 0 auto; }
+@media (max-width: 640px) {
+  .mana-plan-strip-source-region { min-width: 0; }
+  .mana-plan-strip-source { flex-shrink: 0; }
+  .mana-plan-strip-planning { font-size: 0.6rem; }
+}
+.mana-plan-strip-context { flex: 0 1 105px; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 0.62rem; white-space: nowrap; }
+
+/* The permanent whose ability is currently being activated. */
+.game-card.field-card.activation-source,
+.game-card.battlefield-arena-card.activation-source .arena-permanent {
+  outline: 2px solid #58b6ff;
+  outline-offset: -1px;
+  box-shadow: 0 0 0 1px #58b6ff, 0 0 12px 3px #329cff99;
+}

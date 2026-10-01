@@ -29,10 +29,12 @@ function Fixture() {
   const [inspected,setInspected] = useState(null);
   const [loading,setLoading] = useState(false);
   const [filterPrism,setFilterPrism] = useState(false);
+  const [pinned,setPinned] = useState(true);
   const state = {snapshot_id:tapped?2:1,perspective:0,players:[{id:0,battlefield:cards}],decision:{kind,player:payer,source_id:99},mana_payment:kind==="mana_payment"?{request_hash:"payment",mana_abilities:abilities.filter(a=>(!tapped||a.source_id!=="1") && (!filterPrism||a.source_id!=="2"||a.ability_index===1))}:null};
   return <GameContext.Provider value={{state,loading,dispatch:command=>{setCommand(command);if(command.response.source_id==="1")setTapped(true);else setKind("select_objects");}}}>
     <HoverProvider><DragProvider><CombatArrowProvider><TooltipProvider>
-      <FloatingCardPreview pinnedObjectId={3} />
+      <FloatingCardPreview pinnedObjectId={pinned ? 3 : null} />
+      <button onClick={()=>setPinned(false)}>Unpin inspector</button>
       <button onClick={()=>setKind("mana_payment")}>Resume payment</button>
       <button onClick={()=>setPayer(payer===0?1:0)}>Switch payer</button>
       <button onClick={()=>setLoading(!loading)}>Toggle busy</button>

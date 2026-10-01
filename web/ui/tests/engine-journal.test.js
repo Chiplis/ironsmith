@@ -154,3 +154,18 @@ test("the summary matches the journal and reset clears everything", () => {
   assert.equal(cleared.cardRoutes, null);
   assert.equal(cleared.approxArgBytes, 0);
 });
+
+test('branch-aware journal distinguishes speculative and canonical dispatch and retains savepoint lifetimes', () => {
+  const created = beginJournalEntry('createRuntimeSavepoint', []);
+  completeJournalEntry(created, 7);
+  completeJournalEntry(beginJournalEntry('dispatch', [{ type: 'priority_action' }]), snapshotResult());
+  completeJournalEntry(beginJournalEntry('dispatch', [{ type: 'priority_action' }], { runtimeBranch: 7 }), snapshotResult());
+  completeJournalEntry(beginJournalEntry('releaseRuntimeSavepoint', [7]), true);
+  const journal = getJournal();
+  assert.equal(journal.version, 2);
+  assert.equal(journal.replayable, true);
+  assert.equal(journal.entries[0].runtimeSavepointHandle, 7);
+  assert.equal(journal.entries[1].runtimeBranch, null);
+  assert.equal(journal.entries[2].runtimeBranch, 7);
+  assert.equal(journal.entries[3].method, 'releaseRuntimeSavepoint');
+});

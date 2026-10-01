@@ -677,7 +677,9 @@ export default function GameCard({
   const castObjectHovered = useCastObjectHovered(targetIds);
   const isCastTargetHovered = isLegalTarget && castObjectHovered;
   const chosenObjectId = useChosenObjectIdAmong(targetIds);
-  const glowKind = targetingMode ? (isLegalTarget ? "target-legal" : null) : requestedGlowKind;
+  const glowKind = requestedGlowKind === "activation-source"
+    ? requestedGlowKind
+    : targetingMode ? (isLegalTarget ? "target-legal" : null) : requestedGlowKind;
   const showActionBorder = (hasAvailableAction || glowKind === "action-link") && !targetingMode;
   const name = card.name || "";
   // English name stays the lookup key everywhere (art, mana parsing, DOM
@@ -1294,6 +1296,7 @@ export default function GameCard({
         glowKind === "land" && "glow-land",
         glowKind === "spell" && "glow-spell",
         glowKind === "ability" && "glow-ability",
+        glowKind === "activation-source" && "activation-source",
         glowKind === "mana" && "glow-mana",
         glowKind === "extra" && "glow-extra",
         glowKind === "play-from" && "glow-extra glow-play-from",

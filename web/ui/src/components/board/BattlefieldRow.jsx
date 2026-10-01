@@ -1,3 +1,4 @@
+import { useManaPaymentEditor } from "@/context/ManaPaymentEditorContext.shared";
 import useUiText from "@/i18n/useUiText";
 import { useRef, useLayoutEffect, useEffect, useCallback, useMemo, useState } from "react";
 import ManaAbilityPopover from "@/components/overlays/ManaAbilityPopover";
@@ -934,6 +935,7 @@ export default function BattlefieldRow({
     return () => window.removeEventListener("ironsmith:hand-inspection", handleHandInspectionState);
   }, [clearHover]);
   const { combatMode, combatModeRef, dragArrow, startDragArrow, updateDragArrow, endDragArrow } = useCombatArrows();
+  const paymentEditor = useManaPaymentEditor();
   const paymentActionMap = useMemo(() => manaPaymentActionMap(state), [state]);
   const effectiveActivatableMap = state?.decision?.kind === "mana_payment" ? paymentActionMap : activatableMap;
   const [manaPopover, setManaPopover] = useState(null);
@@ -966,7 +968,10 @@ export default function BattlefieldRow({
     return true;
   }, [paymentActionMap, keepManaPopover, clearHover, clearAnchoredCardPreview, state]);
   const manaPopoverActions = manaPopover && manaPopover.paymentKey === state?.mana_payment?.request_hash
-    ? (paymentActionMap.get(Number(manaPopover.card?.id)) || []) : [];
+    ? (paymentActionMap.get(Number(manaPopover.card?.id)) || []).map(action => ({
+      ...action,
+      disabled: action.kind !== "plan_payment_source" && (loading || paymentEditor?.dirty || paymentEditor?.confirming),
+    })) : [];
   const [ghosts, setGhosts] = useState([]);
   const [layoutHolds, setLayoutHolds] = useState([]);
   const [processedLayoutSnapshotId, setProcessedLayoutSnapshotId] = useState(null);
@@ -2205,6 +2210,20 @@ export default function BattlefieldRow({
   ]);
 
   const activatePaymentMana = useCallback(async (action) => {
+    if (paymentEditor?.confirming) return;
+    if (action.kind === "plan_payment_source" && paymentEditor) {
+      closeManaPopover();
+      clearHover();
+      clearAnchoredCardPreview();
+      paymentEditor.select(action, { replace: !action.repeatable });
+      return;
+    }
+    if (paymentEditor) {
+      if (paymentEditor.dirty || paymentEditor.confirming) return;
+      closeManaPopover();
+      await paymentEditor.activate(action);
+      return;
+    }
     if (loading || manaSubmittingRef.current) return;
     manaSubmittingRef.current = true;
     setManaSubmitting(true);
@@ -2217,7 +2236,7 @@ export default function BattlefieldRow({
       manaSubmittingRef.current = false;
       setManaSubmitting(false);
     }
-  }, [loading, closeManaPopover, clearHover, clearAnchoredCardPreview, dispatch]);
+  }, [loading, closeManaPopover, clearHover, clearAnchoredCardPreview, dispatch, paymentEditor]);
 
   const handleCardSelectionClick = useCallback((event, card) => {
     // An explicit field click is allowed to take ownership from the hand.
@@ -2511,7 +2530,7 @@ export default function BattlefieldRow({
       }}
     >
       {manaPopoverActions.length > 0 && manaPopover.anchor?.isConnected && (
-        <ManaAbilityPopover anchor={manaPopover.anchor} actions={manaPopoverActions} disabled={loading || manaSubmitting} focusOnOpen={manaPopover.keyboard}
+        <ManaAbilityPopover ariaLabel={manaPopoverActions.some(action => action.kind === "plan_payment_source") ? "Choose payment source" : "Activate mana ability"} anchor={manaPopover.anchor} actions={manaPopoverActions} disabled={manaSubmitting || paymentEditor?.confirming || (loading && !paymentEditor)} focusOnOpen={manaPopover.keyboard}
           onClose={closeManaPopover} onEnter={keepManaPopover} onLeave={leaveManaPopover}
           onAction={activatePaymentMana} />
       )}
@@ -2557,6 +2576,11 @@ export default function BattlefieldRow({
           && decisionSourceIsTriggered
           && decisionSourceObjectId != null
           && cardObjectIds.some((id) => id === decisionSourceObjectId)
+        );
+        const isActivationSource = !isLayoutHold && !decisionSourceIsTriggered && (
+          (decisionSourceObjectId != null && cardObjectIds.includes(decisionSourceObjectId))
+          || (state?.cancelable && state?.undo_land_stable_id != null
+            && stableIdsForCard(card).includes(String(state.undo_land_stable_id)))
         );
         const isNew = !isLayoutHold && newIds.has(card.id);
         const isBumped = !isLayoutHold && bumpedIds.has(card.id);
@@ -2625,7 +2649,9 @@ export default function BattlefieldRow({
             : isCombatCandidate
               ? (combatMode.mode === "attackers" ? "attack-candidate" : "blocker-candidate")
               : null;
-        const appliedGlowKind = isActionLinkedHover
+        const appliedGlowKind = isActivationSource
+          ? "activation-source"
+          : isActionLinkedHover
           ? "action-link"
           : isLegalTarget
             ? "target-legal"

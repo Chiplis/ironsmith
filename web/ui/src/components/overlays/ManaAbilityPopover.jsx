@@ -5,7 +5,7 @@ import ActionPopover from "./ActionPopover";
 
 // Use the same speech-bubble menu as drag-to-cast alternative casting methods.
 // Mana choices deliberately do not drive the card inspector's hover state.
-export default function ManaAbilityPopover({ anchor, actions, disabled, focusOnOpen = false, onAction, onClose, onEnter, onLeave }) {
+export default function ManaAbilityPopover({ anchor, actions, disabled, ariaLabel = "Activate mana ability", focusOnOpen = false, onAction, onClose, onEnter, onLeave }) {
   const ui = useUiText();
   useSuppressCardPreview();
   useEffect(() => {
@@ -19,6 +19,6 @@ export default function ManaAbilityPopover({ anchor, actions, disabled, focusOnO
   return <ActionPopover anchorRect={anchor.getBoundingClientRect()} anchorElement={anchor}
     actions={actions} onAction={onAction} onClose={onClose} variant="game"
     collapseEquivalentActions={false} previewCards={false} disabled={disabled}
-    focusOnOpen={focusOnOpen} ariaLabel={ui("Activate mana ability")}
+    focusOnOpen={focusOnOpen} ariaLabel={ui(ariaLabel)}
     onMouseEnter={onEnter} onMouseLeave={onLeave} />;
 }

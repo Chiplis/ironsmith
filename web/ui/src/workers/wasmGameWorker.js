@@ -1,4 +1,5 @@
 import { createAsyncLimiter } from "../lib/bounded-async.js";
+import { inRuntimeBranch } from "../lib/runtime-branches.js";
 import { CARD_ASSET_MISSING, fetchCardAssetJson, versionedCardAssetUrl } from "../lib/card-asset-cache.js";
 import { createSnapshotEncoder } from "../lib/snapshot-channel.js";
 import { previewCryptoRequirementsWithMaterial } from "../lib/preview-crypto-material.js";
@@ -789,6 +790,7 @@ async function handleInit(msg = {}) {
     }
 
     self.postMessage({ type: "ready", runtimeSavepoints: typeof game.createRuntimeSavepoint === "function",
+      runtimeBranches: typeof game.exchangeRuntimeSavepoint === "function",
       embeddedCardCatalog: embeddedCardIndex !== null });
   } catch (err) {
     self.postMessage({ type: "error", error: serializeError(err) });
@@ -836,7 +838,7 @@ function handleTargetPreview(id, args) {
 
 function handleCall(msg) {
   const { id, method, args = [] } = msg;
-  if (method === "previewCastTargets") { handleTargetPreview(id, args); return; }
+  if (msg.runtimeBranch == null && method === "previewCastTargets") { handleTargetPreview(id, args); return; }
   if (!/^(snapshot|uiState|last\w*Perf|exportSyncCheckpoint|exportPublicAuditCheckpoint|autocompleteCardNames|getCardSemanticScore|cardsMeetingThreshold)$/.test(method)) {
     try {
       console.debug(`[ironsmith] worker call: ${method} ${JSON.stringify({ argumentCount: args.length, commandType: args[0]?.type })}`);
@@ -846,7 +848,7 @@ function handleCall(msg) {
   }
   // A preview promise must never occupy the authoritative command queue.
   // Its bounded slices use that queue separately, yielding to game commands.
-  if (method === "inspectorActions" && game) {
+  if (msg.runtimeBranch == null && method === "inspectorActions" && game) {
     priorityAnalysis.inspector(...args).then(result => {
       if (result && typeof result === "object" && "decision" in result) {
         self.postMessage({ type: "result", id, ok: true, snapshot: snapshotEncoder.encode(result, { full: method === "snapshot" }) });
@@ -860,8 +862,11 @@ function handleCall(msg) {
     .then(sources => ({ sources }), error => ({ error }));
   pendingCallCount += 1;
   enqueueCall(async () => {
+    const prepared = await preparation;
+    if (prepared.error) throw prepared.error;
+    return inRuntimeBranch(game, msg.runtimeBranch, async () => {
     if (!game) throw new Error("Game is not initialized yet");
-    if (!ANALYSIS_READ_METHOD.test(method) && method !== "setPerspective") {
+    if (msg.runtimeBranch == null && !ANALYSIS_READ_METHOD.test(method) && method !== "setPerspective") {
       priorityAnalysis.invalidate();
       game?.cancelPaymentAnalysis?.();
       latestTargetPreview = null;
@@ -869,8 +874,6 @@ function handleCall(msg) {
     }
     const startedAt = nowMs();
     const queueWaitMs = startedAt - enqueuedAt;
-    const prepared = await preparation;
-    if (prepared.error) throw prepared.error;
     if (prepared.sources?.length) {
       const registration = registerFetchedCardSources([...new Set(prepared.sources)]);
       if (registration?.failed?.length) {
@@ -997,6 +1000,7 @@ function handleCall(msg) {
       result: decorateResultWithPerf(result, perf),
       registryStatus,
     };
+    });
   })
     .then(({ result, registryStatus }) => {
       if (registryStatus) {
@@ -1004,13 +1008,13 @@ function handleCall(msg) {
         if (!registryStatus.done) scheduleBackgroundCompile(0);
       }
       if (result && typeof result === "object" && "decision" in result) {
-        const identity = game.priorityAnalysisIdentity();
+        const identity = msg.runtimeBranch == null ? game.priorityAnalysisIdentity() : priorityIdentity;
         if (priorityIdentity !== identity) {
           priorityAnalysis.invalidate();
           priorityIdentity = identity;
           priorityViewRevision = priorityAnalysis.revision();
         }
-        result.__priority_revision = priorityViewRevision;
+        if (msg.runtimeBranch == null) result.__priority_revision = priorityViewRevision;
         self.postMessage({ type: "result", id, ok: true, snapshot: snapshotEncoder.encode(result, { full: method === "snapshot" }) });
       } else self.postMessage({ type: "result", id, ok: true, result });
     })

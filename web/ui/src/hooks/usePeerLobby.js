@@ -1,5 +1,6 @@
 import { assertMatchNotDisputed, isMatchDisputed } from "./peer-lobby/match-lifecycle.js";
 import { createValueStore } from "../lib/value-store.js";
+import { createProtocolActionOrder } from "../lib/protocol-action-order.js";
 import { describeSubstitutions, withSupportedCards } from "../lib/unsupported-card-substitution.js";
 import {
   DISCONNECT_AUTO_FORFEIT_MS,
@@ -83,6 +84,7 @@ import {
 } from "./peer-lobby/shared.js";
 
 import { usePeerLobbyConnections } from "./peer-lobby/connections.js";
+import { useOptimisticPeerState } from "./peer-lobby/optimistic-state.js";
 import { usePeerLobbyAuditMaterial } from "./peer-lobby/audit-material.js";
 import { usePeerLobbyCryptoResync } from "./peer-lobby/crypto-resync.js";
 import { usePeerLobbyValidation } from "./peer-lobby/validation.js";
@@ -198,14 +200,16 @@ export function usePeerLobby({
   }, [game]);
 
   useEffect(() => {
-    if (!subscribeState) stateRef.current = state;
+    if (!subscribeState && !servicesRef.current.hasOptimisticRuntime?.()) stateRef.current = state;
   }, [state, subscribeState]);
 
   // Command sequencing must see publications immediately, even while React
   // is yielding the corresponding board render to pointer/animation work.
   useEffect(() => {
     if (!subscribeState) return undefined;
-    return subscribeState(snapshot => { stateRef.current = snapshot; });
+    return subscribeState(snapshot => {
+      if (!servicesRef.current.hasOptimisticRuntime?.()) stateRef.current = snapshot;
+    });
   }, [subscribeState]);
 
   useEffect(() => {
@@ -226,12 +230,27 @@ export function usePeerLobby({
   // peer message sequences.
 
   const servicesRef = useRef({});
+  const protocolActionOrderRef = useRef(null);
+  if (!protocolActionOrderRef.current) {
+    protocolActionOrderRef.current = createProtocolActionOrder({
+      head: () => Number(multiplayerRef.current.lastAppliedSequence || 0),
+      matchId: () => servicesRef.current.currentAuditMatchId?.() || "",
+      timeoutMs: PROTOCOL_RESPONSE_TIMEOUT_MS,
+      onWait: metadata => recordPeerSyncPerf("protocol_request:wait_preceding_action", metadata),
+    });
+  }
+  servicesRef.current.waitForProtocolActionHead = (message, label, options) =>
+    protocolActionOrderRef.current.wait(message, label, options);
+  servicesRef.current.notifyProtocolActionHead = () => protocolActionOrderRef.current.notify();
+  servicesRef.current.resetProtocolActionOrder = reason => protocolActionOrderRef.current.reset(reason);
+  useEffect(() => () => protocolActionOrderRef.current.reset("Lobby closed"), []);
 
   // End-of-match disclosure: once the match (or the local player's part of
   // it) is over, open the hidden cards still owed and verify the peers'.
   useEffect(() => {
     const onEnded = (snapshot) => {
       if (!snapshot) return;
+      if (servicesRef.current.hasPendingOptimisticActions?.()) return;
       const ended = Boolean(snapshot.game_over)
         || (snapshot.players || []).some((player) =>
           player?.has_lost || player?.hasLost || player?.has_left_game || player?.hasLeftGame
@@ -268,6 +287,13 @@ export function usePeerLobby({
     matchClockObservationExemptSequenceRef, ensureDirectPeerConnectionsRef,
   };
 
+  const optimisticState = useOptimisticPeerState({ ...peerLobbyBase }, servicesRef);
+  Object.assign(servicesRef.current, optimisticState);
+  peerLobbyBase.setState = optimisticState.setVerifiedState;
+  peerLobbyBase.applySyncedCommand = (command, label, options) => applySyncedCommand(command, label, {
+    ...options, runtimeGame: gameRef.current,
+  });
+
   const connections = usePeerLobbyConnections(peerLobbyBase, servicesRef);
   const { actionBroadcastResponseTimeoutMs, actionIntentKeyFromProtocolClaim, beginPeerWait, broadcastActionIntentCancel, broadcastActionIntentProgress, clearPeerWait, clearPendingActionIntent, currentAuditMatchId, ensureAuditIdentity, ensureZiffleIdentity, publicZiffleKey, rememberIgnoredActionIntentKey, signActionIntentForCommand, signPlayerGenesis, startActionIntentProgressBroadcast, updateMultiplayer, updatePeerWait, waitForPendingActionIntentBeforeLocalSubmit, waitForSubmissionIdle } = connections;
   Object.assign(servicesRef.current, connections);
@@ -283,6 +309,10 @@ export function usePeerLobby({
   const validation = usePeerLobbyValidation(peerLobbyBase, servicesRef);
   const { applyVerifiedShuffleProofs, buildLocalRngRevealsForRequirements, buildLocalShuffleProofsForRequirements, drainPendingSequencedActions, restoreSequencedActionValidationSnapshotIfCurrent, revealLocalZiffleHand, routePeerIdForPlayer, verifyShuffleProofsForRequirements, viewedCardsStateHint } = validation;
   Object.assign(servicesRef.current, validation);
+  servicesRef.current.applySequencedActionMessage = async (message, options = {}) => {
+    await optimisticState.ensureOptimisticRuntime();
+    return optimisticState.runVerifiedTask(() => validation.applySequencedActionMessage(message, options));
+  };
 
   const trustedSequencer = useTrustedSequencer(peerLobbyBase, servicesRef);
   Object.assign(servicesRef.current, trustedSequencer);
@@ -629,7 +659,7 @@ export function usePeerLobby({
     return true;
   }
 
-  const submitMultiplayerCommand = useCallback(
+  const submitVerifiedMultiplayerCommand = useCallback(
     async (command, label = "") => {
       const assertSubmissionActive = () => assertMatchNotDisputed(multiplayerRef.current, "Action submission");
       const runSubmissionPhase = async (...args) => {
@@ -1435,6 +1465,7 @@ export function usePeerLobby({
             publish_state: publishAppliedStateImmediately,
           },
           () => applySyncedCommand(command, label || "", {
+            runtimeGame: gameRef.current,
             actorIndex: session.localPlayerIndex,
             sequence: nextSequence,
             publishState: publishAppliedStateImmediately,
@@ -1754,6 +1785,9 @@ export function usePeerLobby({
           submitPerf,
           () => currentPublicAuditCheckpointHash()
         );
+        await servicesRef.current.stagePreparedLocalAction?.({ seq: nextSequence,
+          actorIndex: session.localPlayerIndex, command, label,
+          publicCheckpointHash: localPublicCheckpointHash, openings, rngReveals, shuffleProofs });
         updateLocalActionProgress({
           kind: "local_payload",
           title: "Signing action payload",
@@ -2017,6 +2051,10 @@ export function usePeerLobby({
   // Timer lifetimes must not depend on the action callback, whose dependencies
   // can change on each render. Restarting a timer runs its immediate tick again,
   // which publishes state and can starve socket reconnect events in a render loop.
+  const submitMultiplayerCommand = useCallback((command, label = "") =>
+    optimisticState.stageOptimisticLocalCommand(command, label, submitVerifiedMultiplayerCommand),
+  [optimisticState, submitVerifiedMultiplayerCommand]);
+
   // Sub-hooks reach these through servicesRef (timeout claims, witness forfeits).
   servicesRef.current.submitMultiplayerCommand = submitMultiplayerCommand;
   servicesRef.current.submitProtocolResponseTimeoutClaim = submitProtocolResponseTimeoutClaim;
@@ -2320,7 +2358,14 @@ export function usePeerLobby({
 
   return {
     matchClockStore: matchClockStore.current,
-    multiplayer,
+    multiplayer: optimisticState.hasOptimisticRuntime() ? {
+      ...multiplayer,
+      verifyingAction: multiplayer.submittingAction,
+      submittingAction: optimisticState.optimistic.calculating || optimisticState.waitingForMaterial,
+      peerWait: optimisticState.optimistic.pending > 0 ? null : multiplayer.peerWait,
+      provisionalSequence: optimisticState.optimistic.provisionalSequence,
+      pendingVerification: optimisticState.optimistic.pending,
+    } : multiplayer,
     sendLobbyChat,
     canStartHostedMatch: canHostedMatchStart(multiplayer),
     createLobby,

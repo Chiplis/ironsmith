@@ -584,6 +584,33 @@ function createFakeGame() {
   };
 }
 
+function enableFakeRuntimeBranches(game) {
+  const points = new Map();
+  let nextHandle = 0;
+  game.supportsRuntimeSavepoints = true;
+  game.supportsRuntimeBranches = true;
+  game.createRuntimeSavepoint = async () => {
+    const handle = ++nextHandle;
+    points.set(handle, { checkpoint: await game.exportSyncCheckpoint(), perspective: (await game.uiState()).perspective });
+    return handle;
+  };
+  game.restoreRuntimeSavepoint = async handle => {
+    const point = points.get(handle);
+    if (!point) throw new Error('Expired fixture savepoint');
+    points.delete(handle);
+    return game.importSyncCheckpoint(point.checkpoint, point.perspective);
+  };
+  game.releaseRuntimeSavepoint = async handle => points.delete(handle);
+  game.forkRuntimeBranch = async () => {
+    const branch = createFakeGame();
+    enableFakeRuntimeBranches(branch);
+    await branch.importSyncCheckpoint(await game.exportSyncCheckpoint(), (await game.uiState()).perspective);
+    branch.copyToVisible = async () => game.importSyncCheckpoint(await branch.exportSyncCheckpoint(), (await branch.uiState()).perspective);
+    branch.release = async () => {};
+    return branch;
+  };
+}
+
 function Harness() {
   const [visibleState, setVisibleState] = useState(null);
   const statusEventsRef = useRef([]);
@@ -592,6 +619,7 @@ function Harness() {
   const autoPassEnabledRef = useRef(false);
   const autoPassAttemptRef = useRef("");
   const applyDelayMsRef = useRef(0);
+  const rejectNextVerifiedDispatchRef = useRef(false);
   const game = useMemo(() => createFakeGame(), []);
 
   const setState = useCallback((nextState) => {
@@ -614,9 +642,10 @@ function Harness() {
   }, []);
 
   const applySyncedCommand = useCallback(async (command, label = "", syncContext = null) => {
+    const runtime = syncContext?.runtimeGame || game;
     const nextState = command?.type === "cancel_decision"
-      ? await game.cancelDecision()
-      : await game.dispatch(command);
+      ? await runtime.cancelDecision()
+      : await runtime.dispatch(command);
     syncEventsRef.current.push({
       type: "synced_command",
       command,
@@ -625,11 +654,15 @@ function Harness() {
       snapshotId: nextState?.snapshot_id ?? null,
       perspective: nextState?.perspective ?? null,
     });
-    setVisibleState(nextState);
-    if (applyDelayMsRef.current > 0) {
+    if (!game.supportsRuntimeBranches || syncContext?.publishState !== false) setVisibleState(nextState);
+    if (!syncContext?.provisional && applyDelayMsRef.current > 0) {
       await new Promise((resolve) => {
         window.setTimeout(resolve, applyDelayMsRef.current);
       });
+    }
+    if (!syncContext?.provisional && rejectNextVerifiedDispatchRef.current) {
+      rejectNextVerifiedDispatchRef.current = false;
+      throw new Error('Injected verification rejection');
     }
     return nextState;
   }, [game]);
@@ -694,6 +727,15 @@ function Harness() {
       setApplyDelay: (delayMs = 0) => {
         applyDelayMsRef.current = Math.max(0, Number(delayMs) || 0);
       },
+      enableOptimisticRuntime: () => enableFakeRuntimeBranches(game),
+      blockNextOptimisticCalculation: () => {
+        const preview = game.previewCryptoRequirements;
+        game.previewCryptoRequirements = async (...args) => {
+          game.previewCryptoRequirements = preview;
+          throw new Error('Calculation material is not available yet');
+        };
+      },
+      rejectNextVerifiedDispatch: () => { rejectNextVerifiedDispatchRef.current = true; },
       setOmitOwnerOpenedLandPosition: (enabled) => {
         game.setOmitOwnerOpenedLandPosition(enabled);
       },

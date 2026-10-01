@@ -11,7 +11,7 @@ test("Pay survives a replacement plan and viewed search cards select legal candi
     const page = await browser.newPage({viewport:{width:1400,height:900}});
     const errors = [];
     page.on("pageerror", e => errors.push(e.message));
-    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/payment-search-regressions.html`);
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/payment-search-regressions.html`, {waitUntil:"domcontentloaded"});
     await page.getByRole("button", {name: "Pay", exact:true}).click();
     await page.waitForFunction(() => JSON.parse(document.querySelector("[data-commands]").textContent).length === 1);
     assert.deepEqual(JSON.parse(await page.locator("[data-commands]").textContent()), [{type:"mana_payment",response:{action:"confirm",plan_id:"initial",request_hash:"request"}}]);
@@ -30,17 +30,18 @@ test("Pay survives a replacement plan and viewed search cards select legal candi
 });
 
 
-test("starting payment customization stops optional optimization before submitting edits", async () => {
+test("editing a payment source stops optional optimization and automatically submits preferences", async () => {
   const vite = await createServer({server:{host:"127.0.0.1",port:0},logLevel:"silent"});
   await vite.listen();
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({viewport:{width:1400,height:900}});
-    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/payment-search-regressions.html`);
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/payment-search-regressions.html`, {waitUntil:"domcontentloaded"});
     await page.waitForFunction(() => JSON.parse(document.querySelector('[data-background]').textContent).starts === 1);
-    await page.getByRole('button', { name: 'Change sources', exact: true }).click();
+    await page.getByRole('button', { name: 'Remove Island from payment', exact: true }).click();
     await page.waitForFunction(() => JSON.parse(document.querySelector('[data-background]').textContent).stops === 1);
-    assert.deepEqual(JSON.parse(await page.locator('[data-commands]').textContent()), []);
+    await page.waitForFunction(() => JSON.parse(document.querySelector('[data-commands]').textContent).length === 1);
+    assert.deepEqual(JSON.parse(await page.locator('[data-commands]').textContent())[0].response.excluded_source_ids, ['10']);
     assert.equal(JSON.parse(await page.locator('[data-background]').textContent()).starts, 1);
   } finally { await browser.close(); await vite.close(); }
 });

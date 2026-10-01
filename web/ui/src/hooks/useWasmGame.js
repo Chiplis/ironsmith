@@ -4,6 +4,7 @@ import { beginJournalEntry, completeJournalEntry, failJournalEntry, recordWorker
 import { useLayoutEffect, useState } from "react";
 import { isGameRead } from '../lib/game-methods.js';
 import { installEmbeddedCardCatalog } from '../lib/embedded-card-catalog.js';
+import { attachRuntimeBranches } from '../lib/runtime-branches.js';
 
 const WORKER_METHODS = [
   "addCardToHand",
@@ -21,6 +22,7 @@ const WORKER_METHODS = [
   "cardsMeetingThreshold",
   "createCustomCard",
   "createRuntimeSavepoint",
+  "copyRuntimeSavepoint",
   "restoreRuntimeSavepoint",
   "releaseRuntimeSavepoint",
   "replayTrustedMatch",
@@ -212,8 +214,8 @@ export function useWasmGame() {
     // advance. That makes this the one place where a replayable journal of the
     // session can be recorded without threading bookkeeping through each
     // caller. See lib/engine-journal.js.
-    const callWorker = (method, args = []) => {
-      const journalEntry = beginJournalEntry(method, args);
+    const callWorker = (method, args = [], runtimeBranch = null) => {
+      const journalEntry = beginJournalEntry(method, args, { runtimeBranch });
       return new Promise((resolve, reject) => {
         if (disposed) {
           const error = new Error("WASM worker is not available");
@@ -222,7 +224,7 @@ export function useWasmGame() {
           return;
         }
         const id = nextRequestId++;
-        const mutation = !isGameRead(method);
+        const mutation = runtimeBranch == null && !isGameRead(method);
         if (mutation) { viewVersion++; pendingMutations++; }
         const version = viewVersion;
         pending.set(id, {
@@ -230,9 +232,10 @@ export function useWasmGame() {
           reject: (error) => { failJournalEntry(journalEntry, error); reject(error); },
           version,
           mutation,
+          runtimeBranch,
         });
         beginEngineRequest(id, method);
-        try { worker.postMessage({ type: "call", id, method, args }); }
+        try { worker.postMessage({ type: "call", id, method, args, runtimeBranch }); }
         catch (error) {
           pending.delete(id); if (mutation) pendingMutations--; endEngineRequest(id);
           failJournalEntry(journalEntry, error); reject(error);
@@ -350,6 +353,12 @@ export function useWasmGame() {
       releaseCatalog(error);
     };
     gameProxy.supportsRuntimeSavepoints = false;
+    gameProxy.supportsRuntimeBranches = false;
+    attachRuntimeBranches(gameProxy, {
+      call: callWorker,
+      createProxy: call => createGameProxy(call, callZiffleWorker),
+      ready: () => gameProxy.supportsRuntimeBranches,
+    });
     gameProxy.isCurrentSnapshot = state => state != null && pendingMutations === 0
       && snapshotVersions.get(state) === viewVersion;
     gameProxy.adoptSnapshotVersion = (state, source) => {
@@ -425,7 +434,7 @@ export function useWasmGame() {
         pending.delete(msg.id);
         if (req.mutation) pendingMutations--;
         endEngineRequest(msg.id);
-        if (msg.ok && msg.result && typeof msg.result === 'object' && 'decision' in msg.result) {
+        if (req.runtimeBranch == null && msg.ok && msg.result && typeof msg.result === 'object' && 'decision' in msg.result) {
           snapshotVersions.set(msg.result, req.version);
         }
         if (msg.ok) req.resolve(msg.result);
@@ -437,6 +446,7 @@ export function useWasmGame() {
         embeddedCatalogAvailable = msg.embeddedCardCatalog === true;
         resolveEngineReady();
         gameProxy.supportsRuntimeSavepoints = msg.runtimeSavepoints === true;
+        gameProxy.supportsRuntimeBranches = msg.runtimeBranches === true;
         finishReady().catch((err) => {
           if (!disposed) {
             failCatalog(toError(err));

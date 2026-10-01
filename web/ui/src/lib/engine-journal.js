@@ -25,7 +25,10 @@
 
 import { isGameRead } from "./game-methods.js";
 
-export const JOURNAL_VERSION = 1;
+// Version 2 routes calls through retained runtime branches and records their
+// savepoint lifetimes, so replay does not apply speculative and canonical
+// dispatches twice to one game.
+export const JOURNAL_VERSION = 2;
 
 const MAX_ENTRIES = 5000;
 const MAX_TOTAL_ARG_BYTES = 16 * 1024 * 1024;
@@ -38,7 +41,7 @@ const now = () => (globalThis.performance?.now?.() ?? Date.now());
 // worker proxy uses to decide whether a call invalidates the snapshot version,
 // so the journal and the snapshot bookkeeping can never disagree about what a
 // mutation is.
-const isMutation = (method) => !isGameRead(method);
+const isMutation = (method) => ['createRuntimeSavepoint', 'releaseRuntimeSavepoint'].includes(method) || !isGameRead(method);
 
 // Methods whose arguments are pure transport plumbing for a peer session. They
 // are recorded by name only: replaying a match from its transcript is the
@@ -185,7 +188,7 @@ export function recordCardRoutes(routes) {
  * arrive after the journal has overflowed, in which case the caller's
  * completion helpers are no-ops.
  */
-export function beginJournalEntry(method, args) {
+export function beginJournalEntry(method, args, { runtimeBranch = null } = {}) {
   if (!isMutation(method)) return null;
   if (store.overflowed) return null;
   if (store.entries.length >= MAX_ENTRIES) {
@@ -204,6 +207,7 @@ export function beginJournalEntry(method, args) {
   const entry = {
     seq: store.sequence,
     method,
+    runtimeBranch,
     args: null,
     argsOmitted: false,
     argShape: null,
@@ -240,6 +244,7 @@ export function completeJournalEntry(entry, result) {
   entry.durationMs = now() - entry.atMs;
   entry.worker = workerPerf(result);
   entry.after = stateFingerprint(result);
+  if (entry.method === 'createRuntimeSavepoint') entry.runtimeSavepointHandle = Number(result);
 }
 
 export function failJournalEntry(entry, error) {

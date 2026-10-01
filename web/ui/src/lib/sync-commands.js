@@ -78,7 +78,17 @@ export function isDecisionCommandCompatible(decision, command) {
 
   switch (decision.kind) {
     case "priority":
-      return command.type === "priority_action" && Boolean(findPriorityActionForCommand(decision, command));
+      // A deferred menu is incomplete, not a list of every legal action.
+      // Structured refs are re-derived and checked against the live game by
+      // the engine's priority resolver. Index-only commands cannot use this
+      // path because their meaning depends on the completed menu.
+      return command.type === "priority_action" && (
+        Boolean(findPriorityActionForCommand(decision, command))
+        || (decision.analysis_complete === false && [
+          "play_land", "cast_spell", "activate_ability", "activate_mana_ability",
+          "turn_face_up", "special_action", "untap_land",
+        ].includes(command.action_ref?.kind))
+      );
     case "targets":
       return command.type === "select_targets";
     case "select_options":

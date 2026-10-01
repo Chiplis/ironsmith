@@ -1470,7 +1470,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
         ? await currentGame.uiState()
         : previousState;
       stateRef.current = restoredState;
-      setState(restoredState);
+      await setState(restoredState);
     }
   }, [
     applySyncedCommand,
@@ -1479,7 +1479,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
   ]);
 
   const authorizedCryptoMaterialRequirementsForRequest = useCallback(async (conn, message) => {
-    const session = multiplayerRef.current;
+    let session = multiplayerRef.current;
     assertMatchNotDisputed(session, "Cryptographic material request");
     if (!session.matchStarted) {
       throw new Error("Cryptographic material request received before match start");
@@ -1502,6 +1502,9 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     }
 
     const seq = Number(message?.seq);
+    await servicesRef.current.waitForProtocolActionHead?.(message, "Cryptographic material request");
+    session = multiplayerRef.current;
+    assertMatchNotDisputed(session, "Cryptographic material request");
     const expectedSeq = Number(session.lastAppliedSequence || 0) + 1;
     if (!Number.isSafeInteger(seq) || seq !== expectedSeq) {
       throw new Error("Cryptographic material request has an invalid action sequence");
@@ -1933,6 +1936,8 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
   }, []);
 
   const teardownPeer = useCallback(() => {
+    servicesRef.current.resetProtocolActionOrder?.("Lobby closed");
+    void servicesRef.current.resetOptimisticState?.("Lobby closed");
     clearAllConnectionHeartbeats();
     clearAllPeerResyncs();
     clearAllPendingActionIntents();
@@ -4095,6 +4100,10 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       if (!action || action.type !== "apply_action") {
         throw new Error("Action quorum request is missing an action");
       }
+      await servicesRef.current.waitForProtocolActionHead?.({
+        seq: action.seq,
+        matchId: action.audit?.matchId,
+      }, "Action quorum request");
       await timePeerSyncPhase(
         "action_quorum:dry_run_apply_action",
         quorumPerf,
@@ -4338,6 +4347,8 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     // Keep the first cause. Follow-on failures must not erase the original
     // evidence or replace the reason with a secondary clock/protocol error.
     if (isMatchDisputed(multiplayerRef.current)) return;
+    servicesRef.current.resetProtocolActionOrder?.("Match disputed");
+    void servicesRef.current.resetOptimisticState?.("Match disputed");
     const body = String(reason || "Match transcript fork detected");
     const dispute = evidence?.dispute || null;
     const acceptedClockRuntime = frozenAcceptedMatchClockRuntime();
@@ -4503,6 +4514,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       lastAppliedSequence: nextSequence,
       submittingAction: false,
     }));
+    servicesRef.current.notifyProtocolActionHead?.();
     captureResyncReplayCheckpointIfDue(nextSequence);
     if (isMatchDisputed(multiplayerRef.current)) {
       const acceptedClockRuntime = frozenAcceptedMatchClockRuntime();
@@ -4555,7 +4567,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       currentGame,
     );
     stateRef.current = nextState;
-    setState(nextState);
+    await setState(nextState);
     markActionStage(null, "state published", {
       publish_ms: Date.now() - publishStartedAt,
       sequence: Number(multiplayerRef.current?.lastAppliedSequence || 0),
@@ -4703,7 +4715,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       ? await currentGame.uiState()
       : cloneMultiplayerPayload(snapshot.state);
     stateRef.current = restoredState;
-    setState(restoredState);
+    await setState(restoredState);
     publishMatchClockSnapshot(runtimeMatchClockSnapshot());
     updateMultiplayer((prev) => ({
       ...prev,

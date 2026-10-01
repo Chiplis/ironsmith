@@ -10,116 +10,8 @@
 //! comes only from battlefield permanents.
 
 use crate::ability::AbilityKind;
-use crate::continuous::{EffectTarget, Modification};
-use crate::events::context::EventContext;
-use crate::events::traits::{GameEventType, ReplacementMatcher, ReplacementPriority};
-use crate::events::zones::matchers::{
-    ThisWouldEnterBattlefieldMatcher, WouldEnterBattlefieldMatcher,
-};
 use crate::game_state::GameState;
 use crate::replacement::ReplacementEffect;
-
-#[derive(Debug)]
-struct GrantedReplacementMatcher {
-    grant_target: Box<dyn ReplacementMatcher>,
-    granted_ability: Box<dyn ReplacementMatcher>,
-}
-
-impl Clone for GrantedReplacementMatcher {
-    fn clone(&self) -> Self {
-        Self {
-            grant_target: self.grant_target.clone_box(),
-            granted_ability: self.granted_ability.clone_box(),
-        }
-    }
-}
-
-impl ReplacementMatcher for GrantedReplacementMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
-        self.grant_target.matches_event(event, ctx)
-            && self.granted_ability.matches_event(event, ctx)
-    }
-
-    fn priority(&self) -> ReplacementPriority {
-        self.granted_ability.priority()
-    }
-
-    fn display(&self) -> String {
-        format!(
-            "{} and {}",
-            self.grant_target.display(),
-            self.granted_ability.display()
-        )
-    }
-}
-
-fn replacement_matcher_for_effect_target(
-    target: &EffectTarget,
-) -> Option<Box<dyn ReplacementMatcher>> {
-    match target {
-        EffectTarget::Filter(filter) => {
-            Some(Box::new(WouldEnterBattlefieldMatcher::new(filter.clone())))
-        }
-        EffectTarget::AllPermanents => Some(Box::new(WouldEnterBattlefieldMatcher::any())),
-        EffectTarget::AllCreatures => Some(Box::new(WouldEnterBattlefieldMatcher::creature())),
-        EffectTarget::Source => Some(Box::new(ThisWouldEnterBattlefieldMatcher)),
-        EffectTarget::Specific(object_id) => {
-            let filter = crate::target::ObjectFilter {
-                specific: Some(*object_id),
-                ..crate::target::ObjectFilter::permanent()
-            };
-            Some(Box::new(WouldEnterBattlefieldMatcher::new(filter)))
-        }
-        EffectTarget::AttachedTo(_) => None,
-    }
-}
-
-fn replacement_effects_from_granted_abilities(
-    game: &GameState,
-    source: crate::ids::ObjectId,
-    controller: crate::ids::PlayerId,
-    static_ability: &crate::static_abilities::StaticAbility,
-    origin: crate::continuous::AbilityOrigin,
-    printed_face: Option<crate::ids::CardId>,
-) -> Vec<ReplacementEffect> {
-    static_ability
-        .generate_effects(source, controller, game)
-        .into_iter().enumerate()
-        .filter(|(_, effect)| {
-            crate::continuous::continuous_effect_duration_and_condition_are_active(effect, game)
-        })
-        .filter_map(|(branch, effect)| {
-            // Both grant representations reach here: `AddAbility` carries a
-            // static ability directly, `AddAbilityGeneric` carries a full
-            // ability whose static kind is the one that can replace an event.
-            let granted_ability = match effect.modification {
-                Modification::AddAbility(granted_ability) => granted_ability,
-                Modification::AddAbilityGeneric(ability) => match ability.kind {
-                    crate::ability::AbilityKind::Static(granted_ability) => granted_ability,
-                    _ => return None,
-                },
-                _ => return None,
-            };
-            let mut replacement =
-                granted_ability.generate_replacement_effect(source, controller)?
-                    .with_ability_origin(origin.clone(), printed_face, branch + 1);
-            // Source-only conditional grants are already materialized in the
-            // calculated ability list scanned by our caller. Projecting their
-            // replacement here too would apply one ability twice. Non-source
-            // entry grants still need a prospective matcher for the entrant.
-            if matches!(effect.applies_to, EffectTarget::Source) {
-                return None;
-            }
-            let grant_target = replacement_matcher_for_effect_target(&effect.applies_to)?;
-            let granted_ability = replacement.matcher.take()?;
-            replacement.matcher = Some(Box::new(GrantedReplacementMatcher {
-                grant_target,
-                granted_ability,
-            }));
-            Some(replacement)
-        })
-        .collect()
-}
 
 /// Generate all replacement effects from static abilities in zones where they function.
 ///
@@ -211,8 +103,12 @@ pub fn generate_replacement_effects_from_abilities(game: &GameState)
                 if let Some(effect) = static_ability.generate_replacement_effect(object_id, controller) {
                     effects.push(effect.with_ability_origin(origin.clone(), face, 0));
                 }
-                effects.extend(replacement_effects_from_granted_abilities(
-                    game, object_id, controller, static_ability, origin, face));
+                // Ability-grant instructions are not replacement sources.
+                // Existing recipients are scanned through calculated abilities;
+                // an entrant's self-entry ability is read by the prospective
+                // entry driver. Projecting the grant itself duplicates those
+                // occurrences and incorrectly activates general replacements
+                // before any recipient is on the battlefield (CR 614.12).
             }
         }
     }
@@ -527,6 +423,46 @@ mod tests {
             }),
             "expected nonbattlefield shuffle replacement to be generated from hand"
         );
+    }
+
+    #[test]
+    fn continuous_grants_create_replacements_only_on_actual_ability_recipients() {
+        let mut observations = Vec::new();
+        for self_only in [false, true] {
+            for source_is_creature in [false, true] {
+                for existing_recipients in [0, 1] {
+                    let alice = PlayerId::from_index(0);
+                    let mut game = GameState::new(vec!["Alice".into()], 20);
+                    let grant = if self_only {
+                        StaticAbility::enters_with_counters(CounterType::PlusOnePlusOne, 1)
+                    } else {
+                        StaticAbility::enters_with_counters_for_filter(
+                            ObjectFilter::creature(), CounterType::PlusOnePlusOne, 1)
+                    };
+                    let source = CardDefinitionBuilder::new(CardId::new(), "Ability grant source")
+                        .card_types(vec![if source_is_creature { CardType::Creature } else { CardType::Enchantment }])
+                        .with_ability(crate::ability::Ability::static_ability(
+                            StaticAbility::grant_ability(ObjectFilter::creature(), grant)))
+                        .build();
+                    game.create_object_from_definition(&source, alice, Zone::Battlefield);
+                    let creature = CardDefinitionBuilder::new(CardId::new(), "Ability recipient")
+                        .card_types(vec![CardType::Creature]).build();
+                    for _ in 0..existing_recipients {
+                        game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+                    }
+                    let entrant = game.create_object_from_definition(&creature, alice, Zone::Hand);
+                    let entered = crate::tests::test_helpers::enter_fixture(
+                        &mut game, entrant, "granted ability recipient should enter");
+                    let actual = game.counter_count(entered.new_id, CounterType::PlusOnePlusOne);
+                    let expected = if self_only { 1 } else {
+                        u32::from(source_is_creature) + existing_recipients
+                    };
+                    observations.push((self_only, source_is_creature, existing_recipients, actual, expected));
+                }
+            }
+        }
+        assert!(observations.iter().all(|(_, _, _, actual, expected)| actual == expected),
+            "self-entry abilities apply on the entrant; global replacements apply once per existing recipient: {observations:?}");
     }
 
     #[test]

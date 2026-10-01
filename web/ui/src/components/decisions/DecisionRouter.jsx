@@ -122,10 +122,10 @@ export default function DecisionRouter({
         />
       );
     case "mana_payment":
-      // Preserve a queued Pay click when optimization replaces this request's plan.
+      // Source edits change the request hash; keep the payment editor mounted.
       return (
         <ManaPaymentDecision
-          key={decisionKey({ ...decision, plan_id: "" })}
+          key={decisionKey({ ...decision, plan_id: "", request_hash: "" })}
           decision={decision}
           canAct={canAct}
           inlineSubmit={inlineSubmit}

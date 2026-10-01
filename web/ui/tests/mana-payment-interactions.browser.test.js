@@ -11,7 +11,7 @@ test("mana sources stay active during payment, replace inspection, and yield to 
     const page = await browser.newPage({viewport:{width:1100,height:800}});
     const errors = [];
     page.on("pageerror",error=>errors.push(error.message));
-    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/mana-payment-interactions.html`);
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/mana-payment-interactions.html`, {waitUntil:"domcontentloaded"});
     const mountain = page.locator('.battlefield-row-card[data-object-id="1"]');
     await mountain.waitFor();
     await mountain.hover();
@@ -26,22 +26,25 @@ test("mana sources stay active during payment, replace inspection, and yield to 
     await popover.waitFor({state:"hidden"});
     await page.getByRole("button", {name:"Toggle busy"}).hover();
     await mountain.hover();
+    await page.waitForFunction(() => document.querySelector("[data-hover]").textContent === "1");
     assert.equal(await page.locator("[data-hover]").textContent(),"1");
     const prism = page.locator('.battlefield-row-card[data-object-id="2"]');
     await prism.hover();
     await popover.waitFor();
-    assert.equal(await popover.getByRole("button").count(),2);
-    await popover.getByRole("button").nth(1).hover();
+    assert.equal(await popover.locator("[data-action-row]").count(),2);
+    await popover.locator("[data-action-row]").nth(1).hover();
     await page.waitForTimeout(300);
     const rect = await popover.boundingBox();
     await page.screenshot({path:"/tmp/mana-payment-popover.png",clip:{x:rect.x-12,y:rect.y-12,width:rect.width+24,height:rect.height+40}});
-    await popover.getByRole("button").nth(1).click();
+    await popover.locator("[data-action-row]").nth(1).click();
     await page.waitForFunction(() => document.querySelector("[data-decision]").textContent === "select_objects");
     await popover.waitFor({state:"hidden"});
+    // Nested choices restore the pinned inspector; unpin it before testing the board.
+    await page.getByRole("button", {name:"Unpin inspector"}).click();
     await prism.hover();
     assert.equal(await page.locator("[data-hover]").textContent(),"2");
     await page.getByRole("button",{name:"Resume payment"}).click();
-    await prism.click();
+    await prism.hover();
     await popover.waitFor();
     assert.equal(await page.locator("[data-inspected]").textContent(),"none");
     await page.keyboard.press("Escape");

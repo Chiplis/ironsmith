@@ -63,6 +63,7 @@ import {
   playerMatchesPresentedAuditIdentity,
   publicDeckManifest,
   randomAuditHex,
+  recordPeerSyncPerf,
   reindexPlayers,
   rematchPlayersReady,
   rememberDefaultLobbyDeck,
@@ -410,6 +411,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           throw new Error("Timed out waiting for local action to settle before resync");
         }
       }
+      await servicesRef.current.resetOptimisticState?.("State recovery");
+      servicesRef.current.resetProtocolActionOrder?.("State recovery");
       const matchPayload = message?.match;
       assertRuntimeVersion(matchPayload);
       if (!matchPayload || typeof matchPayload !== "object") {
@@ -2946,6 +2949,20 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         markConnectionAlive(heartbeatKey);
         recordPeerMessage(conn.peer, "in", message?.type, transport?.bytes ?? approximateMessageBytes(message));
         if (handleConnectionHeartbeatMessage(conn, message)) return;
+          if (message?.type === "provisional_cancel" && message.protocolVersion === PROTOCOL_VERSION) {
+            void Promise.resolve(servicesRef.current.cancelProvisionalAction(conn, message)).catch(error =>
+              recordPeerSyncPerf("optimistic:peer_cancel_failed", { error: toErrorMessage(error) }));
+            return;
+          }
+          if (message?.type === "provisional_action" && message.protocolVersion === PROTOCOL_VERSION) {
+            void servicesRef.current.receiveProvisionalAction(conn, message).catch(error =>
+              recordPeerSyncPerf("optimistic:peer_calculation_blocked", { error: toErrorMessage(error) }));
+            return;
+          }
+          if (message?.type === "apply_action" && message.protocolVersion === PROTOCOL_VERSION) {
+            void servicesRef.current.receiveOptimisticCanonicalAction(message).catch(error =>
+              recordPeerSyncPerf("optimistic:peer_calculation_blocked", { error: toErrorMessage(error) }));
+          }
         if (message?.type === "apply_action" || message?.type === "trusted_command") {
           const queuedAtMs = Date.now();
           void enqueueAsync(peerMessageQueueRef, () => {
@@ -3862,6 +3879,20 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         markConnectionAlive(heartbeatKey);
         recordPeerMessage(conn.peer, "in", message?.type, transport?.bytes ?? approximateMessageBytes(message));
         if (handleConnectionHeartbeatMessage(conn, message)) return;
+          if (message?.type === "provisional_cancel" && message.protocolVersion === PROTOCOL_VERSION) {
+            void Promise.resolve(servicesRef.current.cancelProvisionalAction(conn, message)).catch(error =>
+              recordPeerSyncPerf("optimistic:peer_cancel_failed", { error: toErrorMessage(error) }));
+            return;
+          }
+          if (message?.type === "provisional_action" && message.protocolVersion === PROTOCOL_VERSION) {
+            void servicesRef.current.receiveProvisionalAction(conn, message).catch(error =>
+              recordPeerSyncPerf("optimistic:peer_calculation_blocked", { error: toErrorMessage(error) }));
+            return;
+          }
+          if (message?.type === "apply_action" && message.protocolVersion === PROTOCOL_VERSION) {
+            void servicesRef.current.receiveOptimisticCanonicalAction(message).catch(error =>
+              recordPeerSyncPerf("optimistic:peer_calculation_blocked", { error: toErrorMessage(error) }));
+          }
         const handleError = (err) => {
           if (shouldSuppressProtocolMessageError(err, message)) return;
           safeSend(conn, {
@@ -3879,7 +3910,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           ).catch(handleError);
           return;
         }
-        // Acks must not wait behind actions that are blocked on those same acks.
+        // Verification dependencies must not wait behind an action (including
+        // a relayed duplicate) whose verifier is waiting for those dependencies.
         if (
           message?.type === "resync_ack"
           || message?.type === "trusted_action_ack"
@@ -3900,6 +3932,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           || message?.type === "protocol_timeout_vote_response"
           || message?.type === "action_quorum_vote_request"
           || message?.type === "action_quorum_vote_response"
+          || message?.type === "crypto_material_request"
+          || message?.type === "crypto_material_response"
           || message?.type === "action_intent_progress"
           || message?.type === "action_intent_cancel"
           || message?.type === "protocol_wait_notice"
@@ -4816,6 +4850,20 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           markConnectionAlive(heartbeatKey);
           recordPeerMessage(conn.peer, "in", message?.type, transport?.bytes ?? approximateMessageBytes(message));
           if (handleConnectionHeartbeatMessage(conn, message)) return;
+          if (message?.type === "provisional_cancel" && message.protocolVersion === PROTOCOL_VERSION) {
+            void Promise.resolve(servicesRef.current.cancelProvisionalAction(conn, message)).catch(error =>
+              recordPeerSyncPerf("optimistic:peer_cancel_failed", { error: toErrorMessage(error) }));
+            return;
+          }
+          if (message?.type === "provisional_action" && message.protocolVersion === PROTOCOL_VERSION) {
+            void servicesRef.current.receiveProvisionalAction(conn, message).catch(error =>
+              recordPeerSyncPerf("optimistic:peer_calculation_blocked", { error: toErrorMessage(error) }));
+            return;
+          }
+          if (message?.type === "apply_action" && message.protocolVersion === PROTOCOL_VERSION) {
+            void servicesRef.current.receiveOptimisticCanonicalAction(message).catch(error =>
+              recordPeerSyncPerf("optimistic:peer_calculation_blocked", { error: toErrorMessage(error) }));
+          }
           if (message?.type === "apply_action" || message?.type === "trusted_command") {
             const queuedAtMs = Date.now();
             void enqueueAsync(hostMessageQueueRef, () => {
@@ -4849,6 +4897,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
             || message?.type === "protocol_timeout_vote_response"
             || message?.type === "action_quorum_vote_request"
             || message?.type === "action_quorum_vote_response"
+            || message?.type === "crypto_material_request"
+            || message?.type === "crypto_material_response"
             || message?.type === "action_intent_progress"
             || message?.type === "action_intent_cancel"
             || message?.type === "protocol_wait_notice"

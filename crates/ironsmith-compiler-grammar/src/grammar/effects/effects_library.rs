@@ -258,9 +258,21 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             ["number", "of", ..] => Some(2),
             _ => None,
         };
-        let count_words = crate::lexer::token_word_refs(count_tokens);
+        // Only the consumed count prefix ("for a number of ...") may supply
+        // the "number of" proof; the value after "equal to" ("the number of
+        // lands you control") must not.
+        let count_words =
+            crate::lexer::token_word_refs(&count_tokens[..count_used.min(count_tokens.len())]);
         let counted_by_prefix = count_words.windows(2).any(|window| window == ["number", "of"]);
-        if number_of_len.is_some() || counted_by_prefix {
+        // "with mana value less than or equal to <value>" and "power equal
+        // to <value>" are comparisons inside the selector, not a count.
+        let comparison_head = words.last().is_some_and(|word| {
+            matches!(
+                *word,
+                "or" | "than" | "value" | "power" | "toughness" | "mana" | "lesser" | "greater"
+            )
+        });
+        if !comparison_head && (number_of_len.is_some() || counted_by_prefix) {
             if let Some(len) = number_of_len {
                 head.drain(..len);
             }
