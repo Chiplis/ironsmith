@@ -55,6 +55,8 @@ struct BattlefieldGroupKey {
     lane: BattlefieldLane,
     name: String,
     tapped: bool,
+    summoning_sick: bool,
+    has_active_aura: bool,
     characteristic_signature: String,
     counter_signature: String,
     token: bool,
@@ -73,6 +75,8 @@ struct PermanentObjectViewCacheKey {
     phase: u8,
     step: Option<u8>,
     tapped: bool,
+    summoning_sick: bool,
+    has_active_aura: bool,
     flipped: bool,
     face_down: bool,
     manifested: bool,
@@ -97,6 +101,8 @@ struct PermanentObjectView {
     /// text remains the authoritative source when the list is unchanged.
     abilities: Vec<String>,
     power_toughness: Option<String>,
+    summoning_sick: bool,
+    has_active_aura: bool,
     power_toughness_without_counters: Option<String>,
     counters: Vec<CounterSnapshot>,
 }
@@ -483,6 +489,8 @@ impl IncrementalBattlefieldGroups {
                 lane: view.lane,
                 name: view.name.clone(),
                 tapped: view.tapped,
+                summoning_sick: view.summoning_sick,
+                has_active_aura: view.has_active_aura,
                 characteristic_signature: view.characteristic_signature.clone(),
                 counter_signature: view.counter_signature.clone(),
                 token: view.token,
@@ -792,6 +800,23 @@ impl SnapshotObjectViewCache {
         game: &GameState,
         obj: &ironsmith::object::Object,
     ) -> Arc<PermanentObjectView> {
+        let current = game.calculated_characteristics_arc(obj.id);
+        // The engine keeps the battlefield-entry flag for every permanent so
+        // it can be cleared consistently on turn changes.  The UI indicator,
+        // however, represents summoning sickness: only creatures can have it
+        // and be unable to attack.  A newly-entered Aura or land must not get
+        // the creature-only badge.
+        let is_creature = current
+            .as_ref()
+            .map(|chars| chars.card_types.contains(&CardType::Creature))
+            .unwrap_or_else(|| obj.card_types.contains(&CardType::Creature));
+        let summoning_sick = is_creature
+            && game.is_summoning_sick(obj.id)
+            && !game.current_has_static_ability_id(obj.id, StaticAbilityId::Haste)
+            && !game.current_has_static_ability_id(
+                obj.id,
+                StaticAbilityId::CanAttackAsThoughHaste,
+            );
         let tapped = game.is_tapped(obj.id);
         let counter_signature = counter_signature_for_group(obj);
         let key = PermanentObjectViewCacheKey {
@@ -810,6 +835,8 @@ impl SnapshotObjectViewCache {
             phase: game.turn.phase as u8,
             step: game.turn.step.map(|step| step as u8),
             tapped,
+            summoning_sick,
+            has_active_aura: has_active_aura(game, obj),
             flipped: game.is_flipped(obj.id),
             face_down: game.is_face_down(obj.id),
             manifested: game.is_manifested(obj.id),
@@ -817,7 +844,6 @@ impl SnapshotObjectViewCache {
             counter_signature,
         };
 
-        let current = game.calculated_characteristics_arc(obj.id);
         if let Some(view) = self.battlefield.borrow_mut().get(&key).cloned()
             && match (&view.characteristics, &current) {
                 (Some(before), Some(after)) => Arc::ptr_eq(before, after),
@@ -831,6 +857,7 @@ impl SnapshotObjectViewCache {
             .as_ref()
             .map(|chars| chars.card_types.as_slice())
             .unwrap_or(&obj.card_types);
+        let aura_active = has_active_aura(game, obj);
         let name = current
             .as_ref()
             .map(|chars| chars.name.to_owned_string())
@@ -874,6 +901,8 @@ impl SnapshotObjectViewCache {
             oracle_text,
             abilities,
             power_toughness,
+            summoning_sick,
+            has_active_aura: aura_active,
             power_toughness_without_counters,
             counters: counter_snapshots_for_object(obj),
         });
@@ -1384,6 +1413,21 @@ fn attached_to_signature(
     }
 }
 
+fn has_active_aura(game: &GameState, obj: &ironsmith::object::Object) -> bool {
+    obj.attachments.iter().copied().any(|attachment_id| {
+        let Some(attachment) = game.object(attachment_id) else {
+            return false;
+        };
+        attachment.zone == Zone::Battlefield
+            && !game.is_phased_out(attachment_id)
+            && matches!(
+                attachment.attached_to,
+                Some(AttachmentTarget::Object(target_id)) if target_id == obj.id
+            )
+            && game.current_has_subtype(attachment_id, Subtype::Aura)
+    })
+}
+
 fn attachment_signature(
     game: &GameState,
     obj: &ironsmith::object::Object,
@@ -1820,6 +1864,8 @@ fn grouped_battlefield_for_ids(
             lane: view.lane,
             name: view.name.clone(),
             tapped: view.tapped,
+            summoning_sick: view.summoning_sick,
+            has_active_aura: view.has_active_aura,
             characteristic_signature: view.characteristic_signature.clone(),
             counter_signature: view.counter_signature.clone(),
             token: view.token,
@@ -1860,6 +1906,8 @@ fn grouped_battlefield_for_ids(
                 .map(|view| view.name.clone())
                 .unwrap_or_else(|| key.name.clone());
             let power_toughness = representative.and_then(|view| view.power_toughness.clone());
+            let summoning_sick = representative.is_some_and(|view| view.summoning_sick);
+            let has_active_aura = representative.is_some_and(|view| view.has_active_aura);
             let power_toughness_without_counters = representative
                 .and_then(|view| view.power_toughness_without_counters.clone());
             let mana_cost = representative.and_then(|view| view.mana_cost.clone());
@@ -1887,6 +1935,8 @@ fn grouped_battlefield_for_ids(
                 oracle_text: compiled_card_text,
                 abilities,
                 power_toughness,
+                summoning_sick,
+                has_active_aura,
                 power_toughness_without_counters,
                 counter_signature: key.counter_signature.clone(),
                 counters,
@@ -2129,6 +2179,8 @@ pub(super) struct PermanentSnapshot {
     pub(super) oracle_text: String,
     pub(super) abilities: Vec<String>,
     pub(super) power_toughness: Option<String>,
+    pub(super) summoning_sick: bool,
+    pub(super) has_active_aura: bool,
     pub(super) power_toughness_without_counters: Option<String>,
     pub(super) counter_signature: String,
     pub(super) counters: Vec<CounterSnapshot>,
@@ -4906,6 +4958,73 @@ mod tests {
                 .iter()
                 .any(|group| group.count == 3 && group.power_toughness.as_deref() == Some("1/1")),
             "matching cursed bears should group together: {bear_groups:?}"
+        );
+    }
+
+    #[test]
+    fn battlefield_snapshot_marks_summoning_sickness_and_active_aura() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bear = game.create_object_from_card(&test_bears_card(), alice, Zone::Battlefield);
+        game.set_summoning_sick(bear);
+
+        let role = game.create_object_from_definition(
+            &cursed_role_token_definition(),
+            alice,
+            Zone::Battlefield,
+        );
+        assert!(game.attach_object_to_target(role, AttachmentTarget::Object(bear)));
+
+        let (battlefield, _) = grouped_battlefield_for_player(&game, alice, &HashSet::new());
+        let bear_snapshot = battlefield
+            .iter()
+            .find(|permanent| permanent.member_ids.contains(&bear.0))
+            .expect("expected Bears in battlefield snapshot");
+
+        assert!(bear_snapshot.summoning_sick);
+        assert!(bear_snapshot.has_active_aura);
+    }
+
+    #[test]
+    fn battlefield_snapshot_keeps_pt_counters_separate_from_other_modifiers() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bear = game.create_object_from_card(&test_bears_card(), alice, Zone::Battlefield);
+        game.object_mut(bear)
+            .expect("bear should exist")
+            .add_counters(CounterType::PlusOnePlusOne, 1);
+
+        // Model an attached aura's continuous +2/+0 effect. The snapshot
+        // should retain this modifier while excluding the separate +1/+1
+        // counter from the P/T badge.
+        game.effect_store
+            .continuous_effects
+            .add_effect(ContinuousEffect::new(
+                bear,
+                alice,
+                EffectTarget::Specific(bear),
+                Modification::ModifyPowerToughness {
+                    power: 2,
+                    toughness: 0,
+                },
+            ));
+
+        let (battlefield, _) = grouped_battlefield_for_player(&game, alice, &HashSet::new());
+        let bear_snapshot = battlefield
+            .iter()
+            .find(|permanent| permanent.member_ids.contains(&bear.0))
+            .expect("expected Bears in battlefield snapshot");
+
+        assert_eq!(bear_snapshot.power_toughness.as_deref(), Some("4/2"));
+        assert_eq!(
+            bear_snapshot
+                .counters
+                .iter()
+                .find(|counter| counter.kind == "+1/+1")
+                .map(|counter| counter.amount),
+            Some(1)
         );
     }
 

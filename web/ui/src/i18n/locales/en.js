@@ -756,6 +756,8 @@ export const ui = {
   "Hand": "Hand",
   "Hand (": "Hand (",
   "Haste": "Haste",
+  "Summoning sickness": "Summoning sickness",
+  "Power/Toughness modified by an active aura": "Power/Toughness modified by an active aura",
   "Health {0}": "Health {0}",
   "Hexproof": "Hexproof",
   "Hidden": "Hidden",
