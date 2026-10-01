@@ -1,4 +1,3 @@
-import { counterSymbolUrl } from "@/lib/mana-assets";
 import { cardArtColors } from "@/lib/card-art-colors";
 import LoadingCardArt from "./LoadingCardArt";
 import MobileArenaCardFace from "./MobileArenaCardFace";
@@ -13,13 +12,23 @@ import { animate, cancelMotion, createTimeline, uiSpring } from "@/lib/motion/an
 import { debounceClick, debouncePointerDown } from "@/lib/interactionDebounce";
 import { cn } from "@/lib/utils";
 import { getPlayerAccent } from "@/lib/player-colors";
-import { fetchScryfallCardMeta, isCompiledCardName } from "@/lib/scryfall";
+import {
+  customCardCounterOverrides,
+  fetchScryfallCardMeta,
+  isCompiledCardName,
+} from "@/lib/scryfall";
 import { useScryfallImage } from "@/hooks/useScryfallImageUrl";
 import { useTranslatedCardName } from "@/i18n/useTranslatedCardName";
 import usePreparedCardFrame from "@/hooks/usePreparedCardFrame";
 import { cardArtCropUrl } from "@/lib/card-image-variants";
 import MiniatureCardFrame from "./MiniatureCardFrame";
 import { cardNeedsFrame } from '@/lib/card-frame-scope';
+import {
+  aggregateCounterEntries,
+  BattlefieldCounterBadge,
+  buildCounterBadge,
+  resolveCardCounters,
+} from "./counter-badges";
 
 const semanticScoreCache = new Map();
 
@@ -108,218 +117,6 @@ function glowPhaseFromSeed(seed) {
     hash = ((hash * 31) + text.charCodeAt(i)) | 0;
   }
   return Math.abs(hash);
-}
-
-function abbreviateCounterKind(rawKind) {
-  const directMap = {
-    "Plus One Plus One": "+1",
-    "Minus One Minus One": "-1",
-    Lore: "LR",
-    Loyalty: "LY",
-    Charge: "CH",
-    Shield: "SH",
-    Stun: "ST",
-    Vigilance: "VG",
-    Flying: "FL",
-    Trample: "TR",
-    Reach: "RE",
-    Deathtouch: "DT",
-    Menace: "MN",
-    Hexproof: "HX",
-    Indestructible: "IN",
-    FirstStrike: "FS",
-    "First Strike": "FS",
-    DoubleStrike: "DS",
-    "Double Strike": "DS",
-    Finality: "FN",
-    Brain: "BR",
-    Aim: "AM",
-    Arrow: "AR",
-    Blaze: "BZ",
-  };
-  if (directMap[rawKind]) return directMap[rawKind];
-
-  const words = String(rawKind || "")
-    .split(/[\s/-]+/)
-    .map((word) => word.trim())
-    .filter(Boolean);
-  if (words.length >= 2) {
-    return `${words[0][0] || ""}${words[1][0] || ""}`.toUpperCase().slice(0, 2);
-  }
-  return String(rawKind || "").slice(0, 2).toUpperCase();
-}
-
-function counterPalette(rawKind) {
-  switch (rawKind) {
-    case "Plus One Plus One":
-      return { accent: "#70d8a1", fill: "rgba(77, 168, 111, 0.28)", stroke: "#aef0ca" };
-    case "Minus One Minus One":
-      return { accent: "#df6d83", fill: "rgba(160, 64, 82, 0.28)", stroke: "#ffb0c1" };
-    case "Lore":
-      return { accent: "#e1bd73", fill: "rgba(171, 124, 43, 0.3)", stroke: "#f8dba2" };
-    case "Loyalty":
-      return { accent: "#f1b561", fill: "rgba(181, 104, 34, 0.3)", stroke: "#ffd7a2" };
-    case "Charge":
-      return { accent: "#6bc2ff", fill: "rgba(49, 103, 164, 0.28)", stroke: "#bbebff" };
-    case "Shield":
-      return { accent: "#84d6cf", fill: "rgba(55, 123, 118, 0.3)", stroke: "#c5f7ef" };
-    case "Stun":
-      return { accent: "#f2a464", fill: "rgba(170, 88, 29, 0.3)", stroke: "#ffd2a1" };
-    case "Vigilance":
-      return { accent: "#b7df9f", fill: "rgba(87, 120, 55, 0.28)", stroke: "#ebffd6" };
-    case "Finality":
-      return { accent: "#b48fff", fill: "rgba(95, 67, 150, 0.28)", stroke: "#ddd0ff" };
-    default:
-      return { accent: "#a7c3e7", fill: "rgba(59, 86, 122, 0.28)", stroke: "#dcecff" };
-  }
-}
-
-function normalizeCounterEntry(rawCounter, fallbackKind = "") {
-  const kind = String(
-    rawCounter?.kind
-    ?? rawCounter?.name
-    ?? rawCounter?.counter_type
-    ?? fallbackKind
-    ?? ""
-  ).trim();
-  const amount = Number(
-    rawCounter?.amount
-    ?? rawCounter?.count
-    ?? rawCounter?.value
-  );
-  if (!kind || !Number.isFinite(amount) || amount <= 0) return null;
-  return { kind, amount };
-}
-
-function parseCounterSignature(counterSignature) {
-  const signature = String(counterSignature || "").trim();
-  if (!signature || signature === "-") return [];
-
-  return signature
-    .split("|")
-    .map((entry) => {
-      const divider = entry.lastIndexOf(":");
-      if (divider <= 0) return null;
-      const kind = entry.slice(0, divider).trim();
-      const amount = Number(entry.slice(divider + 1).trim());
-      return normalizeCounterEntry({ amount }, kind);
-    })
-    .filter(Boolean);
-}
-
-function resolveBattlefieldCounters(rawCounters, counterSignature) {
-  if (Array.isArray(rawCounters)) {
-    const normalized = rawCounters
-      .map((counter) => normalizeCounterEntry(counter))
-      .filter(Boolean);
-    if (normalized.length > 0) return normalized;
-  }
-
-  if (rawCounters && typeof rawCounters === "object") {
-    const normalized = Object.entries(rawCounters)
-      .map(([kind, amount]) => normalizeCounterEntry({ amount }, kind))
-      .filter(Boolean);
-    if (normalized.length > 0) return normalized;
-  }
-
-  return parseCounterSignature(counterSignature);
-}
-
-function buildCounterBadge(counter) {
-  const amount = Number(counter?.amount);
-  const rawKind = String(counter?.kind || "").trim();
-  if (!rawKind || !Number.isFinite(amount) || amount <= 0) return null;
-
-  if (rawKind === "Plus One Plus One") {
-    return {
-      amount,
-      fullLabel: `${amount} +1/+1 counter${amount === 1 ? "" : "s"}`,
-      shortLabel: "+1",
-      palette: counterPalette(rawKind),
-      icon: counterSymbolUrl(rawKind),
-    };
-  }
-  if (rawKind === "Minus One Minus One") {
-    return {
-      amount,
-      fullLabel: `${amount} -1/-1 counter${amount === 1 ? "" : "s"}`,
-      shortLabel: "-1",
-      palette: counterPalette(rawKind),
-      icon: counterSymbolUrl(rawKind),
-    };
-  }
-
-  return {
-    amount,
-    fullLabel: `${amount} ${rawKind.toLowerCase()} counter${amount === 1 ? "" : "s"}`,
-    shortLabel: abbreviateCounterKind(rawKind),
-    palette: counterPalette(rawKind),
-    icon: counterSymbolUrl(rawKind),
-  };
-}
-
-function BattlefieldCounterBadge({ badge }) {
-  const ui = useUiText();
-  const amountLabel = badge.amount > 99 ? "99+" : String(badge.amount);
-  const labelFontSize = badge.shortLabel.length >= 3 ? 9 : 10;
-  const amountFontSize = amountLabel.length >= 3 ? 10 : 12;
-
-  return (
-    <span className="battlefield-counter-chip" title={ui(badge.fullLabel)}>
-      <svg viewBox="0 0 84 28" role="img" aria-label={ui(badge.fullLabel)} preserveAspectRatio="none">
-        <path
-          d="M10 1H69L83 14L69 27H10L1 14Z"
-          fill="rgba(6, 11, 18, 0.96)"
-        />
-        <path
-          d="M11 3H64L73.5 14L64 25H11L4 14Z"
-          fill={badge.palette.fill}
-        />
-        <path
-          d="M10 1H69L83 14L69 27H10L1 14Z"
-          fill="none"
-          stroke={badge.palette.stroke}
-          strokeWidth="1.4"
-        />
-        <path
-          d="M10 1H26L29 14L26 27H10L1 14Z"
-          fill={badge.palette.accent}
-        />
-        <path
-          d="M31 5H66"
-          stroke={badge.palette.stroke}
-          strokeWidth="0.9"
-          strokeLinecap="round"
-          opacity="0.45"
-        />
-        <text
-          x="16"
-          y="18"
-          textAnchor="middle"
-          fill="#061019"
-          fontSize={amountFontSize}
-          fontWeight="800"
-          fontFamily="Rajdhani, Avenir Next, Segoe UI, system-ui, sans-serif"
-        >
-          {ui(amountLabel)}
-        </text>
-        {badge.icon ? <image href={badge.icon} x="39" y="3" width="22" height="22" style={{ filter: "brightness(0) invert(1)" }} /> : (
-        <text
-          x="50"
-          y="18"
-          textAnchor="middle"
-          fill="#ebf5ff"
-          fontSize={labelFontSize}
-          fontWeight="800"
-          letterSpacing="1.1"
-          fontFamily="Rajdhani, Avenir Next, Segoe UI, system-ui, sans-serif"
-        >
-          {ui(badge.shortLabel)}
-        </text>
-        )}
-      </svg>
-    </span>
-  );
 }
 
 const BATTLEFIELD_SYMBOL_DEFS = [
@@ -978,12 +775,25 @@ export default function GameCard({
   const stackCleanupTimersRef = useRef([]);
   const previousInspectedRef = useRef(isInspected);
   const previousGroupSizeRef = useRef(groupSize);
+  const counterOverride = variant === "battlefield" ? customCardCounterOverrides(name) : null;
   const counterBadges = variant === "battlefield"
-    ? resolveBattlefieldCounters(card?.counters, card?.counter_signature)
+    ? aggregateCounterEntries(
+      counterOverride
+        || resolveCardCounters(card?.counters, card?.counter_signature ?? card?.counterSignature)
+    )
       .map(buildCounterBadge)
       .filter(Boolean)
     : [];
-  const totalBattlefieldCounters = counterBadges.reduce((sum, badge) => sum + badge.amount, 0);
+  const powerToughnessCounterBadges = counterBadges.filter(
+    (badge) => badge.variant === "power-toughness"
+  );
+  const standardCounterBadges = counterBadges.filter(
+    (badge) => badge.variant !== "power-toughness"
+  );
+  const totalBattlefieldCounters = counterBadges.reduce(
+    (sum, badge) => sum + (badge.sourceCount ?? badge.amount),
+    0
+  );
   const activeFetchedBattlefieldMeta = fetchedBattlefieldMeta?.name === name
     ? fetchedBattlefieldMeta
     : null;
@@ -1872,17 +1682,6 @@ export default function GameCard({
           </div>
         ) : null}
 
-        {variant === "battlefield" && !useTokenBattlefield && counterBadges.length > 0 && (
-          <div className="battlefield-counter-rail">
-            {counterBadges.map((badge, index) => (
-              <BattlefieldCounterBadge
-                key={`${badge.fullLabel}-${index}`}
-                badge={badge}
-              />
-            ))}
-          </div>
-        )}
-
         {variant === "battlefield" && centerOverlay && (
           <div className="pointer-events-none absolute inset-0 z-[4] flex items-center justify-center">
             <div className="pointer-events-auto">
@@ -1906,6 +1705,29 @@ export default function GameCard({
         )}
 
       </div>
+      {variant === "battlefield" && !useTokenBattlefield && powerToughnessCounterBadges.length > 0 && (
+        <div
+          className="battlefield-counter-rail battlefield-counter-rail--power-toughness"
+          aria-label="Power and toughness counters"
+        >
+          {powerToughnessCounterBadges.map((badge, index) => (
+            <BattlefieldCounterBadge
+              key={`${badge.fullLabel}-${index}`}
+              badge={badge}
+            />
+          ))}
+        </div>
+      )}
+      {variant === "battlefield" && !useTokenBattlefield && standardCounterBadges.length > 0 && (
+        <div className="battlefield-counter-rail">
+          {standardCounterBadges.map((badge, index) => (
+            <BattlefieldCounterBadge
+              key={`${badge.fullLabel}-${index}`}
+              badge={badge}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

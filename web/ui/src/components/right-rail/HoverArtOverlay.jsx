@@ -19,7 +19,7 @@ import { cardFrameTone } from '@/lib/card-frame-tone';
 import "@/styles/card-frame-colors.css";
 import { useScryfallImage } from "@/hooks/useScryfallImageUrl";
 import useScryfallFlavorText from "@/hooks/useScryfallFlavorText";
-import { isCompiledCardName } from "@/lib/scryfall";
+import { customCardCounterOverrides, isCompiledCardName } from "@/lib/scryfall";
 import useInspectorPaymentActions from "@/hooks/useInspectorPaymentActions";
 import { ManaCostIcons, SymbolText } from "@/lib/mana-symbols";
 import { getPlayerAccent } from "@/lib/player-colors";
@@ -30,6 +30,7 @@ import { animate, cancelMotion, uiSpring } from "@/lib/motion/anime";
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Copy } from "lucide-react";
 import { useI18n } from "@/i18n/I18nContext";
 import { loadTranslatedCardView } from "@/i18n/cardTranslations";
+import { counterDisplayLabel } from "@/lib/mana-assets";
 
 const LOADING_CARD_FRAME = {
   style: { "--source-frame-status": "placeholder" },
@@ -120,12 +121,26 @@ function measureInspectorTextWidth(ctx, text = "") {
   return ctx.measureText(normalized).width;
 }
 
-function normalizeInspectorCounters(rawCounters) {
-  if (!Array.isArray(rawCounters)) return [];
-  return rawCounters
+function normalizeInspectorCounters(rawCounters, counterSignature) {
+  let entries = rawCounters;
+  if (entries && !Array.isArray(entries) && typeof entries === "object") {
+    entries = Object.entries(entries).map(([kind, amount]) => ({ kind, amount }));
+  }
+  if (!Array.isArray(entries) || entries.length === 0) {
+    const signature = String(counterSignature || "").trim();
+    entries = signature && signature !== "-"
+      ? signature.split("|").map((entry) => {
+        const divider = entry.lastIndexOf(":");
+        return divider > 0
+          ? { kind: entry.slice(0, divider), amount: entry.slice(divider + 1) }
+          : null;
+      })
+      : [];
+  }
+  return entries
     .map((counter) => {
-      const kind = String(counter?.kind || "").trim();
-      const amount = Number(counter?.amount);
+      const kind = String(counter?.kind || counter?.name || "").trim();
+      const amount = Number(counter?.amount ?? counter?.count ?? counter?.value);
       if (!kind || !Number.isFinite(amount) || amount <= 0) return null;
       return { kind, amount };
     })
@@ -134,9 +149,17 @@ function normalizeInspectorCounters(rawCounters) {
 
 function formatInspectorCounterLine(counters) {
   if (!Array.isArray(counters) || counters.length === 0) return null;
-  return counters
-    .map((counter) => `${counter.amount} ${counter.kind}`)
-    .join(" · ");
+  const compactLabel = (label) => {
+    const match = String(label || "").match(/^([+-])(\d+)\/([+-])(\d+)$/);
+    return match && match[1] === match[3]
+      ? `${match[1]}${match[2]}/${match[4]}`
+      : label;
+  };
+  const entries = counters.map((counter) => {
+    const label = compactLabel(counterDisplayLabel(counter.kind) || counter.kind);
+    return `${counter.amount} ${label}`;
+  });
+  return entries.join("\n");
 }
 
 function formatInspectorZoneLabel(zone, t = null) {
@@ -831,9 +854,17 @@ export default function HoverArtOverlay({
     return null;
   }, [cardSnapshot?.power_toughness, details, isBattle, oracleText, previewCard]);
 
-  const normalizedCounters = useMemo(
-    () => normalizeInspectorCounters(details?.counters || cardSnapshot?.counters || previewCard?.counters),
-    [cardSnapshot?.counters, details?.counters, previewCard?.counters]
+  const normalizedCounters = normalizeInspectorCounters(
+    customCardCounterOverrides(objectName)
+    || details?.counters
+    || cardSnapshot?.counters
+    || previewCard?.counters,
+    details?.counter_signature
+      || details?.counterSignature
+      || cardSnapshot?.counter_signature
+      || cardSnapshot?.counterSignature
+      || previewCard?.counter_signature
+      || previewCard?.counterSignature
   );
 
   const typeLineDisplay = String(
@@ -2553,7 +2584,9 @@ export default function HoverArtOverlay({
             {!isMiniatureFrame && displayCountersLine && (
               <footer className="interactive-card-frame__footer">
                 <div className="interactive-card-frame__footer-meta">
-                  <span>{ui(displayCountersLine)}</span>
+                  {String(displayCountersLine).split("\n").filter(Boolean).map((line, index) => (
+                    <span key={`${line}-${index}`} style={{ display: "block" }}>{ui(line)}</span>
+                  ))}
                 </div>
               </footer>
             )}

@@ -4542,12 +4542,21 @@ struct CustomCardInput {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct CounterSeedInput {
+    kind: String,
+    amount: u32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct CreateCustomCardInput {
     draft: CustomCardInput,
     player_index: u8,
     zone_name: String,
     #[serde(default)]
     skip_triggers: bool,
+    #[serde(default)]
+    counter_seed: Option<CounterSeedInput>,
 }
 
 #[derive(Debug, Clone, Serialize)]

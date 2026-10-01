@@ -43,8 +43,8 @@ function placementTargetAtPoint(x, y) {
   const overlap = Number.parseFloat(styles.getPropertyValue("--bf-card-overlap")) || 0;
   const topSafeInset = Number.parseFloat(styles.getPropertyValue("--bf-top-safe-inset")) || 0;
   const slot = battlefieldGridSlotAtPoint({
-    x,
-    y,
+    x: x + grid.scrollLeft,
+    y: y + grid.scrollTop,
     left: gridRect.left,
     top: gridRect.top + Math.max(0, topSafeInset),
     width: gridRect.width,

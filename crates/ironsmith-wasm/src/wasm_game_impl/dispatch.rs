@@ -194,6 +194,23 @@ struct VerifiedHiddenLibraryOpeningInput {
     commitment: Option<String>,
 }
 
+// Compile Card's counter showcase uses the same engine counter types as real
+// gameplay, but needs a small adapter because its payload is UI-facing text.
+// This is deliberately kept at the WASM boundary; normal card rules still
+// decide when counters are created during a game.
+fn counter_type_from_preview_name(raw_name: &str) -> ironsmith::object::CounterType {
+    let normalized = raw_name.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "+1/+1" | "plus one plus one" => ironsmith::object::CounterType::PlusOnePlusOne,
+        "-1/-1" | "minus one minus one" => ironsmith::object::CounterType::MinusOneMinusOne,
+        "charge" => ironsmith::object::CounterType::Charge,
+        "time" => ironsmith::object::CounterType::Time,
+        "stun" => ironsmith::object::CounterType::Stun,
+        "lore" => ironsmith::object::CounterType::Lore,
+        _ => ironsmith::object::CounterType::Named(normalized.into()),
+    }
+}
+
 #[derive(Debug, Clone)]
 struct ValidatedHiddenPositionReveal {
     input: RevealHiddenPositionInput,
@@ -4160,6 +4177,7 @@ impl WasmGame {
             return Err(JsValue::from_str("custom card draft produced no faces"));
         };
 
+        let counter_seed = payload.counter_seed;
         let object_id = if payload.skip_triggers {
             let object_id = self.game.create_object_from_catalog_definition(
                 front,
@@ -4179,6 +4197,18 @@ impl WasmGame {
             }
             object_id
         };
+
+        // The counter lab is an explicit authoring aid.  Battlefield cards use
+        // their compiled "enters with" ability; cards placed directly into a
+        // non-battlefield zone need this seed so the UI can inspect the same
+        // counter snapshot path without changing gameplay rules.
+        if let Some(seed) = counter_seed {
+            if seed.amount > 0 && (zone != Zone::Battlefield || payload.skip_triggers) {
+                let counter_type = counter_type_from_preview_name(&seed.kind);
+                let _ = self.game.add_counters(object_id, counter_type, seed.amount);
+                self.recompute_ui_decision()?;
+            }
+        }
 
         Ok(object_id.0)
     }

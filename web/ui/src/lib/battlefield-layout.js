@@ -73,8 +73,24 @@ export function battlefieldGridSlotAtPoint({
   cardHeight,
   gap = 0,
   overlap = 0,
+  scrollLeft = 0,
+  scrollTop = 0,
 }) {
-  const numeric = [x, y, left, top, width, rows, columns, cardWidth, cardHeight, gap, overlap]
+  const numeric = [
+    x,
+    y,
+    left,
+    top,
+    width,
+    rows,
+    columns,
+    cardWidth,
+    cardHeight,
+    gap,
+    overlap,
+    scrollLeft,
+    scrollTop,
+  ]
     .map(Number);
   if (numeric.some((value) => !Number.isFinite(value))) return null;
   const rowCount = Math.max(1, Math.floor(Number(rows)));
@@ -85,8 +101,11 @@ export function battlefieldGridSlotAtPoint({
   const rowStride = rowHeight + Math.max(0, Number(gap));
   const gridWidth = (columnCount * trackWidth) + ((columnCount - 1) * Math.max(0, Number(gap)));
   const gridLeft = Number(left) + Math.max(0, (Number(width) - gridWidth) / 2);
-  const relativeX = Number(x) - gridLeft;
-  const relativeY = Number(y) - Number(top);
+  // x/y are viewport coordinates. Add the scroller offset so a drop over a
+  // row that has been vertically scrolled still resolves to the same logical
+  // cell that CSS grid is showing at that point.
+  const relativeX = Number(x) - gridLeft + Math.max(0, Number(scrollLeft));
+  const relativeY = Number(y) - Number(top) + Math.max(0, Number(scrollTop));
   if (relativeX < 0 || relativeY < 0) return null;
 
   const column = Math.floor((relativeX + (Math.max(0, Number(gap)) / 2)) / columnStride) + 1;
@@ -117,8 +136,13 @@ export function partitionBattlefieldCards(cards = []) {
 }
 
 /** Keep surviving objects in their cells; only arrivals consume vacant cells. */
-export function retainBattlefieldSlots(cards, previousLayout, { columns = 6, singleRow = false } = {}) {
+export function retainBattlefieldSlots(
+  cards,
+  previousLayout,
+  { columns = 6, singleRow = false, dense = false } = {}
+) {
   const maxCols = Math.max(1, Math.floor(columns));
+  const previous = dense ? null : previousLayout;
   const gridPositionById = new Map();
   const occupied = new Set();
   const centerColumns = Array.from({ length: maxCols }, (_, index) => index + 1)
@@ -129,8 +153,8 @@ export function retainBattlefieldSlots(cards, previousLayout, { columns = 6, sin
   const previousByIdentity = new Map();
   const identities = (card) => (card.member_stable_ids?.length
     ? card.member_stable_ids : [card.stable_id ?? card.id]).map(String);
-  for (const card of previousLayout?.orderedCards || []) {
-    const position = previousLayout.gridPositionById.get(String(card.id));
+  for (const card of previous?.orderedCards || []) {
+    const position = previous.gridPositionById.get(String(card.id));
     if (position) for (const id of identities(card)) previousByIdentity.set(id, position);
   }
   for (const card of cards) {
@@ -142,14 +166,19 @@ export function retainBattlefieldSlots(cards, previousLayout, { columns = 6, sin
   for (const card of cards) {
     if (gridPositionById.has(String(card.id))) continue;
     const groupId = groupFor(card);
-    let row = groupId === "back" ? 2 : 1;
+    // Dense boards are a continuous scrollable matrix. The regular paper
+    // layout keeps a spacer row between front/back lanes, but carrying that
+    // convention into a large battlefield creates a huge, unusable vertical
+    // rhythm (every other row is empty). Start dense layouts at row one and
+    // advance one row at a time instead.
+    let row = dense ? 1 : (groupId === "back" ? 2 : 1);
     let column = centerColumns.find((candidate) => !occupied.has(`${row}:${candidate}`));
     while (column == null) {
       if (singleRow) {
         column = maxCols + 1;
         while (occupied.has(`${row}:${column}`)) column += 1;
       } else {
-        row += 2;
+        row += dense ? 1 : 2;
         column = centerColumns.find((candidate) => !occupied.has(`${row}:${candidate}`));
       }
     }
@@ -161,8 +190,8 @@ export function retainBattlefieldSlots(cards, previousLayout, { columns = 6, sin
   return {
     orderedCards: cards,
     gridPositionById,
-    rowCount: Math.max(singleRow ? 1 : 2, previousLayout?.rowCount || 0, ...positions.map((p) => p.row)),
-    maxCols: Math.max(maxCols, previousLayout?.maxCols || 0, ...positions.map((p) => p.column)),
+    rowCount: Math.max(singleRow || dense ? 1 : 2, previous?.rowCount || 0, ...positions.map((p) => p.row)),
+    maxCols: Math.max(maxCols, previous?.maxCols || 0, ...positions.map((p) => p.column)),
     signature: positions.map((p) => key(p)).join("|"),
   };
 }

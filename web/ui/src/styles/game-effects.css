@@ -768,16 +768,16 @@
   100% { transform: scale(1); filter: none; }
 }
 
-.game-card.counter-pulse-add .battlefield-counter-badge,
-.game-card.counter-pulse-remove .battlefield-counter-badge {
+.game-card.counter-pulse-add .battlefield-counter-chip,
+.game-card.counter-pulse-remove .battlefield-counter-chip {
   animation: counter-pulse-pop 560ms cubic-bezier(0.34, 1.4, 0.64, 1) both;
 }
 
-.game-card.counter-pulse-add .battlefield-counter-badge {
+.game-card.counter-pulse-add .battlefield-counter-chip {
   box-shadow: 0 0 12px 3px rgba(126, 214, 146, 0.75) !important;
 }
 
-.game-card.counter-pulse-remove .battlefield-counter-badge {
+.game-card.counter-pulse-remove .battlefield-counter-chip {
   box-shadow: 0 0 12px 3px rgba(255, 122, 122, 0.75) !important;
 }
 

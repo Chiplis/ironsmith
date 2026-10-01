@@ -1,10 +1,17 @@
 import useUiText from "@/i18n/useUiText";
 import { cloneElement, isValidElement, useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw, Sparkles, SquareSplitHorizontal, Layers3 } from "lucide-react";
+import { Loader2, RefreshCw, Sparkles, SquareSplitHorizontal, Layers3 } from "lucide-react";
 
 import { useGame } from "@/context/GameContext";
 import { cn } from "@/lib/utils";
-import { customCardArtUrl, setCompiledCardNames, setCustomCardArtUrls } from "@/lib/scryfall";
+import {
+  customCardArtUrl,
+  resolveScryfallImageUrl,
+  setCustomCardCounterOverrides,
+  setCompiledCardNames,
+  setCustomCardArtUrls,
+} from "@/lib/scryfall";
+import { counterDisplayLabel } from "@/lib/mana-assets";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -65,6 +72,137 @@ function blankDraft() {
     layout: "single",
     hasFuse: false,
     faces: [blankFace()],
+  };
+}
+
+// Keep this list aligned with the engine's CounterType enum. The showcase
+// uses direct counter seeding, so it can inspect every supported badge without
+// changing card rules or requiring a bespoke oracle-text sentence per type.
+const COUNTER_LAB_COUNTER_KINDS = [
+  "Plus One Plus One", "Minus One Minus One", "+1/+0", "+0/+1", "+1/+2", "+2/+2",
+  "-0/-1", "-0/-2", "-2/-1", "-2/-2", "Deathtouch", "Decayed", "Double Strike",
+  "First Strike", "Flying", "Haste", "Hexproof", "Indestructible", "Lifelink", "Menace",
+  "Reach", "Trample", "Vigilance", "Loyalty", "Charge", "Age", "Aim", "Arrow",
+  "Awakening", "Blood", "Brain", "Bounty", "Brick", "Corpse", "Credit", "Crystal",
+  "Cube", "Currency", "Death", "Defense", "Depletion", "Despair", "Devotion", "Divinity",
+  "Doom", "Dream", "Echo", "Egg", "Energy", "Enlightened", "Eon", "Experience",
+  "Eyeball", "Fade", "Fate", "Feather", "Filibuster", "Finality", "Flame", "Flood",
+  "Foreshadow", "Fungus", "Fuse", "Gem", "Glyph", "Gold", "Growth", "Hatchling",
+  "Healing", "Hit", "Hoofprint", "Hour", "Hunger", "Ice", "Incarnation", "Infection",
+  "Intervention", "Isolation", "Javelin", "Ki", "Keyword", "Knowledge", "Level", "Lore",
+  "Luck", "Magnet", "Manifestation", "Mannequin", "Matrix", "Mine", "Mining", "Mire",
+  "Music", "Muster", "Net", "Night", "Oil", "Omen", "Ore", "Page", "Pain",
+  "Paralyzation", "Petal", "Petrification", "Phylactery", "Pin", "Plague", "Plot", "Polyp",
+  "Poison", "Pressure", "Prey", "Pupa", "Quest", "Rad", "Scream", "Shield", "Silver",
+  "Sleep", "Slime", "Slumber", "Soot", "Soul", "Spore", "Storage", "Strife", "Study",
+  "Stun", "Void", "Task", "Theft", "Tide", "Time", "Tower", "Training", "Trap",
+  "Treasure", "Unity", "Velocity", "Verse", "Vitality", "Volatile", "Voyage", "Wage",
+  "Winch", "Wind", "Wish",
+];
+
+function counterLabLabel(kind) {
+  return counterDisplayLabel(kind)
+    || String(kind).replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+}
+
+const COUNTER_LAB_PRESETS = COUNTER_LAB_COUNTER_KINDS.map((kind, index) => {
+  const label = counterLabLabel(kind);
+  const slug = label.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
+  return {
+    id: `counter-lab-${index}-${slug}`,
+    label,
+    counter: { kind, amount: 1 },
+    name: `Counter Lab ${label}`,
+    cardTypes: ["Artifact"],
+    oracleText: "",
+  };
+});
+
+// A presentation-only mixed stack exercises the UI aggregation path without
+// changing engine rules. The engine seeds the first source so the card is a
+// real compiled object; the UI override supplies the complete source list for
+// this visual lab card (4 × +1/+1, 1 × +1/+0, 1 × -1/-1 => net +4/+3).
+const COUNTER_LAB_MIXED_PRESET = {
+  id: "counter-lab-mixed-power-toughness",
+  label: "Mixed P/T (+4/+3)",
+  counter: { kind: "Plus One Plus One", amount: 4 },
+  overrideCounters: [
+    { kind: "Plus One Plus One", amount: 4 },
+    { kind: "+1/+0", amount: 1 },
+    { kind: "Minus One Minus One", amount: 1 },
+  ],
+  name: "Counter Lab Mixed P/T +4/+3",
+  cardTypes: ["Artifact"],
+  // Keep the engine-facing text empty: this card is a visual fixture and the
+  // descriptive breakdown lives in the UI-only override below.
+  oracleText: "",
+};
+
+const COUNTER_LAB_THREE_THREE_PRESET = {
+  id: "counter-lab-net-three-three",
+  label: "Net P/T (+3/3)",
+  counter: { kind: "Minus One Minus One", amount: 1 },
+  overrideCounters: [
+    { kind: "Minus One Minus One", amount: 1 },
+    { kind: "+2/+2", amount: 2 },
+  ],
+  name: "Counter Lab Net +3/+3",
+  cardTypes: ["Artifact"],
+  oracleText: "",
+};
+
+const COUNTER_LAB_POSITIVE_STACK_PRESET = {
+  id: "counter-lab-positive-stack",
+  label: "Positive P/T (+5/5)",
+  counter: { kind: "Plus One Plus One", amount: 1 },
+  overrideCounters: [
+    { kind: "Plus One Plus One", amount: 1 },
+    { kind: "+2/+2", amount: 2 },
+  ],
+  name: "Counter Lab Positive Stack +5/+5",
+  cardTypes: ["Artifact"],
+  oracleText: "",
+};
+
+// A real creature fixture makes it possible to verify the complete battlefield
+// treatment in one click: the card has printed P/T, enters with a fractional
+// +1/+1 counter, and therefore renders both attack/defense and the counter chip.
+// The counter is seeded directly by the counter-lab path so this remains a
+// deterministic visual test even when trigger execution is disabled.
+const COUNTER_LAB_CREATURE_PRESET = {
+  id: "counter-lab-creature-plus-one-plus-one",
+  label: "Creature 2/2 +1/+1 (3/3)",
+  counter: { kind: "Plus One Plus One", amount: 1 },
+  name: "Counter Lab Creature 2/2 +1/+1",
+  cardTypes: ["Creature"],
+  subtypes: ["Mutant"],
+  oracleText: "This creature enters with a +1/+1 counter on it.",
+  power: "2",
+  toughness: "2",
+};
+
+const COUNTER_LAB_SHOWCASE_PRESETS = [
+  COUNTER_LAB_CREATURE_PRESET,
+  ...COUNTER_LAB_PRESETS,
+  COUNTER_LAB_MIXED_PRESET,
+  COUNTER_LAB_THREE_THREE_PRESET,
+  COUNTER_LAB_POSITIVE_STACK_PRESET,
+];
+
+function counterLabDraft(preset) {
+  const face = blankFace(preset.name);
+  return {
+    layout: "single",
+    hasFuse: false,
+    faces: [{
+      ...face,
+      name: preset.name,
+      cardTypes: [...preset.cardTypes],
+      subtypes: [...(preset.subtypes || [])],
+      oracleText: preset.oracleText,
+      power: preset.power || "",
+      toughness: preset.toughness || "",
+    }],
   };
 }
 
@@ -393,6 +531,7 @@ export default function CreateCardForgeSheet({
   const [open, setOpen] = useState(false);
   const [seedLoading, setSeedLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [counterLabLoading, setCounterLabLoading] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const [seedDraft, setSeedDraft] = useState(null);
@@ -546,6 +685,99 @@ export default function CreateCardForgeSheet({
     });
   }, [draft, game, primaryName, refresh, runWasmInteraction, selectedPlayer, setStatus, skipTriggers, zone]);
 
+  const handleCounterLab = useCallback(async () => {
+    const result = await runWasmInteraction(async () => {
+      if (!game || typeof game.createCustomCard !== "function") {
+        setStatus("This WASM build does not expose custom card compilation", true);
+        return false;
+      }
+
+      setCounterLabLoading(true);
+      const created = [];
+      const failed = [];
+      try {
+        for (const preset of COUNTER_LAB_SHOWCASE_PRESETS) {
+          try {
+            await game.createCustomCard({
+              draft: normalizeDraftForApi(counterLabDraft(preset)),
+              playerIndex: selectedPlayer,
+              counterSeed: preset.counter,
+              // Reuse the placement selector so the showcase can exercise
+              // counters in every visible zone without authoring one rule
+              // sentence per counter kind.
+              zoneName: zone,
+              // This is an explicit visual lab: seed the same runtime counter
+              // snapshot directly and leave normal card rules untouched.
+              skipTriggers: true,
+            });
+            created.push(preset.label);
+          } catch (error) {
+            failed.push(`${preset.label}: ${String(error?.message || error)}`);
+          }
+        }
+
+        if (created.length === 0) {
+          setStatus("Counter showcase could not compile any card", true);
+          return false;
+        }
+
+        // Counter Lab cards intentionally have custom names, so the regular
+        // name-based art resolver cannot find a printing for them. Apply any
+        // already-known art immediately; resolving a fallback printing must
+        // never hold the WASM operation open or delay the visible cards.
+        const knownArtUrl = seedDraft?.faces?.[0]?.artUrl
+          || draft.faces?.[0]?.artUrl
+          || "";
+        setCustomCardCounterOverrides({
+          [COUNTER_LAB_MIXED_PRESET.name]: COUNTER_LAB_MIXED_PRESET.overrideCounters,
+          [COUNTER_LAB_THREE_THREE_PRESET.name]: COUNTER_LAB_THREE_THREE_PRESET.overrideCounters,
+          [COUNTER_LAB_POSITIVE_STACK_PRESET.name]: COUNTER_LAB_POSITIVE_STACK_PRESET.overrideCounters,
+        });
+        setCustomCardArtUrls(COUNTER_LAB_SHOWCASE_PRESETS.map((preset) => ({
+          name: preset.name,
+          artUrl: knownArtUrl,
+        })));
+        setCompiledCardNames(COUNTER_LAB_SHOWCASE_PRESETS.map((preset) => preset.name));
+
+        setOpen(false);
+        await refresh(
+          `Counter showcase: ${created.length} cards in ${zone}${
+            failed.length > 0 ? ` (${failed.length} skipped)` : ""
+          }`
+        );
+        if (failed.length > 0) {
+          console.warn("Counter showcase skipped presets:", failed);
+        }
+        // Resolve a real printing after the showcase is visible. This is
+        // deliberately fire-and-forget so a slow/offline art service cannot
+        // make the counter loader appear stuck.
+        void (async () => {
+          const sampledDraft = seedDraft?.faces?.[0]?.name
+            ? seedDraft
+            : (typeof game.sampleLoadedDeckSeed === "function"
+              ? await game.sampleLoadedDeckSeed(selectedPlayer).catch(() => null)
+              : null);
+          const artSourceName = sampledDraft?.faces?.[0]?.name || draft.faces?.[0]?.name;
+          if (!artSourceName) return;
+          const showcaseArtUrl = await resolveScryfallImageUrl(artSourceName, "normal").catch(() => "");
+          if (!showcaseArtUrl) return;
+          setCustomCardArtUrls(COUNTER_LAB_SHOWCASE_PRESETS.map((preset) => ({
+            name: preset.name,
+            artUrl: showcaseArtUrl,
+          })));
+          await refresh();
+        })().catch(() => {});
+        return true;
+      } finally {
+        setCounterLabLoading(false);
+      }
+    });
+    if (result === undefined) {
+      setStatus("Counter showcase is waiting for another game action to finish", true);
+    }
+    return result;
+  }, [draft.faces, game, refresh, runWasmInteraction, seedDraft, selectedPlayer, setStatus, zone]);
+
   const faceTabs = useMemo(() => (
     draft.faces.map((face, index) => ({
       value: `face-${index}`,
@@ -615,6 +847,19 @@ export default function CreateCardForgeSheet({
                 disabled={!seedDraft}
                 onClick={resetToSeed}
               >{ui("Reset Seed")}</Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="stone-pill"
+                disabled={disabled || submitting || counterLabLoading || seedLoading || previewLoading}
+                onClick={() => void handleCounterLab()}
+              >
+                {counterLabLoading ? (
+                  <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                ) : null}
+                {counterLabLoading ? ui("Loading counters...") : ui("Load counter showcase")}
+              </Button>
             </div>
           </div>
 

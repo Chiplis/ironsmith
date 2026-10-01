@@ -2064,6 +2064,12 @@ fn build_zone_card_snapshot_with_grants(
         } else {
             Vec::new()
         },
+        counter_signature: visible
+            .then(|| counter_signature_for_group(object))
+            .unwrap_or_else(|| "-".to_string()),
+        counters: visible
+            .then(|| counter_snapshots_for_object(object))
+            .unwrap_or_default(),
         show_in_pseudo_hand: visible && pseudo_hand_glow_kind.is_some(),
         pseudo_hand_glow_kind,
     }
@@ -2584,6 +2590,8 @@ pub(super) struct ZoneCardSnapshot {
     pub(super) loyalty: Option<u32>,
     pub(super) defense: Option<u32>,
     pub(super) card_types: Vec<String>,
+    pub(super) counter_signature: String,
+    pub(super) counters: Vec<CounterSnapshot>,
     pub(super) show_in_pseudo_hand: bool,
     pub(super) pseudo_hand_glow_kind: Option<String>,
 }

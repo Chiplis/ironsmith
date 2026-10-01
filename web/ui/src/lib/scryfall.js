@@ -16,6 +16,7 @@ const BASIC_LAND_KEYS = new Set(
 const PREFERRED_BASIC_LAND_SET = "fdn";
 
 const CUSTOM_CARD_ART_URLS_STORAGE_KEY = "ironsmith-custom-card-art-urls";
+const CUSTOM_CARD_COUNTER_OVERRIDES_STORAGE_KEY = "ironsmith-custom-card-counter-overrides";
 const CARD_PRINT_PREFERENCES_STORAGE_KEY = "ironsmith-card-print-preferences";
 const COMPILED_CARD_NAMES_STORAGE_KEY = "ironsmith-compiled-card-names";
 const HIDDEN_CARD_NAMES = new Set(["hidden card"]);
@@ -172,6 +173,15 @@ function clearCachedCardImageUrls(cardName) {
   }
 }
 
+function clearCachedCardJson(cardName) {
+  const keyPrefix = `${customArtKey(cardName)}|`;
+  for (const key of cardJsonCache.keys()) {
+    if (key.startsWith(keyPrefix)) {
+      cardJsonCache.delete(key);
+    }
+  }
+}
+
 // A card compiled in the forge may take an existing card's name, and then its
 // printing is only a template: the scan's printed text is not this card's text.
 // Surfaces that would otherwise show the printing as-is consult this to draw
@@ -200,6 +210,48 @@ export function customCardArtUrl(cardName) {
   if (!key) return "";
   const url = readCustomCardArtUrlMap()[key];
   return typeof url === "string" ? url.trim() : "";
+}
+
+// Counter Lab can preview a mixed numeric stack without changing the engine's
+// counter rules. These overrides are deliberately scoped to compiled showcase
+// names and only affect presentation surfaces.
+export function setCustomCardCounterOverrides(overrides) {
+  const localStorage = storage();
+  if (!localStorage) return;
+  const normalized = Object.fromEntries(
+    Object.entries(overrides || {})
+      .map(([name, counters]) => [
+        customArtKey(name),
+        Array.isArray(counters)
+          ? counters
+            .map((counter) => ({
+              kind: String(counter?.kind || "").trim(),
+              amount: Number(counter?.amount),
+            }))
+            .filter((counter) => counter.kind && Number.isFinite(counter.amount) && counter.amount > 0)
+          : [],
+      ])
+      .filter(([key, counters]) => key && counters.length > 0)
+  );
+  if (Object.keys(normalized).length === 0) {
+    localStorage.removeItem(CUSTOM_CARD_COUNTER_OVERRIDES_STORAGE_KEY);
+    return;
+  }
+  localStorage.setItem(CUSTOM_CARD_COUNTER_OVERRIDES_STORAGE_KEY, JSON.stringify(normalized));
+}
+
+export function customCardCounterOverrides(cardName) {
+  const key = customArtKey(cardName);
+  if (!key) return null;
+  const localStorage = storage();
+  if (!localStorage) return null;
+  try {
+    const parsed = JSON.parse(localStorage.getItem(CUSTOM_CARD_COUNTER_OVERRIDES_STORAGE_KEY) || "{}");
+    const counters = parsed?.[key];
+    return Array.isArray(counters) ? counters : null;
+  } catch {
+    return null;
+  }
 }
 
 export function preferredCardPrint(cardName) {
@@ -616,6 +668,7 @@ export function setCustomCardArtUrls(entries) {
     if (!key) continue;
 
     clearCachedCardImageUrls(entry.name);
+    clearCachedCardJson(entry.name);
     const artUrl = String(entry?.artUrl || "").trim();
     if (artUrl) {
       map[key] = artUrl;
@@ -659,6 +712,8 @@ export function scryfallImageUrl(cardName, version = "normal") {
   const query = String(cardName || "").trim();
   if (!query) return "";
   if (isHiddenCardName(query)) return HIDDEN_CARD_BACK_IMAGE_URL;
+  const customUrl = customCardArtUrl(query);
+  if (customUrl) return customUrl;
   const cached = resolvedCardImageUrlCache.get(cardImageCacheKey(query, version, preferredCardPrint(query)));
   if (cached) return cached;
   return "";
@@ -668,6 +723,8 @@ export async function resolveScryfallImageUrl(cardName, version = "normal") {
   const query = String(cardName || "").trim();
   if (!query) return "";
   if (isHiddenCardName(query)) return HIDDEN_CARD_BACK_IMAGE_URL;
+  const customUrl = customCardArtUrl(query);
+  if (customUrl) return customUrl;
 
   const preference = preferredCardPrint(query);
   const preferredKey = cardImageCacheKey(query, version, preference);
