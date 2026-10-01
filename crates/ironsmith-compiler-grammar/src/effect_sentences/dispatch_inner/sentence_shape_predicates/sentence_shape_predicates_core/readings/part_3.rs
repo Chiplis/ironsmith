@@ -106,22 +106,10 @@ pub(super) fn read_spell_cast_this_way_tax(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
     if let Some(shape) = effect_grammar::parse_spell_cast_this_way_tax_tokens(tokens) {
-        let mut spell_filter = ObjectFilter::spell().without_type(crate::types::CardType::Land);
-        spell_filter.zone = None;
-        if let Some(caster) = shape.taxed_caster {
-            spell_filter.cast_by = Some(caster);
-        }
-        return Ok(Some(vec![EffectAst::subject_verb_grant_to_target(
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
-            crate::model::CompilerGrantableCore::Ability(
-                crate::model::CompilerStaticAbilityCore::new(
-                    crate::model::CompilerCostIncreaseManaCost::new(
-                        spell_filter,
-                        shape.additional_cost,
-                    ),
-                ),
-            ),
-            crate::grant::GrantDuration::Forever,
+        return Ok(Some(vec![crate::effect_sentences::bundle_rules::cast_this_way_tax_grant(
+            crate::tag::CompilerReferenceTag::It.bind(),
+            shape.taxed_caster,
+            shape.additional_cost,
         )]));
     }
     Ok(None)

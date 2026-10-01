@@ -4129,6 +4129,45 @@ fn parse_trigger_duplication_source_filter(
         return Ok(filter);
     }
 
+    // "a triggered ability of Cloud or an Equipment attached to it": the
+    // source itself, or an object whose `it` names that same source.
+    // An unnormalized card-name mention ("of Cloud or ...") is not an object
+    // filter; in this position it can only name the source itself.
+    if let Some(or_index) = tokens.iter().position(|token| token.is_word("or"))
+        && or_index > 0
+        && match parse_object_filter_with_grammar_entrypoint(&tokens[..or_index], false) {
+            Ok(left) => {
+                left.source
+                    || (left == ObjectFilter::default()
+                        && tokens[..or_index].iter().all(|token| token.as_word().is_some()))
+            }
+            Err(_) => tokens[..or_index].iter().all(|token| token.as_word().is_some()),
+        }
+        && let Ok(mut right) =
+            parse_object_filter_with_grammar_entrypoint(&tokens[or_index + 1..], false)
+        && !right.source
+    {
+        let mut relates_to_source = false;
+        right.tagged_constraints.retain(|constraint| {
+            let it_attachment = constraint.tag.as_str()
+                == crate::tag::CompilerReferenceTag::It.as_str()
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::AttachedToTaggedObject;
+            relates_to_source |= it_attachment;
+            !it_attachment
+        });
+        if relates_to_source
+            && right.attached_to_object.is_none()
+            && right.tagged_constraints.iter().all(|constraint| {
+                constraint.tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str()
+            })
+        {
+            right.attached_to_object = Some(Box::new(ObjectFilter::source()));
+            let mut filter = ObjectFilter::default();
+            filter.any_of = vec![ObjectFilter::source(), right];
+            return Ok(filter);
+        }
+    }
+
     parse_object_filter_with_grammar_entrypoint(&tokens, false)
 }
 

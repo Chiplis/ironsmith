@@ -274,6 +274,16 @@ fn parse_explicit_target_object_damage_source(
     explicit_damage_source_effect(subject_tokens, action_tokens, explicitly_targeted, parsed)
 }
 
+fn target_ast_object_filter(target: &TargetAst) -> Option<&ObjectFilter> {
+    match target {
+        TargetAst::Object(filter, _, _) => Some(filter),
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+            target_ast_object_filter(inner)
+        }
+        _ => None,
+    }
+}
+
 fn explicit_damage_source_effect(
     subject_tokens: &[OwnedLexToken],
     action_tokens: &[OwnedLexToken],
@@ -336,6 +346,30 @@ fn explicit_damage_source_effect(
             )
         }
         _ => return Ok(None),
+    };
+    // "Target creature an opponent controls deals damage ... to that
+    // player": the only player the sentence names is the damage source's
+    // controller. Bind the recipient to the controller of the targeted
+    // source (lowering rebinds it to the source's declaration tag) rather
+    // than to a player target that was never declared.
+    let target = match target {
+        TargetAst::Player(filter, span)
+            if (filter == PlayerFilter::IteratedPlayer
+                || (span.is_none() && filter == PlayerFilter::target_player()))
+                && explicitly_targeted
+                && target_ast_object_filter(&source).is_some_and(|filter| {
+                    filter
+                        .controller
+                        .as_ref()
+                        .is_some_and(|controller| !matches!(controller, PlayerFilter::You))
+                }) =>
+        {
+            TargetAst::Player(
+                PlayerFilter::ControllerOf(crate::target::ObjectRef::Target),
+                None,
+            )
+        }
+        other => other,
     };
     // Within an explicit damage-source clause, "its" names the grammatical
     // subject, not an older object in reference memory. Preserve that

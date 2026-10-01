@@ -1240,6 +1240,31 @@ fn compile_effect_inner(
         look.viewer = viewer.clone();
         return Ok((vec![Effect::new(look)], Vec::new()));
     }
+    if let EffectAst::PlayerLooksAtTopCardsOfLibrary {
+        viewer,
+        library_owner,
+        count,
+        tag,
+    } = effect
+    {
+        let owner = LoweredSubject::resolve_library_owner(*library_owner, ctx, true, true, false)?;
+        let viewer = LoweredSubject::resolve_actor(*viewer, ctx, true, true, true)?;
+        let resolved_tag = if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
+            ctx.next_tag("revealed")
+        } else {
+            tag.clone().into()
+        };
+        ctx.last_object_tag = Some(resolved_tag.clone());
+        let mut look = crate::effects::LookAtTopCardsEffect::new(
+            owner.clone_player_filter(),
+            count.clone(),
+            resolved_tag,
+        );
+        look.viewer = viewer.clone_player_filter();
+        let mut choices = owner.into_choices();
+        choices.extend(viewer.into_choices());
+        return Ok((vec![Effect::new(look)], choices));
+    }
     if let EffectAst::NoteActivationManaType = effect {
         return Ok((vec![Effect::note_activation_mana_type()], Vec::new()));
     }
@@ -1408,6 +1433,20 @@ fn compile_effect_inner(
     if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { chooser, modes }) = effect
     {
         use crate::effect::EffectMode;
+        // "... unless that player discards two cards or sacrifices a
+        // creature": when every alternative is performed by the same named
+        // player, that player chooses which one to perform (CR 101.4-style
+        // choice by the acting player), not the ability's controller.
+        let chooser = if *chooser == PlayerFilter::You
+            && let Some(actor) = common_choose_one_mode_actor(modes)
+            && let Ok(filter) =
+                resolve_non_target_player_filter(actor, &current_reference_env(ctx))
+            && !matches!(filter, PlayerFilter::You)
+        {
+            filter
+        } else {
+            chooser.clone()
+        };
         let mut lowered_modes = Vec::with_capacity(modes.len());
         let mut choices = Vec::new();
         for mode in modes {
@@ -1426,8 +1465,8 @@ fn compile_effect_inner(
         // chooser so their modes are announced before targets. Keeping the
         // chooser explicit here prevents inline "A or B" instructions from
         // being mistaken for casting-time modal choices.
-        let choose = crate::effects::ChooseModeEffect::choose_one(lowered_modes)
-            .with_chooser(chooser.clone());
+        let choose =
+            crate::effects::ChooseModeEffect::choose_one(lowered_modes).with_chooser(chooser);
         return Ok((vec![Effect::new(choose)], choices));
     }
     if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice {
@@ -1635,6 +1674,23 @@ fn compile_effect_inner(
         );
         let hoisted_result_tag = (ctx.auto_tag_object_targets && repeats_manifest_dread)
             .then(|| reserved_or_next_object_tag(ctx, "manifested"));
+        // "For each blue mana symbol in the mana costs of the revealed cards,
+        // ...": the count reads the antecedent current before the repeated
+        // body runs, not a tag the body later produces.
+        let count = {
+            use ironsmith_core::tag::TagKeyWalk;
+            let mut names_it = false;
+            let mut probe = count.clone();
+            probe.map_tag_keys(&mut |tag| {
+                names_it |= tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str();
+            });
+            if names_it && ctx.last_object_tag.is_some() {
+                resolve_value_it_tag(count, &current_reference_env(ctx))
+                    .unwrap_or_else(|_| count.clone())
+            } else {
+                count.clone()
+            }
+        };
         let saved_auto_tag_object_targets = ctx.auto_tag_object_targets;
         if hoisted_result_tag.is_some() {
             // The repeated action's results form one provenance set for a
@@ -2445,6 +2501,31 @@ fn compile_become_copy(
     // is declared once and tagged, so the copy and those references ("that
     // creature", Gogo) share one object. Annotation reserves this tag.
     let mut prelude = Vec::new();
+    // "Target artifact or creature becomes a copy of another target artifact
+    // or creature" (True Polymorph): both are announced targets, in printed
+    // order. Declare the object that becomes the copy first so the first
+    // chosen target is the one that changes, then the copy source.
+    let mut declared_copy_target = None;
+    if ctx.auto_tag_object_targets
+        && source_spec.is_target()
+        && choose_spec_targets_object(&source_spec)
+        && target_spec.is_target()
+        && choose_spec_targets_object(&target_spec)
+    {
+        let previous_tag = ctx.last_object_tag.take();
+        let declared = tag_object_target_effect(
+            Effect::new(crate::effects::TargetOnlyEffect::new(target_spec.clone())),
+            &target_spec,
+            ctx,
+            "copied",
+        );
+        if let Some(tag) = ctx.last_object_tag.clone() {
+            prelude.push(declared);
+            declared_copy_target = Some(tag);
+        } else {
+            ctx.last_object_tag = previous_tag;
+        }
+    }
     let source_spec = if ctx.auto_tag_object_targets
         && source_spec.is_target()
         && choose_spec_targets_object(&source_spec)
@@ -2461,8 +2542,12 @@ fn compile_become_copy(
     };
 
     let granted_modifications = lower_granted_ability_grant_modifications(granted_abilities)?;
+    let apply_target_spec = declared_copy_target
+        .as_ref()
+        .map(|tag| ChooseSpec::Tagged(tag.as_str().into()))
+        .unwrap_or_else(|| target_spec.clone());
     let mut apply = crate::effects::ApplyContinuousEffect::with_spec_runtime(
-        target_spec.clone(),
+        apply_target_spec,
         crate::effects::continuous::RuntimeModification::CopyOf {
             source: source_spec,
             preserve_source_abilities: *preserve_source_abilities,
@@ -2521,7 +2606,12 @@ fn compile_become_copy(
         apply = apply.with_additional_modification(modification);
     }
     let effect = Effect::new(apply);
-    let effect = tag_object_target_effect(effect, &target_spec, ctx, "copied");
+    let effect = if let Some(tag) = declared_copy_target {
+        ctx.last_object_tag = Some(tag);
+        effect
+    } else {
+        tag_object_target_effect(effect, &target_spec, ctx, "copied")
+    };
     prelude.push(effect);
     Ok((prelude, choices))
 }
@@ -3299,4 +3389,30 @@ mod nested_result_value_link_tests {
             Some(crate::tag::CompilerReferenceTag::ChosenObjects.as_str())
         );
     }
+}
+
+/// The one player every alternative of an inline "A or B" choice names as
+/// its performer, if all alternatives lead with the same explicit player.
+fn common_choose_one_mode_actor(
+    modes: &[crate::cards::builders::ChooseOneModeAst],
+) -> Option<PlayerAst> {
+    let mut actor = None;
+    for mode in modes {
+        let Some(EffectAst::SubjectVerb(subject_verb)) = mode.effects.first() else {
+            return None;
+        };
+        let player = subject_verb.subject.player;
+        if matches!(
+            player,
+            PlayerAst::You | PlayerAst::Implicit | PlayerAst::Any | PlayerAst::Opponent
+        ) {
+            return None;
+        }
+        match actor {
+            None => actor = Some(player),
+            Some(existing) if existing == player => {}
+            Some(_) => return None,
+        }
+    }
+    actor
 }

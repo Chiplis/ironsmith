@@ -288,6 +288,21 @@ const PAIR_SHAPES: &[Shape] = &[
         },
     },
     Shape {
+        id: RuleId::new("directional-adjacent-control-all"),
+        head: HeadDiscriminator::words(&["choose"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| {
+            statements(
+                sentences,
+                sentence_idx,
+                reference_linked_programs::parse_directional_adjacent_player_control_all(
+                    sentences,
+                    sentence_idx,
+                ),
+            )
+        },
+    },
+    Shape {
         id: RuleId::new("tagged-copy-retarget"),
         head: HeadDiscriminator::words(&["if", "for"]),
         consumed: 2,

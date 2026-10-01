@@ -204,12 +204,34 @@ pub(crate) fn parse_put_from_milled_cards_followup(
         return Ok(None);
     };
     let chooser = leading_may_actor_to_player(action_match.actor, default_player);
-    let action_tokens = trim_commas(action_match.tail_tokens);
+    let mut action_tokens = trim_commas(action_match.tail_tokens);
+    // "... from among the milled cards on top of your library": the same
+    // selection with a library-top destination. Read the selection through
+    // the shared looked-card grammar, then retarget the destination.
+    const LIBRARY_TOP_DESTINATIONS: &[&[&str]] = &[
+        &["on", "top", "of", "your", "library"],
+        &["on", "top", "of", "its", "owner's", "library"],
+        &["on", "top", "of", "their", "owner's", "library"],
+    ];
+    let library_top_len = LIBRARY_TOP_DESTINATIONS.iter().find_map(|phrase| {
+        (action_tokens.len() > phrase.len()
+            && action_tokens[action_tokens.len() - phrase.len()..]
+                .iter()
+                .zip(phrase.iter())
+                .all(|(token, word)| token.is_word(word)))
+        .then_some(phrase.len())
+    });
+    if let Some(len) = library_top_len {
+        action_tokens.truncate(action_tokens.len() - len);
+        for word in ["into", "your", "hand"] {
+            action_tokens.push(OwnedLexToken::word(word.to_string(), TextSpan::synthetic()));
+        }
+    }
     let Some((
         mut choice_count,
         mut filter,
         aggregate_constraint,
-        zone,
+        mut zone,
         controller,
         tapped,
         attacking,
@@ -221,6 +243,10 @@ pub(crate) fn parse_put_from_milled_cards_followup(
     else {
         return Ok(None);
     };
+    let to_library_top = library_top_len.is_some() && zone == Zone::Hand;
+    if to_library_top {
+        zone = Zone::Library;
+    }
     if aggregate_constraint.is_some() {
         return Ok(None);
     }
@@ -241,7 +267,7 @@ pub(crate) fn parse_put_from_milled_cards_followup(
         let mut move_effect = EffectAst::subject_verb_move_to_zone_with_attack_target(
             TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
             zone,
-            false,
+            to_library_top,
             controller,
             tapped,
             attacking,
@@ -313,7 +339,7 @@ pub(crate) fn parse_put_from_milled_cards_followup(
     let mut move_effect = EffectAst::subject_verb_move_to_zone_with_attack_target(
         TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
         zone,
-        false,
+        to_library_top,
         controller,
         tapped,
         attacking,

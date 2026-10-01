@@ -340,12 +340,46 @@ fn read_exile_all_or_each_filter(
     }
     Ok(None)
 }
+/// The target count of "<count> target players' graveyards" ("any number of",
+/// "up to two", "two"), when the clause names only those graveyards.
+pub(super) fn counted_target_players_graveyards(
+    tokens: &[OwnedLexToken],
+) -> Option<crate::effect::ChoiceCount> {
+    let trimmed = trim_commas(tokens);
+    let words = crate::lexer::parser_token_word_refs(&trimmed)
+        .into_iter()
+        .map(|word| word.trim_end_matches(['\'', '’']))
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>();
+    let tail = words.strip_suffix(&["target", "players", "graveyards"][..])?;
+    match tail {
+        ["any", "number", "of"] => Some(crate::effect::ChoiceCount::any_number()),
+        ["up", "to", count] => crate::util::parse_number_word_u32(count)
+            .map(|n| crate::effect::ChoiceCount::up_to(n as usize)),
+        [count] => crate::util::parse_number_word_u32(count)
+            .map(|n| crate::effect::ChoiceCount::exactly(n as usize)),
+        _ => None,
+    }
+}
 fn read_target_player_graveyard_filter(
     input: &ExileClause<'_>,
 ) -> Result<Option<EffectAst>, CardTextError> {
     let tokens = input.tokens;
     let until_source_leaves = input.until_source_leaves;
     let face_down = input.face_down;
+    // "Exile any number of target players' graveyards": the targets are the
+    // players, and each chosen player's whole graveyard is exiled.
+    if !until_source_leaves && let Some(count) = counted_target_players_graveyards(tokens) {
+        let mut filter = ObjectFilter::default().in_zone(Zone::Graveyard);
+        filter.owner = Some(PlayerFilter::IteratedPlayer);
+        return Ok(Some(EffectAst::ForEach(
+            crate::cards::builders::ForEachEffectAst::ForEachTargetPlayers {
+                count,
+                filter: PlayerFilter::Any,
+                effects: vec![EffectAst::subject_verb_exile_all(filter, face_down)],
+            },
+        )));
+    }
     if let Some(filter) = parse_target_player_graveyard_filter(tokens) {
         return Ok(Some(if until_source_leaves {
             EffectAst::subject_verb_exile_until_source_leaves(

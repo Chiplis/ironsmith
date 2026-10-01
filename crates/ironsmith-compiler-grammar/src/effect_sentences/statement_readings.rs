@@ -641,6 +641,14 @@ fn read_for_each_target_players(
     input: &Statement<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let sentence = input.sentence;
+    // "Exile any number of target players' graveyards": the counted target
+    // set is players, each losing their whole graveyard.
+    if sentence.first().is_some_and(|token| token.is_word("exile"))
+        && let Some(effect) =
+            super::zone_handlers::parse_exile_counted_target_players_graveyards(&sentence[1..])
+    {
+        return Ok(Some(vec![effect]));
+    }
     // A counted plural target set owns the trailing `each` action.  The
     // broad simple subject/verb parser can otherwise accept only the final
     // verb and collapse `any number of target players ... each draw` into one

@@ -1,6 +1,24 @@
 use super::*;
 
 pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)> {
+    // "for every three cards in your graveyard" (Recursive Recruitment): one
+    // per complete group of N counted objects (CR 107.1a rounds down).
+    if let ["for", "every" | "each", number, noun, rest @ ..] = words
+        && let Some(group) = crate::util::parse_number_word_u32(number)
+        && group >= 2
+        && let Some(singular) = noun.strip_suffix('s')
+    {
+        let mut counted = vec!["for", "each", singular];
+        counted.extend_from_slice(rest);
+        if let Some((value, used)) = parse_for_each_count_value_words(&counted)
+            && used >= 3
+        {
+            return Some((
+                Value::DividedRoundedDown(Box::new(value.unhinted().clone()), group as i32),
+                used + 1,
+            ));
+        }
+    }
     let head = parse_for_each_head(words)?;
     let idx = head.item_start;
 
@@ -210,6 +228,18 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
             let reference_start = counter_idx + 2;
             let reference_end = value_boundary(&words[reference_start..]) + reference_start;
             let reference = &words[reference_start..reference_end];
+            // "the number of counters on it": a bare `it` names the current object
+            // antecedent (an exiled target, a triggering attacker); reference
+            // resolution falls back to the source when nothing else is bound.
+            if parsed_counter_type.is_none() && reference == ["it"] {
+                let value = Value::CountersOn(
+                    Box::new(ChooseSpec::Tagged(
+                        (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                    )),
+                    None,
+                );
+                return Some((value, reference_end));
+            }
             if is_source_counter_reference(reference) {
                 let value = match parsed_counter_type {
                     Some(counter_type) => match this_source_surface_for_words(reference) {

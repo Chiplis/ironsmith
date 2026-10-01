@@ -142,6 +142,9 @@ const BLOCKED_BY_TAGGED_OBJECT_PHRASES: &[&[&str]] = &[
     &["blocked", "by", "one", "of", "those"],
     &["blocked", "by", "those"],
     &["blocked", "by", "that"],
+    // "each creature it blocked this combat" (Cathedral Membrane).
+    &["it", "blocked", "this", "combat"],
+    &["it", "blocked", "this", "turn"],
 ];
 const POWER_OR_TOUGHNESS_PHRASES: &[&[&str]] =
     &[&["power", "or", "toughness"], &["toughness", "or", "power"]];
@@ -1253,6 +1256,17 @@ pub(super) fn parse_object_filter(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    // "an artifact or creature card from among those cards" (Spirit of
+    // Resilience): restrict the selection to the referenced collection.
+    if let Some(base) = crate::object_filters::split_from_among_those_cards_suffix(tokens) {
+        let mut filter = parse_object_filter(&base, other)?;
+        crate::object_filters::clear_zone_for_referenced_cards(&mut filter);
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: crate::tag::CompilerReferenceTag::ThoseCardsReference.key(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        return Ok(filter);
+    }
     if let Some(filter) = super::parse_repeated_selector_domain_union_lexed(tokens, other) {
         return Ok(filter);
     }

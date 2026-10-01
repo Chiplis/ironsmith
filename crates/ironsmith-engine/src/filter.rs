@@ -1259,6 +1259,24 @@ fn tagged_constraint_matches_subject(
         TaggedOpbjectRelation::IsNotTaggedObject => tagged_snapshots
             .iter()
             .all(|snapshot| snapshot.object_id != subject.subject_object_id()),
+        // The tagged stack object's chosen object targets. A spell names its
+        // own object id; an ability names its source's id (or its reserved
+        // stack id), so either identity selects the entry.
+        TaggedOpbjectRelation::TargetedByTaggedObject => {
+            let subject_id = subject.subject_object_id();
+            tagged_snapshots.iter().any(|snapshot| {
+                game.stack.iter().any(|entry| {
+                    (entry.object_id == snapshot.object_id
+                        || entry.target_id() == snapshot.object_id)
+                        && entry.targets.iter().any(|target| {
+                            matches!(
+                                target,
+                                crate::game_state::Target::Object(id) if *id == subject_id
+                            )
+                        })
+                })
+            })
+        }
     }
 }
 
@@ -1394,6 +1412,13 @@ pub struct FilterContext {
     /// comparing against a candidate-relative operand
     /// ([`ObjectRef::FilterCandidate`]).
     pub filter_candidate_players: Option<(PlayerId, PlayerId)>,
+
+    /// Last-known battlefield snapshots of the permanents that just left the
+    /// battlefield in the event being matched. A leaves-the-battlefield
+    /// trigger looks back in time (CR 603.10a), so battlefield aggregates
+    /// ("the greatest power among creatures that player controls") still
+    /// count them.
+    pub departed_battlefield_lookback: Option<std::sync::Arc<[crate::snapshot::ObjectSnapshot]>>,
 }
 
 impl FilterContext {
@@ -1726,8 +1751,36 @@ fn resolve_filter_comparison_rhs_value(
             .objects_in_deterministic_order()
             .into_iter()
             .filter(|object| filter.matches(object, ctx, game))
-            .filter_map(|object| current_object_pt(game, object.id, power));
+            .filter_map(|object| current_object_pt(game, object.id, power))
+            .chain(
+                departed_battlefield_lookback(filter, game, ctx)
+                    .filter_map(|snapshot| snapshot_pt(snapshot, power)),
+            );
         if greatest { values.max() } else { values.min() }
+    }
+
+    /// The permanents that just left the battlefield in the event being
+    /// matched, as they last existed there, when `filter` looks at the
+    /// battlefield (CR 603.10a). Permanents still on the battlefield are
+    /// already counted live.
+    fn departed_battlefield_lookback<'c>(
+        filter: &'c ObjectFilter,
+        game: &'c GameState,
+        ctx: &'c FilterContext,
+    ) -> impl Iterator<Item = &'c crate::snapshot::ObjectSnapshot> + 'c {
+        let applies = filter.zone == Some(Zone::Battlefield);
+        ctx.departed_battlefield_lookback
+            .as_deref()
+            .filter(|_| applies)
+            .unwrap_or(&[])
+            .iter()
+            .filter(move |snapshot| {
+                snapshot.zone == Zone::Battlefield
+                    && !game
+                        .object(snapshot.object_id)
+                        .is_some_and(|object| object.zone == Zone::Battlefield)
+                    && filter.matches_snapshot(snapshot, ctx, game)
+            })
     }
 
     fn aggregate_mana_value(
@@ -1757,7 +1810,11 @@ fn resolve_filter_comparison_rhs_value(
             .objects_in_deterministic_order()
             .into_iter()
             .filter(|object| filter.matches(object, ctx, game))
-            .map(object_mana_value_for_filter);
+            .map(object_mana_value_for_filter)
+            .chain(
+                departed_battlefield_lookback(filter, game, ctx)
+                    .map(snapshot_mana_value_for_filter),
+            );
         if greatest { values.max() } else { values.min() }
     }
 
@@ -3607,6 +3664,11 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::ControlsMost { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
+                // "target creature one of their opponents controls": the
+                // opponents of a referenced player, not of you.
+                PlayerFilter::OpponentOf(base) if !matches!(base.as_ref(), PlayerFilter::You) => {
+                    controller_suffix = Some("one of their opponents controls".to_string());
+                }
                 PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
@@ -4106,6 +4168,16 @@ impl ObjectFilterExt for ObjectFilter {
                 TaggedOpbjectRelation::SoulbondPartnerOfTagged => {
                     post_noun_qualifiers.push("paired with it".to_string());
                 }
+                TaggedOpbjectRelation::TargetedByTaggedObject => {
+                    post_noun_qualifiers.push(
+                        if constraint.tag.as_str() == "triggering" {
+                            "targeted by that spell"
+                        } else {
+                            "targeted by it"
+                        }
+                        .to_string(),
+                    );
+                }
                 TaggedOpbjectRelation::SameStableId => {}
             }
         }
@@ -4232,6 +4304,9 @@ impl ObjectFilterExt for ObjectFilter {
         }
         if self.blocked_by_source {
             post_noun_qualifiers.push("blocked by this creature this turn".to_string());
+        }
+        if self.crewed_by_source_this_turn {
+            post_noun_qualifiers.push("crewed by this creature this turn".to_string());
         }
         if let Some(combat_partner) = &self.blocked_or_was_blocked_by_this_turn {
             let mut partner_description = combat_partner.description();
@@ -5292,6 +5367,19 @@ impl ObjectFilterExt for ObjectFilter {
                 "that isn't the target of an ability from {}",
                 source_filter.description()
             ));
+        }
+        if let Some(destroyed) = &self.would_destroy_object {
+            let destroyed = destroyed.description();
+            let article = if destroyed
+                .chars()
+                .next()
+                .is_some_and(|ch| matches!(ch, 'a' | 'e' | 'i' | 'o' | 'u'))
+            {
+                "an"
+            } else {
+                "a"
+            };
+            parts.push(format!("that would destroy {article} {destroyed}"));
         }
 
         correct_filter_leading_indefinite_article(parts.join(" "))

@@ -833,6 +833,23 @@ pub(crate) fn protection_from_subject_with_view(
             if source.zone() == Zone::Stack {
                 filter_ctx.caster = Some(source.protection_controller(game));
             }
+            // "protection from each of the exiled card's card types" (Mirror
+            // Golem): the linked collection is the protected permanent's,
+            // not the source's being checked.
+            if filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+            }) {
+                let linked = game
+                    .get_exiled_with_source_links(target_id)
+                    .iter()
+                    .filter_map(|id| game.object(*id))
+                    .filter(|object| object.zone == Zone::Exile)
+                    .map(|object| ObjectSnapshot::from_object(object, game))
+                    .collect();
+                filter_ctx
+                    .tagged_objects
+                    .insert(crate::tag::SOURCE_EXILED_TAG.into(), linked);
+            }
             source.matches(filter, &filter_ctx, game)
         }
         _ => subject_matches_protection(source, protection_from, game, view),

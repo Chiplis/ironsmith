@@ -566,6 +566,9 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     HexproofFrom(ObjectFilter),
     Protection(ProtectionFrom),
     PreventAllCombatDamageToPermanentsMatching(ObjectFilter),
+    /// "Prevent all combat damage that would be dealt to and dealt by
+    /// enchanted creature." (Ghostly Possession)
+    PreventAllCombatDamageToAndByPermanentsMatching(ObjectFilter),
     PreventAllNoncombatDamageToPermanentsMatching(ObjectFilter),
     /// "Prevent all damage that would be dealt to attacking creatures you
     /// control." (Iroas, God of Victory)
@@ -1814,6 +1817,9 @@ where
             StaticAbilityPayload::Protection(from) => StaticAbilityPayload::Protection(from),
             StaticAbilityPayload::PreventAllCombatDamageToPermanentsMatching(filter) => {
                 StaticAbilityPayload::PreventAllCombatDamageToPermanentsMatching(filter)
+            }
+            StaticAbilityPayload::PreventAllCombatDamageToAndByPermanentsMatching(filter) => {
+                StaticAbilityPayload::PreventAllCombatDamageToAndByPermanentsMatching(filter)
             }
             StaticAbilityPayload::PreventAllDamageToPermanentsMatching(filter) => {
                 StaticAbilityPayload::PreventAllDamageToPermanentsMatching(filter)
@@ -5810,6 +5816,13 @@ impl<
             id: Some(StaticAbilityId::PreventAllCombatDamageToPermanentsMatching),
             label: "prevent all combat damage to permanents matching filter".into(),
             payload: StaticAbilityPayload::PreventAllCombatDamageToPermanentsMatching(filter),
+        }
+    }
+    pub fn prevent_all_combat_damage_to_and_by_permanents_matching(filter: ObjectFilter) -> Self {
+        Self {
+            id: Some(StaticAbilityId::PreventAllCombatDamageToAndByPermanentsMatching),
+            label: "prevent all combat damage to and by permanents matching filter".into(),
+            payload: StaticAbilityPayload::PreventAllCombatDamageToAndByPermanentsMatching(filter),
         }
     }
     pub fn prevent_all_damage_to_permanents_matching(filter: ObjectFilter) -> Self {

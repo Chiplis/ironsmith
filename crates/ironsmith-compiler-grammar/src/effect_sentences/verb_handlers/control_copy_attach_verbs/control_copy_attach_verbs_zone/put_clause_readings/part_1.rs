@@ -34,9 +34,17 @@ pub(super) fn read_reorder_tagged_cards(
     let tokens = input.tokens;
     // "Put them/it back in any order." (typically after looking at the top cards of a library).
     if cca_shapes::is_reorder_tagged_cards(tokens) {
-        return Ok(Some(EffectAst::subject_verb_reorder_top_of_library(
+        let mut reorder = EffectAst::subject_verb_reorder_top_of_library(
             crate::tag::CompilerReferenceTag::It.bind(),
-        )));
+        );
+        // "That player ..., then puts them back in any order": the authored
+        // (or carried) subject orders the cards, not the ability's controller.
+        if !matches!(input.player, PlayerAst::You | PlayerAst::Implicit | PlayerAst::Any)
+            && let EffectAst::SubjectVerb(subject_verb) = &mut reorder
+        {
+            subject_verb.subject.player = input.player;
+        }
+        return Ok(Some(reorder));
     }
     Ok(None)
 }

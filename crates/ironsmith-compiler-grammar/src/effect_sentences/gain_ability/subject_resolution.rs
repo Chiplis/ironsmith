@@ -37,6 +37,17 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
         .as_ref()
         .map(|(len, _)| *len)
         .unwrap_or(0);
+    // "Until your next turn, whenever one or more creatures attack ..., those
+    // creatures get +2/+2 and gain trample" (Garruk, Curse Breaker): the
+    // duration scopes a delayed trigger, not a gain whose subject is the
+    // trigger clause.
+    if subject_start_word_idx > 0
+        && word_list
+            .get(subject_start_word_idx)
+            .is_some_and(|word| matches!(*word, "whenever" | "when"))
+    {
+        return Ok(None);
+    }
     let Some((relative_gain_idx, gain_verb)) =
         gain_shapes::find_primary_gain_ability_verb(&word_list[subject_start_word_idx..])
     else {
@@ -907,6 +918,34 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
                 ))
             })?
         };
+    // "other creatures you control that share a creature type with it get
+    // +2/+0 and gain undying" (Haunted One): every action of the shared
+    // subject compares against the same "it". The first action's result
+    // becomes the ordinary antecedent, so pin the pronoun before it.
+    let shares_actions_across_effects = leading_become_effect.is_some()
+        || leading_base_pt_effect.is_some()
+        || pump_effect.is_some()
+        || following_grant.is_some()
+        || following_pump_effect.is_some()
+        || following_base_pt_effect.is_some()
+        || following_become_effect.is_some();
+    let mut filter = filter;
+    if shares_actions_across_effects
+        && filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                && constraint.relation != crate::target::TaggedOpbjectRelation::IsTaggedObject
+        })
+    {
+        let alias = crate::util::helper_tag_for_tokens(real_subject_tokens, "shared_subject_it");
+        for constraint in &mut filter.tagged_constraints {
+            if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                && constraint.relation != crate::target::TaggedOpbjectRelation::IsTaggedObject
+            {
+                constraint.tag = alias.key.clone();
+            }
+        }
+        effects.push(EffectAst::SnapshotLastObjectTag { into: alias });
+    }
 
     if let Some(become_effect) = &leading_become_effect {
         effects.push(become_effect.clone());

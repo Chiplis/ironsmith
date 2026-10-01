@@ -346,6 +346,22 @@ fn sacrificed_postpositive_characteristic_prefix(
     Some((kind, idx + 2))
 }
 
+/// "the revealed card's power" (Titan's Presence): the publicly revealed
+/// card, never the ordinary `it` antecedent.
+const REVEALED_POWER_PREFIXES: &[&[&str]] = &[
+    &["the", "revealed", "card", "power"],
+    &["the", "revealed", "card's", "power"],
+    &["revealed", "card", "power"],
+    &["revealed", "card's", "power"],
+];
+
+const REVEALED_TOUGHNESS_PREFIXES: &[&[&str]] = &[
+    &["the", "revealed", "card", "toughness"],
+    &["the", "revealed", "card's", "toughness"],
+    &["revealed", "card", "toughness"],
+    &["revealed", "card's", "toughness"],
+];
+
 const REVEALED_MANA_VALUE_PREFIXES: &[&[&str]] = &[
     &["the", "revealed", "card", "mana", "value"],
     &["the", "revealed", "cards", "mana", "value"],

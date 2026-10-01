@@ -1753,14 +1753,50 @@ pub(crate) fn parse_complete_kicked_search_replacement_bundle(
     Ok(parse_kicked_multi_zone_search_destination_bundle(tokens))
 }
 
+/// "A spell cast by <caster> this way costs {N} more to cast": a cost
+/// increase granted to the exiled card that may be cast this way.
+///
+/// Only the card's owner may cast it this way, so "an opponent" is decided
+/// while the granting effect resolves: the tax is granted exactly when that
+/// owner is an opponent of the effect's controller. A caster-relative
+/// `cast_by: Opponent` on the granted static would be read from the caster's
+/// own view, where they are never their own opponent.
+pub(crate) fn cast_this_way_tax_grant(
+    tag: crate::tag::TagRef,
+    taxed_caster: Option<PlayerFilter>,
+    additional_cost: crate::mana::ManaCost,
+) -> EffectAst {
+    let mut spell_filter = ObjectFilter::spell().without_type(CardType::Land);
+    spell_filter.zone = None;
+    let opponent_caster = taxed_caster == Some(PlayerFilter::Opponent);
+    if let Some(caster) = taxed_caster
+        && !opponent_caster
+    {
+        spell_filter.cast_by = Some(caster);
+    }
+    let grant = EffectAst::subject_verb_grant_to_target(
+        TargetAst::Tagged(tag.clone(), None),
+        crate::model::CompilerGrantableCore::Ability(crate::model::CompilerStaticAbilityCore::new(
+            crate::model::CompilerCostIncreaseManaCost::new(spell_filter, additional_cost),
+        )),
+        crate::grant::GrantDuration::Forever,
+    );
+    if !opponent_caster {
+        return grant;
+    }
+    let mut owned_by_opponent = ObjectFilter::default();
+    owned_by_opponent.owner = Some(PlayerFilter::Opponent);
+    EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+        predicate: PredicateAst::TaggedMatches(tag, owned_by_opponent),
+        if_true: vec![grant],
+        if_false: Vec::new(),
+    })
+}
+
 fn parse_persistent_exile_play_tax_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let shape = bundle_grammar::parse_persistent_exile_play_tax_tokens(tokens)?;
     let tagged = crate::tag::CompilerReferenceTag::It.bind();
     let target = TargetAst::Object(shape.target_filter, Some(TextSpan::synthetic()), None);
-    let mut spell_filter = ObjectFilter::spell()
-        .without_type(CardType::Land)
-        .cast_by(shape.taxed_caster);
-    spell_filter.zone = None;
 
     Some(vec![
         EffectAst::subject_verb_exile(target, false),
@@ -1773,18 +1809,7 @@ fn parse_persistent_exile_play_tax_bundle(tokens: &[OwnedLexToken]) -> Option<Ve
             shape.permission_player,
             crate::grant::GrantDuration::Forever,
         ),
-        EffectAst::subject_verb_grant_to_target(
-            TargetAst::Tagged(tagged, None),
-            crate::model::CompilerGrantableCore::Ability(
-                crate::model::CompilerStaticAbilityCore::new(
-                    crate::model::CompilerCostIncreaseManaCost::new(
-                        spell_filter,
-                        shape.additional_cost,
-                    ),
-                ),
-            ),
-            crate::grant::GrantDuration::Forever,
-        ),
+        cast_this_way_tax_grant(tagged, Some(shape.taxed_caster), shape.additional_cost),
     ])
 }
 

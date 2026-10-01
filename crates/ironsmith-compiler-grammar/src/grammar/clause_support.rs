@@ -30,6 +30,9 @@ pub enum ProtectionTargetKind {
     },
     ChosenPlayer,
     ChosenColor,
+    /// "protection from each of the exiled card's card types" (Mirror
+    /// Golem): the card types of the card exiled with this permanent.
+    ExiledCardTypes,
     /// "protection from the chosen card type" (Serra's Emissary).
     ChosenCardType,
     Colorless,
@@ -402,6 +405,18 @@ fn classify_protection_target(words: &[&str], target_word: usize) -> ProtectionT
         || word_phrase_prefix(tail, &["the", "last", "chosen", "color"])
     {
         return ProtectionTargetKind::ChosenColor;
+    }
+    if word_phrase_prefix(tail, &["each", "of", "the", "exiled", "cards", "card", "types"])
+        || word_phrase_prefix(
+            tail,
+            &["each", "of", "the", "exiled", "card's", "card", "types"],
+        )
+        || word_phrase_prefix(
+            tail,
+            &["each", "of", "the", "exiled", "card", "s", "card", "types"],
+        )
+    {
+        return ProtectionTargetKind::ExiledCardTypes;
     }
     if word_phrase_prefix(tail, &["the", "chosen", "card", "type"])
         || word_phrase_prefix(tail, &["the", "chosen", "type"])

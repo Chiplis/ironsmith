@@ -595,6 +595,24 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
             ITERATED_PLAYER_EXILED_OBJECT_POWER.len(),
         ));
     }
+    if let Some(used) = prefix_len(words, REVEALED_POWER_PREFIXES) {
+        return Some((
+            Value::PowerOf(Box::new(ChooseSpec::Tagged(
+                (crate::tag::CompilerReferenceTag::PublicRevealed.bind()).into(),
+            )))
+            .with_surface_hint(ValueSurfaceHint::RevealedCardReference),
+            used,
+        ));
+    }
+    if let Some(used) = prefix_len(words, REVEALED_TOUGHNESS_PREFIXES) {
+        return Some((
+            Value::ToughnessOf(Box::new(ChooseSpec::Tagged(
+                (crate::tag::CompilerReferenceTag::PublicRevealed.bind()).into(),
+            )))
+            .with_surface_hint(ValueSurfaceHint::RevealedCardReference),
+            used,
+        ));
+    }
     if let Some(used) = prefix_len(words, TAGGED_POWER_PREFIXES) {
         let tag = tagged_characteristic_reference_tag(&words[..used]);
         return Some((
@@ -781,6 +799,20 @@ pub(super) fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
         let reference_start = counter_idx + 2;
         let reference_end = value_boundary(&words[reference_start..]) + reference_start;
         let reference = &words[reference_start..reference_end];
+        // "the number of counters on it": a bare `it` names the current object
+        // antecedent (an exiled target, a triggering attacker); reference
+        // resolution falls back to the source when nothing else is bound.
+        if parsed_counter_type.is_none() && reference == ["it"] {
+            return Some((
+                Value::CountersOn(
+                    Box::new(ChooseSpec::Tagged(
+                        (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                    )),
+                    None,
+                ),
+                reference_end,
+            ));
+        }
         if is_source_counter_reference(reference) {
             let value = match parsed_counter_type {
                 Some(counter_type) => {

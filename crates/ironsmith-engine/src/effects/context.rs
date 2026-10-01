@@ -1060,6 +1060,12 @@ impl<'a> ExecutionContext<'a> {
         for (tag, players) in event.player_tags() {
             self.set_tagged_players(tag.clone(), players.clone());
         }
+        if let Some(controller) = event.controller() {
+            self.set_tagged_players(
+                ironsmith_core::TRIGGERING_EVENT_CONTROLLER_TAG,
+                vec![controller],
+            );
+        }
 
         // If the event is vote-related, compute tags from THIS ability controller's perspective.
         if let Some(voting_event) = event.downcast::<crate::events::PlayersFinishedVotingEvent>() {
@@ -1229,7 +1235,7 @@ impl<'a> ExecutionContext<'a> {
     /// replaces the seeded history. Filter references to "cards exiled with
     /// ~" still read the full link set through the filter context.
     pub fn tag_source_exiled_result(&mut self, snapshot: ObjectSnapshot) {
-        const RESOLUTION_MARKER: &str = "__source_exiled_this_resolution__";
+        const RESOLUTION_MARKER: &str = crate::tag::SOURCE_EXILED_THIS_RESOLUTION_TAG;
         if !self.tagged_objects.contains_key(RESOLUTION_MARKER) {
             self.tagged_objects.remove(SOURCE_EXILED_TAG);
         }

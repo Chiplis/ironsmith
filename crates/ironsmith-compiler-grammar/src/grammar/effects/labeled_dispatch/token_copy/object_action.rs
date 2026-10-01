@@ -124,6 +124,9 @@ pub fn parse_token_copy_modifier_kind(tokens: &[OwnedLexToken]) -> Option<TokenC
     if common::prefix_any(&words, TOKEN_SACRIFICE_PREFIXES)
         && has_terminal_phrase(&words, &["next", "upkeep"])
     {
+        if has_terminal_phrase(&words, &["your", "next", "upkeep"]) {
+            return Some(TokenCopyModifierKind::SacrificeAtYourNextUpkeep);
+        }
         return Some(TokenCopyModifierKind::SacrificeAtNextUpkeep);
     }
     if common::prefix_any(&words, TOKEN_EXILE_PREFIXES)

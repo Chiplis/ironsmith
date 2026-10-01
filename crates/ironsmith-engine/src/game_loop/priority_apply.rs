@@ -741,6 +741,12 @@ pub fn apply_priority_response_with_dm(
                     ActivationStage::ReadyToFinalize
                 };
 
+                let mut granting_source_tags = std::collections::HashMap::new();
+                game.insert_granting_source_tag(
+                    *source,
+                    *ability_index,
+                    &mut granting_source_tags,
+                );
                 let pending = PendingActivation::new(
                     *source,
                     *ability_index,
@@ -756,7 +762,7 @@ pub fn apply_priority_response_with_dm(
                     payment_reason,
                     payment_trace,
                     remaining_cost_steps,
-                    std::collections::HashMap::new(),
+                    granting_source_tags,
                     0,
                     is_turn_capped,
                     is_loyalty_ability,
@@ -774,6 +780,12 @@ pub fn apply_priority_response_with_dm(
                 continue_activation(game, trigger_queue, state, pending, &mut *decision_maker)
             } else {
                 // No choices needed - put ability on stack directly
+                let mut granting_source_tags = std::collections::HashMap::new();
+                game.insert_granting_source_tag(
+                    *source,
+                    *ability_index,
+                    &mut granting_source_tags,
+                );
                 game.record_ability_activation(*source, *ability_index);
                 if is_loyalty_ability {
                     game.record_loyalty_ability_activation(*source);
@@ -789,7 +801,7 @@ pub fn apply_priority_response_with_dm(
                         mana_usage_restrictions,
                         mana_source_chosen_creature_type,
                     )
-                    .with_tagged_objects(std::collections::HashMap::new());
+                    .with_tagged_objects(granting_source_tags);
                 game.push_to_stack(entry);
                 queue_ability_activated_event(
                     game,

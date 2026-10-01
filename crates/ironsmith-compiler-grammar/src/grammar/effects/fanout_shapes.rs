@@ -99,6 +99,9 @@ pub enum ControllerSurface {
     ContextualTargetPlayer,
     Opponent,
     You,
+    /// "... each other creature with the same controller": the controller of
+    /// the preceding recipient, excluding that recipient itself.
+    SameAsPriorRecipient,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -682,7 +685,12 @@ fn strip_controller_tail(
         &["you", "controls"],
         &["your", "control"],
     ];
+    const SAME_CONTROLLER: &[&[&str]] = &[
+        &["with", "the", "same", "controller"],
+        &["with", "same", "controller"],
+    ];
     for (phrases, surface) in [
+        (SAME_CONTROLLER, ControllerSurface::SameAsPriorRecipient),
         (
             TARGET_OR_CONTROLLER,
             ControllerSurface::TargetPlayerOrControllerOfTarget,

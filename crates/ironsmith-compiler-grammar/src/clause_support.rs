@@ -423,6 +423,14 @@ pub fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAct
             }
             ProtectionTargetKind::ChosenPlayer => Some(KeywordAction::ProtectionFromChosenPlayer),
             ProtectionTargetKind::ChosenColor => Some(KeywordAction::ProtectionFromChosenColor),
+            ProtectionTargetKind::ExiledCardTypes => {
+                let mut filter = ObjectFilter::default();
+                filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+                    tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
+                    relation: crate::target::TaggedOpbjectRelation::SharesCardType,
+                });
+                Some(KeywordAction::ProtectionFromFilter(filter))
+            }
             ProtectionTargetKind::ChosenCardType => {
                 let mut filter = ObjectFilter::default();
                 filter.chosen_card_type = true;

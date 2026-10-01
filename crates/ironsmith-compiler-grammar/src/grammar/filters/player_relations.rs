@@ -184,7 +184,13 @@ fn parse_relation_subject_word_slice(
                 .value(PlayerFilter::TargetPlayerOrControllerOfTarget),
                 relation_phrase(&["your", "team"]).map(|()| PlayerFilter::your_team()),
                 relation_phrase(&["your", "opponents"]).value(PlayerFilter::Opponent),
-                relation_phrase(&["that", "player"]).value(PlayerFilter::IteratedPlayer),
+                alt((
+                    relation_phrase(&["that", "player"]),
+                    // "for each opponent, ... that opponent controls": the
+                    // same contextual player reference as "that player".
+                    relation_phrase(&["that", "opponent"]),
+                ))
+                .value(PlayerFilter::IteratedPlayer),
                 relation_phrase(&["target", "player"]).map(|()| PlayerFilter::target_player()),
                 relation_phrase(&["target", "opponent"]).map(|()| PlayerFilter::target_opponent()),
                 relation_phrase(&["defending", "player"]).value(PlayerFilter::Defending),
@@ -213,6 +219,10 @@ fn parse_relation_subject_word_slice(
             alt((
                 relation_phrase(&["voter"]).value(PlayerFilter::IteratedPlayer),
                 relation_phrase(&["they"]).map(|()| pronoun_player_filter.clone()),
+                // "one of their opponents controls": opponents of the
+                // pronoun's player, not of the ability's controller.
+                relation_phrase(&["their", "opponents"])
+                    .map(|()| PlayerFilter::OpponentOf(Box::new(pronoun_player_filter.clone()))),
             )),
         )),
     ))

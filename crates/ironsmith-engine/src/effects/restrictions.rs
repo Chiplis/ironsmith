@@ -262,6 +262,105 @@ impl crate::effects::SimultaneousEffectProposal for CantEffectProposal {
 }
 
 /// Effect that applies a restriction for a duration.
+/// Split an object-subject restriction whose `ForAsLongAs` duration names
+/// the affected object into one restriction per currently matching object,
+/// each lasting while that object's condition holds.
+fn execute_cant_per_affected_object(
+    effect: &CantEffect,
+    predicate: &ironsmith_core::ContinuousDurationPredicate,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> EffectOutcome {
+    {
+        let restriction = normalize_restriction_for_resolution(&effect.restriction, ctx, game);
+        let Some(subjects) = restriction_object_subject(&restriction) else {
+            return EffectOutcome::count(0);
+        };
+        let filter_ctx = ctx.filter_context(game);
+        let objects: Vec<_> = game
+            .battlefield
+            .iter()
+            .copied()
+            .filter(|id| {
+                game.object(*id)
+                    .is_some_and(|object| subjects.matches(object, &filter_ctx, game))
+            })
+            .collect();
+        let mut added = 0;
+        for object_id in objects {
+            let Some(object_predicate) =
+                crate::effects::continuous::materialize_duration_predicate(
+                    predicate,
+                    &crate::continuous::EffectTarget::Specific(object_id),
+                    &None,
+                    game,
+                    ctx,
+                )
+            else {
+                continue;
+            };
+            if !crate::continuous::continuous_duration_predicate_matches(&object_predicate, game) {
+                continue;
+            }
+            let Some(object_restriction) = restriction_with_object_subject(
+                &restriction,
+                crate::target::ObjectFilter::specific(object_id),
+            ) else {
+                continue;
+            };
+            game.add_restriction_effect_with_start_and_tagged_objects(
+                object_restriction,
+                Until::ForAsLongAs(object_predicate),
+                ctx.source,
+                ctx.controller,
+                ctx.iteration.iterated_player,
+                None,
+                ctx.tagged_objects.clone(),
+            );
+            added += 1;
+        }
+        if added > 0 {
+            game.update_cant_effects();
+        }
+        EffectOutcome::count(added)
+    }
+}
+
+/// The object filter a restriction applies to, for the restrictions whose
+/// subject is a set of objects.
+fn restriction_object_subject(restriction: &Restriction) -> Option<&crate::target::ObjectFilter> {
+    match restriction {
+        Restriction::Attack(filter)
+        | Restriction::Block(filter)
+        | Restriction::AttackOrBlock(filter)
+        | Restriction::AttackPlayerOrPlaneswalkersControlledBy {
+            attackers: filter, ..
+        }
+        | Restriction::AttackPlayer {
+            attackers: filter, ..
+        } => Some(filter),
+        _ => None,
+    }
+}
+
+fn restriction_with_object_subject(
+    restriction: &Restriction,
+    subject: crate::target::ObjectFilter,
+) -> Option<Restriction> {
+    Some(match restriction {
+        Restriction::Attack(_) => Restriction::attack(subject),
+        Restriction::Block(_) => Restriction::block(subject),
+        Restriction::AttackOrBlock(_) => Restriction::attack_or_block(subject),
+        Restriction::AttackPlayerOrPlaneswalkersControlledBy { player, .. } => {
+            Restriction::attack_player_or_planeswalkers_controlled_by(subject, player.clone())
+        }
+        Restriction::AttackPlayer { player, .. } => {
+            Restriction::attack_player(subject, player.clone())
+        }
+        _ => return None,
+    })
+}
+
 impl EffectExecutor for CantEffect {
     fn supports_simultaneous_player_action(&self) -> bool {
         true
@@ -292,7 +391,11 @@ impl EffectExecutor for CantEffect {
                 game,
                 ctx,
             ) else {
-                return Ok(EffectOutcome::count(0));
+                // "Each of those creatures can't attack you ... for as long
+                // as it has a vow counter on it" (Promise of Loyalty): the
+                // duration names each restricted object, so each object gets
+                // its own restriction lasting while its own condition holds.
+                return Ok(execute_cant_per_affected_object(self, predicate, game, ctx));
             };
             if !crate::continuous::continuous_duration_predicate_matches(&predicate, game) {
                 return Ok(EffectOutcome::count(0));

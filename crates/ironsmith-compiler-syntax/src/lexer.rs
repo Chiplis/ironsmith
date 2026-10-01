@@ -1278,19 +1278,27 @@ pub fn split_lexed_sentences(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> 
     let mut inside_quotes = false;
     let mut last_inner_token_was_period = false;
 
-    let quoted_period_continues_sentence = |next: Option<&OwnedLexToken>| match next {
-        Some(token) if token.kind == TokenKind::Comma => true,
-        Some(token)
-            if token.kind == TokenKind::Word
-                && matches!(
-                    token.parser_text(),
-                    "and" | "during" | "for" | "this" | "until" | "where" | "with" | "without"
-                ) =>
-        {
-            true
-        }
-        _ => false,
-    };
+    let quoted_period_continues_sentence =
+        |next: Option<&OwnedLexToken>, after: Option<&OwnedLexToken>| match next {
+            Some(token) if token.kind == TokenKind::Comma => true,
+            Some(token)
+                if token.kind == TokenKind::Word
+                    && matches!(
+                        token.parser_text(),
+                        "and" | "during" | "for" | "until" | "where" | "with" | "without"
+                    ) =>
+            {
+                true
+            }
+            // `"..." this turn` continues the sentence; `"..." this creature
+            // loses ...` (a normalized card name) starts a new one.
+            Some(token) if token.kind == TokenKind::Word && token.parser_text() == "this" => {
+                after.is_some_and(|after| {
+                    after.kind == TokenKind::Word && matches!(after.parser_text(), "turn" | "way")
+                })
+            }
+            _ => false,
+        };
 
     for (idx, token) in tokens.iter().enumerate() {
         match token.kind {
@@ -1306,7 +1314,7 @@ pub fn split_lexed_sentences(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> 
                 if inside_quotes
                     && paren_depth == 0
                     && last_inner_token_was_period
-                    && !quoted_period_continues_sentence(tokens.get(idx + 1))
+                    && !quoted_period_continues_sentence(tokens.get(idx + 1), tokens.get(idx + 2))
                 {
                     sentences.push(&tokens[start..=idx]);
                     start = idx + 1;
@@ -1317,6 +1325,9 @@ pub fn split_lexed_sentences(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> 
             TokenKind::Period if inside_quotes => {
                 last_inner_token_was_period = true;
             }
+            // A nested single-quoted rule closing right after its own period
+            // keeps that period sentence-final for the enclosing quote.
+            TokenKind::Apostrophe if inside_quotes && last_inner_token_was_period => {}
             TokenKind::Period if paren_depth == 0 && !inside_quotes => {
                 if start < idx {
                     sentences.push(&tokens[start..idx]);

@@ -81,6 +81,34 @@ fn normalize_ability_marker(marker: &str) -> String {
         .to_string()
 }
 
+/// Whether a filter carries the activated ability's own targeting
+/// constraints ("an ability that targets only this creature"). A permanent
+/// source never targets, so these fields describe the activation's stack
+/// entry rather than the source object.
+fn filter_has_ability_target_constraints(filter: &ObjectFilter) -> bool {
+    filter.targets_player.is_some()
+        || filter.targets_object.is_some()
+        || filter.targets_only_player.is_some()
+        || filter.targets_only_object.is_some()
+        || filter.target_count.is_some()
+}
+
+/// Split a trigger filter into its source part and the activation's
+/// targeting part.
+fn split_ability_target_constraints(filter: &ObjectFilter) -> (ObjectFilter, ObjectFilter) {
+    let mut source = filter.clone();
+    let mut targets = ObjectFilter::default();
+    targets.targets_player = source.targets_player.take();
+    targets.targets_object = source.targets_object.take();
+    targets.targets_any_of = std::mem::take(&mut source.targets_any_of);
+    targets.targets_only_player = source.targets_only_player.take();
+    targets.targets_only_object = source.targets_only_object.take();
+    targets.targets_only_any_of = std::mem::take(&mut source.targets_only_any_of);
+    targets.target_count = source.target_count.take();
+    targets.union_surface = source.union_surface.clone();
+    (source, targets)
+}
+
 fn is_structural_ninjutsu_ability(ability: &crate::ability::Ability) -> bool {
     let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {
         return false;
@@ -178,6 +206,33 @@ impl TriggerMatcher for AbilityActivatedTrigger {
 
         let mut source_filter = self.filter.clone();
         source_filter.has_x_in_cost = false;
+        if filter_has_ability_target_constraints(&source_filter) {
+            let (source_only, target_filter) = split_ability_target_constraints(&source_filter);
+            source_filter = source_only;
+            // CR 603.2: the ability's targets are chosen as it is put on the
+            // stack, before the activation event triggers anything.
+            let Some(provenance) = e.stack_entry_provenance else {
+                return false;
+            };
+            let Some(entry) = ctx
+                .game
+                .stack
+                .iter()
+                .find(|entry| entry.is_ability && entry.provenance == provenance)
+            else {
+                return false;
+            };
+            let targets_match = if let Some(obj) = ctx.game.object(e.source) {
+                target_filter.matches_shared_tail(obj, &ctx.filter_ctx, ctx.game, Some(entry))
+            } else if let Some(snapshot) = e.snapshot.as_ref() {
+                target_filter.matches_shared_tail(snapshot, &ctx.filter_ctx, ctx.game, Some(entry))
+            } else {
+                false
+            };
+            if !targets_match {
+                return false;
+            }
+        }
         if !source_filter.ability_markers.is_empty()
             || !source_filter.excluded_ability_markers.is_empty()
         {
@@ -216,6 +271,15 @@ impl TriggerMatcher for AbilityActivatedTrigger {
         let verb = activate_verb(&subject);
         let mut source_filter = self.filter.clone();
         source_filter.has_x_in_cost = false;
+        let mut target_clause = None;
+        if filter_has_ability_target_constraints(&source_filter) {
+            let (source_only, target_filter) = split_ability_target_constraints(&source_filter);
+            source_filter = source_only;
+            let description = target_filter.description();
+            target_clause = description
+                .find("that targets")
+                .map(|idx| description[idx..].to_string());
+        }
         let named_marker = match (
             source_filter.ability_markers.as_slice(),
             source_filter.excluded_ability_markers.as_slice(),
@@ -226,13 +290,16 @@ impl TriggerMatcher for AbilityActivatedTrigger {
         if named_marker.is_some() {
             source_filter.ability_markers.clear();
         }
-        let ability = if self.loyalty_only {
+        let mut ability = if self.loyalty_only {
             "a loyalty ability".to_string()
         } else if let Some(marker) = named_marker.as_deref() {
             named_ability_phrase(marker)
         } else {
             "an ability".to_string()
         };
+        if let Some(target_clause) = target_clause {
+            ability = format!("{ability} {target_clause}");
+        }
         let mut source_description = source_filter_phrase(&source_filter);
         // Battlefield is often implicit in permanent-filter prose, but an
         // activation can originate in other zones. Preserve this restriction.

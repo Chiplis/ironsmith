@@ -17,6 +17,21 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
         TriggerSpec::WithIntro { trigger, .. } => inferred_trigger_player_filter(trigger),
         TriggerSpec::StateBased { .. } | TriggerSpec::DayNightChanged => None,
         TriggerSpec::EntersBattlefield { filter, .. } if filter.source => None,
+        // "Whenever a nonland permanent an opponent owns enters under your
+        // control, they lose life ...": you are the controller, so the only
+        // other player the event names is the permanent's owner.
+        TriggerSpec::EntersBattlefield { filter, .. }
+        | TriggerSpec::EntersBattlefieldOneOrMore { filter, .. }
+            if filter.controller == Some(PlayerFilter::You)
+                && filter
+                    .owner
+                    .as_ref()
+                    .is_some_and(|owner| *owner != PlayerFilter::You) =>
+        {
+            Some(PlayerFilter::AliasedOwnerOf(ObjectRef::tagged(
+                crate::tag::CompilerReferenceTag::Triggering.bind(),
+            )))
+        }
         TriggerSpec::EntersBattlefield { .. }
         | TriggerSpec::EntersBattlefieldOneOrMore { .. }
         | TriggerSpec::EntersBattlefieldFromZone { .. }
@@ -69,6 +84,18 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
         TriggerSpec::PlayerDrawsCardExceptFirstInDrawStep(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDrawsNthCardEachTurn { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDrawsNumberedCardsEachTurn { .. } => Some(PlayerFilter::IteratedPlayer),
+        // "When a spell or ability an opponent controls causes you to discard
+        // this card, that player ...": you are the discarding player, so the
+        // only other player the event names is the cause's controller.
+        TriggerSpec::PlayerDiscardsCard {
+            player,
+            cause_controller: Some(cause_controller),
+            ..
+        } if *player == PlayerFilter::You && *cause_controller != PlayerFilter::You => Some(
+            PlayerFilter::TaggedPlayer(ironsmith_core::TagKey::from(
+                ironsmith_core::TRIGGERING_EVENT_CONTROLLER_TAG,
+            )),
+        ),
         TriggerSpec::PlayerDiscardsCard { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerRevealsCard { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerPlaysLand { .. } => Some(PlayerFilter::IteratedPlayer),

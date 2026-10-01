@@ -59,6 +59,35 @@ pub(super) fn target_phrase_excludes_chooser_controller(tokens: &[OwnedLexToken]
 }
 
 pub fn parse_choose_target_shape(tokens: &[OwnedLexToken]) -> Option<ChooseTargetShape<'_>> {
+    if split_coordinated_choose_target_clauses(tokens).is_some() {
+        return None;
+    }
+    parse_single_choose_target_shape(tokens)
+}
+
+/// "You choose target A, and that opponent chooses target B": two target
+/// declarations with distinct choosers, never one merged target phrase.
+pub fn split_coordinated_choose_target_clauses(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+    tokens
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.is_word("and"))
+        .find_map(|(idx, _)| {
+            let head = trim_lexed_commas(&tokens[..idx]);
+            let tail = trim_lexed_commas(&tokens[idx + 1..]);
+            let second = parse_single_choose_target_shape(tail)?;
+            parse_single_choose_target_shape(head)?;
+            // The second declaration names its own chooser ("that opponent
+            // chooses", "you choose"), unlike "choose target A and target B".
+            let named_chooser = second.chooser != ChooseTargetChooserShape::AbilityController
+                || tail.first().is_some_and(|token| token.is_word("you"));
+            named_chooser.then_some((head, tail))
+        })
+}
+
+fn parse_single_choose_target_shape(tokens: &[OwnedLexToken]) -> Option<ChooseTargetShape<'_>> {
     if crate::grammar::effects::chain_splitting::has_authored_comma_then_surface_tokens(tokens) {
         return None;
     }

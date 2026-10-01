@@ -189,6 +189,10 @@ pub fn parse_implicit_become_subject_shape(
                 primitives::phrase(&["this", "permanent"]),
                 primitives::phrase(&["this", "creature"]),
                 primitives::phrase(&["this", "land"]),
+                primitives::phrase(&["this", "token"]),
+                primitives::phrase(&["this", "artifact"]),
+                primitives::phrase(&["this", "enchantment"]),
+                primitives::phrase(&["this", "vehicle"]),
                 primitives::kw("this").void(),
             ))
             .value((ImplicitBecomeSubjectKind::Source, None)),

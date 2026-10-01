@@ -1,7 +1,7 @@
 use crate::cards::builders::{CardTextError, PlayerAst, TagKey, TargetAst};
 use crate::effect::{EventValueSpec, Restriction, Value};
 use crate::filter::{Comparison, ObjectFilter, ObjectRef, PlayerFilter, TaggedOpbjectRelation};
-use crate::target::{ChooseSpec, SourceReferenceSurface};
+use crate::target::{ChooseSpec, ChooseSpecSurfaceHint, SourceReferenceSurface};
 use crate::zone::Zone;
 use ironsmith_core::TurnHistoryCount;
 
@@ -40,6 +40,15 @@ pub fn is_noun_restricted_object_result_tag(tag: &TagKey) -> bool {
 /// "that creature") excludes the kind of object `tag` names.
 fn definite_noun_excludes_antecedent(filter: &ObjectFilter, tag: &TagKey) -> bool {
     use crate::types::CardType;
+    // "... and sacrifices the rest. Each of those creatures can't attack"
+    // (Promise of Loyalty): permanents still on the battlefield can't be the
+    // ones a prior clause sacrificed.
+    if is_sacrificed_object_reference_tag(tag.as_str())
+        && filter.zone == Some(Zone::Battlefield)
+        && !filter.card_types.is_empty()
+    {
+        return true;
+    }
     if is_created_token_result_tag(tag.as_str()) {
         return filter.has_explicit_card_noun()
             || filter.zone == Some(Zone::Stack)
@@ -65,6 +74,13 @@ fn definite_noun_excludes_antecedent(filter: &ObjectFilter, tag: &TagKey) -> boo
                     .is_some_and(|card_type| is_permanent_type(&card_type)));
     }
     false
+}
+
+/// A tag naming cards a discard in this ability produced.
+pub fn is_discard_result_reference_tag(tag: &str) -> bool {
+    tag.starts_with("discarded")
+        || tag.starts_with("__sentence_helper_discarded")
+        || tag.starts_with("discard_cost_")
 }
 
 fn is_exiled_collection_reference_tag(tag: &str) -> bool {
@@ -807,13 +823,31 @@ fn bind_off_battlefield_other_to_antecedent(filter: &mut ObjectFilter, refs: &Re
     if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
         return;
     }
+    // "Exile it, then return all other cards exiled with this artifact": the
+    // antecedent was exiled with the source during this resolution. The link
+    // tag is re-read as the full link set, and exile result tags carry the
+    // pre-move identity, so exclude it through the runtime's record of what
+    // this resolution exiled with its source.
+    let names_source_exile_set = filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
+            && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+    });
+    let exclusion: TagKey = if names_source_exile_set
+        && (tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
+            || is_exiled_collection_reference_tag(tag.as_str()))
+    {
+        TagKey::from(ironsmith_core::SOURCE_EXILED_THIS_RESOLUTION_TAG)
+    } else {
+        tag.clone()
+    };
     if !filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag == *tag && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
+        constraint.tag == exclusion
+            && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
     }) {
         filter
             .tagged_constraints
             .push(crate::filter::TaggedObjectConstraint {
-                tag: tag.clone(),
+                tag: exclusion,
                 relation: TaggedOpbjectRelation::IsNotTaggedObject,
             });
     }
@@ -823,6 +857,140 @@ pub fn resolve_it_tag(
     filter: &ObjectFilter,
     refs: &ReferenceEnv,
 ) -> Result<ObjectFilter, CardTextError> {
+    // "creatures tapped this way" not bound to a preceding "tap all" in the
+    // same instruction list names the ordinary object antecedent.
+    let tapped_marker = crate::tag::CompilerReferenceTag::TappedThisWay.as_str();
+    let unbound_tapped_marker = filter
+        .tagged_constraints
+        .iter()
+        .any(|constraint| constraint.tag.as_str() == tapped_marker);
+    let rebound;
+    let filter = if unbound_tapped_marker {
+        let mut owned = filter.clone();
+        for constraint in &mut owned.tagged_constraints {
+            if constraint.tag.as_str() == tapped_marker {
+                constraint.tag = crate::tag::CompilerReferenceTag::It.key();
+            }
+        }
+        rebound = owned;
+        &rebound
+    } else {
+        filter
+    };
+    let mut resolved = resolve_it_tag_inner(filter, refs)?;
+    bind_other_to_related_it_object(filter, &mut resolved);
+    exclude_this_resolution_source_exiles(&mut resolved);
+    Ok(resolved)
+}
+
+/// "target creature and each other creature that shares a color with it":
+/// `other` is relative to the object the relation names, not to the source.
+/// Once that `it` resolves to a tagged object, exclude it by identity.
+fn bind_other_to_related_it_object(original: &ObjectFilter, resolved: &mut ObjectFilter) {
+    if !original.other || !resolved.other {
+        return;
+    }
+    let relates_to_object = |relation: TaggedOpbjectRelation| {
+        matches!(
+            relation,
+            TaggedOpbjectRelation::SharesCardType
+                | TaggedOpbjectRelation::SharesPermanentType
+                | TaggedOpbjectRelation::SharesSubtypeWithTagged
+                | TaggedOpbjectRelation::SharesColorWithTagged
+                | TaggedOpbjectRelation::SameNameAsTagged
+                | TaggedOpbjectRelation::SameControllerAsTagged
+                | TaggedOpbjectRelation::SameManaValueAsTagged
+        )
+    };
+    let it = crate::tag::CompilerReferenceTag::It.as_str();
+    let mut related_relations = original
+        .tagged_constraints
+        .iter()
+        .filter(|constraint| constraint.tag.as_str() == it && relates_to_object(constraint.relation))
+        .map(|constraint| constraint.relation);
+    let (Some(relation), None) = (related_relations.next(), related_relations.next()) else {
+        return;
+    };
+    let mut bound = resolved
+        .tagged_constraints
+        .iter()
+        .filter(|constraint| constraint.relation == relation && constraint.tag.as_str() != it)
+        .map(|constraint| constraint.tag.clone());
+    let (Some(tag), None) = (bound.next(), bound.next()) else {
+        return;
+    };
+    resolved.other = false;
+    resolved
+        .tagged_constraints
+        .push(crate::filter::TaggedObjectConstraint {
+            tag,
+            relation: TaggedOpbjectRelation::IsNotTaggedObject,
+        });
+}
+
+/// "Exile it, then return all other cards exiled with this artifact": an
+/// `other` exclusion of an object this resolution exiled with the source
+/// cannot read the source's link tag (the same full link set the filter
+/// selects) or an exile result tag (the pre-move identity). It reads the
+/// runtime's record of what this resolution exiled with its source.
+fn exclude_this_resolution_source_exiles(filter: &mut ObjectFilter) {
+    let source_exiled = crate::tag::CompilerReferenceTag::SourceExiled.as_str();
+    if !filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag.as_str() == source_exiled
+            && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+    }) {
+        return;
+    }
+    for constraint in &mut filter.tagged_constraints {
+        if constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
+            && (constraint.tag.as_str() == source_exiled
+                || is_exiled_collection_reference_tag(constraint.tag.as_str()))
+        {
+            constraint.tag = TagKey::from(ironsmith_core::SOURCE_EXILED_THIS_RESOLUTION_TAG);
+        }
+    }
+}
+
+fn resolve_it_tag_inner(
+    filter: &ObjectFilter,
+    refs: &ReferenceEnv,
+) -> Result<ObjectFilter, CardTextError> {
+    if let Some(rebound) = rebind_triggering_stack_target_filter(filter, refs) {
+        return resolve_it_tag(&rebound, refs);
+    }
+    // "exile that creature until Hixus leaves the battlefield": a
+    // demonstrative object never names the source even when the source is
+    // the only live antecedent.
+    // "create a token that's a copy of that Wizard": a subtype-headed pronoun
+    // filter is a demonstrative too.
+    let is_demonstrative = filter.demonstrative_antecedent_surface().is_some()
+        || !filter.subtypes.is_empty()
+        || matches!(
+            &filter.source_surface,
+            Some(SourceReferenceSurface::ThisPermanentType(text)) if text.starts_with("that ")
+        );
+    if is_demonstrative
+        && filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        })
+        && let Some(previous) = demonstrative_superseded_antecedent(
+            &[ChooseSpecSurfaceHint::SourceReference(
+                SourceReferenceSurface::ThisPermanentType("that object".to_string()),
+            )],
+            refs,
+        )
+    {
+        let mut rebound = filter.clone();
+        for constraint in &mut rebound.tagged_constraints {
+            if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            {
+                constraint.tag = previous.clone();
+            }
+        }
+        return resolve_it_tag(&rebound, refs);
+    }
     // Search filters such as "a creature with exactly that many colors plus
     // one" carry the sacrificial object as an outer constraint, while the
     // aggregate value is initially parsed with the generic `it` marker. Bind
@@ -949,10 +1117,10 @@ pub fn resolve_it_tag(
         filter.tagged_constraints.iter().any(|constraint| {
             constraint.tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
                 && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-        }) && filter.tagged_constraints.iter().any(|constraint| {
+        }) && (filter.tagged_constraints.iter().any(|constraint| {
             constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                 && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
-        });
+        }) || (filter.other && filter.zone == Some(Zone::Exile)));
     if let Some(tag) = refs.known_last_object_tag()
         && tag.as_str() != crate::tag::CompilerReferenceTag::SourceExiled.as_str()
         && tag.as_str() != "triggering"
@@ -969,6 +1137,37 @@ pub fn resolve_it_tag(
                     || tag.as_str().starts_with("__sentence_helper_revealed"))
             {
                 constraint.tag = tag.clone();
+            }
+        }
+    }
+    if resolved.tagged_constraints.iter().any(|constraint| {
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::ThoseCardsReference.as_str()
+    }) {
+        let collection = refs
+            .known_last_object_tag()
+            .cloned()
+            .unwrap_or_else(|| crate::tag::CompilerReferenceTag::Triggering.key());
+        for constraint in &mut resolved.tagged_constraints {
+            if constraint.tag.as_str()
+                == crate::tag::CompilerReferenceTag::ThoseCardsReference.as_str()
+            {
+                constraint.tag = collection.clone();
+            }
+        }
+    }
+    if resolved.tagged_constraints.iter().any(|constraint| {
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::DiscardedCardReference.as_str()
+    }) {
+        let discarded = refs
+            .known_last_object_tag()
+            .filter(|tag| is_discard_result_reference_tag(tag.as_str()))
+            .cloned()
+            .unwrap_or_else(|| crate::tag::CompilerReferenceTag::Triggering.key());
+        for constraint in &mut resolved.tagged_constraints {
+            if constraint.tag.as_str()
+                == crate::tag::CompilerReferenceTag::DiscardedCardReference.as_str()
+            {
+                constraint.tag = discarded.clone();
             }
         }
     }
@@ -1008,6 +1207,10 @@ pub fn resolve_it_tag(
             return Ok(resolved);
         }
     }
+    // "Whenever you discard a card, you may sacrifice this creature. If you
+    // do, return the discarded card ..." (Pitchstone Wall): with no tagged
+    // antecedent left (the source was the last object), the discarded card
+    // is the triggering card, never an arbitrary card in the zone.
     let Some(tag) = refs.known_last_object_tag() else {
         let mut saw_it_constraint = false;
         let mut preserved_runtime_it_constraint = false;
@@ -1096,7 +1299,19 @@ pub fn resolve_it_tag(
     };
     for constraint in &mut resolved.tagged_constraints {
         if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
-            constraint.tag = tag.clone();
+            constraint.tag = if source_exiled_set_excludes_current
+                && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
+                && tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
+            {
+                // "Each other card exiled with ~": the full linked set minus
+                // what this resolution just exiled with the source.
+                ironsmith_compiler_semantic::tag::declared_key(
+                    ironsmith_core::tag::SOURCE_EXILED_THIS_RESOLUTION_TAG,
+                )
+                .into()
+            } else {
+                tag.clone()
+            };
         }
     }
     clear_redundant_live_combat_role_for_event_tag(&mut resolved);
@@ -1412,6 +1627,204 @@ pub fn resolve_restriction_it_tag(
     Ok(resolved)
 }
 
+/// The antecedent a "that spell" demonstrative keeps naming after a newer
+/// object that can never be a spell (a created token, or a card revealed,
+/// looked at, milled, or discarded) became the last object.
+fn spell_demonstrative_prior_antecedent(refs: &ReferenceEnv) -> Option<TagKey> {
+    let last = refs.known_last_object_tag()?;
+    if !is_noun_restricted_object_result_tag(last) {
+        return None;
+    }
+    refs.snapshot_tag_aliases
+        .iter()
+        .find(|(alias, _)| {
+            alias.as_str() == crate::tag::CompilerReferenceTag::PriorObjectAntecedent.as_str()
+        })
+        .map(|(_, prior)| prior.clone())
+        .filter(|prior| !is_noun_restricted_object_result_tag(prior))
+}
+
+/// Alias marking that the trigger's event object (`triggering`) is a spell or
+/// ability whose trigger condition named what it targets ("whenever you cast
+/// a spell that targets only a single creature"). A demonstrative whose noun
+/// names a permanent ("that creature", "those permanents") then denotes the
+/// stack object's targets, never the stack object itself.
+pub fn triggering_stack_targets_alias() -> TagKey {
+    TagKey::from("__triggering_stack_targets__")
+}
+
+/// The permanent card types a demonstrative surface names ("that creature",
+/// "those permanents", "that artifact or creature"). `None` for any other
+/// surface, including "that spell", "that card", and bare pronouns.
+fn demonstrative_permanent_noun_types(text: &str) -> Option<Vec<crate::types::CardType>> {
+    use crate::types::CardType;
+    let mut words = text.split_whitespace();
+    if !matches!(words.next(), Some("that" | "those")) {
+        return None;
+    }
+    let mut types = Vec::new();
+    let mut saw_noun = false;
+    for word in words {
+        let singular = word.strip_suffix('s').unwrap_or(word);
+        let found: &[CardType] = match singular {
+            "or" | "and" => continue,
+            "artifact" => &[CardType::Artifact],
+            "creature" => &[CardType::Creature],
+            "enchantment" => &[CardType::Enchantment],
+            "land" => &[CardType::Land],
+            "planeswalker" => &[CardType::Planeswalker],
+            "battle" => &[CardType::Battle],
+            "permanent" => &[
+                CardType::Artifact,
+                CardType::Creature,
+                CardType::Enchantment,
+                CardType::Land,
+                CardType::Planeswalker,
+                CardType::Battle,
+            ],
+            _ => return None,
+        };
+        saw_noun = true;
+        for card_type in found {
+            if !types.contains(card_type) {
+                types.push(*card_type);
+            }
+        }
+    }
+    saw_noun.then_some(types)
+}
+
+/// Whether `It` currently resolves to a triggering stack object whose trigger
+/// named its targets.
+fn it_names_triggering_stack_object_with_targets(refs: &ReferenceEnv) -> bool {
+    let Some(last) = refs.known_last_object_tag() else {
+        return false;
+    };
+    let alias = triggering_stack_targets_alias();
+    refs.snapshot_tag_aliases
+        .iter()
+        .any(|(existing, tag)| existing == &alias && tag == last)
+}
+
+/// "gain control of that creature" after "whenever you cast a spell that
+/// targets only a single creature": the permanent the triggering stack object
+/// targets.
+fn triggering_stack_target_spec(
+    hints: &[ChooseSpecSurfaceHint],
+    refs: &ReferenceEnv,
+) -> Option<ChooseSpec> {
+    if !it_names_triggering_stack_object_with_targets(refs) {
+        return None;
+    }
+    let types = hints.iter().find_map(|hint| match hint {
+        ChooseSpecSurfaceHint::SourceReference(SourceReferenceSurface::ThisPermanentType(text)) => {
+            demonstrative_permanent_noun_types(text)
+        }
+        _ => None,
+    })?;
+    let stack_object = refs.known_last_object_tag()?.clone();
+    let mut filter = ObjectFilter::default();
+    filter.zone = Some(Zone::Battlefield);
+    filter.card_types = types;
+    filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+        tag: stack_object,
+        relation: TaggedOpbjectRelation::TargetedByTaggedObject,
+    });
+    Some(ChooseSpec::Object(filter))
+}
+
+/// The filter form of [`triggering_stack_target_spec`]: "gain control of
+/// those permanents" carries its noun as card types on an `It` filter.
+fn rebind_triggering_stack_target_filter(
+    filter: &ObjectFilter,
+    refs: &ReferenceEnv,
+) -> Option<ObjectFilter> {
+    if !it_names_triggering_stack_object_with_targets(refs) {
+        return None;
+    }
+    let it = crate::tag::CompilerReferenceTag::It.as_str();
+    if !filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag.as_str() == it && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+    }) {
+        return None;
+    }
+    let surface_types = match &filter.source_surface {
+        Some(SourceReferenceSurface::ThisPermanentType(text)) => {
+            demonstrative_permanent_noun_types(text)
+        }
+        _ => None,
+    };
+    let noun_is_permanent = surface_types.is_some()
+        || (!filter.card_types.is_empty()
+            && filter.card_types.iter().all(|card_type| {
+                matches!(
+                    card_type,
+                    crate::types::CardType::Artifact
+                        | crate::types::CardType::Creature
+                        | crate::types::CardType::Enchantment
+                        | crate::types::CardType::Land
+                        | crate::types::CardType::Planeswalker
+                        | crate::types::CardType::Battle
+                )
+            })
+            && filter.demonstrative_antecedent_surface().is_some());
+    if !noun_is_permanent {
+        return None;
+    }
+    let stack_object = refs.known_last_object_tag()?.clone();
+    let mut rebound = filter.clone();
+    for constraint in &mut rebound.tagged_constraints {
+        if constraint.tag.as_str() == it && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        {
+            constraint.tag = stack_object.clone();
+            constraint.relation = TaggedOpbjectRelation::TargetedByTaggedObject;
+        }
+    }
+    if rebound.card_types.is_empty()
+        && let Some(types) = surface_types
+    {
+        rebound.card_types = types;
+    }
+    if rebound.zone.is_none() {
+        rebound.zone = Some(Zone::Battlefield);
+    }
+    Some(rebound)
+}
+
+/// Alias recording the object antecedent an explicit source subject
+/// superseded ("sacrifice this artifact and create X tokens, where X is that
+/// creature's mana value": `that creature` is still the entering creature).
+pub fn source_superseded_antecedent_alias() -> TagKey {
+    TagKey::from("__source_superseded_antecedent__")
+}
+
+/// A demonstrative surface ("that creature", "that spell") never names the
+/// source; when the source is the only live antecedent, it names the object
+/// the source subject superseded.
+fn demonstrative_superseded_antecedent(
+    hints: &[ChooseSpecSurfaceHint],
+    refs: &ReferenceEnv,
+) -> Option<TagKey> {
+    if refs.known_last_object_tag().is_some() || !refs.has_source_object_antecedent() {
+        return None;
+    }
+    let demonstrative = hints.iter().any(|hint| {
+        matches!(
+            hint,
+            ChooseSpecSurfaceHint::SourceReference(SourceReferenceSurface::ThisPermanentType(text))
+                if text.starts_with("that ")
+        )
+    });
+    if !demonstrative {
+        return None;
+    }
+    let alias = source_superseded_antecedent_alias();
+    refs.snapshot_tag_aliases
+        .iter()
+        .find(|(existing, _)| existing == &alias)
+        .map(|(_, previous)| previous.clone())
+}
+
 pub fn resolve_choose_spec_it_tag(
     spec: &ChooseSpec,
     refs: &ReferenceEnv,
@@ -1424,6 +1837,55 @@ fn resolve_choose_spec_it_tag_preserving_selection(
     refs: &ReferenceEnv,
     preserve_selection: bool,
 ) -> Result<ChooseSpec, CardTextError> {
+    if let ChooseSpec::SurfaceHinted { spec: inner, hints } = spec
+        && matches!(
+            inner.as_ref(),
+            ChooseSpec::Tagged(tag)
+                if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+        )
+        && hints.iter().any(|hint| {
+            matches!(
+                hint,
+                crate::target::ChooseSpecSurfaceHint::SourceReference(
+                    SourceReferenceSurface::ThisPermanentType(surface)
+                ) if surface == "that spell"
+            )
+        })
+        && let Some(prior) = spell_demonstrative_prior_antecedent(refs)
+    {
+        // "put X +1/+1 counters on it (X is that spell's mana value)": a
+        // created token or a looked-at card is never "that spell".
+        return Ok(ChooseSpec::SurfaceHinted {
+            spec: Box::new(ChooseSpec::Tagged(prior)),
+            hints: hints.clone(),
+        });
+    }
+    if let ChooseSpec::SurfaceHinted { spec: inner, hints } = spec
+        && matches!(
+            inner.as_ref(),
+            ChooseSpec::Tagged(tag)
+                if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+        )
+        && let Some(targets) = triggering_stack_target_spec(hints, refs)
+    {
+        return Ok(ChooseSpec::SurfaceHinted {
+            spec: Box::new(targets),
+            hints: hints.clone(),
+        });
+    }
+    if let ChooseSpec::SurfaceHinted { spec: inner, hints } = spec
+        && matches!(
+            inner.as_ref(),
+            ChooseSpec::Tagged(tag)
+                if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+        )
+        && let Some(previous) = demonstrative_superseded_antecedent(hints, refs)
+    {
+        return Ok(ChooseSpec::SurfaceHinted {
+            spec: Box::new(ChooseSpec::Tagged(previous)),
+            hints: hints.clone(),
+        });
+    }
     match spec {
         ChooseSpec::SurfaceHinted { spec, hints } => Ok(ChooseSpec::SurfaceHinted {
             spec: Box::new(resolve_choose_spec_it_tag_preserving_selection(

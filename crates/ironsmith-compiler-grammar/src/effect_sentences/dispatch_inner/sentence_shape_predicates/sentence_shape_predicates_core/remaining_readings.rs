@@ -389,6 +389,16 @@ fn read_single_sentence_unless_action(
     if crate::lexer::split_lexed_sentences(tokens).len() == 1
         && !contains_quantified_opponent
         && !tokens.first().is_some_and(|token| token.is_word("if"))
+        // "When you do, ~ deals damage ... unless that creature's controller
+        // ..." (Craig Boone): the choice belongs inside the reflexive
+        // trigger, whose target it names; the control-flow reading owns it.
+        && !(tokens
+            .first()
+            .is_some_and(|token| token.is_any_word(&["when", "whenever"]))
+            && matches!(
+                effect_grammar::control_flow::recognize_control_flow(tokens),
+                crate::recognition::ParseOutcome::Match(_)
+            ))
         && !effect_grammar::chain_splitting::has_authored_comma_then_surface_tokens(tokens)
         && effect_grammar::choice_damage_shapes::parse_unless_sentence_shape(tokens).is_some()
         && let Some(effects) = parse_sentence_unless_pays(SubjectVerbPrimitiveClause::new(tokens))?

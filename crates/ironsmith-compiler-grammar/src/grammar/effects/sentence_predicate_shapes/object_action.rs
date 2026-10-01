@@ -33,12 +33,12 @@ pub fn parse_where_x_value_shape_tokens(
                 }
             }
             ReferenceSurface::ThisCreature => WhereXReferenceShape::Source,
-            ReferenceSurface::ThatSpell => WhereXReferenceShape::TaggedIt,
+            ReferenceSurface::ThatSpell => WhereXReferenceShape::Demonstrative("that spell"),
             ReferenceSurface::ThatCreature => {
                 if stripped_references_target {
                     WhereXReferenceShape::Target
                 } else {
-                    WhereXReferenceShape::TaggedIt
+                    WhereXReferenceShape::Demonstrative("that creature")
                 }
             }
         };

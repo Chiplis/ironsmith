@@ -2786,6 +2786,11 @@ pub struct DirectionalAdjacentPlayerControlEffect {
     pub filter: ObjectFilter,
     pub left_option: String,
     pub right_option: String,
+    /// "Each player gains control of all <filter> controlled by the next
+    /// player in the chosen direction": every matching object moves at once
+    /// instead of one object chosen by each player.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub all_matching: bool,
 }
 
 impl DirectionalAdjacentPlayerControlEffect {
@@ -2798,6 +2803,7 @@ impl DirectionalAdjacentPlayerControlEffect {
             filter,
             left_option: left_option.into(),
             right_option: right_option.into(),
+            all_matching: false,
         }
     }
 }
@@ -4631,6 +4637,11 @@ pub struct CreateTokenEffect<D> {
     pub sacrifice_at_next_end_step: bool,
     pub exile_at_next_end_step: bool,
     pub next_end_step_player: PlayerFilter,
+    /// The token's text refers to cards this resolution exiled with its
+    /// source ("return the exiled card"): link those cards to each created
+    /// token so its own abilities can find them (CR 607.2a).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub link_source_exiled_this_resolution: bool,
 }
 
 impl<D> CreateTokenEffect<D> {
@@ -4661,7 +4672,13 @@ impl<D> CreateTokenEffect<D> {
             sacrifice_at_next_end_step: false,
             exile_at_next_end_step: false,
             next_end_step_player: PlayerFilter::Any,
+            link_source_exiled_this_resolution: false,
         }
+    }
+
+    pub fn linking_source_exiled_this_resolution(mut self) -> Self {
+        self.link_source_exiled_this_resolution = true;
+        self
     }
 
     pub fn you(token: D, count: impl Into<Value>) -> Self {

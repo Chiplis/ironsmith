@@ -2927,9 +2927,13 @@
             "The next time {source_text} would deal damage{target_clause} this turn, prevent that damage"
         );
         if prevent_next_time.reflect_damage_to_source_controller {
-            rendered.push_str(
-                ". If damage is prevented this way, this spell deals that much damage to that source's controller",
-            );
+            let prevented_damage = match &prevent_next_time.reflect_source_filter {
+                Some(filter) => format!("damage from {}", prevention_rider_source_text(filter)),
+                None => "damage".to_string(),
+            };
+            rendered.push_str(&format!(
+                ". If {prevented_damage} is prevented this way, this spell deals that much damage to that source's controller",
+            ));
             if let [follow_up] = prevent_next_time.follow_up_effects.as_slice()
                 && let Some(draw) = follow_up.downcast_ref::<crate::effects::DrawCardsEffect>()
                 && matches!(draw.player, crate::target::PlayerFilter::You)
@@ -2954,29 +2958,7 @@
             && conditional.if_false.is_empty()
             && prevention_gain_life_follow_up(&conditional.if_true).is_some()
         {
-            let source_text = match filter.colors {
-                Some(colors)
-                    if crate::target::ObjectFilter {
-                        colors: None,
-                        ..filter.clone()
-                    } == crate::target::ObjectFilter::default() =>
-                {
-                    let mut color_words = Vec::new();
-                    for (color, word) in [
-                        (crate::color::Color::White, "white"),
-                        (crate::color::Color::Blue, "blue"),
-                        (crate::color::Color::Black, "black"),
-                        (crate::color::Color::Red, "red"),
-                        (crate::color::Color::Green, "green"),
-                    ] {
-                        if colors.contains(color) {
-                            color_words.push(word);
-                        }
-                    }
-                    with_indefinite_article(&format!("{} source", color_words.join(" or ")))
-                }
-                _ => describe_prevention_damage_source(filter, false),
-            };
+            let source_text = prevention_rider_source_text(filter);
             rendered.push_str(&format!(
                 ". If damage from {source_text} is prevented this way, you gain that much life"
             ));
@@ -3974,7 +3956,7 @@
             return format!("At the beginning of your next end step, {delayed_text}");
         }
         if schedule.one_shot
-            && schedule.target_tag.is_some()
+            && (schedule.target_tag.is_some() || schedule.watch_all_object_targets)
             && (trigger_lower.contains("creature dies")
                 || trigger_lower.contains("creature is put into a graveyard"))
         {

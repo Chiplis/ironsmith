@@ -352,6 +352,30 @@ impl GameState {
         }
     }
 
+    /// The permanents this object devoured as it entered, as last known.
+    pub fn devoured_objects(&self, id: ObjectId) -> &[crate::snapshot::ObjectSnapshot] {
+        self.battlefield_flags
+            .devoured_objects
+            .get(&id)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+    }
+
+    /// Record the permanents this object devoured as it entered.
+    pub fn set_devoured_objects(
+        &mut self,
+        id: ObjectId,
+        objects: Vec<crate::snapshot::ObjectSnapshot>,
+    ) {
+        if objects.is_empty() {
+            self.battlefield_flags_mut().devoured_objects.remove(&id);
+        } else {
+            self.battlefield_flags_mut()
+                .devoured_objects
+                .insert(id, objects);
+        }
+    }
+
     /// Check if a permanent is suspected.
     pub fn is_suspected(&self, id: ObjectId) -> bool {
         self.battlefield_flags.suspected.contains(&id)
@@ -1856,6 +1880,7 @@ impl GameState {
             flags.dealt_deathtouch_damage_since_sba.remove(&id);
             flags.regeneration_shields.remove(&id);
             flags.devoured_counts.remove(&id);
+            flags.devoured_objects.remove(&id);
             flags.solved_cases.remove(&id);
             flags.class_levels.remove(&id);
             flags.harnessed.remove(&id);

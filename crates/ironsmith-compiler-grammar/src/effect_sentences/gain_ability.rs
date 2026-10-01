@@ -950,6 +950,42 @@ fn split_quoted_granted_ability_list(tokens: &[OwnedLexToken]) -> Option<Vec<&[O
     Some(vec![prefix, quoted])
 }
 
+/// A quoted static rule whose own granted abilities are nested in apostrophe
+/// quotes, as an Aura's granted rule is printed: `"Enchanted Forest has '{T}:
+/// Add {G}{G}.'"`. `rule_tokens` is the text between the outer double quotes.
+/// The nested apostrophes are the rule's own quotation marks, so the rule is
+/// read as the static line it would be if printed on its own.
+pub fn parse_nested_quoted_static_grant(
+    rule_tokens: &[OwnedLexToken],
+) -> Option<Vec<GrantedAbilityAst>> {
+    if !rule_tokens
+        .iter()
+        .any(|token| token.kind == TokenKind::Apostrophe)
+    {
+        return None;
+    }
+    let requoted = rule_tokens
+        .iter()
+        .map(|token| {
+            if token.kind == TokenKind::Apostrophe {
+                OwnedLexToken::quote(token.span)
+            } else {
+                token.clone()
+            }
+        })
+        .collect::<Vec<_>>();
+    let abilities = parse_static_ability_ast_line_lexed(&requoted).ok()??;
+    if abilities.is_empty() {
+        return None;
+    }
+    Some(
+        abilities
+            .into_iter()
+            .map(|ability| GrantedAbilityAst::StaticAbility(Box::new(ability)))
+            .collect(),
+    )
+}
+
 pub fn parse_granted_abilities_for_gain_clause(
     ability_tokens: &[OwnedLexToken],
     clause_words: &[&str],
@@ -1842,6 +1878,34 @@ fn parse_simple_ability_modifier_clause_lexed(
     }
 
     let subject_shape = gain_shapes::classify_gain_subject(&subject_word_refs);
+    // "you may copy it. If you do, those spells gain wither" (Spinerock
+    // Tyrant): the plural names both the referenced spell and its copy.
+    if !losing
+        && !is_choice
+        && crate::word_primitives::parse_sequence_complete(
+            &subject_word_refs,
+            &["those", "spells"],
+        )
+    {
+        let span = span_from_lexed_tokens(subject_tokens);
+        return Ok(Some(EffectAst::Sequence {
+            effects: vec![
+                EffectAst::subject_verb_grant_abilities_to_target(
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span),
+                    abilities.clone(),
+                    duration.clone(),
+                ),
+                EffectAst::subject_verb_grant_abilities_to_target(
+                    TargetAst::Tagged(
+                        crate::tag::CompilerReferenceTag::CopiedStackObject.bind(),
+                        span,
+                    ),
+                    abilities,
+                    duration,
+                ),
+            ],
+        }));
+    }
     let is_pronoun_subject = implied_it_subject || subject_shape.tagged_pronoun;
     if is_pronoun_subject {
         let set_quantifier_surface = pronoun_set_quantifier_surface(&subject_word_refs);
@@ -2246,6 +2310,31 @@ pub(crate) fn split_anaphor_pair_subject_sentences(
     let subject = &tokens[..subject_end];
     if subject.iter().any(|token| {
         token.is_comma() || token.is_any_word(&["target", "if", "or", "may", "unless"])
+    }) {
+        return None;
+    }
+    // "untap that creature and it gains haste": an imperative action
+    // coordinated with a grant, not a two-recipient subject. A recipient
+    // noun phrase never opens with an effect verb.
+    if subject.first().is_some_and(|token| {
+        token.is_any_word(&[
+            "tap",
+            "untap",
+            "destroy",
+            "exile",
+            "sacrifice",
+            "return",
+            "put",
+            "attach",
+            "regenerate",
+            "transform",
+            "goad",
+            "detain",
+            "copy",
+            "counter",
+            "reveal",
+            "choose",
+        ])
     }) {
         return None;
     }

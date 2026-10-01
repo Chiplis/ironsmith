@@ -806,6 +806,7 @@ impl SyncObligationFilterContext {
             stack_entry: self.stack_entry.map(ObjectId::from_raw),
             // Transient: only bound while a filter compares a candidate.
             filter_candidate_players: None,
+            departed_battlefield_lookback: None,
         })
     }
 }

@@ -99,6 +99,12 @@ pub fn parse_scaled_target_power_sentence(
                 Box::new(ChooseSpec::Tagged(
                     crate::tag::CompilerReferenceTag::It.bind().into(),
                 ))
+            } else if let crate::cards::builders::TargetAst::Source(_) = &target {
+                Box::new(ChooseSpec::Source)
+            } else if let crate::cards::builders::TargetAst::Object(filter, None, _) = &target {
+                // "Double equipped creature's power": an untargeted object's
+                // own power, not a target the ability never declares.
+                Box::new(ChooseSpec::Object(filter.clone()))
             } else {
                 let amount_source_filter = target_ast_to_object_filter(target.clone())
                     .unwrap_or_else(|| {
@@ -106,7 +112,14 @@ pub fn parse_scaled_target_power_sentence(
                         fallback.card_types.push(CardType::Creature);
                         fallback
                     });
-                Box::new(ChooseSpec::target(ChooseSpec::Object(amount_source_filter)))
+                // "Double equipped creature's power": only an announced
+                // target reads its amount from the chosen targets; any other
+                // subject is read from the object it describes.
+                if crate::lexer::token_word_refs(target_tokens).contains(&"target") {
+                    Box::new(ChooseSpec::target(ChooseSpec::Object(amount_source_filter)))
+                } else {
+                    Box::new(ChooseSpec::Object(amount_source_filter))
+                }
             };
             let scaled_stat = |value: Value| {
                 if multiplier == 1 {

@@ -3066,6 +3066,80 @@ impl StaticAbilityKind for PreventAllCombatDamageToPermanentsMatching {
     }
 }
 
+/// "Prevent all combat damage that would be dealt to and dealt by
+/// [matching permanents]." (Ghostly Possession)
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreventAllCombatDamageToAndByPermanentsMatching {
+    pub filter: ObjectFilter,
+}
+
+impl PreventAllCombatDamageToAndByPermanentsMatching {
+    pub fn new(filter: ObjectFilter) -> Self {
+        Self { filter }
+    }
+}
+
+impl StaticAbilityKind for PreventAllCombatDamageToAndByPermanentsMatching {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PreventAllCombatDamageToAndByPermanentsMatching
+    }
+
+    fn display(&self) -> String {
+        let description = self.filter.description();
+        // A class of permanents reads in the plural ("creatures you
+        // control"); a definite one keeps its noun ("enchanted creature").
+        let subject = if description.starts_with("a ") || description.starts_with("an ") {
+            pluralize_filter_description(&description)
+        } else {
+            description
+        };
+        format!("Prevent all combat damage that would be dealt to and dealt by {subject}.")
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            PreventableCombatDamageToOrByObjectMatcher {
+                to: PreventableCombatDamageToObjectMatcher::new(self.filter.clone()),
+                by: crate::events::damage::matchers::DamageFromSourceMatcher::new(self.filter.clone()),
+            },
+            ReplacementAction::PreventDamage,
+        ))
+    }
+}
+
+/// Preventable combat damage dealt to, or dealt by, a matching object.
+#[derive(Debug, Clone)]
+struct PreventableCombatDamageToOrByObjectMatcher {
+    to: PreventableCombatDamageToObjectMatcher,
+    by: crate::events::damage::matchers::DamageFromSourceMatcher,
+}
+
+impl ReplacementMatcher for PreventableCombatDamageToOrByObjectMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        if self.to.matches_event(event, ctx) {
+            return true;
+        }
+        let Some(damage) = downcast_event::<DamageEvent>(event) else {
+            return false;
+        };
+        damage.is_combat && !damage.is_unpreventable && self.by.matches_event(event, ctx)
+    }
+
+    fn priority(&self) -> ReplacementPriority {
+        ReplacementPriority::Other
+    }
+
+    fn display(&self) -> String {
+        "When preventable combat damage would be dealt to or by a matching permanent".to_string()
+    }
+}
+
 /// "Prevent all noncombat damage that would be dealt to [matching permanents]."
 #[derive(Debug, Clone, PartialEq)]
 pub struct PreventAllNoncombatDamageToPermanentsMatching {

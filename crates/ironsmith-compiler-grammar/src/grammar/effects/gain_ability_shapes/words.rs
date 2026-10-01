@@ -444,6 +444,18 @@ fn count_prefix_start(words: &[&str], subject_offset: usize) -> usize {
 
 fn subject_start_at(words: &[&str], offset: usize) -> Option<usize> {
     let word = *words.get(offset)?;
+    // "other creatures you control that share a creature type with it get
+    // ..." (Haunted One): a pronoun governed by a preposition is part of the
+    // subject's qualifier, not where the subject starts.
+    if gain_word_is_pronoun(word)
+        && offset >= 1
+        && matches!(
+            words[offset - 1],
+            "with" | "on" | "to" | "from" | "than" | "as" | "of" | "by" | "at" | "into" | "onto"
+        )
+    {
+        return None;
+    }
     if gain_word_is_pronoun(word) || word == "target" {
         let mut start = count_prefix_start(words, offset);
         if start == offset

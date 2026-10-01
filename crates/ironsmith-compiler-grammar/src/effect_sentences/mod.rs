@@ -53,7 +53,7 @@ pub enum TokenCopyFollowup {
     EnterTappedAndAttacking,
     EnterTappedAndAttackingThatPlayer,
     SacrificeAtNextEndStep(crate::effect::TokenCopyReferenceSurface),
-    SacrificeAtNextUpkeep,
+    SacrificeAtNextUpkeep(crate::cards::builders::PlayerAst),
     ExileAtNextEndStep(crate::effect::TokenCopyReferenceSurface),
     ExileAtEndOfCombat(crate::effect::TokenCopyReferenceSurface),
     SacrificeAtEndOfCombat,

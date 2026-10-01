@@ -403,6 +403,7 @@ mod choice_programs;
 use choice_programs::target_phrase_excludes_chooser_controller;
 pub use choice_programs::{
     parse_choose_target_shape, parse_embedded_choose_target_shape, parse_protection_choice_shape,
+    split_coordinated_choose_target_clauses,
     strip_optional_you_choice_tokens,
 };
 #[path = "direct/reference.rs"]

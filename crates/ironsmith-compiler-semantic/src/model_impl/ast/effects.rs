@@ -71,6 +71,16 @@ pub enum EffectAst {
         count: Value,
         tag: TagRef,
     },
+    /// The authored-subject form of `LookAtTopCardsAsViewer`, before player
+    /// references are resolved: "That player looks at the top three cards of
+    /// your library" (the subject is the private viewer, CR 701.16a-style
+    /// look; the named library belongs to `library_owner`).
+    PlayerLooksAtTopCardsOfLibrary {
+        viewer: PlayerAst,
+        library_owner: PlayerAst,
+        count: Value,
+        tag: TagRef,
+    },
     RestartGame {
         cards_left_in_exile: Option<ChooseSpec>,
         source_surface: Option<SourceReferenceSurface>,
@@ -146,6 +156,8 @@ pub enum EffectAst {
         filter: ObjectFilter,
         left_option: String,
         right_option: String,
+        /// Every matching object moves, not one chosen object per player.
+        all_matching: bool,
     },
     /// Moves every object tagged `tag` to `zone`, preserving each object's
     /// controller. Lowers to `for_each_tagged(tag, [move(Iterated, zone)])`.
@@ -538,6 +550,7 @@ impl EffectAst {
                     source,
                     target,
                     reflect_damage_to_source_controller,
+                    reflect_source_filter: None,
                     follow_up_effects: Vec::new(),
                 },
             ),

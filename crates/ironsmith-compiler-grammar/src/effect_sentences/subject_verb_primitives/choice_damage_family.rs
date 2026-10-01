@@ -705,6 +705,27 @@ pub fn parse_sentence_damage_unless_controller_has_source_deal_damage(
         }
         amount
     };
+    // "... unless that creature's controller has Craig Boone deal that much
+    // damage to them": "that much" is the damage the main action would deal,
+    // not an event amount the alternative never sees.
+    let main_damage_amount = match main_effect {
+        EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount, .. }) => {
+                Some(amount.clone())
+            }
+            _ => None,
+        },
+        _ => None,
+    };
+    let alt_amount = if matches!(
+        alt_amount.unhinted(),
+        Value::EventValue(crate::effect::EventValueSpec::Amount)
+    ) && let Some(amount) = main_damage_amount
+    {
+        amount
+    } else {
+        alt_amount
+    };
 
     let alternative = EffectAst::subject_verb_damage(
         alt_amount,

@@ -8068,6 +8068,14 @@ fn describe_structural_return_as_aura_with_granted_abilities(effects: &[Effect])
             crate::continuous::Modification::AddAbilityGeneric(ability) => {
                 granted_abilities.push(ability);
             }
+            // The Aura's own static rule granting an ability to the
+            // enchanted permanent ("Enchanted Forest has '{T}: ...'").
+            crate::continuous::Modification::AddAbility(static_ability)
+                if static_ability.id()
+                    == crate::static_abilities::StaticAbilityId::AttachedAbilityGrant =>
+            {
+                granted_abilities.push(static_ability.granted_inline_ability()?);
+            }
             _ => return None,
         }
     }
@@ -8233,6 +8241,7 @@ fn describe_atomic_returned_aura_grant(effects: &[Effect]) -> Option<String> {
         return None;
     }
     let mut abilities = Vec::new();
+    let mut attached_grants = Vec::new();
     for effect in &grants.effects {
         let apply = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
         if apply.until != Until::Forever
@@ -8243,12 +8252,54 @@ fn describe_atomic_returned_aura_grant(effects: &[Effect]) -> Option<String> {
         {
             return None;
         }
-        let Some(crate::continuous::Modification::AddAbilityGeneric(ability)) = &apply.modification
-        else {
+        match &apply.modification {
+            Some(crate::continuous::Modification::AddAbilityGeneric(ability)) => {
+                let text = describe_inline_ability_with_self_subject(ability, "this enchantment");
+                abilities.push(format!("\"{},\"", text.trim_end_matches('.')));
+            }
+            // "... and "Enchanted Forest has '{T}: ...'" <Name> loses all
+            // other abilities": the Aura's static rule grants the ability to
+            // the enchanted permanent.
+            Some(crate::continuous::Modification::AddAbility(static_ability))
+                if static_ability.id()
+                    == crate::static_abilities::StaticAbilityId::AttachedAbilityGrant =>
+            {
+                attached_grants.push(static_ability.granted_inline_ability()?);
+            }
+            _ => return None,
+        }
+    }
+    if !attached_grants.is_empty() {
+        if !abilities.is_empty() {
             return None;
-        };
-        let text = describe_inline_ability_with_self_subject(ability, "this enchantment");
-        abilities.push(format!("\"{},\"", text.trim_end_matches('.')));
+        }
+        let mut display_filter = aura.attachment_filter.clone();
+        display_filter.zone = None;
+        let enchant_target = strip_leading_article(&display_filter.description()).to_string();
+        let ability_subject = enchant_target
+            .strip_suffix(" you control")
+            .unwrap_or(enchant_target.as_str());
+        let self_subject = aura_attachment_self_subject(&display_filter);
+        let quoted = attached_grants
+            .iter()
+            .enumerate()
+            .map(|(idx, ability)| {
+                let ability = move_trailing_tapped_token_surface(
+                    &describe_inline_ability_with_self_subject(ability, self_subject),
+                );
+                let ability = ability.trim_end_matches('.');
+                if idx + 1 == attached_grants.len() {
+                    format!("'{ability}.'")
+                } else {
+                    format!("'{ability}'")
+                }
+            })
+            .collect::<Vec<_>>();
+        return Some(format!(
+            "Return it to the battlefield. It's an Aura enchantment with enchant {enchant_target} and \"{} has {}\" It loses all other abilities",
+            capitalize_first(&format!("enchanted {ability_subject}")),
+            join_with_and(&quoted)
+        ));
     }
     if abilities.is_empty() {
         return None;

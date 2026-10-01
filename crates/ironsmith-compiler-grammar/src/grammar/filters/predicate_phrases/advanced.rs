@@ -1702,6 +1702,8 @@ pub(super) fn parse_value_reference_comparison_predicate(
         }
         let mut right = right;
         bind_other_aggregate_to_compared_object(&left, &mut right);
+        let mut left = left;
+        mark_demonstrative_characteristic_subject(&mut left, &tokens[..comparison_start]);
         return Some(PredicateAst::ValueComparison {
             left,
             operator,
@@ -1709,6 +1711,40 @@ pub(super) fn parse_value_reference_comparison_predicate(
         });
     }
     None
+}
+
+/// "if that creature's power is greater than Yorvo's power": keep the head
+/// noun of a demonstrative characteristic subject, so reference resolution
+/// can tell "that creature" (never the source) from a bare "its" when an
+/// intervening source instruction left no ordinary object antecedent.
+fn mark_demonstrative_characteristic_subject(value: &mut Value, subject: &[OwnedLexToken]) {
+    let words = crate::lexer::parser_token_word_refs(subject);
+    let [first, noun, ..] = words.as_slice() else {
+        return;
+    };
+    if *first != "that" {
+        return;
+    }
+    let noun = noun.trim_end_matches("'s").trim_end_matches('\'');
+    let Some(surface) = ironsmith_core::DemonstrativeAntecedentSurface::from_noun(noun) else {
+        return;
+    };
+    let (Value::PowerOf(spec) | Value::ToughnessOf(spec)) = value else {
+        return;
+    };
+    let crate::ChooseSpec::Tagged(tag) = spec.as_ref() else {
+        return;
+    };
+    if tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str() {
+        return;
+    }
+    **spec = (**spec).clone().with_surface_hint(
+        crate::target::ChooseSpecSurfaceHint::SourceReference(
+            crate::target::SourceReferenceSurface::ThisPermanentType(
+                surface.phrase().to_string(),
+            ),
+        ),
+    );
 }
 
 /// "its power is greater than each other creature's power" (Selvala): the
@@ -2561,6 +2597,18 @@ pub(super) fn parse_source_attacked_or_blocked_this_turn_shape(
     let window_clause = matched.capture_clause("window", clause)?;
     if !is_this_turn_clause(window_clause) {
         return None;
+    }
+    // "exile target creature if it attacked or blocked this turn": a bare
+    // `it` names the current object antecedent (the source only when there
+    // is no other object in view).
+    if surface::exact(subject_clause, &["it"]) {
+        let mut attacked = crate::filter::ObjectFilter::default();
+        attacked.attacked_this_turn = true;
+        let mut blocked = crate::filter::ObjectFilter::default();
+        blocked.blocked_this_turn = true;
+        let mut filter = crate::filter::ObjectFilter::default();
+        filter.any_of = vec![attacked, blocked];
+        return Some(PredicateAst::ItMatches(filter));
     }
     Some(PredicateAst::Source(
         SourcePredicateAst::SourceAttackedOrBlockedThisTurn,

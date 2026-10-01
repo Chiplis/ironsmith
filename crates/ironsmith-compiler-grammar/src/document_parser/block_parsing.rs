@@ -110,8 +110,26 @@ pub(super) fn try_parse_modal_bullet_block(
     // that work after the following physical line proves this is a modal
     // block; ordinary multi-sentence abilities may contain the same choice
     // words and internal commas but have no bullet modes to inherit a suffix.
+    // "When Venser enters, choose one —": a triggered modal header names its
+    // source the same way an ordinary triggered line does. Rewrite the
+    // source alias to the typed self subject here too, or a short name that
+    // is also a subtype ("Venser") is read as a subtype-filtered trigger on
+    // other objects.
+    let header_tokens = if line
+        .tokens
+        .first()
+        .is_some_and(|token| token.is_word("when") || token.is_word("whenever"))
+    {
+        super::named_source_tokens::normalize_named_source_trigger_tokens(
+            &preprocessed.card,
+            &line.tokens,
+        )
+        .unwrap_or_else(|| line.tokens.clone())
+    } else {
+        line.tokens.clone()
+    };
     let header_has_common_target_suffix =
-        super::super::modal_support::parse_modal_header(&line.info, &line.tokens)?
+        super::super::modal_support::parse_modal_header(&line.info, &header_tokens)?
             .is_some_and(|header| !header.common_suffix_effects_ast.is_empty());
     let mut bullet_modes = Vec::new();
     let mut probe_idx = idx + 1;
@@ -138,7 +156,7 @@ pub(super) fn try_parse_modal_bullet_block(
     Ok(Some((
         RecognizedLine::Modal(RecognizedModalBlock {
             header: line.info.clone(),
-            header_tokens: line.tokens.clone(),
+            header_tokens,
             modes: bullet_modes,
         }),
         probe_idx,

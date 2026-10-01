@@ -339,7 +339,49 @@ pub(super) fn read_source_zone_predicate(
 }
 
 /// This shard's readings, in rank order.
+/// "it would destroy a land you control": the referenced stack object's
+/// resolution would destroy a matching object (Equinox). The relation is
+/// carried on the stack object's filter so the runtime can inspect its
+/// destroy instructions and chosen targets.
+pub(super) fn read_stack_object_would_destroy_predicate(
+    input: &Predicate<'_>,
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let tokens = input.predicate_tokens;
+    let subject_len = match tokens {
+        [it, would, destroy, ..]
+            if it.is_word("it") && would.is_word("would") && destroy.is_word("destroy") =>
+        {
+            1
+        }
+        [that, spell, would, destroy, ..]
+            if that.is_word("that")
+                && spell.is_word("spell")
+                && would.is_word("would")
+                && destroy.is_word("destroy") =>
+        {
+            2
+        }
+        _ => return Ok(None),
+    };
+    let destroyed_tokens = &tokens[subject_len + 2..];
+    if destroyed_tokens.is_empty() {
+        return Ok(None);
+    }
+    let Ok(destroyed) = parse_object_filter_lexed(destroyed_tokens, false) else {
+        return Ok(None);
+    };
+    let mut filter = ObjectFilter::default();
+    filter.would_destroy_object = Some(Box::new(destroyed));
+    Ok(Some(PredicateAst::ItMatches(filter)))
+}
+
 pub(super) const READINGS: &[Reading] = &[
+    Reading {
+        id: RuleId::new("stack-object-would-destroy-predicate"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_stack_object_would_destroy_predicate(input)),
+    },
     Reading {
         id: RuleId::new("saddled"),
         head: HeadDiscriminator::Any,

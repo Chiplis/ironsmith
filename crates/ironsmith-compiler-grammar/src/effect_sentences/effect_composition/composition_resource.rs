@@ -43,7 +43,9 @@ pub(super) fn parse_controller_sacrifice_consult_bundle(
             ),
             EffectAst::subject_verb(
                 SubjectVerbRoleAst::LibraryOwner,
-                PlayerAst::ItsController,
+                // The consulting player shuffles, even when no card matched and the
+                // matched-card tag is empty.
+                PlayerAst::That,
                 SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
             ),
         ];
@@ -79,7 +81,9 @@ pub(super) fn parse_controller_sacrifice_consult_bundle(
         ),
         EffectAst::subject_verb(
             SubjectVerbRoleAst::LibraryOwner,
-            PlayerAst::ItsController,
+            // The consulting player shuffles, even when no card matched and the
+            // matched-card tag is empty.
+            PlayerAst::That,
             SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
         ),
     ])

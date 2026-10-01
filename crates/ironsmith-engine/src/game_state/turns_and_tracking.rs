@@ -3168,6 +3168,7 @@ impl GameState {
             effect_outcomes: std::collections::HashMap::new(),
             stack_entry: None,
             filter_candidate_players: None,
+            departed_battlefield_lookback: None,
         }
     }
 

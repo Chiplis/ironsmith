@@ -4781,6 +4781,33 @@ pub(crate) fn describe_damage_filter(filter: &crate::prevention::DamageFilter) -
     parts.join(" ")
 }
 
+/// The source quality of a prevention rider: "damage from a black source is
+/// prevented this way". A bare color names only the source's color.
+pub(crate) fn prevention_rider_source_text(filter: &ObjectFilter) -> String {
+    if let Some(colors) = filter.colors
+        && (ObjectFilter {
+            colors: None,
+            ..filter.clone()
+        }) == ObjectFilter::default()
+    {
+        let mut color_words = Vec::new();
+        for (color, word) in [
+            (crate::color::Color::White, "white"),
+            (crate::color::Color::Blue, "blue"),
+            (crate::color::Color::Black, "black"),
+            (crate::color::Color::Red, "red"),
+            (crate::color::Color::Green, "green"),
+        ] {
+            if colors.contains(color) {
+                color_words.push(word);
+            }
+        }
+        // Every color word starts with a consonant.
+        return format!("a {} source", color_words.join(" or "));
+    }
+    describe_prevention_damage_source(filter, false)
+}
+
 pub(crate) fn describe_prevention_damage_source(filter: &ObjectFilter, chosen: bool) -> String {
     let description = filter.description();
     let bare = strip_indefinite_article(&description).trim();

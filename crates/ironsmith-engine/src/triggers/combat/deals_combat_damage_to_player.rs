@@ -96,7 +96,20 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
         if !self.filter.matches(obj, &ctx.filter_ctx, ctx.game) {
             return false;
         }
-        if !self.player.matches_player(damaged_player, &ctx.filter_ctx) {
+        // "... deals combat damage to its owner": the player filter is
+        // relative to the damage source (the filter candidate).
+        let player_matches = if matches!(
+            self.player,
+            PlayerFilter::OwnerOf(crate::filter::ObjectRef::FilterCandidate)
+                | PlayerFilter::ControllerOf(crate::filter::ObjectRef::FilterCandidate)
+        ) {
+            let mut player_ctx = ctx.filter_ctx.clone();
+            player_ctx.filter_candidate_players = Some((ctx.game.controller_of(obj), obj.owner));
+            self.player.matches_player(damaged_player, &player_ctx)
+        } else {
+            self.player.matches_player(damaged_player, &ctx.filter_ctx)
+        };
+        if !player_matches {
             return false;
         }
         // Per damaged player, every matching assignment belongs to that
@@ -158,6 +171,16 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
         }
         let player = if matches!(self.player, PlayerFilter::Opponent) {
             "one of your opponents".to_string()
+        } else if matches!(
+            self.player,
+            PlayerFilter::OwnerOf(crate::filter::ObjectRef::FilterCandidate)
+        ) {
+            "its owner".to_string()
+        } else if matches!(
+            self.player,
+            PlayerFilter::ControllerOf(crate::filter::ObjectRef::FilterCandidate)
+        ) {
+            "its controller".to_string()
         } else {
             self.player.description()
         };

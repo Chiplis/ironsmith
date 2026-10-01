@@ -38,6 +38,10 @@ const CREATURE_CONTROLLER_TARGETS: &[&[&str]] = &[
     &["that", "creatures", "controller"],
     &["the", "creature's", "controller"],
     &["that", "creature's", "controller"],
+    // "that creature's or spell's controller" (Justice): the controller of
+    // the one antecedent object, whichever kind it is.
+    &["that", "creatures", "or", "spells", "controller"],
+    &["that", "creature's", "or", "spell's", "controller"],
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

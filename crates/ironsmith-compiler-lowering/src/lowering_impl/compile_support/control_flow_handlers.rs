@@ -1261,7 +1261,14 @@ pub fn compile_effects_in_iterated_player_context(
         .collect();
     ctx.apply_id_gen_context(id_gen);
     let produced_last_tag = if tagged_object.is_none() {
-        frame_out.last_object_tag.clone()
+        // "exile the top card of each player's library and put a counter on
+        // each of them": the loop's accumulated exile union is the antecedent.
+        if frame_out.last_object_tag == saved_frame.last_object_tag {
+            ironsmith_compiler_resolve::tag_support::player_loop_exported_exile_collection(effects)
+                .or_else(|| frame_out.last_object_tag.clone())
+        } else {
+            frame_out.last_object_tag.clone()
+        }
     } else {
         None
     };

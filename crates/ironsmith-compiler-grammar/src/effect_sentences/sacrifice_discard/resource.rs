@@ -97,6 +97,16 @@ pub fn parse_sacrifice(
     // have bound it. Lowering supplies You when no outer actor exists.
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
+    // "you may sacrifice Trickster's Talisman" inside the ability the
+    // Equipment grants: the granting object itself, not a new choice.
+    if normalized_words.as_slice() == crate::preprocess::GRANTING_SOURCE_SURFACE_WORDS {
+        let target = parse_target_phrase(tokens)?;
+        return Ok(wrap_unless_escaped(
+            EffectAst::subject_verb_sacrifice(player, ObjectFilter::default(), 1, Some(target)),
+            unless_escaped,
+        ));
+    }
+
     // "Sacrifice a creature, an artifact, and a land": each listed object is
     // its own choice of a different permanent, and all of them are
     // sacrificed at the same time (CR 701.21a).

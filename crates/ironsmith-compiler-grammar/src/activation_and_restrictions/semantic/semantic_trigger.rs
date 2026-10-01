@@ -123,6 +123,14 @@ fn parse_combat_damage_trigger_lexed(
             player: Box::new(PlayerFilter::You),
             filter: Box::new(ObjectFilter::default().with_type(card_type)),
         }),
+        // "Whenever a creature deals combat damage to its owner": the damaged
+        // player is the damage source's own owner/controller.
+        ["its", "owner"] if source_filter.is_some() => Some(PlayerFilter::OwnerOf(
+            crate::filter::ObjectRef::FilterCandidate,
+        )),
+        ["its", "controller"] if source_filter.is_some() => Some(PlayerFilter::ControllerOf(
+            crate::filter::ObjectRef::FilterCandidate,
+        )),
         _ => None,
     };
     if let Some(player) =
@@ -917,6 +925,34 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 return Ok(TriggerSpec::BlocksOrBecomesBlockedByObject { subject, other });
             }
         }
+        // "this creature blocks or becomes blocked by a creature": the `by`
+        // object is shared by both arms, so the blocks arm names the blocked
+        // creature too. Keep the pair together (the broad `or` splitter would
+        // leave the blocks arm without an object, and "that creature" would
+        // then bind the blocker itself).
+        if subject_end > 0
+            && other_start < tokens.len()
+            && is_source_reference_words(&crate::lexer::parser_token_word_refs(
+                &tokens[..subject_end],
+            ))
+        {
+            let raw_other_tokens = trim_commas(&tokens[other_start..]);
+            let one_or_more = has_leading_one_or_more(&raw_other_tokens);
+            let other_tokens = strip_leading_one_or_more_lexed(&raw_other_tokens);
+            if !other_tokens.is_empty()
+                && let Ok(mut other) = parse_object_filter_lexed(other_tokens, false)
+            {
+                preserve_trigger_filter_union_surface(&mut other, other_tokens);
+                other.set_union_one_or_more(one_or_more);
+                return Ok(TriggerSpec::Either(
+                    Box::new(TriggerSpec::ThisBlocksObject {
+                        filter: other.clone(),
+                        min_blocked_objects: one_or_more.then_some(1),
+                    }),
+                    Box::new(TriggerSpec::ThisBecomesBlockedByObject(other)),
+                ));
+            }
+        }
     }
 
     // "this creature attacks, blocks, or becomes the target of a spell": a
@@ -985,6 +1021,16 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             // shares the left arm's subject, not the ability's source.
             trigger_atom_token(left_tokens, TriggerClauseAtom::Block)
                 .or_else(|| trigger_atom_token(left_tokens, TriggerClauseAtom::Attack))
+        } else if crate::word_primitives::parse_choice_sequence_complete(
+            &right_words,
+            &[&["dies", "die"]],
+        ) {
+            // "another creature you control enters or dies" / "an equipped
+            // creature you control attacks or dies": the bare verb shares the
+            // left arm's subject; it is not the source's own death.
+            trigger_atom_token(left_tokens, TriggerClauseAtom::Enter)
+                .or_else(|| trigger_atom_token(left_tokens, TriggerClauseAtom::Attack))
+                .or_else(|| trigger_atom_token(left_tokens, TriggerClauseAtom::Block))
         } else if right_words.len() > 1
             && right_words
                 .first()
@@ -1371,6 +1417,15 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     activation_cost_has_tap,
                 });
             }
+            if let Some(filter) = parse_ability_targets_trigger_tail_lexed(ability_tail_tokens)? {
+                return Ok(TriggerSpec::AbilityActivated {
+                    activator,
+                    filter,
+                    non_mana_only: false,
+                    loyalty_only: false,
+                    activation_cost_has_tap,
+                });
+            }
             if trigger_pattern_accepts(tail_words, ACTIVATED_ABILITY_TAIL_PATTERN) {
                 return Ok(TriggerSpec::AbilityActivated {
                     activator,
@@ -1527,6 +1582,23 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             }
         }
 
+        // "When the creature leaves the battlefield this turn" (Phantasmal
+        // Mount): a bare definite noun names the object chosen earlier.
+        if let [article, noun] = subject_tokens
+            && article.is_word("the")
+            && noun.as_word().is_some_and(|word| {
+                matches!(
+                    word,
+                    "creature" | "permanent" | "artifact" | "enchantment" | "land"
+                )
+            })
+            && let Ok(filter) = parse_object_filter_lexed(&subject_tokens[1..], false)
+        {
+            return Ok(TriggerSpec::LeavesBattlefield(filter.match_tagged(
+                crate::tag::CompilerReferenceTag::It.bind(),
+                TaggedOpbjectRelation::IsTaggedObject,
+            )));
+        }
         let mut filtered_subject_tokens = subject_tokens;
         let mut other = false;
         if token_trigger_pattern_accepts(filtered_subject_tokens, &OTHER_OR_ANOTHER_PREFIX_PATTERN)
@@ -2054,6 +2126,39 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         let subject_view = ActivationRestrictionCompatWords::new(subject_tokens);
         let subject_words = subject_view.to_word_refs();
         let one_or_more = subject_starts_one_or_more(&subject_words);
+        // "this creature or another nontoken artifact you control is put into
+        // a graveyard from the battlefield or is put into exile from the
+        // battlefield": keep the source and the other objects as distinct
+        // matcher branches; one folded filter would require both at once.
+        if let Some((mut source_filter, mut other_filter)) =
+            parse_source_or_another_trigger_subject_filters(subject_tokens)
+        {
+            for filter in [&mut source_filter, &mut other_filter] {
+                filter.zone = None;
+                filter.owner = None;
+            }
+            let branch = |filter: ObjectFilter| {
+                TriggerSpec::Either(
+                    Box::new(TriggerSpec::PutIntoGraveyardFromZone {
+                        filter: filter.clone(),
+                        from: Zone::Battlefield,
+                        one_or_more,
+                        cause_filter: None,
+                    }),
+                    Box::new(TriggerSpec::PutIntoExileFromZones {
+                        filter,
+                        from: vec![Zone::Battlefield],
+                        one_or_more,
+                        during_turn: during_turn.clone(),
+                        cause_filter: None,
+                    }),
+                )
+            };
+            return Ok(TriggerSpec::Either(
+                Box::new(branch(source_filter)),
+                Box::new(branch(other_filter)),
+            ));
+        }
         let subject_tokens = strip_leading_one_or_more_lexed(subject_tokens);
         let stripped_subject_words =
             ActivationRestrictionCompatWords::new(subject_tokens).to_word_refs();
@@ -2965,8 +3070,12 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         }
     }
 
+    // "a Vehicle crewed by this creature this turn attacks": the participle
+    // qualifies the subject of another event; nothing crews here.
     if let Some(crew_word_idx) =
         trigger_keyword_action_word(&words, crate::events::KeywordActionKind::Crew)
+        && !(words[crew_word_idx] == "crewed"
+            && words.get(crew_word_idx + 1).is_some_and(|word| *word == "by"))
     {
         let subject_words = &words[..crew_word_idx];
         let source_becomes_crewed = subject_words.last().is_some_and(|word| *word == "becomes")
@@ -3885,6 +3994,25 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 filter_tokens = &filter_tokens[1..];
             }
 
+            // "you sacrifice Kingpin or another creature": the source and
+            // the other objects are distinct matcher branches.
+            if !other
+                && let Some((source_filter, other_filter)) =
+                    parse_source_or_another_trigger_subject_filters(filter_tokens)
+            {
+                return Ok(TriggerSpec::Either(
+                    Box::new(TriggerSpec::PlayerSacrifices {
+                        player: player.clone(),
+                        filter: source_filter,
+                        one_or_more,
+                    }),
+                    Box::new(TriggerSpec::PlayerSacrifices {
+                        player,
+                        filter: other_filter,
+                        one_or_more,
+                    }),
+                ));
+            }
             let filter = if filter_tokens.is_empty() {
                 let mut filter = ObjectFilter::permanent();
                 if other {
@@ -5008,6 +5136,51 @@ pub(super) fn parse_possessive_ability_trigger_tail_lexed(
     })?;
 
     Ok(Some((owner_filter, tail.marker)))
+}
+
+/// "an ability that targets [only] <objects or players>": the activated
+/// ability's own targeting relation. The fields live on the trigger filter's
+/// targeting slots; the activation matcher evaluates them against the
+/// activation's stack entry rather than its source permanent.
+pub(super) fn parse_ability_targets_trigger_tail_lexed(
+    tail_tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let head_len = match tail_tokens {
+        [article, ability, that, targets, ..]
+            if (article.is_word("an") || article.is_word("a"))
+                && ability.is_word("ability")
+                && that.is_word("that")
+                && targets.is_word("targets") =>
+        {
+            4
+        }
+        _ => return Ok(None),
+    };
+    let mut rest = &tail_tokens[head_len..];
+    let only = rest.first().is_some_and(|token| token.is_word("only"));
+    if only {
+        rest = &rest[1..];
+    }
+    let rest = trim_commas(rest);
+    if rest.is_empty() {
+        return Ok(None);
+    }
+    let Ok((target_player, target_object, targets_any_of)) =
+        crate::keyword_static::parse_cost_modifier_target_spec(&rest)
+    else {
+        return Ok(None);
+    };
+    let mut filter = ObjectFilter::default();
+    if only {
+        filter.targets_only_player = target_player;
+        filter.targets_only_object = target_object;
+        filter.targets_only_any_of = targets_any_of;
+    } else {
+        filter.targets_player = target_player;
+        filter.targets_object = target_object;
+        filter.targets_any_of = targets_any_of;
+    }
+    Ok(Some(filter))
 }
 
 pub(super) fn parse_ability_of_object_trigger_tail_lexed(

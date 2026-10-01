@@ -1559,6 +1559,12 @@
     if let Some(directional_control) =
         effect.downcast_ref::<crate::effects::DirectionalAdjacentPlayerControlEffect>()
     {
+        if directional_control.all_matching {
+            return format!(
+                "Each player gains control of all {} controlled by the next player in the chosen direction",
+                pluralize_noun_phrase(&directional_control.filter.description())
+            );
+        }
         let object = with_indefinite_article(&directional_control.filter.description());
         let chosen_object = strip_leading_article(&object);
         return format!(

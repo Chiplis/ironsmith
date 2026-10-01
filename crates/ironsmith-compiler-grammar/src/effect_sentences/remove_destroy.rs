@@ -655,12 +655,21 @@ fn target_is_anaphoric_battlefield_object(target: &TargetAst) -> bool {
     match target {
         TargetAst::Tagged(_, _) => true,
         TargetAst::Object(filter, _, _) => {
-            filter.zone == Some(Zone::Battlefield)
+            (filter.zone == Some(Zone::Battlefield)
                 && (!filter.tagged_constraints.is_empty()
                     || matches!(
                         filter.source_surface,
                         Some(crate::target::SourceReferenceSurface::ThisPermanentType(_))
-                    ))
+                    )))
+                // "destroy that artifact if it's on the battlefield" (Ouphe
+                // Vandals): a demonstrative reference with no zone of its own
+                // is destroyed only while it is a permanent anyway.
+                || (filter.zone.is_none()
+                    && filter.tagged_constraints.iter().any(|constraint| {
+                        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                            && constraint.relation
+                                == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    }))
         }
         TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
             target_is_anaphoric_battlefield_object(inner)

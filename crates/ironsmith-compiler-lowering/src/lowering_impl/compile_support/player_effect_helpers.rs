@@ -276,7 +276,14 @@ impl LoweredSubject {
         ctx: &mut EffectLoweringContext,
     ) -> Result<ObjectFilter, CardTextError> {
         let mut resolved = self.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?;
-        if resolved.controller.is_none() && resolved.tagged_constraints.is_empty() {
+        // An identity exclusion ("a permanent other than that creature")
+        // still selects among the sacrificing player's permanents; only a
+        // reference to specific tagged objects names its own controller.
+        if resolved.controller.is_none()
+            && resolved.tagged_constraints.iter().all(|constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+            })
+        {
             resolved.controller = Some(self.player_filter.clone());
         }
         Ok(resolved)

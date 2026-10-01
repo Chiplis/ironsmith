@@ -872,25 +872,39 @@ pub fn parse_spell_activity_trigger(
             && !from_not_hand
         {
             for (index, _) in suffix_tokens.iter().enumerate() {
-                let Some(relation) = suffix_tokens.get(index..index + 6) else {
+                // "that has the same name as" / "with the same name as"
+                // (Dragonlord Kolaghan).
+                let relation_len = if suffix_tokens.get(index..index + 6).is_some_and(|relation| {
+                    crate::lexer::token_word_refs(relation)
+                        == ["that", "has", "the", "same", "name", "as"]
+                }) {
+                    6
+                } else if suffix_tokens.get(index..index + 5).is_some_and(|relation| {
+                    crate::lexer::token_word_refs(relation) == ["with", "the", "same", "name", "as"]
+                }) {
+                    5
+                } else {
                     continue;
                 };
-                if crate::lexer::token_word_refs(relation)
-                    != ["that", "has", "the", "same", "name", "as"]
-                {
-                    continue;
-                }
-                let reference = trim_commas(&suffix_tokens[index + 6..]);
+                let reference = trim_commas(&suffix_tokens[index + relation_len..]);
                 let words = crate::lexer::token_word_refs(&reference);
-                if words != ["a", "card", "in", "your", "graveyard"] {
-                    continue;
-                }
+                // "their graveyard" is the caster's graveyard, which the
+                // trigger binds as the iterated player.
+                let owner = match words.as_slice() {
+                    ["a", "card", "in", "your", "graveyard"] => PlayerFilter::You,
+                    ["a", "card", "in", "their", "graveyard"]
+                    | ["a", "card", "in", "that", "players", "graveyard"]
+                    | ["a", "card", "in", "that", "player's", "graveyard"] => {
+                        PlayerFilter::IteratedPlayer
+                    }
+                    _ => continue,
+                };
                 let filter = parse_filter(&suffix_tokens[..index])?;
                 return Ok(Some(TriggerSpec::SpellCastSameNameCardInZone {
                     filter,
                     caster: actor,
                     zone: Zone::Graveyard,
-                    owner: PlayerFilter::You,
+                    owner,
                 }));
             }
         }

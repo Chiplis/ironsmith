@@ -463,10 +463,14 @@ fn parse_draw_for_each_object_filter_value(
                     value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
                 ));
             }
-            // "draw a card for each of that spell's colors" (Moonveil Regent).
+            // "draw a card for each of that spell's colors" (Moonveil Regent)
+            // and "for each creature it devoured" (Skullmulcher).
             Value::SurfaceHinted {
                 value: ref inner, ..
-            } if matches!(inner.as_ref(), Value::ColorsOf(_)) =>
+            } if matches!(
+                inner.as_ref(),
+                Value::ColorsOf(_) | Value::SourceDevouredCreatureCount
+            ) =>
             {
                 return Ok(Some(value));
             }

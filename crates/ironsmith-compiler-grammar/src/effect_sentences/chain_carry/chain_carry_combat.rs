@@ -35,20 +35,44 @@ pub(super) fn append_shared_damage_player_operand(
     }) {
         return false;
     }
-    let amount = match effects.last() {
+    // "... deals N damage to each other creature ... and each player": the
+    // carried operand is every player (CR 120.1), dealt by the same source.
+    // It is neither a target choice nor a damage from the ability's source
+    // when the first recipient's damage names an explicit source.
+    let damage = match effects.last() {
         Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount, .. })
-                | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. })
-                | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { amount, .. }),
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. }),
             ..
-        })) => amount.clone(),
+        })) => EffectAst::subject_verb_damage(
+            amount.clone(),
+            TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+        ),
+        Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
+                    source,
+                    amount,
+                    unpreventable,
+                    ..
+                }),
+            ..
+        })) => EffectAst::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
+                source: source.clone(),
+                amount: amount.clone(),
+                target: TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+                unpreventable: *unpreventable,
+            }),
+        ),
         _ => return false,
     };
-    effects.push(EffectAst::subject_verb_damage(
-        amount,
-        TargetAst::Player(PlayerFilter::Any, span_from_tokens(segment)),
-    ));
+    effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+        effects: vec![damage],
+    }));
     true
 }
 

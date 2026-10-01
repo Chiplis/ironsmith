@@ -320,8 +320,21 @@ pub enum CompilerReferenceTag {
     BeheldChosenType,
     GiftedPlayer,
     LinkedTriggerPlayer,
+    /// The object whose effect granted the ability being compiled: the
+    /// Equipment or Aura its own name refers to inside a quoted grant
+    /// (`Equipped creature has "... Return Trusty Boomerang ..."`).
+    GrantingSource,
     WhereXCommanderManaValue,
     SourceExiled,
+    /// The permanents this source devoured as it entered ("the number of
+    /// Goblins it devoured"); evaluated from the source's devour record.
+    SourceDevoured,
+    /// "the discarded card": the card the latest discard produced, or, with
+    /// no discard in this ability, the card whose discard triggered it.
+    DiscardedCardReference,
+    /// "from among those cards": the collection the previous clause named,
+    /// or, with none, the cards whose event triggered this ability.
+    ThoseCardsReference,
     /// Cards in exile that the source's controller exiled ("cards you
     /// exiled"), whatever source did the exiling.
     ExiledByYou,
@@ -352,6 +365,15 @@ pub enum CompilerReferenceTag {
     /// producer superseded. A definite description whose noun cannot name the
     /// newest result ("create a token and exile that card") reads it.
     PriorObjectAntecedent,
+    /// Parse-time alias for the object antecedent current where a "where X
+    /// is that creature's power" value was defined, so a later sentence that
+    /// reuses X ("draw X cards") reads the same object.
+    WhereXObjectAntecedent,
+    /// Parse-time marker for "<objects> tapped this way": bound to the
+    /// objects a preceding "tap all ..." actually tapped.
+    TappedThisWay,
+    /// Runtime record of the objects a "tap all ..." actually tapped.
+    TappedThisWayResult,
     /// Parse-time marker alias: the newest object antecedent is a card the
     /// latest instruction moved out of a graveyard, hand, or library. Such a
     /// card has no controller, so "that creature's controller" skips it.
@@ -459,8 +481,12 @@ impl CompilerReferenceTag {
             Self::BeheldChosenType => "beheld_chosen_type",
             Self::GiftedPlayer => "gifted_player",
             Self::LinkedTriggerPlayer => ironsmith_core::LINKED_TRIGGER_PLAYER_TAG,
+            Self::GrantingSource => ironsmith_core::GRANTING_SOURCE_TAG,
             Self::WhereXCommanderManaValue => "__where_x_commander_mana_value",
             Self::SourceExiled => "__source_exiled__",
+            Self::SourceDevoured => "__source_devoured__",
+            Self::DiscardedCardReference => "__discarded_card__",
+            Self::ThoseCardsReference => "__those_cards__",
             Self::ExiledByYou => "__exiled_by_you__",
             Self::MillProbe => "__mill_probe__",
             Self::EachPlayerRevealedThisWay => "__each_player_revealed_this_way",
@@ -486,6 +512,9 @@ impl CompilerReferenceTag {
             Self::TappedThisWayGroup => "tapped_this_way_group",
             Self::OtherAttacker => "other_attacker",
             Self::PriorObjectAntecedent => "__prior_object_antecedent__",
+            Self::WhereXObjectAntecedent => "__where_x_object_antecedent__",
+            Self::TappedThisWay => "__tapped_this_way__",
+            Self::TappedThisWayResult => "__tapped_this_way_result__",
             Self::OffBattlefieldCardAntecedent => "__off_battlefield_card_antecedent__",
             Self::CoordinatedCreatedResult => "__coordinated_created_result__",
         }
@@ -539,10 +568,13 @@ impl CompilerReferenceTag {
             | Self::ExchangePlayerOne
             | Self::ExchangePlayerTwo => (R::Chosen, D::Player),
             Self::Sacrificed0
+            | Self::SourceDevoured
             | Self::ThisWaySacrificed
             | Self::SacrificeCost0
             | Self::JointDiscardOrSacrifice => (R::Sacrificed, D::Object),
-            Self::DiscardedThisWay | Self::DiscardedCost => (R::Discarded, D::Card),
+            Self::DiscardedThisWay | Self::DiscardedCost | Self::DiscardedCardReference => {
+                (R::Discarded, D::Card)
+            }
             Self::RevealedThisWay
             | Self::LastRevealed
             | Self::PublicRevealed

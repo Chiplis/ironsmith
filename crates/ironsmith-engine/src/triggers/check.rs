@@ -1937,6 +1937,19 @@ fn tagged_objects_for_matched_trigger(
             );
         }
     }
+    if let Some(discard) = trigger.downcast_ref::<crate::triggers::YouDiscardCardTrigger>()
+        && let Some(event) = trigger_event.downcast::<crate::events::other::CardDiscardedEvent>()
+    {
+        // "Whenever you discard one or more cards, exile them": the group is
+        // every matching card of the simultaneous discard (CR 603.2c).
+        let snapshots = discard.matching_batch_snapshots(event, ctx);
+        if !snapshots.is_empty() {
+            tagged.insert(
+                crate::tag::TagKey::from(ironsmith_core::ZONE_CHANGE_GROUP_TAG),
+                snapshots,
+            );
+        }
+    }
     if let Some(damage) =
         trigger.downcast_ref::<crate::triggers::DealsCombatDamageToPlayerTrigger>()
         && damage.one_or_more
@@ -1975,6 +1988,12 @@ fn tagged_objects_for_matched_trigger(
                 sources,
             );
         }
+    }
+    // "Equipped creature has 'Whenever this creature deals combat damage to a
+    // player, you may sacrifice Trickster's Talisman ...'": the granted
+    // trigger names the Equipment that granted it.
+    if let Some(ability_index) = ctx.ability_index {
+        game.insert_granting_source_tag(ctx.source_id, ability_index, &mut tagged);
     }
     tagged
 }

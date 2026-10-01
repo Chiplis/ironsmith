@@ -131,6 +131,43 @@ fn materialize_named_creator_source_in_token(token: &mut CardDefinition, source:
     }
 }
 
+/// The objects the resolving ability exiled to pay its cost, its own source
+/// included when the source was exiled that way. A token created by that
+/// ability remembers them ("all triggered abilities of the exiled cards").
+fn cost_exiled_objects(
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Vec<crate::snapshot::ObjectSnapshot> {
+    let mut tags: Vec<_> = ctx
+        .tagged_objects
+        .keys()
+        .filter(|tag| tag.as_str().starts_with("exile_cost_"))
+        .cloned()
+        .collect();
+    if tags.is_empty() {
+        return Vec::new();
+    }
+    tags.sort_by(|left, right| left.as_str().cmp(right.as_str()));
+    let mut objects: Vec<crate::snapshot::ObjectSnapshot> = Vec::new();
+    let source_left_battlefield = game
+        .object(ctx.source)
+        .is_none_or(|object| object.zone != Zone::Battlefield);
+    if source_left_battlefield && let Some(source) = ctx.source_snapshot.clone() {
+        objects.push(source);
+    }
+    for tag in tags {
+        for snapshot in ctx.tagged_objects.get(&tag).into_iter().flatten() {
+            if objects
+                .iter()
+                .all(|existing| existing.stable_id != snapshot.stable_id)
+            {
+                objects.push(snapshot.clone());
+            }
+        }
+    }
+    objects
+}
+
 fn execute_token_instruction(
     effect: &CreateTokenEffect,
     game: &mut GameState,
@@ -219,11 +256,33 @@ fn execute_token_instruction(
     let mut created_ids = Vec::with_capacity(count);
     let mut events = Vec::with_capacity(count);
     let pending_start = game.effect_store.pending_trigger_events.len();
+    let cost_exiled = cost_exiled_objects(game, ctx);
+    // CR 607.2a: a token whose ability returns "the exiled card" is linked
+    // to the cards its creating resolution exiled with the source.
+    let linked_exiles: Vec<ObjectId> = if effect.link_source_exiled_this_resolution {
+        ctx.get_tagged_all(ironsmith_core::SOURCE_EXILED_THIS_RESOLUTION_TAG)
+            .map(|snapshots| {
+                snapshots
+                    .iter()
+                    .map(|snapshot| snapshot.object_id)
+                    .filter(|id| game.object(*id).is_some_and(|obj| obj.zone == Zone::Exile))
+                    .collect()
+            })
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
 
     for _ in 0..count {
         let id = game.new_object_id();
         let mut token_obj = game.object_from_token_definition(id, &resolved_token, controller_id);
         token_obj.zone = Zone::Command;
+        if !cost_exiled.is_empty() {
+            token_obj.cast_tagged_objects.insert(
+                crate::tag::TagKey::from(crate::tag::COST_EXILED_TAG),
+                cost_exiled.clone(),
+            );
+        }
         let token_is_creature = token_obj.is_creature();
 
         game.add_object(token_obj);
@@ -243,6 +302,9 @@ fn execute_token_instruction(
         };
         let entered_id = entry_result.new_id;
         created_ids.push(entered_id);
+        for &exiled_id in &linked_exiles {
+            game.add_exiled_with_source_link(entered_id, exiled_id);
+        }
         let entered_battlefield = game
             .object(entered_id)
             .is_some_and(|obj| obj.zone == Zone::Battlefield);

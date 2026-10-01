@@ -122,6 +122,33 @@ pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<TagKey> 
     ) {
         return Some((crate::tag::CompilerReferenceTag::Blocked.bind()).into());
     }
+    // "Whenever this creature saddles a Mount or crews a Vehicle, that Mount
+    // or Vehicle ...": when both arms of a disjunctive trigger name the same
+    // event object, the shared reference is that object. When one arm has
+    // no event object ("When this enchantment enters and whenever you expend
+    // 4, put a stash counter on it"), the shared `it` can only be the source.
+    if let TriggerSpec::Either(left, right) = trigger {
+        let left_tag = default_trigger_last_object_tag(left);
+        let right_tag = default_trigger_last_object_tag(right);
+        if left_tag == right_tag {
+            return left_tag;
+        }
+        if left_tag.is_none() || right_tag.is_none() {
+            return None;
+        }
+    }
+    // An expend event's object is the spell being cast; the trigger text
+    // never refers back to it.
+    if matches!(
+        trigger,
+        TriggerSpec::Expend { .. }
+            | TriggerSpec::KeywordAction {
+                action: crate::events::KeywordActionKind::Expend,
+                ..
+            }
+    ) {
+        return None;
+    }
     if matches!(
         trigger,
         TriggerSpec::KeywordActionTaggedObject { object_tag, .. }

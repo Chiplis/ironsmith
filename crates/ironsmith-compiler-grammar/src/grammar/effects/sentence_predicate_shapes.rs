@@ -79,6 +79,9 @@ pub enum WhereXReferenceShape {
     Source,
     Target,
     TaggedIt,
+    /// A demonstrative ("that spell's mana value"): the object antecedent,
+    /// never the source even when the source is the newest antecedent.
+    Demonstrative(&'static str),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -844,6 +847,10 @@ pub fn starts_with_source_deals_x_tokens(tokens: &[OwnedLexToken]) -> bool {
             primitives::phrase(&["this", "creature", "deals", "x"]),
             primitives::phrase(&["this", "permanent", "deals", "x"]),
             primitives::phrase(&["this", "source", "deals", "x"]),
+            primitives::phrase(&["this", "planeswalker", "deals", "x"]),
+            primitives::phrase(&["this", "artifact", "deals", "x"]),
+            primitives::phrase(&["this", "enchantment", "deals", "x"]),
+            primitives::phrase(&["this", "land", "deals", "x"]),
         )),
     )
     .is_some()

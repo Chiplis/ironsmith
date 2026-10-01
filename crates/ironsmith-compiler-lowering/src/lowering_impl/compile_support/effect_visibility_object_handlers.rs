@@ -274,7 +274,19 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 ctx.last_object_tag = Some(tag.clone().into());
             }
             record_exiled_collection_choice(ctx, tag, count);
-            ctx.last_player_filter = Some(followup_player);
+            // "you choose one of them. That player ...": "you" never becomes
+            // the antecedent of a later "that player".
+            if !(is_you_player_filter(&followup_player)
+                && ctx
+                    .last_player_filter
+                    .as_ref()
+                    .is_some_and(|existing| {
+                        !is_you_player_filter(existing)
+                            && *existing != PlayerFilter::IteratedPlayer
+                    }))
+            {
+                ctx.last_player_filter = Some(followup_player);
+            }
             (effects, choices)
         }
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {

@@ -859,6 +859,7 @@ pub(super) const READINGS: &[Reading] = &[
                     .as_word()
                     .is_some_and(|_| !is_article(token.parser_text()))
             }))
+                && !input.read_by("stack-object-would-destroy-predicate")
                 // Readings ranked above this one that read the input read it.
                 && !input.read_by("same-name-as-filter-predicate")
                 && !input.read_by("exploited-triggering-object-predicate")

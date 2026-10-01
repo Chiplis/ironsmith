@@ -1311,6 +1311,21 @@ fn matching_snapshots<'a>(
     filter: &ObjectFilter,
     ctx: &TriggerContext,
 ) -> Vec<&'a crate::snapshot::ObjectSnapshot> {
+    // A leaves-the-battlefield trigger looks back in time (CR 603.10a): a
+    // characteristic comparison against the battlefield ("with the greatest
+    // power among creatures that player controls") still sees the permanents
+    // leaving in this event.
+    let compares_characteristics =
+        filter.power.is_some() || filter.toughness.is_some() || filter.mana_value.is_some();
+    if zc.from == Zone::Battlefield && compares_characteristics {
+        let mut lookback_ctx = ctx.filter_ctx.clone();
+        lookback_ctx.departed_battlefield_lookback = Some(zc.snapshots().to_vec().into());
+        return zc
+            .snapshots()
+            .iter()
+            .filter(|snapshot| filter.matches_snapshot(snapshot, &lookback_ctx, ctx.game))
+            .collect();
+    }
     zc.snapshots()
         .iter()
         .filter(|snapshot| snapshot_matches_filter(snapshot, filter, ctx))

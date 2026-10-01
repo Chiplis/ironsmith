@@ -22,6 +22,8 @@ pub(super) struct GraveyardCastGroup {
     when_result: bool,
     /// The rider read "If an instant or sorcery spell cast this way ...".
     cast_this_way: bool,
+    /// No exile rider follows the permission.
+    permission_only: bool,
     pub(super) first_sentence: usize,
     pub(super) consumed: usize,
 }
@@ -34,9 +36,7 @@ pub(super) fn open(
     let Some(sentence) = sentences.get(sentence_idx) else {
         return Ok(None);
     };
-    let Some(next) = sentences.get(sentence_idx + 1) else {
-        return Ok(None);
-    };
+    let next = sentences.get(sentence_idx + 1);
     // "When you do, you may cast target instant or sorcery card ...": the
     // permission under a reflexive result prefix, the whole pair its effect.
     let (permission, when_result) =
@@ -61,8 +61,18 @@ pub(super) fn open(
     let Some(shape) = effect_grammar::parse_graveyard_cast_permission_shape(&permission) else {
         return Ok(None);
     };
-    let replacement_tokens = crate::util::trim_commas(next.lowered());
-    if !effect_grammar::is_graveyard_cast_replacement_sentence(&replacement_tokens) {
+    let replacement_tokens = next
+        .map(|next| crate::util::trim_commas(next.lowered()))
+        .unwrap_or_default();
+    let has_replacement = effect_grammar::is_graveyard_cast_replacement_sentence(&replacement_tokens);
+    // "When this creature enters, you may cast target instant or sorcery card
+    // from an opponent's graveyard without paying its mana cost." (Chancellor
+    // of the Spires): another player's graveyard carries no exile rider.
+    let permission_only = !has_replacement
+        && !when_result
+        && !shape.until_end_of_turn
+        && effect_grammar::graveyard_cast_permission_names_other_player_graveyard(&permission);
+    if !has_replacement && !permission_only {
         return Ok(None);
     }
     let cast_this_way = crate::word_primitives::sequence_occurs(
@@ -79,7 +89,8 @@ pub(super) fn open(
         shape,
         when_result,
         cast_this_way,
-        replaced: false,
+        replaced: permission_only,
+        permission_only,
         first_sentence: sentence_idx,
         consumed: 1,
     }))
@@ -112,6 +123,19 @@ pub(super) fn finish(group: GraveyardCastGroup) -> Vec<EffectAst> {
     .ok()
     .flatten()
     .unwrap_or_default();
+    let effects = if group.permission_only {
+        effects
+            .into_iter()
+            .filter(|effect| {
+                !matches!(
+                    effect,
+                    EffectAst::Conditionals(ConditionalEffectAst::IfResult { .. })
+                )
+            })
+            .collect()
+    } else {
+        effects
+    };
     if group.when_result {
         vec![EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
             predicate: IfResultPredicate::Did,

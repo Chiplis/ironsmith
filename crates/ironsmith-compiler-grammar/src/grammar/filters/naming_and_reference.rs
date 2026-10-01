@@ -1435,6 +1435,21 @@ pub(super) struct ReferenceTagStageResult {
     pub(super) early_return: bool,
 }
 
+/// Find a trailing "crewed by <this source> this turn" relation.
+fn find_crewed_by_source_this_turn_phrase(words: &[&str]) -> Option<usize> {
+    const CREWED_BY: &[&str] = &["crewed", "by"];
+    const THIS_TURN: &[&str] = &["this", "turn"];
+    if !words.ends_with(THIS_TURN) {
+        return None;
+    }
+    let reference_end = words.len() - THIS_TURN.len();
+    (0..reference_end).find(|&idx| {
+        words_start_with_phrase(&words[idx..], CREWED_BY)
+            && idx + CREWED_BY.len() < reference_end
+            && is_source_reference_words(&words[idx + CREWED_BY.len()..reference_end])
+    })
+}
+
 fn find_blocking_or_blocked_by_source_phrase(words: &[&str]) -> Option<usize> {
     find_any_filter_phrase_start(
         words,

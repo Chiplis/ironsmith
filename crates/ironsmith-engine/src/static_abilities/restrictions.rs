@@ -908,10 +908,40 @@ impl StaticAbilityKind for RuleRestriction {
             return;
         }
         let mut tracker = CantEffectTracker::default();
-        self.restriction
-            .apply(game, &mut tracker, controller, Some(source), None);
+        // "Enchanted creature's controller can't ..." names the object this
+        // Aura/Equipment is attached to through the "enchanted"/"equipped"
+        // tags, which only resolution binds. Bind them here from the source's
+        // attachment.
+        let mut tagged_objects = std::collections::HashMap::new();
+        if let Some(attached) = game
+            .object(source)
+            .and_then(|object| object.attached_to.as_ref())
+            .and_then(|target| target.object_id())
+            .and_then(|attached| game.object(attached))
+        {
+            let mut snapshot = crate::snapshot::ObjectSnapshot::from_object(attached, game);
+            snapshot.controller = game.controller_of(attached);
+            for tag in ["enchanted", "equipped", "fortified"] {
+                tagged_objects.insert(crate::tag::TagKey::from(tag), vec![snapshot.clone()]);
+            }
+        }
+        self.restriction.apply_with_tagged_objects(
+            game,
+            &mut tracker,
+            controller,
+            Some(source),
+            None,
+            &tagged_objects,
+        );
         for restriction in &self.additional_restrictions {
-            restriction.apply(game, &mut tracker, controller, Some(source), None);
+            restriction.apply_with_tagged_objects(
+                game,
+                &mut tracker,
+                controller,
+                Some(source),
+                None,
+                &tagged_objects,
+            );
         }
         game.effect_store.cant_effects.merge(tracker);
     }

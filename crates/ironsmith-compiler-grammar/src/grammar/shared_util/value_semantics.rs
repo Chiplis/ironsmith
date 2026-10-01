@@ -307,6 +307,14 @@ pub fn parse_prior_effect_aggregate_metric_value(
                 {
                     filter.set_explicit_card_noun(true);
                 }
+                // "creature cards put into your graveyard this way": the
+                // remembered objects left their zone; the noun's default
+                // battlefield zone does not describe them.
+                if action == ironsmith_core::PriorEffectAction::PutIntoGraveyard
+                    && filter.zone == Some(Zone::Battlefield)
+                {
+                    filter.zone = None;
+                }
                 query = query.with_filter(filter);
             }
             if crate::word_primitives::sequence_occurs(filter_words, &["they", "controlled"]) {

@@ -663,6 +663,11 @@ pub struct PreventNextTimeDamageEffect<E = ()> {
     pub source: PreventNextTimeDamageSource,
     pub target: PreventNextTimeDamageTarget,
     pub reflect_damage_to_source_controller: bool,
+    /// The reflection happens only when the prevented damage's source
+    /// matches this filter as the damage is prevented ("If damage from a red
+    /// source is prevented this way, ...").
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub reflect_source_filter: Option<ObjectFilter>,
     pub follow_up_effects: Vec<E>,
 }
 
@@ -672,6 +677,7 @@ impl<E> PreventNextTimeDamageEffect<E> {
             source,
             target,
             reflect_damage_to_source_controller: false,
+            reflect_source_filter: None,
             follow_up_effects: Vec::new(),
         }
     }
@@ -683,6 +689,11 @@ impl<E> PreventNextTimeDamageEffect<E> {
 
     pub fn reflecting_to_source_controller(mut self) -> Self {
         self.reflect_damage_to_source_controller = true;
+        self
+    }
+
+    pub fn reflecting_only_from_source_matching(mut self, filter: ObjectFilter) -> Self {
+        self.reflect_source_filter = Some(filter);
         self
     }
 }

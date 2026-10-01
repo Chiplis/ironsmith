@@ -115,6 +115,12 @@ impl EffectExecutor for DirectionalAdjacentPlayerControlEffect {
             if candidates.is_empty() {
                 continue;
             }
+            // Every matching object is collected before any control changes,
+            // so the exchange is simultaneous around the table.
+            if self.all_matching {
+                chosen.extend(candidates.into_iter().map(|object| (*chooser, object)));
+                continue;
+            }
             let spec = ChooseObjectsSpec::new(
                 ctx.source,
                 "Choose a controlled object in the chosen direction".to_string(),

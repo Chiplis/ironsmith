@@ -1197,7 +1197,7 @@ pub(super) fn rewrite_token_copy_followup_recognizes_next_upkeep_sacrifice() {
 
     assert_eq!(
         followup,
-        super::super::effect_sentences::TokenCopyFollowup::SacrificeAtNextUpkeep
+        super::super::effect_sentences::TokenCopyFollowup::SacrificeAtNextUpkeep(crate::cards::builders::PlayerAst::Any)
     );
 }
 

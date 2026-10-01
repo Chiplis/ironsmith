@@ -354,15 +354,22 @@ pub(super) fn history_counter_enchanted(
 
     let true_effects =
         crate::effect_sentences::parse_effect_sentence_lexed(&first.lowered()[..if_index])?;
-    let false_effects = crate::effect_sentences::parse_effect_sentence_lexed(
+    let mut false_effects = crate::effect_sentences::parse_effect_sentence_lexed(
         second.lowered().get(1..).unwrap_or_default(),
     )?;
     if true_effects.is_empty() || false_effects.is_empty() {
         return Ok(None);
     }
+    // "Otherwise, remove a +1/+1 counter from it": `it` is the enchanted
+    // creature the condition tests, not this Aura.
+    let predicate = PredicateAst::EnchantedPermanentAttackedOrBlockedSinceLastUpkeep;
+    ironsmith_compiler_semantic::condition_antecedent::bind_fallback_it_to_condition_tag(
+        &mut false_effects,
+        &predicate,
+    );
     Ok(Some(vec![EffectAst::Conditionals(
         ConditionalEffectAst::Conditional {
-            predicate: PredicateAst::EnchantedPermanentAttackedOrBlockedSinceLastUpkeep,
+            predicate,
             if_true: true_effects,
             if_false: false_effects,
         },

@@ -55,6 +55,9 @@ pub struct PreventNextTimeDamageEffect {
     pub source: PreventNextTimeDamageSource,
     pub target: PreventNextTimeDamageTarget,
     pub reflect_damage_to_source_controller: bool,
+    /// Reflect only when the prevented damage's source matches this filter
+    /// at the time the damage is prevented.
+    pub reflect_source_filter: Option<ObjectFilter>,
     pub follow_up_effects: Vec<Effect>,
 }
 
@@ -64,6 +67,7 @@ impl PreventNextTimeDamageEffect {
             source,
             target,
             reflect_damage_to_source_controller: false,
+            reflect_source_filter: None,
             follow_up_effects: Vec::new(),
         }
     }
@@ -75,6 +79,11 @@ impl PreventNextTimeDamageEffect {
 
     pub fn reflecting_to_source_controller(mut self) -> Self {
         self.reflect_damage_to_source_controller = true;
+        self
+    }
+
+    pub fn reflecting_only_from_source_matching(mut self, filter: ObjectFilter) -> Self {
+        self.reflect_source_filter = Some(filter);
         self
     }
 }
@@ -197,17 +206,34 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
             source: source_constraint,
             target: target_constraint,
         };
+        // The shield prevents the damage (CR 615.1); what happens to the
+        // prevented damage runs afterward as a prevention follow-up that reads
+        // the prevented amount and the prevented damage event (CR 615.5).
         let replacement_action = if self.reflect_damage_to_source_controller
             && let Some(source) = chosen_source
         {
-            let mut effects = vec![Effect::new(DealDamageEffect::new(
+            let reflect = Effect::new(DealDamageEffect::new(
                 Value::EventValue(EventValueSpec::Amount),
                 ChooseSpec::Player(PlayerFilter::ControllerOf(ObjectRef::Specific(source))),
-            ))];
+            ));
+            // "If damage from a red source is prevented this way": the
+            // prevented event's object is its source, checked as the damage
+            // is prevented.
+            let reflect = match &self.reflect_source_filter {
+                Some(filter) => Effect::conditional_only(
+                    crate::ConditionExpr::TaggedObjectMatches(
+                        crate::TagKey::from("triggering"),
+                        filter.clone(),
+                    ),
+                    vec![reflect],
+                ),
+                None => reflect,
+            };
+            let mut effects = vec![reflect];
             effects.extend(self.follow_up_effects.clone());
-            ReplacementAction::Instead(effects)
+            ReplacementAction::PreventDamageThen(effects)
         } else if !self.follow_up_effects.is_empty() {
-            ReplacementAction::Instead(self.follow_up_effects.clone())
+            ReplacementAction::PreventDamageThen(self.follow_up_effects.clone())
         } else {
             ReplacementAction::Prevent
         };

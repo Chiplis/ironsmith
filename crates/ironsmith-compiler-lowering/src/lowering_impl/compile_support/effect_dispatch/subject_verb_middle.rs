@@ -134,6 +134,22 @@ fn apply_token_combat_entry(
     Ok((effect, choices))
 }
 
+/// "It gains 'When this token ..., return the exiled card'": the token's own
+/// ability names the cards its creating resolution exiled with the source.
+fn token_text_names_source_exiled(
+    definition: &crate::model::token_definition::TokenDefinitionSpec,
+    granted_abilities: &[GrantedAbilityAst],
+) -> bool {
+    use ironsmith_core::tag::TagKeyWalk;
+    let source_exiled = crate::tag::CompilerReferenceTag::SourceExiled.as_str();
+    let mut names = false;
+    definition.for_each_tag_key(&mut |tag| names |= tag.as_str() == source_exiled);
+    for ability in granted_abilities {
+        ability.for_each_tag_key(&mut |tag| names |= tag.as_str() == source_exiled);
+    }
+    names
+}
+
 pub(super) fn compile_create_token_with_mods_action(
     subject_verb: &SubjectVerbEffectAst,
     ctx: &mut EffectLoweringContext,
@@ -193,6 +209,9 @@ pub(super) fn compile_create_token_with_mods_action(
     }
     if *actor_surface_explicit {
         effect = effect.with_explicit_actor_surface();
+    }
+    if token_text_names_source_exiled(definition, granted_abilities) {
+        effect = effect.linking_source_exiled_this_resolution();
     }
     if let Some(presentation) = ability_presentation {
         effect = effect.with_ability_presentation(*presentation);
@@ -354,6 +373,14 @@ pub(super) fn compile_target_only_action(
         let unrelativized = spec.clone();
         if let Some(resolved_filter) = choose_spec_object_filter_mut(&mut spec) {
             preserve_chooser_relative_player_filters(original_filter, resolved_filter, chooser);
+            // "its controller chooses target creature one of their opponents
+            // controls": opponents of the delegated chooser.
+            if let Some(PlayerFilter::OpponentOf(base)) = original_filter.controller.as_ref()
+                && matches!(base.as_ref(), PlayerFilter::IteratedPlayer)
+            {
+                resolved_filter.controller =
+                    Some(PlayerFilter::OpponentOf(Box::new(chooser.clone())));
+            }
         }
         for choice in &mut choices {
             if *choice == unrelativized {
@@ -628,14 +655,17 @@ pub(super) fn compile_pump_all_action(
         unreachable!("typed pump-all route requires a PumpAll action")
     };
 
-    let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+    let refs = current_reference_env(ctx);
+    let resolved_filter = resolve_it_tag(filter, &refs)?;
+    let power = resolve_pump_all_value(power, &resolved_filter, &refs);
+    let toughness = resolve_pump_all_value(toughness, &resolved_filter, &refs);
     let tag = ctx.next_tag("pumped");
     let effect = Effect::new(
         crate::effects::ApplyContinuousEffect::new_runtime(
             crate::continuous::EffectTarget::Filter(resolved_filter),
             crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
-                power: power.clone(),
-                toughness: toughness.clone(),
+                power,
+                toughness,
             },
             duration.clone(),
         )
@@ -645,6 +675,50 @@ pub(super) fn compile_pump_all_action(
     .tag_all(tag.clone());
     ctx.last_object_tag = Some(tag);
     Ok((vec![effect], Vec::new()))
+}
+
+/// Resolves the object references inside a set pump's amount ("where X is the
+/// sacrificed creature's power"). With no earlier object antecedent, a plural
+/// demonstrative set inside the amount ("the number of colors among those
+/// creatures") names the pumped set itself.
+fn resolve_pump_all_value(value: &Value, pumped: &ObjectFilter, refs: &ReferenceEnv) -> Value {
+    fn filter_names_it(filter: &ObjectFilter) -> bool {
+        filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        })
+    }
+    fn bind_self_set(value: &mut Value, pumped: &ObjectFilter) {
+        match value {
+            Value::SurfaceHinted { value, .. }
+            | Value::Scaled(value, _)
+            | Value::HalfRoundedDown(value)
+            | Value::DividedRoundedDown(value, _) => bind_self_set(value, pumped),
+            Value::Add(left, right) | Value::Min(left, right) => {
+                bind_self_set(left, pumped);
+                bind_self_set(right, pumped);
+            }
+            Value::Count(filter)
+            | Value::CountScaled(filter, _)
+            | Value::ColorsAmong(filter)
+            | Value::CreatureTypesAmong(filter)
+            | Value::CardTypesAmong(filter)
+            | Value::TotalPower(filter)
+            | Value::TotalToughness(filter)
+            | Value::GreatestPower(filter)
+            | Value::GreatestToughness(filter)
+                if filter_names_it(filter) =>
+            {
+                *filter = pumped.clone();
+            }
+            _ => {}
+        }
+    }
+    let mut value = value.clone();
+    if refs.known_last_object_tag().is_none() {
+        bind_self_set(&mut value, pumped);
+    }
+    resolve_value_it_tag(&value, refs).unwrap_or(value)
 }
 
 pub(super) fn compile_grant_abilities_all_action(
@@ -1005,6 +1079,26 @@ pub(super) fn compile_subject_verb_middle(
             if !matches!(*player, PlayerAst::Implicit) {
                 ctx.last_player_filter = Some(player_filter.clone());
             }
+            // "Copy target instant or sorcery spell, then return it to its
+            // owner's hand": the copied target stays the pronoun antecedent.
+            let mut target_prelude = None;
+            if spec.is_target()
+                && matches!(
+                    target,
+                    TargetAst::Spell(Some(_)) | TargetAst::Object(_, Some(_), _)
+                )
+                // Only when reference annotation predicted a later reference
+                // to the copied target.
+                && let Some(tag) = ctx.take_reserved_object_result_tag("copy_target")
+            {
+                ctx.last_object_tag = Some(tag.clone());
+                target_prelude = Some(
+                    Effect::new(crate::effects::TargetOnlyEffect::new(spec.clone()))
+                        .tag(tag.clone()),
+                );
+                let hints = spec.surface_hints().to_vec();
+                spec = ChooseSpec::Tagged(tag).with_surface_hints(hints);
+            }
             let id = ctx.next_effect_id();
             ctx.last_effect_id = Some(id);
             let mut lowered_copy = crate::effects::CopySpellEffect::new_for_player(
@@ -1038,7 +1132,9 @@ pub(super) fn compile_subject_verb_middle(
             } else {
                 None
             };
-            let mut compiled = vec![copy_effect];
+            let mut compiled = Vec::new();
+            compiled.extend(target_prelude);
+            compiled.push(copy_effect);
             if let Some(retarget) = choose_new_targets_effect {
                 compiled.push(retarget);
             }
@@ -1193,6 +1289,25 @@ pub(super) fn compile_subject_verb_middle(
             mana_spend_mode,
             alternative_payment,
         }) => {
+            // "if this card is in your graveyard, ... you may cast it": with
+            // no object antecedent other than the source the condition named,
+            // `it` is the source card itself.
+            if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                && ctx.last_object_tag.is_none()
+                && current_reference_env(ctx).has_source_object_antecedent()
+                && matches!(player, PlayerAst::You | PlayerAst::Implicit)
+                && !*allow_land
+                && !*as_copy
+                && additional_mana_cost.is_none()
+                && cost_reduction.is_none()
+                && alternative_payment.is_none()
+            {
+                let mut cast = crate::effects::CastSourceEffect::new();
+                if *without_paying_mana_cost {
+                    cast = cast.without_paying_mana_cost();
+                }
+                return Ok(Some((vec![Effect::new(cast)], Vec::new())));
+            }
             let resolved_tag = if tag.as_str() == "__last_revealed__" {
                 ctx.last_revealed_tag.clone().ok_or_else(|| {
                     CardTextError::ParseError(
@@ -3176,6 +3291,9 @@ pub(super) fn compile_subject_verb_middle(
             }
             if *actor_surface_explicit {
                 effect = effect.with_explicit_actor_surface();
+            }
+            if token_text_names_source_exiled(definition, granted_abilities) {
+                effect = effect.linking_source_exiled_this_resolution();
             }
             if let Some(presentation) = ability_presentation {
                 effect = effect.with_ability_presentation(*presentation);

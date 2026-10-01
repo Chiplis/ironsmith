@@ -492,6 +492,22 @@ fn bind_iterated_source_stat_value(value: &Value) -> Value {
     }
 }
 
+fn target_is_noun_demonstrative(target: &TargetAst) -> bool {
+    let TargetAst::Object(filter, None, _) = target else {
+        return false;
+    };
+    filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+            && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+    }) && (filter.demonstrative_antecedent_surface().is_some()
+        || !filter.card_types.is_empty()
+        || matches!(
+            &filter.source_surface,
+            Some(crate::target::SourceReferenceSurface::ThisPermanentType(text))
+                if text.starts_with("that ")
+        ))
+}
+
 /// Lower an authored "`Each <object> deals ... equal to its ...`" source set
 /// as the damage-source loop. The target is resolved before entering that loop
 /// so a demonstrative such as "that permanent" keeps referring to the prior
@@ -524,6 +540,14 @@ fn try_compile_for_each_object_as_damage_source(
         {
             (None, amount, target, unpreventable)
         }
+        // "Each Dragon you control deals 1 damage to that creature": the
+        // recipient is a demonstrative naming the object from before the
+        // loop, so each iterated object is the damage source.
+        SubjectVerbActionAst::Damage(DamageActionAst::DealDamage {
+            amount,
+            target,
+            unpreventable,
+        }) if target_is_noun_demonstrative(target) => (None, amount, target, unpreventable),
         _ => return Ok(None),
     };
 
@@ -1204,12 +1228,15 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             filter,
             left_option,
             right_option,
+            all_matching,
         } => {
-            let effect = Effect::new(crate::effects::DirectionalAdjacentPlayerControlEffect::new(
+            let mut directional = crate::effects::DirectionalAdjacentPlayerControlEffect::new(
                 filter.clone(),
                 left_option.clone(),
                 right_option.clone(),
-            ));
+            );
+            directional.all_matching = *all_matching;
+            let effect = Effect::new(directional);
             (vec![effect], Vec::new())
         }
         EffectAst::ForEach(ForEachEffectAst::ForEachTargetPlayers {

@@ -359,6 +359,21 @@ fn parse_source_and_target_exile_pair(
 #[path = "exile_actions/exile_clause_readings.rs"]
 mod exile_clause_readings;
 
+/// "Exile any number of target players' graveyards": one player target per
+/// chosen player, whose whole graveyard is exiled.
+pub fn parse_exile_counted_target_players_graveyards(
+    tokens: &[OwnedLexToken],
+) -> Option<EffectAst> {
+    let count = exile_clause_readings::counted_target_players_graveyards(tokens)?;
+    let mut filter = ObjectFilter::default().in_zone(Zone::Graveyard);
+    filter.owner = Some(PlayerFilter::IteratedPlayer);
+    Some(EffectAst::ForEach(ForEachEffectAst::ForEachTargetPlayers {
+        count,
+        filter: PlayerFilter::Any,
+        effects: vec![EffectAst::subject_verb_exile_all(filter, false)],
+    }))
+}
+
 pub fn parse_exile(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,

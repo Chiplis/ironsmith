@@ -553,6 +553,32 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
     }
 
     if let Some(filter_tokens) = shapes::strip_each_counter_prefix(&target_tokens) {
+        // "put a +1/+1 counter on each of them for every three cards in
+        // your graveyard" (Recursive Recruitment): the trailing per-count
+        // clause scales the amount; it is not part of the recipient set.
+        let mut count_value = count_value;
+        let mut filter_tokens = filter_tokens;
+        if let Some(for_idx) = filter_tokens.iter().enumerate().position(|(idx, token)| {
+            idx > 0
+                && token.is_word("for")
+                && filter_tokens
+                    .get(idx + 1)
+                    .is_some_and(|next| next.is_any_word(&["each", "every"]))
+        }) {
+            let count_words = crate::lexer::token_word_refs(&filter_tokens[for_idx..]);
+            if let Some((per, used)) = crate::util::parse_for_each_count_value_words(&count_words)
+                && used == count_words.len()
+                && let Value::Fixed(multiplier) = count_value.unhinted().clone()
+                && multiplier >= 1
+            {
+                count_value = if multiplier == 1 {
+                    per
+                } else {
+                    Value::Scaled(Box::new(per), multiplier)
+                };
+                filter_tokens = &filter_tokens[..for_idx];
+            }
+        }
         let filter = parse_object_filter(filter_tokens, false)?;
         return Ok(wrap_conditional(EffectAst::subject_verb_put_counters_all(
             counter_type,

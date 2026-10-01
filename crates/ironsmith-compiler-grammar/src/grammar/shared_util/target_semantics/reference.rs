@@ -61,6 +61,14 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     if token_words == ["the", "player"] {
         return Ok(TargetAst::Player(PlayerFilter::IteratedPlayer, None));
     }
+    // The card's own name inside an ability its Equipment or Aura grants:
+    // the object that granted the ability, not the ability's source.
+    if token_words.as_slice() == crate::preprocess::GRANTING_SOURCE_SURFACE_WORDS {
+        return Ok(TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::GrantingSource.bind(),
+            token_slice_span(tokens),
+        ));
+    }
     if crate::word_primitives::parse_any_sequence_complete(
         &token_words,
         &[&["the", "token"], &["the", "tokens"]],
@@ -557,6 +565,29 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         let normalized = strip_possessive_suffix(word);
         leaf::parse_leaf_object_reference_head_complete(normalized).is_ok()
     });
+    // "that spell or ability's controller" (Retromancer): the controller of
+    // the triggering spell or ability, the same player the subject form
+    // binds (`SubjectAst::TriggeringSourceController`). In a becomes-target
+    // trigger the triggering object is the targeted permanent, not the
+    // targeting stack object.
+    if crate::word_primitives::parse_any_sequence_complete(
+        &remaining_words,
+        &[
+            &["that", "spell", "or", "ability's", "controller"],
+            &["that", "spell", "or", "ability", "s", "controller"],
+            &["that", "spell", "or", "abilitys", "controller"],
+        ],
+    ) {
+        return Ok(wrap_target_count(
+            TargetAst::Player(
+                PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(
+                    crate::tag::CompilerReferenceTag::TriggeringSource.bind(),
+                )),
+                None,
+            ),
+            target_count,
+        ));
+    }
     if remaining_words.len() >= 3
         && matches_surface_word(remaining_words[0], THAT_OR_THE_WORD_PATTERN)
         && second_word_is_object_head
@@ -1034,6 +1065,12 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     }
 
     let mut filter = parse_object_filter(remaining, other)?;
+    // "target enchanted permanent" (Venomous Vines, Cut the Earthly Bond):
+    // a targeted object described as enchanted is any permanent with an Aura
+    // attached, not the object this source enchants.
+    if explicit_target {
+        attachment_state_as_attached_object(&mut filter);
+    }
     // Definite combat-role noun phrases identify the concrete participant in
     // the triggering block relationship. Keep the ordinary role predicate as
     // well, both for structural rendering and as a legality guard.
@@ -1147,4 +1184,35 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         TargetAst::Object(filter, target_span, reference_span),
         target_count,
     ))
+}
+
+/// Rewrite `enchanted` / `equipped` adjectives on a newly selected object
+/// ("target enchanted permanent", "all equipped creatures") from the
+/// source-attachment reference to the attachment state: the object has an
+/// Aura (or Equipment) attached to it.
+pub(crate) fn attachment_state_as_attached_object(filter: &mut ObjectFilter) {
+    for (tag, subtype) in [
+        (
+            crate::tag::CompilerReferenceTag::Enchanted,
+            crate::types::Subtype::Aura,
+        ),
+        (
+            crate::tag::CompilerReferenceTag::Equipped,
+            crate::types::Subtype::Equipment,
+        ),
+    ] {
+        let before = filter.tagged_constraints.len();
+        filter.tagged_constraints.retain(|constraint| {
+            !(constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == tag.as_str())
+        });
+        if filter.tagged_constraints.len() != before && filter.with_attached_object.is_none() {
+            let mut attached = ObjectFilter::default();
+            attached.subtypes.push(subtype);
+            filter.with_attached_object = Some(Box::new(attached));
+        }
+    }
+    for branch in &mut filter.any_of {
+        attachment_state_as_attached_object(branch);
+    }
 }

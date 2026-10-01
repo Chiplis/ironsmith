@@ -433,6 +433,12 @@ pub fn lower_where_x_shape(
                 Reference::TaggedIt => {
                     crate::target::ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into())
                 }
+                Reference::Demonstrative(surface) => crate::target::ChooseSpec::Tagged(
+                    (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                )
+                .with_surface_hint(crate::target::ChooseSpecSurfaceHint::SourceReference(
+                    crate::target::SourceReferenceSurface::ThisPermanentType(surface.to_string()),
+                )),
             };
             let value = match (reference, metric) {
                 (Reference::Source, Metric::Power) => Value::SourcePower,
@@ -531,7 +537,7 @@ pub fn lower_where_x_shape(
                     ))),
                     counter_type,
                 ),
-                (Reference::TaggedIt, counter_type) => Value::CountersOn(
+                (Reference::TaggedIt | Reference::Demonstrative(_), counter_type) => Value::CountersOn(
                     Box::new(ChooseSpec::Tagged(
                         (crate::tag::CompilerReferenceTag::It.bind()).into(),
                     )),
@@ -871,7 +877,29 @@ fn parse_it_is_aura_enchantment_sentence_lexed(
     };
     let clause_words = crate::lexer::token_word_refs(shape.tail_tokens);
     let mut granted_abilities = Vec::new();
-    for ability_tokens in shape.granted_ability_tokens {
+    // `and "Enchanted Forest has '{T}: Add {G}{G}.'"`: the quoted rule is a
+    // static ability of the Aura granting the nested abilities to the
+    // enchanted permanent, not abilities of the Aura itself. Parse the whole
+    // quoted rule first so its subject survives.
+    let quote_positions = shape
+        .tail_tokens
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, token)| (token.kind == crate::lexer::TokenKind::Quote).then_some(idx))
+        .collect::<Vec<_>>();
+    if let [open_quote, close_quote] = quote_positions.as_slice()
+        && let Some(parsed) = super::gain_ability::parse_nested_quoted_static_grant(
+            &shape.tail_tokens[*open_quote + 1..*close_quote],
+        )
+    {
+        granted_abilities = parsed;
+    }
+    let shape_granted_ability_tokens = if granted_abilities.is_empty() {
+        shape.granted_ability_tokens
+    } else {
+        Vec::new()
+    };
+    for ability_tokens in shape_granted_ability_tokens {
         let ability_tokens = trim_edge_punctuation(ability_tokens);
         if ability_tokens.is_empty() {
             continue;

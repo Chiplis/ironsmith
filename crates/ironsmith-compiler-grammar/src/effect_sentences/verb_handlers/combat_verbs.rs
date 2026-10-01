@@ -94,11 +94,13 @@ fn combat_simple_damage_target_ast(
         combat_grammar::CombatSimpleDamageTargetShape::DefaultAny => {
             TargetAst::PlayerOrPlaneswalker(PlayerFilter::Any, None)
         }
+        // "that creature's controller" names the antecedent's controller; it
+        // is a derived recipient, never a player target (CR 115.1).
         combat_grammar::CombatSimpleDamageTargetShape::CreatureController => TargetAst::Player(
             PlayerFilter::ControllerOf(crate::target::ObjectRef::tagged(
                 crate::tag::CompilerReferenceTag::It.bind(),
             )),
-            span_from_tokens(tokens),
+            None,
         ),
         combat_grammar::CombatSimpleDamageTargetShape::IteratedPlayer => {
             TargetAst::Player(PlayerFilter::IteratedPlayer, span_from_tokens(tokens))

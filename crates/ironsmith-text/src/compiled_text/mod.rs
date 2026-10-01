@@ -56,10 +56,33 @@ fn restore_cleave_bracket_surface(line: String) -> String {
         .replace(TYPED_NO_PERIOD_SENTINEL, "")
 }
 
+/// Rendered surface of the object that granted an ability
+/// (`ironsmith_core::GRANTING_SOURCE_TAG`). Inside the ability an Equipment
+/// or Aura grants, that object is the card itself, so the card-level
+/// renderers replace it with the card's name.
+pub(crate) const GRANTING_SOURCE_RENDER_SURFACE: &str = "the granting permanent";
+
+fn substitute_granting_source_surface(line: String, def: &CardDefinition) -> String {
+    if !line.contains("granting permanent") {
+        return line;
+    }
+    // A quoted grant renders from its normalized source text, which carries
+    // the article-less preprocess surface ("Return granting permanent ...").
+    [
+        GRANTING_SOURCE_RENDER_SURFACE,
+        "The granting permanent",
+        "granting permanent",
+        "Granting permanent",
+    ]
+    .into_iter()
+    .fold(line, |line, surface| line.replace(surface, &def.card.name))
+}
+
 fn debug_compiled_surface_lines(def: &CardDefinition) -> Vec<String> {
     debug_safe::normalize_debug_safe_surface(ast_compiled_lines(def))
         .into_iter()
         .map(debug_safe::DebugSafeLine::into_string)
+        .map(|line| substitute_granting_source_surface(line, def))
         .collect()
 }
 

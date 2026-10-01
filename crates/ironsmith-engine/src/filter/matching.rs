@@ -73,6 +73,12 @@ pub(super) fn matches_subject(
         }
     }
 
+    if let Some(destroyed) = &filter.would_destroy_object
+        && !stack_object_would_destroy_matching(game, subject.object_id(), destroyed, ctx)
+    {
+        return false;
+    }
+
     if !filter.any_of.is_empty()
         && !filter
             .any_of
@@ -912,6 +918,22 @@ pub(super) fn matches_subject(
             return false;
         }
     }
+    // "a Vehicle crewed by this creature this turn": the turn's crew history
+    // records each Vehicle's crewers as its crew ability resolves.
+    if filter.crewed_by_source_this_turn {
+        let Some(source_id) = ctx.source else {
+            return false;
+        };
+        if !game
+            .turn_store
+            .turn_history
+            .crewed_this_turn
+            .get(&subject.object_id())
+            .is_some_and(|crewers| crewers.contains(&source_id))
+        {
+            return false;
+        }
+    }
     if filter.in_combat_with_source
         && !object_is_in_combat_with_source_lki(game, ctx, subject.object_id())
     {
@@ -941,9 +963,20 @@ pub(super) fn matches_subject(
             filter.power_reference,
             allow_calculated_pt,
         ) {
-            if !candidate_bound_comparison(power_cmp, subject)
-                .satisfies_with_context(power, game, ctx, stack_entry)
-            {
+            let satisfied = if power_cmp.references_filter_candidate() {
+                // The operand is relative to this candidate ("the greatest
+                // power among creatures that player controls").
+                let owner = subject.owner();
+                let controller = subject.controller(game).unwrap_or(owner);
+                let mut candidate_ctx = ctx.clone();
+                candidate_ctx.filter_candidate_players = Some((controller, owner));
+                candidate_bound_comparison(power_cmp, subject)
+                    .satisfies_with_context(power, game, &candidate_ctx, stack_entry)
+            } else {
+                candidate_bound_comparison(power_cmp, subject)
+                    .satisfies_with_context(power, game, ctx, stack_entry)
+            };
+            if !satisfied {
                 return false;
             }
         } else {
@@ -1208,5 +1241,98 @@ fn candidate_bound_comparison<'c>(
         std::borrow::Cow::Owned(comparison.bind_filter_candidate_counters(subject.counters()))
     } else {
         std::borrow::Cow::Borrowed(comparison)
+    }
+}
+
+/// Static analysis of what a stack object's resolution would destroy (CR
+/// 701.8): its destroy instructions, including those nested in sequences,
+/// conditionals, and choices, applied to the object targets it chose or to
+/// the battlefield objects an "all" instruction names. `destroyed` is matched
+/// from the asking effect's perspective ("a land you control").
+fn stack_object_would_destroy_matching(
+    game: &GameState,
+    object_id: crate::ids::ObjectId,
+    destroyed: &ObjectFilter,
+    ctx: &FilterContext,
+) -> bool {
+    game.stack
+        .iter()
+        .filter(|entry| entry.object_id == object_id || entry.target_id() == object_id)
+        .any(|entry| {
+            let program = if entry.is_ability {
+                entry.ability_effects.clone()
+            } else {
+                game.object(entry.object_id)
+                    .and_then(|object| object.spell_effect.as_ref())
+                    .map(|program| (**program).clone())
+            };
+            let Some(program) = program else {
+                return false;
+            };
+            let spell_ctx = game.filter_context_for(entry.controller, Some(entry.object_id));
+            let mut specs = Vec::new();
+            for effect in program.all_effects() {
+                collect_destroy_specs(effect, &mut specs);
+            }
+            specs.iter().any(|spec| {
+                destroy_spec_would_destroy_matching(game, entry, spec, &spell_ctx, destroyed, ctx)
+            })
+        })
+}
+
+fn collect_destroy_specs(effect: &crate::effect::Effect, specs: &mut Vec<ChooseSpec>) {
+    if let Some(destroy) = effect.downcast_ref::<crate::effects::DestroyEffect>() {
+        specs.push(destroy.spec.clone());
+    } else if let Some(destroy) =
+        effect.downcast_ref::<crate::effects::DestroyNoRegenerationEffect>()
+    {
+        specs.push(destroy.spec.clone());
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        collect_destroy_specs(&tagged.effect, specs);
+    }
+    effect.visit_child_effects(&mut |child| collect_destroy_specs(child, specs));
+}
+
+fn destroy_spec_would_destroy_matching(
+    game: &GameState,
+    entry: &crate::game_state::StackEntry,
+    spec: &ChooseSpec,
+    spell_ctx: &FilterContext,
+    destroyed: &ObjectFilter,
+    ctx: &FilterContext,
+) -> bool {
+    let chosen_targets = |candidate: Option<&ObjectFilter>| {
+        entry.targets.iter().any(|target| {
+            let crate::game_state::Target::Object(id) = target else {
+                return false;
+            };
+            game.object(*id).is_some_and(|object| {
+                candidate.is_none_or(|filter| filter.matches(object, spell_ctx, game))
+                    && destroyed.matches(object, ctx, game)
+            })
+        })
+    };
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. }
+        | ChooseSpec::WithCount(spec, _)
+        | ChooseSpec::WithCountValue(spec, _, _) => {
+            destroy_spec_would_destroy_matching(game, entry, spec, spell_ctx, destroyed, ctx)
+        }
+        ChooseSpec::Target(inner) => match inner.base() {
+            ChooseSpec::Object(filter) => chosen_targets(Some(filter)),
+            _ => chosen_targets(None),
+        },
+        ChooseSpec::All(filter) => game.zone_ids(Zone::Battlefield).into_iter().any(|id| {
+            game.object(id).is_some_and(|object| {
+                filter.matches(object, spell_ctx, game) && destroyed.matches(object, ctx, game)
+            })
+        }),
+        // A back-reference ("destroy it", "destroy that land") names an
+        // object the stack object chose, normally one of its targets.
+        ChooseSpec::Tagged(_) | ChooseSpec::Object(_) | ChooseSpec::Iterated => {
+            chosen_targets(None)
+        }
+        _ => false,
     }
 }

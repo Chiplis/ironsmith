@@ -58,6 +58,17 @@ fn library_player(
     if allow_each_opponent && is_each_opponent_library_shape(tokens) {
         return Some(ExileLibraryPlayerShape::EachOpponent);
     }
+    // "the top card of each of those opponents' libraries": the players the
+    // triggering event named (the damaged opponent), not every opponent.
+    let words = TokenWordView::new(tokens).word_refs();
+    if allow_each_opponent
+        && matches!(
+            words.as_slice(),
+            ["each", "of", "those", "opponents" | "opponents'" | "players" | "players'", "libraries"]
+        )
+    {
+        return Some(ExileLibraryPlayerShape::Player(PlayerAst::That));
+    }
     let owner = parse_exile_library_owner_shape(tokens, default_player)?;
     (owner.consumed_words == TokenWordView::new(tokens).len())
         .then_some(ExileLibraryPlayerShape::Player(owner.player))

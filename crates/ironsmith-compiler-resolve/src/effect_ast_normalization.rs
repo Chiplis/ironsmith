@@ -130,6 +130,81 @@ pub fn normalize_effects_ast(effects: &[EffectAst]) -> Vec<EffectAst> {
 pub fn normalize_effects_ast_in_place(effects: &mut Vec<EffectAst>) {
     bind_typed_where_x_references(effects, None);
     normalize_effects_vec(effects);
+    release_unbound_tapped_this_way_markers(effects);
+}
+
+/// "Tap all creatures target player controls. ... choose up to that many
+/// creatures tapped this way": the set is the creatures the tap actually
+/// tapped, not every matching creature ("those creatures"). Record the
+/// matching untapped creatures just before the tap and bind the marker to
+/// that record.
+fn bind_tapped_this_way_to_tap_all(effects: &mut Vec<EffectAst>) {
+    use ironsmith_core::tag::TagKeyWalk;
+    let marker = crate::tag::CompilerReferenceTag::TappedThisWay.as_str();
+    let mut index = 0;
+    while index < effects.len() {
+        let tap_filter = match sentence_tail(&effects[index]) {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::PermanentState(
+                        crate::cards::builders::PermanentStateActionAst::TapAll { filter },
+                    ),
+                ..
+            }) => Some(filter.clone()),
+            _ => None,
+        };
+        let Some(mut tap_filter) = tap_filter else {
+            index += 1;
+            continue;
+        };
+        let mut referenced = false;
+        for later in &effects[index + 1..] {
+            later.for_each_tag_key(&mut |tag| referenced |= tag.as_str() == marker);
+        }
+        if !referenced {
+            index += 1;
+            continue;
+        }
+        let result = crate::tag::CompilerReferenceTag::TappedThisWayResult.bind();
+        for later in &mut effects[index + 1..] {
+            later.map_tag_keys(&mut |tag| {
+                if tag.as_str() == marker {
+                    *tag = result.key.clone();
+                }
+            });
+        }
+        tap_filter.untapped = true;
+        let record = EffectAst::subject_verb_tag_matching_objects(
+            tap_filter,
+            vec![crate::zone::Zone::Battlefield],
+            result,
+        );
+        index += if insert_into_sentence(effects, index, record) { 2 } else { 1 };
+    }
+}
+
+/// Insert `effect` so it runs just before `effects[at]`, inside that
+/// instruction's authored sentence when it has one (the sentence keeps its
+/// resolution boundary). Returns whether a new top-level entry was added.
+fn insert_into_sentence(effects: &mut Vec<EffectAst>, at: usize, effect: EffectAst) -> bool {
+    if let Some(EffectAst::SourceSentence { effects: inner, .. }) = effects.get_mut(at) {
+        inner.insert(0, effect);
+        return false;
+    }
+    effects.insert(at, effect);
+    true
+}
+
+fn release_unbound_tapped_this_way_markers(effects: &mut [EffectAst]) {
+    use ironsmith_core::tag::TagKeyWalk;
+    let marker = crate::tag::CompilerReferenceTag::TappedThisWay.as_str();
+    for effect in effects {
+        effect.map_tag_keys(&mut |tag| {
+            if tag.as_str() == marker {
+                *tag = crate::tag::CompilerReferenceTag::It.key();
+            }
+        });
+    }
 }
 
 /// "You may search your library ...": the search's implicit chooser is the
@@ -409,8 +484,190 @@ fn bind_typed_where_x_references(effects: &mut [EffectAst], inherited: Option<Va
     }
 }
 
+/// "If you win the flip, target Orc creature gets +2/+0 ... If you lose the
+/// flip, it gets -0/-2 ...": a target named inside one result branch is chosen
+/// when the ability is put on the stack, so a sibling branch's `it` names the
+/// same object. Declare it ahead of the branches; the introducing branch then
+/// reads the declaration, so neither branch reads a tag only the other sets.
+fn declare_branch_introduced_object_targets(effects: &mut Vec<EffectAst>) {
+    fn peel_mut(effect: &mut EffectAst) -> &mut EffectAst {
+        let single = matches!(effect, EffectAst::SourceSentence { effects, .. } if effects.len() == 1);
+        if !single {
+            return effect;
+        }
+        let EffectAst::SourceSentence { effects, .. } = effect else {
+            unreachable!("checked above");
+        };
+        peel_mut(&mut effects[0])
+    }
+    fn peel(effect: &EffectAst) -> &EffectAst {
+        match effect {
+            EffectAst::SourceSentence { effects, .. } if effects.len() == 1 => peel(&effects[0]),
+            _ => effect,
+        }
+    }
+    fn result_branch_mut(effect: &mut EffectAst) -> Option<&mut Vec<EffectAst>> {
+        match peel_mut(effect) {
+            EffectAst::Conditionals(
+                ConditionalEffectAst::IfResult { effects, .. }
+                | ConditionalEffectAst::ResolvedIfResult { effects, .. },
+            ) => Some(effects),
+            _ => None,
+        }
+    }
+    fn introduced_target_mut(branch: &mut [EffectAst]) -> Option<&mut TargetAst> {
+        match peel_mut(branch.first_mut()?) {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) => match action {
+                SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. })
+                | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
+                    target,
+                    ..
+                })
+                | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { target, .. })
+                | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
+                    target, ..
+                }) if matches!(target, TargetAst::Object(_, Some(_), _)) => Some(target),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+    fn branch_reads_it(branch: &[EffectAst]) -> bool {
+        branch
+            .first()
+            .map(peel)
+            .and_then(crate::cards::builders::primary_target_from_effect)
+            .is_some_and(|target| {
+                matches!(target, TargetAst::Tagged(tag, _)
+                    if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
+            })
+    }
+    let mut index = 0;
+    while index < effects.len() {
+        let (head, tail) = effects.split_at_mut(index + 1);
+        let sibling_reads_it = tail.iter_mut().any(|effect| {
+            result_branch_mut(effect).is_some_and(|branch| branch_reads_it(branch))
+        });
+        let declared = if sibling_reads_it {
+            result_branch_mut(&mut head[index])
+                .and_then(|branch| introduced_target_mut(branch))
+                .map(|target| {
+                    std::mem::replace(
+                        target,
+                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
+                    )
+                })
+        } else {
+            None
+        };
+        if let Some(target) = declared {
+            // Declare ahead of the result producer ("Flip a coin"), so each
+            // branch still reads that producer's result.
+            let mut first_branch = index;
+            while first_branch > 0 && result_branch_mut(&mut effects[first_branch - 1]).is_some() {
+                first_branch -= 1;
+            }
+            let insert_at = first_branch.saturating_sub(1);
+            if insert_into_sentence(effects, insert_at, EffectAst::subject_verb_target_only(target))
+            {
+                index += 1;
+            }
+        }
+        index += 1;
+    }
+}
+
+/// "<it> can't <act> for as long as <duration>" is a restriction the
+/// resolution creates on the referenced object (CR 611.2), not an ability
+/// granted to it: a granted static never sees resolution tags, and a
+/// phased-out permanent's abilities don't function (CR 702.26b).
+fn durational_anaphoric_restriction_grant_to_cant(effect: &mut EffectAst) {
+    use crate::effect::{Restriction, Until};
+    fn single_filter_mut(restriction: &mut Restriction) -> Option<&mut crate::ObjectFilter> {
+        match restriction {
+            Restriction::Attack(filter)
+            | Restriction::Block(filter)
+            | Restriction::Untap(filter)
+            | Restriction::BeBlocked(filter)
+            | Restriction::BeDestroyed(filter)
+            | Restriction::BeRegenerated(filter)
+            | Restriction::BeSacrificed(filter)
+            | Restriction::HaveCountersPlaced(filter)
+            | Restriction::BeTargeted(filter)
+            | Restriction::TurnFaceUp(filter)
+            | Restriction::Transform(filter)
+            | Restriction::PhaseOut(filter)
+            | Restriction::PhaseIn(filter)
+            | Restriction::AttackOrBlock(filter)
+            | Restriction::ActivateAbilitiesOf(filter)
+            | Restriction::ActivateTapAbilitiesOf(filter)
+            | Restriction::ActivateNonManaAbilitiesOf(filter) => Some(filter),
+            _ => None,
+        }
+    }
+    let EffectAst::SubjectVerb(subject_verb) = effect else {
+        return;
+    };
+    let SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
+        target: TargetAst::Tagged(target_tag, _),
+        abilities,
+        duration,
+        condition: None,
+        ..
+    }) = &subject_verb.action
+    else {
+        return;
+    };
+    if matches!(duration, Until::Forever) {
+        return;
+    }
+    let [crate::cards::builders::GrantedAbilityAst::StaticAbility(ability)] =
+        abilities.as_slice()
+    else {
+        return;
+    };
+    let crate::cards::builders::StaticAbilityAst::Static(ability) = ability.as_ref() else {
+        return;
+    };
+    let ironsmith_core::StaticAbilityPayload::RuleRestriction {
+        restriction,
+        additional_restrictions,
+        ..
+    } = &ability.payload
+    else {
+        return;
+    };
+    if !additional_restrictions.is_empty() {
+        return;
+    }
+    let mut restriction = restriction.clone();
+    let Some(filter) = single_filter_mut(&mut restriction) else {
+        return;
+    };
+    let it = crate::tag::CompilerReferenceTag::It.as_str();
+    let [constraint] = filter.tagged_constraints.as_mut_slice() else {
+        return;
+    };
+    if constraint.tag.as_str() != it
+        || constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+    {
+        return;
+    }
+    let mut bare = filter.clone();
+    bare.tagged_constraints.clear();
+    if bare != crate::ObjectFilter::default() {
+        return;
+    }
+    let target_key: crate::TagKey = target_tag.clone().into();
+    filter.tagged_constraints[0].tag = target_key;
+    let duration = duration.clone();
+    *effect = EffectAst::subject_verb_cant(restriction, duration, None);
+}
+
 fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
+    bind_tapped_this_way_to_tap_all(effects);
     declare_predicate_introduced_player_targets(effects);
+    declare_branch_introduced_object_targets(effects);
     bind_same_name_cast_condition_to_cast_filter(effects);
     for effect in effects.iter_mut() {
         bind_may_player_to_implicit_search_choosers(effect);
@@ -434,6 +691,7 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
             *effect = EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay);
         }
         normalize_singular_source_exiled_move(effect);
+        durational_anaphoric_restriction_grant_to_cant(effect);
         bind_coordinated_rest_sacrifice_to_chosen_complement(effect);
     }
     // A full-card parse can normalize a named source reference only after the

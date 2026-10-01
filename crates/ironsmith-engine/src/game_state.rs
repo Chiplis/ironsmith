@@ -430,6 +430,9 @@ struct BattlefieldFlags {
     regenerated_this_turn: HashMap<ObjectId, u32>,
     /// Number of permanents sacrificed as a result of this permanent's devour ability.
     devoured_counts: HashMap<ObjectId, u32>,
+    /// Last-known snapshots of the permanents each permanent devoured as it
+    /// entered ("the number of Goblins it devoured").
+    devoured_objects: HashMap<ObjectId, Vec<crate::snapshot::ObjectSnapshot>>,
     /// Cases that have become solved.
     solved_cases: HashSet<ObjectId>,
     /// Class levels above 1 (CR 716.2); absent means level 1.
@@ -5033,6 +5036,7 @@ impl GameState {
             || filter.blocked
             || filter.blocked_by.is_some()
             || filter.blocked_by_source
+            || filter.crewed_by_source_this_turn
             || filter.blocked_or_was_blocked_by_this_turn.is_some()
             || filter.unblocked
             || filter.is_target_object

@@ -218,6 +218,12 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
             // Both an explicit source link and "the exiled cards" refer to
             // objects currently in exile, including across separate abilities.
             filter.zone = Some(Zone::Exile);
+            // "Return all exiled cards with aegis counters on them" (Livio):
+            // without a source link, a counter-qualified set is every such
+            // card in exile, not the cards this source exiled.
+            let counter_qualified_global_set = !has_explicit_source_link
+                && !omitted_exiled_set
+                && filter.with_counter.is_some();
             // "The exiled cards" can appear in a later ability of the same
             // source. Do not let its generic `it` placeholder bind to an
             // unrelated local action (for example, a sacrifice immediately
@@ -226,10 +232,12 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
             filter
                 .tagged_constraints
                 .retain(|constraint| constraint.relation != TaggedOpbjectRelation::IsTaggedObject);
-            filter = filter.match_tagged(
-                crate::tag::CompilerReferenceTag::SourceExiled.bind(),
-                TaggedOpbjectRelation::IsTaggedObject,
-            );
+            if !counter_qualified_global_set {
+                filter = filter.match_tagged(
+                    crate::tag::CompilerReferenceTag::SourceExiled.bind(),
+                    TaggedOpbjectRelation::IsTaggedObject,
+                );
+            }
             if source_linked_excludes_current {
                 filter = filter.not_tagged(crate::tag::CompilerReferenceTag::It.bind());
             }

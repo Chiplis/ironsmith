@@ -784,17 +784,24 @@ pub fn parse_if_result_predicate(tokens: &[OwnedLexToken]) -> Option<IfResultPre
 fn parse_sentence_segment_len<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<usize, ErrMode<ContextError>> {
-    fn quoted_period_continues_sentence(next: Option<&LexToken>) -> bool {
+    fn quoted_period_continues_sentence(next: Option<&LexToken>, after: Option<&LexToken>) -> bool {
         match next {
             Some(token) if token.kind == TokenKind::Comma => true,
             Some(token)
                 if token.kind == TokenKind::Word
                     && matches!(
                         token.parser_text(),
-                        "and" | "during" | "for" | "this" | "until" | "where" | "with" | "without"
+                        "and" | "during" | "for" | "until" | "where" | "with" | "without"
                     ) =>
             {
                 true
+            }
+            // `"..." this turn` continues the sentence; `"..." this creature
+            // loses ...` (a normalized card name) starts a new one.
+            Some(token) if token.kind == TokenKind::Word && token.parser_text() == "this" => {
+                after.is_some_and(|after| {
+                    after.kind == TokenKind::Word && matches!(after.parser_text(), "turn" | "way")
+                })
             }
             _ => false,
         }
@@ -807,9 +814,10 @@ fn parse_sentence_segment_len<'a>(
     while let Some(token) = input.peek_token() {
         if is_sentence_quote(token) {
             primitives::quote().parse_next(input)?;
+            let ahead = input.peek_slice(input.eof_offset().min(2));
             if inside_quotes
                 && last_inner_token_was_period
-                && !quoted_period_continues_sentence(input.peek_token())
+                && !quoted_period_continues_sentence(ahead.first(), ahead.get(1))
             {
                 let consumed = initial_len - input.len();
                 return Ok(consumed);
@@ -830,8 +838,16 @@ fn parse_sentence_segment_len<'a>(
             return Ok(consumed.saturating_sub(1));
         }
 
+        // A nested single-quoted rule closing right after its own period
+        // ("...has '{T}: Add {G}.'") keeps the sentence-final period visible
+        // to the enclosing double quote that closes next.
+        let closes_nested_quote = inside_quotes
+            && last_inner_token_was_period
+            && token.kind == TokenKind::Apostrophe;
         any.parse_next(input)?;
-        last_inner_token_was_period = false;
+        if !closes_nested_quote {
+            last_inner_token_was_period = false;
+        }
     }
 
     Ok(initial_len - input.len())

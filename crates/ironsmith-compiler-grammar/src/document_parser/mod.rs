@@ -1264,6 +1264,60 @@ fn quoted_characteristic_pt_token_flags(tokens: &[OwnedLexToken]) -> Vec<bool> {
     flags
 }
 
+/// Mark each token inside an ability quoted after "equipped creature has" /
+/// "enchanted creature has" with the phrase naming the granting attachment
+/// ([`crate::preprocess::GRANTING_SOURCE_SURFACE`]).
+///
+/// `Equipped creature has "... Return Trusty Boomerang to its owner's
+/// hand."`: the granted ability's source is the equipped permanent, so the
+/// card's own name there names the Equipment (or Aura) attached to it.
+fn quoted_attachment_grant_token_replacements(
+    tokens: &[OwnedLexToken],
+) -> Vec<Option<&'static str>> {
+    let mut replacements = vec![None; tokens.len()];
+    let host_for_head = |head: &[OwnedLexToken]| {
+        match crate::lexer::parser_token_word_refs(head).as_slice() {
+            ["equipped" | "enchanted", "creature", .., "has" | "have"] => {
+                Some(crate::preprocess::GRANTING_SOURCE_SURFACE)
+            }
+            _ => None,
+        }
+    };
+    if !tokens.iter().any(|token| token.kind == TokenKind::Quote) {
+        // A grant clause whose quotation marks were already stripped
+        // ("equipped creature gets +1/+1 and has whenever this creature
+        // ..."): everything after the grant verb is the granted ability.
+        if let Some(has_index) = tokens
+            .iter()
+            .position(|token| token.is_word("has") || token.is_word("have"))
+            && let Some(replacement) = host_for_head(&tokens[..=has_index])
+        {
+            replacements[has_index + 1..].fill(Some(replacement));
+        }
+        return replacements;
+    }
+    let mut span_start: Option<usize> = None;
+    for (index, token) in tokens.iter().enumerate() {
+        if token.kind != TokenKind::Quote {
+            continue;
+        }
+        if let Some(start) = span_start.take() {
+            let head_start = tokens[..start - 1]
+                .iter()
+                .rposition(|token| {
+                    matches!(token.kind, TokenKind::Period | TokenKind::Quote)
+                        || matches!(token.slice.as_str(), "—" | "-" | "–")
+                })
+                .map_or(0, |separator| separator + 1);
+            let replacement = host_for_head(&tokens[head_start..start - 1]);
+            replacements[start..index].fill(replacement);
+            continue;
+        }
+        span_start = Some(index + 1);
+    }
+    replacements
+}
+
 /// Whether this alias occurrence is the object of a "… counters on <name>"
 /// phrase, the operand the runtime binds back to the creating permanent.
 fn alias_occurrence_is_counters_on_operand(
@@ -1304,6 +1358,7 @@ fn replace_named_source_alias_tokens(
     debug_assert_eq!(piece_tokens.len(), pieces.len());
 
     let quoted_characteristic_pt_tokens = quoted_characteristic_pt_token_flags(tokens);
+    let attachment_grant_replacements = quoted_attachment_grant_token_replacements(tokens);
 
     let mut out: Vec<OwnedLexToken> = Vec::with_capacity(tokens.len());
     let mut next_token = 0usize;
@@ -1332,7 +1387,31 @@ fn replace_named_source_alias_tokens(
                 &remaining_words,
             )
             .is_some_and(|compound_len| compound_len > alias_words.len());
-        let preserve_surface = alias_is_strict_prefix_of_compound_subtype
+        // Only the card's full name, as the object of an action in the
+        // granted ability's effect ("Return Trusty Boomerang ...", "you may
+        // sacrifice Trickster's Talisman"), never inside its cost.
+        let attachment_replacement = attachment_grant_replacements
+            .get(piece_tokens[word_idx])
+            .copied()
+            .flatten()
+            .filter(|_| {
+                !pieces[end_word - 1].possessive
+                    && all_alias_words
+                        .iter()
+                        .all(|other| other.len() <= alias_words.len())
+                    && word_idx.checked_sub(1).is_some_and(|previous| {
+                        matches!(
+                            pieces[previous].text,
+                            "sacrifice" | "return" | "exile" | "destroy" | "tap" | "untap"
+                        )
+                    })
+                    && !tokens[piece_tokens[end_word - 1] + 1..]
+                        .iter()
+                        .take_while(|token| token.kind != TokenKind::Quote)
+                        .any(|token| token.kind == TokenKind::Colon)
+            });
+        let preserve_surface = attachment_replacement.is_none()
+            && (alias_is_strict_prefix_of_compound_subtype
             || source_alias_occurrence_looks_like_effect_verb_lexed(&pieces, word_idx, end_word)
             || source_alias_occurrence_is_name_override_surface_lexed(&pieces, word_idx, end_word)
             || source_alias_occurrence_is_created_token_name_lexed(&pieces, word_idx, end_word)
@@ -1351,7 +1430,7 @@ fn replace_named_source_alias_tokens(
                 .get(piece_tokens[word_idx])
                 .copied()
                 .unwrap_or(false)
-                && alias_occurrence_is_counters_on_operand(&pieces, word_idx));
+                && alias_occurrence_is_counters_on_operand(&pieces, word_idx)));
         if preserve_surface {
             word_idx += 1;
             continue;
@@ -1370,7 +1449,11 @@ fn replace_named_source_alias_tokens(
             start: tokens[first_token].span.start,
             end: tokens[last_token].span.end,
         };
-        let mut words: Vec<String> = replacement.split_whitespace().map(str::to_string).collect();
+        let mut words: Vec<String> = attachment_replacement
+            .unwrap_or(replacement)
+            .split_whitespace()
+            .map(str::to_string)
+            .collect();
         // The matched name span includes an authored possessive; the typed
         // subject keeps that grammar.
         if pieces[end_word - 1].possessive
@@ -1423,7 +1506,7 @@ fn normalize_named_source_enter_agreement_tokens(
     changed
 }
 
-fn named_source_subject_for_builder(card: &crate::card::CardBuilder) -> &'static str {
+pub(crate) fn named_source_subject_for_builder(card: &crate::card::CardBuilder) -> &'static str {
     if card
         .card_types_ref()
         .contains(&crate::types::CardType::Creature)
@@ -1465,15 +1548,22 @@ struct SourceAliasWordPiece<'a> {
     span: TextSpan,
     possessive: bool,
     sentence: usize,
+    /// Clause index: bumps at every comma, semicolon or period.
+    clause: usize,
 }
 
 fn source_alias_word_pieces(tokens: &[OwnedLexToken]) -> Vec<SourceAliasWordPiece<'_>> {
     let mut sentence = 0usize;
+    let mut clause = 0usize;
     let mut pieces = Vec::new();
     for token in tokens {
         if token.kind == TokenKind::Period {
             sentence += 1;
+            clause += 1;
             continue;
+        }
+        if matches!(token.kind, TokenKind::Comma | TokenKind::Semicolon) {
+            clause += 1;
         }
         let possessive = crate::string_primitives::contains_char(token.slice.as_str(), '\'')
             || crate::string_primitives::contains_char(token.slice.as_str(), '’');
@@ -1486,6 +1576,7 @@ fn source_alias_word_pieces(tokens: &[OwnedLexToken]) -> Vec<SourceAliasWordPiec
                     span: piece.span,
                     possessive,
                     sentence,
+                    clause,
                 }),
         );
     }
@@ -1571,15 +1662,23 @@ fn source_alias_occurrence_is_typed_subtype_noun_lexed(
         .map(|piece| piece.text)
         .collect::<Vec<_>>()
         .join(" ");
-    if !parse_subtype_flexible(&alias).is_some_and(|subtype| subtype.is_creature_type()) {
+    let Some(subtype) = parse_subtype_flexible(&alias) else {
         return false;
-    }
+    };
 
     let previous_word = start_word
         .checked_sub(1)
         .and_then(|idx| pieces.get(idx))
         .map(|piece| piece.text);
     let next_word = pieces.get(end_word).map(|piece| piece.text);
+    // "put a loyalty counter on each Garruk you control": a quantified
+    // subtype noun names every permanent of that type, never this object.
+    if matches!(previous_word, Some("each" | "another")) {
+        return true;
+    }
+    if !subtype.is_creature_type() {
+        return false;
+    }
 
     previous_word == Some("target")
         || (matches!(previous_word, Some("a" | "an"))
@@ -1769,6 +1868,75 @@ fn source_alias_occurrence_is_name_override_surface_lexed(
 
     previous_word == Some("named")
         || (previous_word == Some("is") && previous_previous_word == Some("name"))
+        || source_alias_occurrence_ends_named_phrase_lexed(pieces, start_word)
+}
+
+/// "a creature named Keeper of Kookus" on a card named Kookus: the alias is
+/// the tail of another card's name, not a reference to this object. Walk
+/// back over a few name words in the same sentence looking for "named"; any
+/// ordinary rules word in between ends the name.
+fn source_alias_occurrence_ends_named_phrase_lexed(
+    pieces: &[SourceAliasWordPiece<'_>],
+    start_word: usize,
+) -> bool {
+    let Some(clause) = pieces.get(start_word).map(|piece| piece.clause) else {
+        return false;
+    };
+    let mut idx = start_word;
+    for _ in 0..5 {
+        let Some(prev) = idx.checked_sub(1).and_then(|i| pieces.get(i)) else {
+            return false;
+        };
+        if prev.clause != clause || prev.possessive {
+            return false;
+        }
+        if prev.text == "named" {
+            // At least one name word must sit between "named" and the alias.
+            return idx != start_word;
+        }
+        if matches!(
+            prev.text,
+            "this"
+                | "that"
+                | "it"
+                | "its"
+                | "you"
+                | "your"
+                | "a"
+                | "an"
+                | "and"
+                | "or"
+                | "if"
+                | "then"
+                | "when"
+                | "whenever"
+                | "target"
+                | "card"
+                | "cards"
+                | "creature"
+                | "creatures"
+                | "permanent"
+                | "permanents"
+                | "control"
+                | "controls"
+                | "with"
+                | "from"
+                | "to"
+                | "on"
+                | "into"
+                | "onto"
+                | "is"
+                | "are"
+                | "deals"
+                | "gets"
+                | "has"
+                | "have"
+        ) {
+            return false;
+        }
+        idx -= 1;
+    }
+    false
 }
 
 fn source_alias_occurrence_is_created_token_name_lexed(

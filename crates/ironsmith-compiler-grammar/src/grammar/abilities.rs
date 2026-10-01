@@ -1847,6 +1847,29 @@ pub fn is_during_your_turn_prevent_all_damage_to_source_line_lexed(
             ),
         )
         .is_some()
+        // "Prevent all damage that would be dealt to Gideon Blackblade during
+        // your turn." — the same condition trailing the self-reference.
+        || matches_any_exact_phrase_line_lexed(
+            tokens,
+            &[
+                &[
+                    "prevent", "all", "damage", "that", "would", "be", "dealt", "to", "this",
+                    "during", "your", "turn",
+                ],
+                &[
+                    "prevent", "all", "damage", "that", "would", "be", "dealt", "to", "this",
+                    "creature", "during", "your", "turn",
+                ],
+                &[
+                    "prevent", "all", "damage", "that", "would", "be", "dealt", "to", "this",
+                    "permanent", "during", "your", "turn",
+                ],
+                &[
+                    "prevent", "all", "damage", "that", "would", "be", "dealt", "to", "this",
+                    "planeswalker", "during", "your", "turn",
+                ],
+            ],
+        )
 }
 
 pub fn is_prevent_all_noncombat_damage_to_other_creatures_you_control_line_lexed(

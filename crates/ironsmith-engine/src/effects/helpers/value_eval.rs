@@ -31,6 +31,9 @@ pub(crate) fn resolve(
             Ok(resolve(value, context)?.div_euclid(*divisor))
         }
         Value::Min(left, right) => Ok(resolve(left, context)?.min(resolve(right, context)?)),
+        Value::Count(filter) if filter_reads_source_devoured(filter) => {
+            Ok(count_source_devoured(filter, context))
+        }
         Value::Count(filter) => Ok(context.count_objects(filter, true)),
         Value::PlayersWhoControl { players, filter } => Ok(context
             .matching_player_ids(players)
@@ -1274,3 +1277,28 @@ fn resolve_event_value(
 
 #[cfg(test)]
 mod tests;
+
+fn filter_reads_source_devoured(filter: &crate::filter::ObjectFilter) -> bool {
+    filter
+        .tagged_constraints
+        .iter()
+        .any(|constraint| constraint.tag.as_str() == crate::tag::SOURCE_DEVOURED_TAG)
+}
+
+/// "the number of Goblins it devoured" (Voracious Dragon): count the
+/// permanents the source sacrificed to its devour ability, as they last
+/// existed on the battlefield (CR 702.82b).
+fn count_source_devoured(filter: &crate::filter::ObjectFilter, context: &EvaluationContext<'_, '_>) -> i32 {
+    use crate::filter::ObjectFilterExt as _;
+    let game = context.game;
+    let mut residual = filter.clone();
+    residual
+        .tagged_constraints
+        .retain(|constraint| constraint.tag.as_str() != crate::tag::SOURCE_DEVOURED_TAG);
+    residual.zone = None;
+    let filter_ctx = context.filter_context(game);
+    game.devoured_objects(context.source)
+        .iter()
+        .filter(|snapshot| residual.matches_snapshot(snapshot, &filter_ctx, game))
+        .count() as i32
+}

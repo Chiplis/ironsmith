@@ -2081,6 +2081,9 @@ pub fn parse_trigger_clause_lexed(tokens: &[OwnedLexToken]) -> Result<TriggerSpe
     if let Some(qualified) = try_parse_while_source_is_attacking_trigger_lexed(tokens)? {
         return Ok(qualified);
     }
+    if let Some(trigger) = try_parse_cast_or_activate_trigger_lexed(tokens) {
+        return Ok(trigger);
+    }
     if let Some(trigger) = try_parse_cycle_this_or_another_on_battlefield_trigger_lexed(tokens) {
         return Ok(trigger);
     }
@@ -2095,6 +2098,38 @@ pub fn parse_trigger_clause_lexed(tokens: &[OwnedLexToken]) -> Result<TriggerSpe
         ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
     parse_trigger_clause_lexed_unstacked(tokens)
+}
+
+/// "you cast <spell> or activate <ability>": one player performs either of
+/// two stack-object events. The shared subject is written once; each arm is
+/// an ordinary cast or activation trigger ("Whenever you cast an instant or
+/// sorcery spell that targets only Bill Potts or activate an ability that
+/// targets only Bill Potts").
+fn try_parse_cast_or_activate_trigger_lexed(tokens: &[OwnedLexToken]) -> Option<TriggerSpec> {
+    let or_idx = tokens.windows(2).position(|pair| {
+        pair[0].is_word("or") && (pair[1].is_word("activate") || pair[1].is_word("activates"))
+    })?;
+    let cast_idx = tokens[..or_idx]
+        .iter()
+        .position(|token| token.is_word("cast") || token.is_word("casts"))?;
+    if cast_idx == 0 {
+        return None;
+    }
+    let left = &tokens[..or_idx];
+    let mut right = tokens[..cast_idx].to_vec();
+    right.extend_from_slice(&tokens[or_idx + 1..]);
+    let left = parse_trigger_clause_lexed(left).ok()?;
+    let right = parse_trigger_clause_lexed(&right).ok()?;
+    fn is_kind(trigger: &TriggerSpec, cast: bool) -> bool {
+        match trigger {
+            TriggerSpec::WithIntro { trigger, .. } => is_kind(trigger, cast),
+            TriggerSpec::SpellCast { .. } => cast,
+            TriggerSpec::AbilityActivated { .. } => !cast,
+            _ => false,
+        }
+    }
+    (is_kind(&left, true) && is_kind(&right, false))
+        .then(|| TriggerSpec::Either(Box::new(left), Box::new(right)))
 }
 
 fn try_parse_cycle_this_or_another_on_battlefield_trigger_lexed(
@@ -2755,7 +2790,20 @@ fn try_parse_repeated_intro_event_union_lexed(
         }
     };
     let right_tokens = &tokens[separator + 1..];
-    let right = parse_trigger_clause_lexed(strip_leading_trigger_intro(right_tokens))?;
+    let right_clause = strip_leading_trigger_intro(right_tokens);
+    let left_clause = strip_leading_trigger_intro(&tokens[..separator]);
+    // "When Ivora enters and whenever it deals combat damage": the pronoun
+    // subject of the repeated intro names the left clause's source subject.
+    let right = if right_clause.first().is_some_and(|token| token.is_word("it"))
+        && left_clause.first().is_some_and(|token| token.is_word("this"))
+        && left_clause.len() > 2
+    {
+        let mut rebound = left_clause[..2].to_vec();
+        rebound.extend_from_slice(&right_clause[1..]);
+        parse_trigger_clause_lexed(&rebound)?
+    } else {
+        parse_trigger_clause_lexed(right_clause)?
+    };
     Ok(Some(TriggerSpec::Either(
         Box::new(left),
         Box::new(apply_leading_trigger_intro_surface(right, right_tokens)),

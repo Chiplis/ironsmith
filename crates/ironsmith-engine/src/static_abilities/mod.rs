@@ -3337,6 +3337,14 @@ impl StaticAbility {
         Self::new(PreventAllCombatDamageToPermanentsMatching::new(filter))
     }
 
+    /// "Prevent all combat damage that would be dealt to and dealt by
+    /// enchanted creature." (Ghostly Possession)
+    pub fn prevent_all_combat_damage_to_and_by_permanents_matching(
+        filter: crate::target::ObjectFilter,
+    ) -> Self {
+        Self::new(PreventAllCombatDamageToAndByPermanentsMatching::new(filter))
+    }
+
     pub fn prevent_all_noncombat_damage_to_permanents_matching(
         filter: crate::target::ObjectFilter,
     ) -> Self {

@@ -860,6 +860,139 @@ fn death_trigger_counts_counters_on_triggering_object(trigger: &TriggerSpec) -> 
     }
 }
 
+/// "Whenever a creature you control with a +1/+1 counter on it leaves the
+/// battlefield, create a token for each +1/+1 counter on it": the trigger's
+/// subject filter itself requires counters on the triggering object, so a
+/// bare `counter on it` count in the body counts that object's counters, not
+/// the source's.
+fn trigger_subject_counter_requirement(trigger: &TriggerSpec) -> bool {
+    let filter = match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => {
+            return trigger_subject_counter_requirement(trigger);
+        }
+        TriggerSpec::Dies(filter)
+        | TriggerSpec::DiesOneOrMore(filter)
+        | TriggerSpec::LeavesBattlefield(filter)
+        | TriggerSpec::PutIntoGraveyard(filter)
+        | TriggerSpec::DiesDuringTurn { filter, .. } => filter,
+        TriggerSpec::DiesDuringCombat {
+            filter: Some(filter),
+            ..
+        } => filter,
+        _ => return false,
+    };
+    filter.with_counter.is_some() && !filter.source
+}
+
+fn rebind_source_counter_counts_to_triggering_object(effect: &mut EffectAst) {
+    fn rebind_value(value: &mut Value) {
+        match value {
+            Value::SurfaceHinted { value, .. } => rebind_value(value),
+            Value::CountersOnSource(counter_type) => {
+                *value = Value::CountersOn(
+                    Box::new(ChooseSpec::Tagged(
+                        ironsmith_compiler_semantic::tag::declared_key("triggering").into(),
+                    )),
+                    Some(counter_type.clone()),
+                );
+            }
+            _ => {}
+        }
+    }
+    fn rebind_in_effects(effects: &mut [EffectAst]) {
+        for effect in effects {
+            rebind_source_counter_counts_to_triggering_object(effect);
+        }
+    }
+
+    if let EffectAst::SubjectVerb(subject_verb) = effect {
+        match &mut subject_verb.action {
+            SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { count, .. })
+            | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { count, .. })
+            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count })
+            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife {
+                amount: count,
+            })
+            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife {
+                amount: count,
+            })
+            | SubjectVerbActionAst::Library(LibraryActionAst::Mill { count })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount: count, .. }) => {
+                rebind_value(count);
+            }
+            _ => {}
+        }
+    }
+
+    for_each_nested_effects_mut(effect, false, rebind_in_effects);
+}
+
+/// The card types a trigger's own event object is known to have ("Whenever a
+/// land you control enters": a land).
+fn trigger_event_object_card_types(trigger: &TriggerSpec) -> Option<Vec<crate::types::CardType>> {
+    let filter = match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => {
+            return trigger_event_object_card_types(trigger);
+        }
+        TriggerSpec::EntersBattlefield { filter, .. }
+        | TriggerSpec::EntersBattlefieldOneOrMore { filter, .. }
+        | TriggerSpec::EntersBattlefieldFromZone { filter, .. }
+        | TriggerSpec::EntersBattlefieldTapped { filter, .. }
+        | TriggerSpec::EntersBattlefieldUntapped { filter, .. }
+        | TriggerSpec::Dies(filter)
+        | TriggerSpec::LeavesBattlefield(filter) => filter,
+        _ => return None,
+    };
+    (!filter.source && !filter.card_types.is_empty()).then(|| filter.card_types.clone())
+}
+
+/// "Landfall — ... you may return target nonland permanent card ... If that
+/// land is a Plains, ... instead" (Emeria Shepherd): a condition whose
+/// demonstrative noun names the trigger's event object type ("that land")
+/// tests that event object, not the ability's target.
+fn bind_event_object_demonstrative_conditions(
+    effect: &mut EffectAst,
+    event_types: &[crate::types::CardType],
+) {
+    fn bind_predicate(predicate: &mut PredicateAst, event_types: &[crate::types::CardType]) {
+        use ironsmith_core::DemonstrativeAntecedentSurface as Noun;
+        match predicate {
+            PredicateAst::Not(inner) => bind_predicate(inner, event_types),
+            PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
+                bind_predicate(left, event_types);
+                bind_predicate(right, event_types);
+            }
+            PredicateAst::ItMatches(filter) | PredicateAst::TargetMatches(filter) => {
+                let noun = match filter.demonstrative_antecedent_surface() {
+                    Some(Noun::Artifact) => crate::types::CardType::Artifact,
+                    Some(Noun::Creature) => crate::types::CardType::Creature,
+                    Some(Noun::Enchantment) => crate::types::CardType::Enchantment,
+                    Some(Noun::Land) => crate::types::CardType::Land,
+                    _ => return,
+                };
+                if !event_types.contains(&noun) {
+                    return;
+                }
+                *predicate = PredicateAst::TaggedMatches(
+                    crate::tag::CompilerReferenceTag::Triggering.bind(),
+                    filter.clone(),
+                );
+            }
+            _ => {}
+        }
+    }
+    match effect {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. })
+        | EffectAst::SelfReplacement { predicate, .. } => bind_predicate(predicate, event_types),
+        _ => {}
+    }
+    for_each_nested_effects_mut(effect, true, |nested| {
+        for effect in nested {
+            bind_event_object_demonstrative_conditions(effect, event_types);
+        }
+    });
+}
+
 fn replace_exile_top_event_count_with_triggering_counter_count(effect: &mut EffectAst) {
     fn replace_in_effects(effects: &mut [EffectAst]) {
         for effect in effects {
@@ -1213,7 +1346,14 @@ fn bind_self_attach_destination_to_trigger_object(
                 }),
             ..
         }) = effect
-            && object_tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str()
+            // "Return this card ..., then attach it to that creature": when
+            // both the attached object and the destination are bare
+            // pronouns, they can't name the same object, and the
+            // destination is the trigger's event object.
+            && (object_tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str()
+                || matches!(target, TargetAst::Object(filter, None, _)
+                    if !filter.card_types.is_empty()
+                        || filter.explicit_card_type_noun().is_some()))
             // When the attached object is already the trigger's event object
             // ("If that enchantment is an Aura, you may attach it to the
             // token"), the destination is some other antecedent; rebinding
@@ -1237,6 +1377,56 @@ fn bind_self_attach_destination_to_trigger_object(
     for effect in effects {
         visit(effect);
     }
+}
+
+/// Whether the trigger's event object is a spell or ability whose trigger
+/// condition names the objects it targets ("a spell that targets only a
+/// single creature", "an ability that targets a creature"). Targeting the
+/// source itself (heroic) introduces no separate antecedent.
+fn trigger_names_stack_object_targets(trigger: &TriggerSpec) -> bool {
+    fn filter_names_targets(filter: &ObjectFilter) -> bool {
+        filter
+            .targets_object
+            .as_deref()
+            .is_some_and(|target| !target.source)
+            || filter
+                .targets_only_object
+                .as_deref()
+                .is_some_and(|target| !target.source)
+            || filter.any_of.iter().any(filter_names_targets)
+    }
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => trigger_names_stack_object_targets(trigger),
+        TriggerSpec::SpellCast {
+            filter: Some(filter),
+            ..
+        }
+        | TriggerSpec::SpellCastSameNameCardInZone {
+            filter: Some(filter),
+            ..
+        } => filter_names_targets(filter),
+        TriggerSpec::AbilityActivated { filter, .. } => filter_names_targets(filter),
+        TriggerSpec::Either(left, right) => {
+            trigger_names_stack_object_targets(left) && trigger_names_stack_object_targets(right)
+        }
+        _ => false,
+    }
+}
+
+/// Record that a permanent-noun demonstrative in this trigger's body names
+/// the targets of the triggering stack object.
+fn import_triggering_stack_targets_alias(imports: &mut ReferenceImports, trigger: &TriggerSpec) {
+    if !trigger_names_stack_object_targets(trigger) {
+        return;
+    }
+    let Some(event_tag) = default_trigger_last_object_tag(trigger) else {
+        return;
+    };
+    let alias = ironsmith_compiler_resolve::reference_helpers::triggering_stack_targets_alias();
+    imports
+        .snapshot_tag_aliases
+        .retain(|(existing, _)| existing != &alias);
+    imports.snapshot_tag_aliases.push((alias, event_tag));
 }
 
 fn spell_cast_trigger_targets_source(trigger: &TriggerSpec) -> bool {
@@ -2401,6 +2591,18 @@ fn stage_effects_from_normalized(
             .zip(implicit_trigger_references.as_deref().unwrap_or_default())
             .any(|(annotated, implicit_reference)| {
                 effect_references_tag(&annotated.effect, "triggering")
+                    // "the discarded card" with no discard in this ability
+                    // names the card whose discard triggered it.
+                    || (effect_references_tag(
+                        &annotated.effect,
+                        crate::tag::CompilerReferenceTag::DiscardedCardReference.as_str(),
+                    ) && !annotated.in_env.known_last_object_tag().is_some_and(|tag| {
+                        crate::reference_helpers::is_discard_result_reference_tag(tag.as_str())
+                    }))
+                    || (effect_references_tag(
+                        &annotated.effect,
+                        crate::tag::CompilerReferenceTag::ThoseCardsReference.as_str(),
+                    ) && annotated.in_env.known_last_object_tag().is_none())
                     || (*implicit_reference
                         && annotated
                             .in_env
@@ -3076,6 +3278,9 @@ pub fn stage_effects_with_trigger_context_for_lowering(
 ) -> Result<PreparedEffectsForLowering, CardTextError> {
     let mut imports = imports.into();
     imports.source_object_antecedent |= trigger.is_some_and(trigger_has_source_attack_antecedent);
+    if let Some(trigger) = trigger {
+        import_triggering_stack_targets_alias(&mut imports, trigger);
+    }
     let mut normalized = normalize_effects_ast(effects);
     if let Some(trigger) = trigger {
         preserve_copy_reference_kind_from_trigger(&mut normalized, trigger);
@@ -3634,12 +3839,41 @@ pub fn stage_owned_triggered_effects_for_lowering(
             replace_exile_top_event_count_with_triggering_counter_count(effect);
         }
     }
+    if trigger_subject_counter_requirement(&trigger) {
+        for effect in &mut body_effects {
+            rebind_source_counter_counts_to_triggering_object(effect);
+        }
+    }
+    if let Some(event_types) = trigger_event_object_card_types(&trigger) {
+        for effect in &mut body_effects {
+            bind_event_object_demonstrative_conditions(effect, &event_types);
+        }
+    }
     if intervening_if
         .as_ref()
         .is_some_and(predicate_counts_creature_deaths)
     {
         replace_creature_death_event_amounts(&mut body_effects);
     }
+    // "Whenever you cast an instant or sorcery spell, if Taigam attacked
+    // this turn, that spell gains rebound": a source condition does not
+    // retarget an `it`-bound grant to the source over the announced spell.
+    let trigger_announces_cast_spell = {
+        fn announces(trigger: &TriggerSpec) -> bool {
+            match trigger {
+                TriggerSpec::WithIntro { trigger, .. } => announces(trigger),
+                TriggerSpec::SpellCast { .. } | TriggerSpec::SpellCastSameNameCardInZone { .. } => {
+                    true
+                }
+                _ => false,
+            }
+        }
+        announces(&trigger)
+    };
+    // The source condition still makes the source the antecedent of a bare
+    // `it` ("if this permanent is an enchantment, it becomes ..."); a
+    // demonstrative ("that spell gains rebound", "that spell's mana value")
+    // names the announced spell through the superseded-antecedent alias.
     imports.source_object_antecedent |= intervening_if
         .as_ref()
         .is_some_and(PredicateAst::establishes_source_object_antecedent);
@@ -3676,7 +3910,16 @@ pub fn stage_owned_triggered_effects_for_lowering(
         .as_ref()
         .is_some_and(PredicateAst::establishes_source_object_antecedent)
     {
-        resolve_it_animations_to_source(&mut body_effects);
+        if trigger_announces_cast_spell {
+            ironsmith_compiler_semantic::condition_antecedent::resolve_it_counter_and_animation_targets_to_source(
+                &mut body_effects,
+            );
+            ironsmith_compiler_semantic::condition_antecedent::resolve_it_grant_targets_to_triggering_spell(
+                &mut body_effects,
+            );
+        } else {
+            resolve_it_animations_to_source(&mut body_effects);
+        }
     }
 
     if (matches!(trigger, TriggerSpec::ThisAttacks)
@@ -3701,9 +3944,16 @@ pub fn stage_owned_triggered_effects_for_lowering(
         .is_some_and(predicate_uses_implicit_object_reference);
     let references_trigger_event_tag = default_trigger_last_object_tag(&trigger)
         .is_some_and(|tag| effects_reference_tag(&body_effects, tag.as_str()));
+    // "Whenever you scry, if Legolas is tapped, you may untap it": once the
+    // intervening-if names the source, a bare `it` in the body continues that
+    // source antecedent (CR 603.4 wording), not the trigger's event object.
+    let body_it_continues_source_condition = intervening_if
+        .as_ref()
+        .is_some_and(PredicateAst::establishes_source_object_antecedent)
+        && !intervening_if_uses_trigger_object;
     let (default_last_object_tag, default_last_object_prelude) = if !has_local_target_prelude
         && !body_it_binds_to_body_target
-        && (effects_reference_it_tag(&body_effects)
+        && ((effects_reference_it_tag(&body_effects) && !body_it_continues_source_condition)
             || effects_reference_its_controller(&body_effects)
             || intervening_if_uses_trigger_object
             || references_trigger_event_tag)
@@ -3728,6 +3978,22 @@ pub fn stage_owned_triggered_effects_for_lowering(
         (None, None)
     };
 
+    // With `it` continuing the source condition, a demonstrative ("that
+    // spell's mana value") still names the trigger's event object.
+    let mut superseded_event_tag_needs_prelude = false;
+    if body_it_continues_source_condition
+        && default_last_object_tag.is_none()
+        && let Some(event_tag) = default_trigger_last_object_tag(&trigger)
+    {
+        superseded_event_tag_needs_prelude = event_tag.as_str()
+            == crate::tag::CompilerReferenceTag::Triggering.as_str()
+            && effects_reference_it_tag(&body_effects);
+        let alias =
+            ironsmith_compiler_resolve::reference_helpers::source_superseded_antecedent_alias();
+        imports.snapshot_tag_aliases.retain(|(existing, _)| existing != &alias);
+        imports.snapshot_tag_aliases.push((alias, event_tag));
+    }
+    import_triggering_stack_targets_alias(&mut imports, &trigger);
     let allow_life_event_value = trigger_allows_event_derived_life_value(&trigger)
         || intervening_if
             .as_ref()
@@ -3753,7 +4019,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
                         .known_last_object_tag()
                         .is_some_and(|tag| tag.as_str() == "triggering"))
         });
-    if intervening_if_needs_triggering_prelude
+    if (intervening_if_needs_triggering_prelude || superseded_event_tag_needs_prelude)
         && !prepared.prelude.iter().any(|prelude| {
             matches!(
                 prelude,
@@ -5070,7 +5336,7 @@ pub(crate) fn lower_compiler_static_ability_core(
             payload: crate::static_abilities::StaticAbilityPayload::ExertAttack {
                 only_if_not_exerted_this_turn,
                 linked_trigger: linked_trigger
-                    .map(|triggered| lower_compiler_triggered_ability_core(triggered, None))
+                    .map(lower_compiler_linked_triggered_ability_core)
                     .transpose()?,
                 display,
             },
@@ -5158,12 +5424,24 @@ pub(crate) fn lower_compiler_static_ability_core(
 fn lower_compiler_resolution_program(
     program: ironsmith_core::ResolutionProgram<EffectAst>,
 ) -> Result<(ironsmith_core::ResolutionProgram<Effect>, Vec<ChooseSpec>), CardTextError> {
+    lower_compiler_resolution_program_with(program, None)
+}
+
+/// Lowers a resolution program. With a shared context, every child resolves
+/// in one reference scope (a target declared by one sentence is the
+/// antecedent of the next); otherwise each child lowers in isolation.
+fn lower_compiler_resolution_program_with(
+    program: ironsmith_core::ResolutionProgram<EffectAst>,
+    mut shared: Option<&mut crate::model::facts::EffectLoweringContext>,
+) -> Result<(ironsmith_core::ResolutionProgram<Effect>, Vec<ChooseSpec>), CardTextError> {
     let mut choices = Vec::new();
     let lowered = program.try_map_effects(|effect| {
-        let (mut effects, effect_choices) = crate::compile_support::compile_effect(
-            &effect,
-            &mut crate::model::facts::EffectLoweringContext::new(),
-        )?;
+        let mut isolated = crate::model::facts::EffectLoweringContext::new();
+        let ctx = match shared.as_deref_mut() {
+            Some(ctx) => ctx,
+            None => &mut isolated,
+        };
+        let (mut effects, effect_choices) = crate::compile_support::compile_effect(&effect, ctx)?;
         if effects.is_empty() {
             return Err(CardTextError::InvariantViolation(
                 "compiler ability child must lower to at least one runtime effect".to_string(),
@@ -5193,7 +5471,28 @@ fn lower_compiler_triggered_ability_core(
     triggered: crate::model::CompilerTriggeredAbilityCore,
     imports: Option<&crate::model::reference_state::ReferenceImports>,
 ) -> Result<crate::ability::TriggeredAbility, CardTextError> {
-    let (effects, derived_choices) = lower_compiler_resolution_program(triggered.effects)?;
+    lower_compiler_triggered_ability_core_with(triggered, imports, None)
+}
+
+/// A reflexive linked trigger ("When you do, target creature can't block
+/// this turn") is a complete triggered ability: its targets are tagged so a
+/// restriction or follow-up names the chosen object, exactly as for an
+/// ordinary triggered ability.
+fn lower_compiler_linked_triggered_ability_core(
+    triggered: crate::model::CompilerTriggeredAbilityCore,
+) -> Result<crate::ability::TriggeredAbility, CardTextError> {
+    let mut ctx = crate::model::facts::EffectLoweringContext::new();
+    ctx.auto_tag_object_targets = true;
+    lower_compiler_triggered_ability_core_with(triggered, None, Some(&mut ctx))
+}
+
+fn lower_compiler_triggered_ability_core_with(
+    triggered: crate::model::CompilerTriggeredAbilityCore,
+    imports: Option<&crate::model::reference_state::ReferenceImports>,
+    shared: Option<&mut crate::model::facts::EffectLoweringContext>,
+) -> Result<crate::ability::TriggeredAbility, CardTextError> {
+    let (effects, derived_choices) =
+        lower_compiler_resolution_program_with(triggered.effects, shared)?;
     let mut choices = triggered.choices;
     for choice in derived_choices {
         if !choices.contains(&choice) {

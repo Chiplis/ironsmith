@@ -36,6 +36,36 @@ pub fn is_sentence_helper_consult_match_tag(tag: &TagKey) -> bool {
     crate::tag::CompilerTagClass::SentenceHelperConsultMatch.contains(tag)
 }
 
+/// "Exile the top card of each player's library and put a counter on each of
+/// them": once a participant loop finishes, the union its library exile
+/// accumulated is the set of cards exiled this way, and it becomes the object
+/// antecedent of what follows the loop. `None` when the loop has no such
+/// collection or two independent ones.
+pub fn player_loop_exported_exile_collection(effects: &[EffectAst]) -> Option<TagKey> {
+    let mut found: Option<TagKey> = None;
+    for effect in effects {
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
+                    tags,
+                    accumulated_tags,
+                    ..
+                }),
+            ..
+        }) = effect
+            && tags.is_empty()
+            && let [tag] = accumulated_tags.as_slice()
+        {
+            let key: TagKey = tag.clone().into();
+            if !crate::tag::is_sentence_helper_tag(&key, "exiled") || found.replace(key).is_some()
+            {
+                return None;
+            }
+        }
+    }
+    found
+}
+
 pub fn is_exiled_collection_tag(tag: &TagKey) -> bool {
     crate::tag::CompilerTagClass::ExiledCollection.contains(tag)
 }
@@ -234,6 +264,10 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap { target })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Untap { target })
+            | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeTextBoxes {
+                target,
+                ..
+            })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { target, .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. })
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtHand { target })
@@ -1402,6 +1436,10 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
             count_value: Some(value),
             ..
+        })
+        | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealCardsFromHand {
+            count_value: Some(value),
+            ..
         }) => Some(value),
         SubjectVerbActionAst::LifeResources(LifeResourceActionAst::DrawForEachTaggedMatching {
             ..
@@ -2057,6 +2095,17 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
     {
         return true;
     }
+    // "it deals that much damage to each other creature and each player":
+    // the pronoun is the damage source, not a recipient.
+    if let EffectAst::SubjectVerb(subject_verb) = effect
+        && let SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
+            source: TargetAst::Tagged(tag, _),
+            ..
+        }) = &subject_verb.action
+        && tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+    {
+        return true;
+    }
 
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
@@ -2117,6 +2166,12 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
             })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHandOfChosenColor {
                 filter,
+            })
+            // "Return each card put into a graveyard this way to the
+            // battlefield": the returned set is the prior action's result.
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield {
+                filter,
+                ..
             })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapAll { filter })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::UntapAll { filter })

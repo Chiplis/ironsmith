@@ -2636,6 +2636,27 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     return "it attacked this turn".into();
                 }
             }
+            if let [attacked, blocked] = filter.any_of.as_slice() {
+                let attacked_only = ObjectFilter {
+                    attacked_this_turn: true,
+                    ..ObjectFilter::default()
+                };
+                let blocked_only = ObjectFilter {
+                    blocked_this_turn: true,
+                    ..ObjectFilter::default()
+                };
+                let mut rest = filter.clone();
+                rest.any_of.clear();
+                if rest.zone == Some(Zone::Battlefield) {
+                    rest.zone = None;
+                }
+                if attacked == &attacked_only
+                    && blocked == &blocked_only
+                    && rest == ObjectFilter::default()
+                {
+                    return "it attacked or blocked this turn".into();
+                }
+            }
             if filter.attacking_player_only
                 && filter.attacking_player_or_planeswalker_controlled_by == Some(PlayerFilter::Opponent)
             {
@@ -2879,6 +2900,15 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             }
             if let Some(condition) = describe_sacrifice_cost_object_condition(tag, filter) {
                 return condition;
+            }
+            // "Counter target spell if it would destroy a land you control":
+            // the stack object's prospective destruction, not a
+            // characteristic of the stack object itself.
+            if let Some(destroyed) = filter.would_destroy_object.as_deref() {
+                return format!(
+                    "it would destroy {}",
+                    ensure_indefinite_article(&destroyed.description())
+                );
             }
             if tag.as_str().starts_with("countered_")
                 && strip_leading_article(&desc)

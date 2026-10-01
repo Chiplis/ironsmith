@@ -545,6 +545,7 @@ impl TriggerMatcher for SpellCastTrigger {
             let zone_text = match (zone, owner) {
                 (Zone::Graveyard, PlayerFilter::You) => "your graveyard",
                 (Zone::Graveyard, PlayerFilter::Opponent) => "an opponent's graveyard",
+                (Zone::Graveyard, PlayerFilter::IteratedPlayer) => "their graveyard",
                 (Zone::Graveyard, PlayerFilter::Specific(_))
                 | (Zone::Graveyard, PlayerFilter::ChosenPlayer)
                 | (Zone::Graveyard, PlayerFilter::TaggedPlayer(_)) => "that player's graveyard",

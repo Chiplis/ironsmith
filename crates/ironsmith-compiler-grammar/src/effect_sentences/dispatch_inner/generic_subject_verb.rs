@@ -3,7 +3,7 @@ enum GenericPermissionVerb {
     PlayAndCast,
 }
 
-fn parse_source_exiled_owner_library_bottom_subject_verb(
+pub(crate) fn parse_source_exiled_owner_library_bottom_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Option<EffectAst> {
     let shape =
@@ -12,7 +12,13 @@ fn parse_source_exiled_owner_library_bottom_subject_verb(
         )?;
     let source_words = crate::lexer::token_word_refs(shape.source_tokens);
     let source_surface = crate::util::source_reference_surface_for_words(&source_words)
-        .or_else(|| crate::util::this_source_surface_for_words(&source_words))?;
+        .or_else(|| crate::util::this_source_surface_for_words(&source_words))
+        .or_else(|| {
+            // "exiled with this Saga": a subtype noun still names the source.
+            (source_words.len() == 2 && source_words[0] == "this").then(|| {
+                crate::target::SourceReferenceSurface::ThisPermanentType(source_words.join(" "))
+            })
+        })?;
     let target = TargetAst::Object(
         ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind())
             .in_zone(Zone::Exile),

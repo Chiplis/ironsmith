@@ -1545,10 +1545,6 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "Enchanted permanent has {T}: Add two mana of any one color as long as enchanted permanent is a land",
         )
         .replace(
-            "Enchanted land has \"{T}: Counter target spell if it's a land you control.\"",
-            "Enchanted land has {T}: Counter target spell if it would destroy a land you control",
-        )
-        .replace(
             "Hellfire deals X plus 3 damage to you, where X is the number of creatures on the battlefield",
             "Hellfire deals X plus 3 damage to you, where X is the number of creatures that died this way",
         )

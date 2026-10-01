@@ -1239,6 +1239,10 @@ pub enum TaggedOpbjectRelation {
     WasAttachedToTaggedObject,
     SoulbondPartnerOfTagged,
     IsNotTaggedObject,
+    /// The candidate is an object target of the tagged stack object (a spell
+    /// or ability still on the stack): "gain control of those permanents"
+    /// after "whenever you cast a spell that targets one or more permanents".
+    TargetedByTaggedObject,
 }
 
 /// A characteristic that can be compared between a candidate object and a
@@ -1856,6 +1860,17 @@ impl Comparison {
                     value_is_candidate_relative(left) || value_is_candidate_relative(right)
                 }
                 Value::CountersOnFilterCandidate(_) => true,
+                // "with the greatest power among creatures that player
+                // controls": the aggregate's scope follows the candidate.
+                Value::GreatestPower(filter)
+                | Value::GreatestToughness(filter)
+                | Value::GreatestManaValue(filter)
+                | Value::LeastPower(filter)
+                | Value::LeastToughness(filter)
+                | Value::LeastManaValue(filter) => {
+                    player_is_candidate_relative(filter.owner.as_ref())
+                        || player_is_candidate_relative(filter.controller.as_ref())
+                }
                 _ => false,
             }
         }
@@ -2007,6 +2022,12 @@ pub struct ObjectFilter {
     /// another creature named Goblin Artisans").
     #[cfg_attr(feature = "serde", serde(default))]
     pub not_targeted_by_ability_from: Option<Box<ObjectFilter>>,
+    /// Requires a spell or ability on the stack whose resolution would
+    /// destroy an object matching the inner filter ("counter target spell if
+    /// it would destroy a land you control"). The runtime statically inspects
+    /// the stack object's destroy instructions and their chosen targets.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub would_destroy_object: Option<Box<ObjectFilter>>,
     pub card_types: Vec<CardType>,
     pub all_card_types: Vec<CardType>,
     /// Number of distinct card types on the candidate, independent of its
@@ -2121,6 +2142,10 @@ pub struct ObjectFilter {
     pub blocked: bool,
     pub blocked_by: Option<ObjectRef>,
     pub blocked_by_source: bool,
+    /// The current source crewed this Vehicle this turn ("a Vehicle crewed
+    /// by this creature this turn"). Read from the turn's crew history.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub crewed_by_source_this_turn: bool,
     /// This creature either blocked an object matching the nested filter or
     /// was blocked by one this turn. Runtime matching uses the declaration
     /// event's object snapshots so the other creature can be checked using
@@ -4534,6 +4559,16 @@ impl ObjectFilter {
                 TaggedOpbjectRelation::SoulbondPartnerOfTagged => {
                     post_noun_qualifiers.push("paired with it".to_string());
                 }
+                TaggedOpbjectRelation::TargetedByTaggedObject => {
+                    post_noun_qualifiers.push(
+                        if constraint.tag.as_str() == "triggering" {
+                            "targeted by that spell"
+                        } else {
+                            "targeted by it"
+                        }
+                        .to_string(),
+                    );
+                }
                 TaggedOpbjectRelation::SameStableId => {}
             }
         }
@@ -4665,6 +4700,9 @@ impl ObjectFilter {
         }
         if self.blocked_by_source {
             post_noun_qualifiers.push("blocked by this creature this turn".to_string());
+        }
+        if self.crewed_by_source_this_turn {
+            post_noun_qualifiers.push("crewed by this creature this turn".to_string());
         }
         if let Some(combat_partner) = &self.blocked_or_was_blocked_by_this_turn {
             let mut partner_description = combat_partner.description();
@@ -5841,6 +5879,12 @@ impl ObjectFilter {
             parts.push(format!(
                 "that isn't the target of an ability from {}",
                 source_filter.description()
+            ));
+        }
+        if let Some(destroyed) = &self.would_destroy_object {
+            parts.push(format!(
+                "that would destroy {}",
+                ensure_indefinite_article(destroyed.description())
             ));
         }
 

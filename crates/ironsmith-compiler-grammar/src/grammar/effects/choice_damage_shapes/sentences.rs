@@ -137,7 +137,10 @@ pub fn parse_reveal_selected_hand_tail_shape(
     if !rest.is_empty() {
         let (_, remaining) = primitives::parse_prefix(
             rest,
-            primitives::phrase(&["or", "the", "top", "of", "your", "library"]),
+            winnow::combinator::alt((
+                primitives::phrase(&["or", "the", "top", "of", "your", "library"]),
+                primitives::phrase(&["or", "the", "top", "card", "of", "your", "library"]),
+            )),
         )?;
         if !your_hand || !crate::util::trim_edge_punctuation_tokens(remaining).is_empty() {
             return None;

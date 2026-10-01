@@ -1115,6 +1115,11 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::PreventAllCombatDamageToPermanentsMatching(
                 filter,
             ) => StaticAbility::prevent_all_combat_damage_to_permanents_matching(filter.clone()),
+            ironsmith_core::StaticAbilityPayload::PreventAllCombatDamageToAndByPermanentsMatching(
+                filter,
+            ) => StaticAbility::prevent_all_combat_damage_to_and_by_permanents_matching(
+                filter.clone(),
+            ),
             ironsmith_core::StaticAbilityPayload::PreventAllDamageToPermanentsMatching(filter) => {
                 StaticAbility::prevent_all_damage_to_permanents_matching(filter.clone())
             }

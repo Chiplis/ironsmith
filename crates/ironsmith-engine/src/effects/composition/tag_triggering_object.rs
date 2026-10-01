@@ -129,6 +129,33 @@ impl EffectExecutor for TagTriggeringObjectEffect {
             return Ok(EffectOutcome::count(0));
         }
 
+        // CR 603.2c: "whenever one or more creatures attack you, those
+        // creatures ..." / "whenever you discard one or more cards, exile
+        // them" name the whole matched group of the simultaneous event, not
+        // the one event object that fired the trigger.
+        let group_tag = if event
+            .downcast::<crate::events::combat::CreatureAttackedEvent>()
+            .is_some()
+        {
+            Some(ironsmith_core::ATTACKING_GROUP_TAG)
+        } else if event
+            .downcast::<crate::events::other::CardDiscardedEvent>()
+            .is_some()
+        {
+            Some(ironsmith_core::ZONE_CHANGE_GROUP_TAG)
+        } else {
+            None
+        };
+        if let Some(group) = group_tag
+            .and_then(|tag| ctx.get_tagged_all(tag))
+            .filter(|group| !group.is_empty())
+            .cloned()
+        {
+            let count = group.len() as i32;
+            set_triggering_object_tags(ctx, self.tag.as_str(), group);
+            return Ok(EffectOutcome::count(count));
+        }
+
         if let Some(sacrifice) = event.downcast::<crate::events::permanents::SacrificeEvent>()
             && let Some(snapshot) = sacrifice.snapshot.as_ref()
         {

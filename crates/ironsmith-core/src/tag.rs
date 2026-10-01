@@ -15,6 +15,23 @@ use std::fmt;
 /// Runtime tag for cards linked as "exiled with this source object".
 pub const SOURCE_EXILED_TAG: &str = "__source_exiled__";
 
+/// Runtime tag for only the cards the current resolution exiled with its
+/// source. Filter contexts widen [`SOURCE_EXILED_TAG`] to every linked card,
+/// so "each other card exiled with ~" excludes the just-exiled card through
+/// this resolution-scoped identity.
+pub const SOURCE_EXILED_THIS_RESOLUTION_TAG: &str = "__source_exiled_this_resolution__";
+
+/// Runtime tag for the permanents the source sacrificed to its devour ability
+/// as it entered ("the number of Goblins it devoured", CR 702.82b). Evaluated
+/// from the source's recorded devour snapshots rather than captured.
+pub const SOURCE_DEVOURED_TAG: &str = "__source_devoured__";
+
+/// Runtime tag, recorded on a token when it is created, for the objects the
+/// creating ability exiled to pay its cost, the ability's source included
+/// ("all triggered abilities of the exiled cards", The Book of Vile
+/// Darkness).
+pub const COST_EXILED_TAG: &str = "__cost_exiled__";
+
 /// Runtime tag for cards in exile that "you" (the filter context's player)
 /// exiled: cards linked as exiled by a source that player controls, or that
 /// its owner controlled when it left the battlefield ("cards you exiled").
@@ -54,6 +71,13 @@ pub const SPELLS_CAST_THIS_TURN_TAG: &str = "__spells_cast_this_turn__";
 /// references without inventing a separate player-filter primitive.
 pub const SOURCE_OBJECT_TAG: &str = "__source_object__";
 
+/// Runtime tag for the object whose effect granted the resolving ability to
+/// its source (CR 113.3, 613.1f): the Equipment or Aura in `Equipped creature
+/// has "... Return Trusty Boomerang to its owner's hand."`. Captured when an
+/// effect-granted ability is activated or triggers; absent for printed
+/// abilities.
+pub const GRANTING_SOURCE_TAG: &str = "__granting_source__";
+
 /// Player targets captured when a delayed trigger is registered.
 ///
 /// A delayed trigger may both wait for and later affect a player chosen by
@@ -65,6 +89,13 @@ pub const DELAYED_TARGET_PLAYERS_TAG: &str = "__delayed_target_players__";
 /// that permanent's linked leaves-the-battlefield trigger as "that player"
 /// (CR 607.2a).
 pub const LINKED_TRIGGER_PLAYER_TAG: &str = "__linked_trigger_player__";
+
+/// The controller the triggering event names beyond its trigger player, such
+/// as the controller of the spell or ability that caused a discard ("When a
+/// spell or ability an opponent controls causes you to discard this card,
+/// that player ..."). Populated from the event when a triggered ability
+/// resolves.
+pub const TRIGGERING_EVENT_CONTROLLER_TAG: &str = "__triggering_event_controller__";
 
 /// The object selected by an authored "the chosen object" choice.
 ///
@@ -152,6 +183,7 @@ pub const CAST_CONTROLLED_OBJECTS_TAG: &str = "__cast_controlled_objects__";
 /// A parse binds each of them once, in the document's symbol scope.
 pub const WELL_KNOWN_TAGS: &[&str] = &[
     SOURCE_EXILED_TAG,
+    SOURCE_EXILED_THIS_RESOLUTION_TAG,
     EXILED_BY_YOU_TAG,
     ZONE_REPLACEMENT_OBJECT_TAG,
     PRIOR_EXILED_CARD_TAG,

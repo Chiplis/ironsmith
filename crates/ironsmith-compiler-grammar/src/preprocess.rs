@@ -308,6 +308,7 @@ fn replace_names_with_map(
     full_name: &SelfReferenceName,
     short_name: &SelfReferenceName,
     preserve_source_surfaces: bool,
+    typed_subject: &str,
     base_offset: usize,
 ) -> (String, Vec<usize>) {
     fn has_word_boundaries_at(bytes: &[u8], idx: usize, len: usize) -> bool {
@@ -715,6 +716,98 @@ fn replace_names_with_map(
         })
     }
 
+    /// "counters on Beast this turn" on Beast, Erudite Aerialist; "dealt to
+    /// Gideon Blackblade" on Gideon Blackblade: a name whose first word is a
+    /// creature subtype, right after a preposition and with no determiner, is
+    /// the proper name. Keeping the authored surface there lets the filter
+    /// grammar read it as "any Beast" / "any Gideon", so normalize it to the
+    /// self-reference instead.
+    fn is_subtype_leading_name_after_preposition(bytes: &[u8], idx: usize, len: usize) -> bool {
+        if !previous_word(bytes, idx).is_some_and(|word| matches!(word, b"on" | b"to")) {
+            return false;
+        }
+        let Ok(name) = std::str::from_utf8(&bytes[idx..idx + len]) else {
+            return false;
+        };
+        let Some(first) = name.split([' ', ',']).next() else {
+            return false;
+        };
+        if crate::util::parse_subtype_flexible(first).is_none() {
+            return false;
+        }
+        // Only where a temporal qualifier follows the name directly ("on Beast
+        // this turn", "to Gideon Blackblade during your turn"): there the
+        // bare name is the whole object phrase that a context-free filter
+        // reader would otherwise take as a subtype.
+        bytes.get(idx + len) == Some(&b' ')
+            && next_word(bytes, idx + len).is_some_and(|word| matches!(word, b"this" | b"during"))
+    }
+
+    /// Inside a quoted granted ability the card's name names the grantor,
+    /// never the object that will hold the ability.
+    fn within_double_quotes(bytes: &[u8], idx: usize) -> bool {
+        bytes[..idx].iter().filter(|byte| **byte == b'"').count() % 2 == 1
+    }
+
+    fn push_replacement(
+        out: &mut String,
+        map: &mut Vec<usize>,
+        replacement: &str,
+        base: usize,
+        name_len: usize,
+    ) {
+        let name_len = name_len.max(1);
+        let len = replacement.chars().count().max(1);
+        for (j, ch) in replacement.chars().enumerate() {
+            out.push(ch);
+            map.push(base + (j * name_len / len).min(name_len - 1));
+        }
+    }
+
+    /// `Equipped creature has "... Return Trusty Boomerang to its owner's
+    /// hand."`: inside an ability the Equipment (or Aura) grants to the
+    /// permanent it's attached to, the card's own name names the attachment,
+    /// not the ability's source (the equipped or enchanted permanent).
+    /// The name is the object of an action in the granted ability's effect
+    /// ("Return Trusty Boomerang ...", "you may sacrifice Trickster's
+    /// Talisman"), not part of its cost ("{T}, Sacrifice Blazing Torch:").
+    fn is_attachment_grant_action_object(bytes: &[u8], idx: usize, len: usize) -> bool {
+        if !previous_word(bytes, idx).is_some_and(|word| {
+            matches!(word, b"sacrifice" | b"return" | b"exile" | b"destroy" | b"tap" | b"untap")
+        }) {
+            return false;
+        }
+        let rest = &bytes[idx + len..];
+        let quote_end = rest.iter().position(|byte| *byte == b'"').unwrap_or(rest.len());
+        !rest[..quote_end].contains(&b':')
+    }
+
+    fn quoted_attachment_grant_host(bytes: &[u8], idx: usize) -> Option<(&'static str, bool)> {
+        let quotes_before = bytes[..idx].iter().filter(|byte| **byte == b'"').count();
+        if quotes_before % 2 == 0 {
+            return None;
+        }
+        let open = crate::slice_primitives::select_last_position(&bytes[..idx], |byte| {
+            *byte == b'"'
+        })?;
+        let head_start = crate::slice_primitives::select_last_position(&bytes[..open], |byte| {
+            matches!(*byte, b'.' | b';' | b'"')
+        })
+        .map_or(0, |separator| separator + 1);
+        let head = std::str::from_utf8(&bytes[head_start..open]).ok()?.trim();
+        let (head, labeled) = head
+            .rsplit_once(" \u{2014} ")
+            .map_or((head, false), |(_, rest)| (rest.trim(), true));
+        if !(head.ends_with(" has") || head.ends_with(" have")) {
+            return None;
+        }
+        if head.starts_with("equipped creature ") || head.starts_with("enchanted creature ") {
+            Some((GRANTING_SOURCE_SURFACE, labeled))
+        } else {
+            None
+        }
+    }
+
     let lower = line.to_ascii_lowercase();
     let bytes = lower.as_bytes();
     let full_bytes = full_name.text.as_bytes();
@@ -725,6 +818,44 @@ fn replace_names_with_map(
     let mut idx = 0;
 
     while idx < bytes.len() {
+        let full_typed_override = preserve_source_surfaces
+            && !full_bytes.is_empty()
+            && bytes_start_with(&bytes[idx..], full_bytes)
+            && has_word_boundaries_at(bytes, idx, full_bytes.len())
+            && is_subtype_leading_name_after_preposition(bytes, idx, full_bytes.len())
+            && !within_double_quotes(bytes, idx);
+        let short_typed_override = preserve_source_surfaces
+            && !short_bytes.is_empty()
+            && bytes_start_with(&bytes[idx..], short_bytes)
+            && has_word_boundaries_at(bytes, idx, short_bytes.len())
+            && is_subtype_leading_name_after_preposition(bytes, idx, short_bytes.len())
+            && !within_double_quotes(bytes, idx);
+        let attachment_name_len = (!full_bytes.is_empty()
+            && bytes_start_with(&bytes[idx..], full_bytes)
+            && has_word_boundaries_at(bytes, idx, full_bytes.len())
+            && is_attachment_grant_action_object(bytes, idx, full_bytes.len()))
+        .then_some(full_bytes.len());
+        if let Some(name_len) = attachment_name_len
+            && let Some((replacement, labeled)) = quoted_attachment_grant_host(bytes, idx)
+        {
+            if labeled {
+                // An ability-word line is re-read from its authored tokens;
+                // keep the name so the token-level source normalizer
+                // rewrites it there without shifting the source map.
+                for (offset, ch) in lower[idx..idx + name_len].char_indices() {
+                    out.push(ch);
+                    map.push(base_offset + idx + offset);
+                }
+            } else {
+                let replacement_len = replacement.len();
+                for (j, ch) in replacement.chars().enumerate() {
+                    out.push(ch);
+                    map.push(base_offset + idx + (j * name_len / replacement_len));
+                }
+            }
+            idx += name_len;
+            continue;
+        }
         if !full_bytes.is_empty()
             && bytes_start_with(&bytes[idx..], full_bytes)
             && has_word_boundaries_at(bytes, idx, full_bytes.len())
@@ -745,7 +876,8 @@ fn replace_names_with_map(
                     line_tokens,
                     idx,
                     full_bytes.len(),
-                ))
+                )
+                && !full_typed_override)
             && !should_preserve_single_word_keyword_verb_usage(
                 line,
                 idx,
@@ -753,6 +885,17 @@ fn replace_names_with_map(
                 full_name,
             )
         {
+            if full_typed_override {
+                push_replacement(
+                    &mut out,
+                    &mut map,
+                    typed_subject,
+                    base_offset + idx,
+                    full_bytes.len(),
+                );
+                idx += full_bytes.len();
+                continue;
+            }
             let name_len = full_bytes.len().max(1);
             for j in 0..4 {
                 out.push("this".chars().nth(j).unwrap());
@@ -792,7 +935,8 @@ fn replace_names_with_map(
                     line_tokens,
                     idx,
                     short_bytes.len(),
-                ))
+                )
+                && !short_typed_override)
             && !should_preserve_single_word_keyword_verb_usage(
                 line,
                 idx,
@@ -800,6 +944,17 @@ fn replace_names_with_map(
                 short_name,
             )
         {
+            if short_typed_override {
+                push_replacement(
+                    &mut out,
+                    &mut map,
+                    typed_subject,
+                    base_offset + idx,
+                    short_bytes.len(),
+                );
+                idx += short_bytes.len();
+                continue;
+            }
             let name_len = short_bytes.len().max(1);
             for j in 0..4 {
                 out.push("this".chars().nth(j).unwrap());
@@ -896,6 +1051,7 @@ fn normalize_line_for_parse_text(
         &SelfReferenceName::new(full_name.to_string()),
         &SelfReferenceName::new(short_name.to_string()),
         preserve_source_surfaces,
+        "this",
     )
 }
 
@@ -904,6 +1060,7 @@ fn normalize_line_for_parse(
     full_name: &SelfReferenceName,
     short_name: &SelfReferenceName,
     preserve_source_surfaces: bool,
+    typed_subject: &str,
 ) -> Option<NormalizedLine> {
     let trimmed = line.trim();
     if trimmed.is_empty() {
@@ -917,6 +1074,7 @@ fn normalize_line_for_parse(
         full_name,
         short_name,
         preserve_source_surfaces,
+        typed_subject,
         0,
     );
     let (label_stripped, label_map) = strip_labeled_ability_word_prefix_with_map(&replaced, &map);
@@ -933,6 +1091,7 @@ fn normalize_line_for_parse(
             full_name,
             short_name,
             preserve_source_surfaces,
+            typed_subject,
             wrapped.inner_start,
         );
         return Some(NormalizedLine::from_char_map(
@@ -1072,13 +1231,22 @@ fn rewrite_personal_pronouns_line(text: &str) -> String {
         return text.to_string();
     }
     let mut rewritten = Vec::with_capacity(words.len());
+    let mut previous_ends_activation_cost = false;
     for word in words {
         let trailing_len = word.len()
             - word
                 .trim_end_matches(|ch: char| matches!(ch, ',' | '.' | ';' | ':'))
                 .len();
         let (core, trailing) = word.split_at(word.len() - trailing_len);
+        let opens_activated_effect = previous_ends_activation_cost;
+        previous_ends_activation_cost = trailing.contains(':');
         let replacement = match core {
+            // A gendered subject pronoun names the character the card
+            // depicts. Opening an activated ability's effect, the only
+            // earlier objects are cost objects, which it never names ("{3},
+            // Unattach an Equipment from Captain America: He deals damage
+            // ..."); read it exactly like the card's own name there.
+            "he" | "she" if opens_activated_effect => Some("this"),
             "he" | "she" => Some("it"),
             "he's" | "she's" => Some("it's"),
             "himself" | "herself" => Some("itself"),
@@ -1344,6 +1512,17 @@ fn is_ignorable_unparsed_line(line: &str) -> bool {
     })
 }
 
+
+/// Surface the preprocess writes for the card's own name inside an ability an
+/// Equipment or Aura grants (`Equipped creature has "... Return Trusty
+/// Boomerang to its owner's hand."`). The target and sacrifice grammars read
+/// it as the object that granted the ability
+/// (`CompilerReferenceTag::GrantingSource`), never as a filter.
+pub const GRANTING_SOURCE_SURFACE: &str = "granting permanent";
+
+/// [`GRANTING_SOURCE_SURFACE`] as parser words.
+pub const GRANTING_SOURCE_SURFACE_WORDS: &[&str] = &["granting", "permanent"];
+
 pub fn preprocess_document(
     card: CardBuilder,
     text: &str,
@@ -1440,6 +1619,7 @@ pub fn preprocess_document_with_provenance(
         full_name: &SelfReferenceName,
         short_name: &SelfReferenceName,
         preserve_source_surfaces: bool,
+        typed_subject: &str,
         annotations: &mut ParseAnnotations,
         provenance: &mut ProvenanceStore,
     ) -> Result<Option<PreprocessedLine>, CardTextError> {
@@ -1457,6 +1637,7 @@ pub fn preprocess_document_with_provenance(
             full_name,
             short_name,
             preserve_source_surfaces,
+            typed_subject,
         ) else {
             if is_ignorable_unparsed_line(raw_line) {
                 return Ok(None);
@@ -1518,6 +1699,34 @@ pub fn preprocess_document_with_provenance(
             && let Some(as_enters) = semantic_facts.statement.as_enters_effect_program.as_mut()
         {
             as_enters.entry_instead_surface = true;
+        }
+        if let Some(as_enters) = semantic_facts.statement.as_enters_effect_program.as_mut()
+            && as_enters.uses_enters_with_counter_surface
+            && !as_enters.source_reference_enters_with_counter_surface
+        {
+            // "As <Name> enters, ... . <Name> enters with ...": the leading
+            // name was normalized to `this`, while the follow-up subject kept
+            // its proper-name surface. Both name the source.
+            let words = crate::lexer::token_word_refs(&tokens)
+                .into_iter()
+                .map(str::to_ascii_lowercase)
+                .collect::<Vec<_>>();
+            let words = words.iter().map(String::as_str).collect::<Vec<_>>();
+            as_enters.source_reference_enters_with_counter_surface = [full_name, short_name]
+                .into_iter()
+                .filter(|name| name.lexable())
+                .any(|name| {
+                    let mut expected = crate::lexer::token_word_refs(name.tokens())
+                        .into_iter()
+                        .map(str::to_ascii_lowercase)
+                        .collect::<Vec<_>>();
+                    if expected.is_empty() {
+                        return false;
+                    }
+                    expected.extend(["enters".to_string(), "with".to_string()]);
+                    let expected = expected.iter().map(String::as_str).collect::<Vec<_>>();
+                    crate::word_primitives::parse_sequence_start(&words, &expected).is_some()
+                });
         }
         semantic_facts.supported_sneak_form = supported_sneak_reminder(raw_line.trim(), line_index);
         semantic_facts.station_creature_threshold =
@@ -1636,6 +1845,7 @@ pub fn preprocess_document_with_provenance(
                             | CardType::Planeswalker
                     )
                 });
+            let typed_subject = crate::document_parser::named_source_subject_for_builder(&card);
             let virtual_line_index = line_index.saturating_mul(8).saturating_add(split_index);
             let split_tokens = lex_line(split_line.as_str(), virtual_line_index).ok();
             let looks_like_resolution_followup = split_tokens
@@ -1669,6 +1879,7 @@ pub fn preprocess_document_with_provenance(
                     &full_name,
                     &short_name,
                     preserve_source_surfaces,
+                    typed_subject,
                 ) else {
                     return Err(CardTextError::ParseError(format!(
                         "rewrite preprocessing could not normalize merged line: '{combined_raw_line}'"
@@ -1701,6 +1912,7 @@ pub fn preprocess_document_with_provenance(
                 &full_name,
                 &short_name,
                 preserve_source_surfaces,
+                typed_subject,
                 &mut annotations,
                 &mut provenance,
             )? {

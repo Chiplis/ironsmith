@@ -11,28 +11,48 @@ pub fn exact_atomic_return_as_aura_bundle(
     }
     let effect_parse_tokens = normalized.as_slice();
     let sentences = split_lexed_sentences(effect_parse_tokens);
-    let [return_sentence, aura_sentence] = sentences.as_slice() else {
-        return None;
+    // "... It's an Aura enchantment with enchant Forest you control and
+    // "<rule>." Harold and Bob loses all other abilities.": the loss is its
+    // own sentence after the quoted rule. The card's own name there names the
+    // returned object (after normalization it reads as a source reference).
+    let (return_sentence, aura_sentence, separate_loss) = match sentences.as_slice() {
+        [return_sentence, aura_sentence] => (return_sentence, aura_sentence, false),
+        [return_sentence, aura_sentence, loss_sentence] => {
+            let loss_words = token_word_refs(loss_sentence);
+            let [subject @ .., "loses", "all", "other", "abilities"] = loss_words.as_slice()
+            else {
+                return None;
+            };
+            if !(subject == &["it"][..] || crate::util::is_source_reference_words(subject)) {
+                return None;
+            }
+            (return_sentence, aura_sentence, true)
+        }
+        _ => return None,
     };
     let mut effects = crate::effect_sentences::parse_effect_sentence_lexed(return_sentence).ok()?;
     // The ordinary complete-sentence dispatcher may claim the trailing
     // outside-quote ability loss before the preceding Aura animation. Split
     // only the exact authored conjunction after the balanced quoted grant,
     // then feed both typed leaves to the normal AST fusion pass.
-    let mut in_quote = false;
-    let loss_start = aura_sentence.iter().enumerate().find_map(|(idx, token)| {
-        if token.kind == TokenKind::Quote {
-            in_quote = !in_quote;
-            return None;
-        }
-        (!in_quote
-            && token.is_word("and")
-            && matches!(
-                token_word_refs(&aura_sentence[idx + 1..]).as_slice(),
-                ["it", "loses", "all", "other", "abilities"]
-            ))
-        .then_some(idx)
-    })?;
+    let loss_start = if separate_loss {
+        aura_sentence.len()
+    } else {
+        let mut in_quote = false;
+        aura_sentence.iter().enumerate().find_map(|(idx, token)| {
+            if token.kind == TokenKind::Quote {
+                in_quote = !in_quote;
+                return None;
+            }
+            (!in_quote
+                && token.is_word("and")
+                && matches!(
+                    token_word_refs(&aura_sentence[idx + 1..]).as_slice(),
+                    ["it", "loses", "all", "other", "abilities"]
+                ))
+            .then_some(idx)
+        })?
+    };
     let aura_prefix = trim_lexed_commas(&aura_sentence[..loss_start]);
     let quote_positions = aura_prefix
         .iter()
@@ -44,12 +64,21 @@ pub fn exact_atomic_return_as_aura_bundle(
     };
     let quoted_ability_tokens = &aura_prefix[*open_quote + 1..*close_quote];
     let quoted_words = token_word_refs(quoted_ability_tokens);
-    let granted_ability =
-        crate::effect_sentences::parse_granted_activated_or_triggered_ability_for_gain(
-            quoted_ability_tokens,
-            &quoted_words,
-        )
-        .ok()??;
+    // `"Enchanted Forest has '{T}: ...'"` is a static rule of the Aura that
+    // grants its nested abilities to the enchanted permanent.
+    let aura_grants = if let Some(static_grant) =
+        crate::effect_sentences::parse_nested_quoted_static_grant(quoted_ability_tokens)
+    {
+        static_grant
+    } else {
+        vec![
+            crate::effect_sentences::parse_granted_activated_or_triggered_ability_for_gain(
+                quoted_ability_tokens,
+                &quoted_words,
+            )
+            .ok()??,
+        ]
+    };
     // Parse the Aura animation without the quoted rule, then put the rule on
     // the typed Aura payload. This avoids letting the colon inside the quoted
     // activation turn the entire authored sentence into an activated line.
@@ -102,7 +131,7 @@ pub fn exact_atomic_return_as_aura_bundle(
     *as_aura = Some(crate::model::ast::ReturnAsAuraAst {
         attachment_filter: attachment_filter.clone(),
         remove_all_abilities: true,
-        granted_abilities: vec![granted_ability],
+        granted_abilities: aura_grants,
     });
     Some(effects)
 }

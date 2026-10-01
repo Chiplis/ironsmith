@@ -2511,6 +2511,32 @@ fn is_delayed_creature_counters_followup(tokens: &[OwnedLexToken]) -> bool {
 /// much life." — a prevention rider conditioned on the prevented damage's
 /// source. Only the life-gain body is accepted: its amount is the prevented
 /// event's amount.
+/// The quality named by "damage from a <quality> source" in a prevention
+/// rider ("a black source", "an artifact source").
+fn prevention_source_quality_filter(quality_tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let words = token_word_refs(quality_tokens);
+    if words.is_empty() || words.len() != quality_tokens.len() {
+        return None;
+    }
+    // A bare color ("a black source") names only the source's color; don't
+    // let the object-filter parser add a permanent noun it never saw.
+    let color_only = words
+        .iter()
+        .map(|word| crate::util::parse_color(word))
+        .collect::<Option<Vec<_>>>();
+    let filter = if let Some(colors) = color_only {
+        let mut filter = ObjectFilter::default();
+        filter.colors = colors.into_iter().reduce(|left, right| left.union(right));
+        filter
+    } else {
+        parse_object_filter(quality_tokens, false).ok()?
+    };
+    if filter.colors.is_none() && filter.card_types.is_empty() && filter.subtypes.is_empty() {
+        return None;
+    }
+    Some(filter)
+}
+
 fn parse_colored_source_prevention_followup(sentence: &[OwnedLexToken]) -> Option<EffectAst> {
     let words = token_word_refs(sentence);
     let ["if", "damage", "from", "a" | "an", rest @ ..] = words.as_slice() else {
@@ -2528,22 +2554,7 @@ fn parse_colored_source_prevention_followup(sentence: &[OwnedLexToken]) -> Optio
     if token_word_refs(quality_tokens).as_slice() != &rest[..source_idx] {
         return None;
     }
-    // A bare color ("a black source") names only the source's color; don't
-    // let the object-filter parser add a permanent noun it never saw.
-    let color_only = rest[..source_idx]
-        .iter()
-        .map(|word| crate::util::parse_color(word))
-        .collect::<Option<Vec<_>>>();
-    let filter = if let Some(colors) = color_only {
-        let mut filter = ObjectFilter::default();
-        filter.colors = colors.into_iter().reduce(|left, right| left.union(right));
-        filter
-    } else {
-        parse_object_filter(quality_tokens, false).ok()?
-    };
-    if filter.colors.is_none() && filter.card_types.is_empty() && filter.subtypes.is_empty() {
-        return None;
-    }
+    let filter = prevention_source_quality_filter(quality_tokens)?;
     Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
         predicate: PredicateAst::TaggedMatches(
             crate::tag::CompilerReferenceTag::Triggering.bind(),
@@ -2581,6 +2592,7 @@ pub fn bind_prevention_followup(effects: &mut Vec<EffectAst>, sentence: &[OwnedL
             DamagePreventionActionAst::PreventNextTimeDamage {
                 source,
                 reflect_damage_to_source_controller,
+                reflect_source_filter,
                 follow_up_effects,
                 ..
             },
@@ -2588,14 +2600,24 @@ pub fn bind_prevention_followup(effects: &mut Vec<EffectAst>, sentence: &[OwnedL
             // "If/When damage is prevented this way, ~ deals that much damage
             // to that source's controller": the source is the one this shield
             // chose, which only the shield knows when the damage is prevented.
+            // "If damage from a red source is prevented this way, ..."
+            // (Honorable Passage) gates the reflection on the source's
+            // quality when the damage is prevented.
             if !*reflect_damage_to_source_controller
                 && !matches!(source, crate::cards::builders::PreventNextTimeDamageSourceAst::Filter(_))
-                && let Some(tail) =
+                && let Some((source_quality, tail)) =
                     sequence_grammar::parse_prevention_source_controller_reflect_followup_shape(
                         sentence,
                     )
+                && let Some(quality_filter) = match source_quality {
+                    None => Some(None),
+                    Some(quality_tokens) => {
+                        prevention_source_quality_filter(quality_tokens).map(Some)
+                    }
+                }
             {
                 *reflect_damage_to_source_controller = true;
+                *reflect_source_filter = quality_filter;
                 let amount = Value::EventValue(crate::effect::EventValueSpec::Amount);
                 match tail {
                     sequence_grammar::PreventionSourceControllerReflectTail::None => {}

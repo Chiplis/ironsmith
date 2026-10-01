@@ -501,6 +501,21 @@ pub fn parse_look(
                 crate::tag::CompilerReferenceTag::It.bind(),
             ))
         }
+        // "That player looks at the top three cards of your library": the
+        // subject privately looks at another player's library.
+        ResourceLookShape::TopCards { player, count }
+            if player != PlayerAst::That
+                && subject_player.is_some_and(|subject| {
+                    subject != player && !matches!(subject, PlayerAst::You | PlayerAst::Implicit)
+                }) =>
+        {
+            Ok(EffectAst::PlayerLooksAtTopCardsOfLibrary {
+                viewer: subject_player.expect("guarded by the match arm"),
+                library_owner: player,
+                count,
+                tag: crate::tag::CompilerReferenceTag::It.bind(),
+            })
+        }
         ResourceLookShape::TopCards { player, count } => Ok(
             EffectAst::subject_verb_look_at_top_cards(player, count, crate::tag::CompilerReferenceTag::It.bind()),
         ),
@@ -581,15 +596,19 @@ pub fn parse_shuffle(
     match shape {
         ResourceShuffleShape::ObjectsIntoOwnersLibraries { target_len } => {
             let target_tokens = trim_commas(&tokens[..target_len]);
+            // "Then they shuffle each nonland permanent they control into its
+            // owner's library": an authored player subject performs the
+            // shuffle; "its owner's" only names each destination library.
+            let explicit_actor = !matches!(player, PlayerAst::Implicit | PlayerAst::You);
             let shuffle_into_owner_library = |target: TargetAst| {
                 EffectAst::subject_verb(
                     SubjectVerbRoleAst::LibraryOwner,
-                    PlayerAst::ItsOwner,
+                    if explicit_actor { player } else { PlayerAst::ItsOwner },
                     SubjectVerbActionAst::Library(LibraryActionAst::ShuffleObjectsIntoLibrary {
                         target,
                         all: false,
                         owner_library_destination: true,
-                        possessive_owner_subject: true,
+                        possessive_owner_subject: !explicit_actor,
                         shuffle_subject_library: false,
                     }),
                 )

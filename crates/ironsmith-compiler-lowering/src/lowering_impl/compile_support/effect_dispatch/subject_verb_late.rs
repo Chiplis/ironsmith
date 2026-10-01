@@ -246,8 +246,13 @@ pub(super) fn compile_return_to_hand(
     // returns. A non-target selection otherwise defaults to the controller
     // (or the iterated player inside a player loop), so make the actor's
     // choice explicit before the move.
+    // Likewise "they return a land they control to its owner's hand": the
+    // named player chooses among their own permanents.
+    let actor_chooses_on_battlefield = !from_graveyard
+        && matches!(spec, ChooseSpec::WithCount(..))
+        && matches!(spec.base(), ChooseSpec::Object(filter) if filter.zone == Some(Zone::Battlefield));
     let mut actor_choice_prelude = Vec::new();
-    if from_graveyard
+    if (from_graveyard || actor_chooses_on_battlefield)
         && !spec.is_target()
         && !ctx.iterated_player
         && let Some(actor) = actor_surface.as_ref()
@@ -268,7 +273,11 @@ pub(super) fn compile_return_to_hand(
             tag.clone(),
         )
         .with_count_value_opt(spec.count_value().cloned())
-        .in_zone(Zone::Graveyard);
+        .in_zone(if from_graveyard {
+            Zone::Graveyard
+        } else {
+            Zone::Battlefield
+        });
         actor_choice_prelude.push(Effect::new(choose));
         spec = ChooseSpec::Tagged(tag.as_str().into());
     }
@@ -287,7 +296,7 @@ pub(super) fn compile_return_to_hand(
         Effect::new(effect)
     } else {
         let mut effect = crate::effects::ReturnToHandEffect::with_spec(spec.clone());
-        if let Some(player) = actor_surface {
+        if let Some(player) = actor_surface.clone() {
             effect = effect.with_actor_surface(player);
         }
         if let Some(player) = destination_player_surface.clone() {
@@ -301,7 +310,15 @@ pub(super) fn compile_return_to_hand(
         Effect::new(effect)
     };
     let effect = tag_object_target_effect(move_effect, &spec, ctx, "returned");
-    ctx.last_player_filter = Some(if spec.is_target() {
+    // "Target opponent ... returns it to its owner's hand. Then they ...":
+    // an authored returning player stays the player antecedent; the owner
+    // only names the destination hand.
+    ctx.last_player_filter = Some(if let Some(actor) = actor_surface
+        .as_ref()
+        .filter(|actor| !matches!(actor, PlayerFilter::You | PlayerFilter::Any))
+    {
+        as_followup_player_alias(actor.clone())
+    } else if spec.is_target() {
         PlayerFilter::AliasedOwnerOf(ObjectRef::Target)
     } else if let Some(tag) = ctx.last_object_tag.clone() {
         PlayerFilter::AliasedOwnerOf(ObjectRef::tagged(tag))
@@ -629,7 +646,18 @@ pub(super) fn compile_subject_verb_late(
             // it deals 3 damage to that player") cannot be the damage
             // source: discarded cards sit in a graveyard and the sentence
             // names the resolving spell or ability.
-            let source_spec = if source_is_bare_it && matches!(
+            // Likewise "Return target creature to its owner's hand. If this
+            // spell was kicked, it deals 2 damage to another target creature"
+            // (Jilt): once the condition names the source, a bare `it` whose
+            // nearest object was just returned to a hand is the source.
+            let source_names_bounced_object = source_is_bare_it
+                && current_reference_env(ctx).has_source_object_antecedent()
+                && matches!(
+                    source_spec.base(),
+                    ChooseSpec::Tagged(tag) if tag.as_str().starts_with("returned_")
+                );
+            let source_spec = if source_names_bounced_object
+                || source_is_bare_it && matches!(
                 source_spec.base(),
                 ChooseSpec::Tagged(tag)
                     if tag.as_str() == "blocking"
@@ -722,6 +750,14 @@ pub(super) fn compile_subject_verb_late(
                 damage_source_spec = ChooseSpec::Tagged(source_tag.as_str().into());
                 if source == target {
                     damage_target_spec = ChooseSpec::Tagged(source_tag.as_str().into());
+                }
+                // "... deals damage ... to that player" where that player is
+                // the targeted source's controller: bind to the declaration.
+                if let ChooseSpec::Player(PlayerFilter::ControllerOf(object)) =
+                    &mut damage_target_spec
+                    && *object == crate::target::ObjectRef::Target
+                {
+                    *object = crate::target::ObjectRef::tagged(source_tag.clone());
                 }
             }
 
@@ -1952,6 +1988,9 @@ pub(super) fn compile_subject_verb_late(
                         .as_ref()
                         .and_then(player_filter_from_object_filter)
                 {
+                    // "That player discards that card. Then if that player
+                    // ...": the named discarding player stays the antecedent.
+                    ctx.last_player_filter = Some(as_followup_player_alias(inferred_player.clone()));
                     (inferred_player, Vec::new())
                 } else {
                     let subject = LoweredSubject::resolve_affected_player(

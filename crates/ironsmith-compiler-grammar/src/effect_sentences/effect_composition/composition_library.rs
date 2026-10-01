@@ -116,11 +116,6 @@ pub(super) fn parse_look_hand_optional_exile_play_tax_bundle(
     }
 
     let tax = bundle_grammar::parse_spell_cast_this_way_tax_tokens(tax_sentence)?;
-    let mut spell_filter = ObjectFilter::spell().without_type(CardType::Land);
-    if let Some(caster) = tax.taxed_caster {
-        spell_filter = spell_filter.cast_by(caster);
-    }
-    spell_filter.zone = None;
 
     Some(vec![
         look_effect.clone(),
@@ -148,17 +143,10 @@ pub(super) fn parse_look_hand_optional_exile_play_tax_bundle(
             false,
             None,
         ),
-        EffectAst::subject_verb_grant_to_target(
-            TargetAst::Tagged(crate::tag::TagRef::of(exiled_tag), None),
-            crate::model::CompilerGrantableCore::Ability(
-                crate::model::CompilerStaticAbilityCore::new(
-                    crate::model::CompilerCostIncreaseManaCost::new(
-                        spell_filter,
-                        tax.additional_cost,
-                    ),
-                ),
-            ),
-            crate::grant::GrantDuration::Forever,
+        super::cast_this_way_tax_grant(
+            crate::tag::TagRef::of(exiled_tag),
+            tax.taxed_caster,
+            tax.additional_cost,
         ),
     ])
 }

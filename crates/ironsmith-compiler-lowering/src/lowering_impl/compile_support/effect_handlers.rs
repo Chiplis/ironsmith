@@ -334,6 +334,23 @@ fn fuse_next_cast_entry_counter_body(
     *counter_effect = Effect::new(replacement);
 }
 
+/// Delayed events whose own object a demonstrative in the delayed body cannot
+/// name: the source itself ("When this artifact leaves the battlefield this
+/// turn, destroy that creature") or a whole attack by a player ("Whenever you
+/// attack this turn, Jaya deals damage ... to that creature").
+fn delayed_trigger_event_object_is_source(trigger: &TriggerSpec) -> bool {
+    matches!(
+        trigger_without_intro(trigger),
+        TriggerSpec::ThisLeavesBattlefield
+            | TriggerSpec::ThisLeavesBattlefieldWithSurface(_)
+            | TriggerSpec::ThisDies
+            | TriggerSpec::ThisDiesOrIsExiled
+            | TriggerSpec::ThisDiesOrIsExiledWithSurface(_)
+            | TriggerSpec::AttacksOneOrMore(_)
+            | TriggerSpec::PlayerAttacksOneOrMore { .. }
+    )
+}
+
 fn compile_delayed_effects_preserving_outer_context(
     effects: &[EffectAst],
     ctx: &mut EffectLoweringContext,
@@ -543,6 +560,17 @@ fn set_effects_tag_relation(
         .collect()
 }
 
+/// "the creature an opponent controls" as a delayed-trigger subject: a
+/// definite description that carries a controller or owner restriction
+/// describes which announced target it names, rather than repeating the
+/// most recent object result ("that creature").
+fn definite_description_of_announced_target(filter: &ObjectFilter) -> bool {
+    filter.demonstrative_antecedent_surface().is_some()
+        && filter.tagged_constraints.is_empty()
+        && !filter.source
+        && (filter.controller.is_some() || filter.owner.is_some())
+}
+
 fn trigger_without_intro(trigger: &TriggerSpec) -> &TriggerSpec {
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => trigger_without_intro(trigger),
@@ -608,7 +636,41 @@ fn compile_duration_scoped_delayed_trigger(
     // body. Only a trigger that watches a prior object ("whenever that
     // creature ...") or has no event object inherits the scheduling
     // instruction's object antecedent.
-    let trigger_supplies_own_object = {
+    // "whenever you play a land or cast a spell this way, its owner draws a
+    // card" (Apple of Eden): each branch's played/cast object is the body's
+    // antecedent.
+    fn event_object_trigger_supplies_own_object(trigger: &TriggerSpec) -> bool {
+        match trigger {
+            TriggerSpec::Either(left, right) => {
+                event_object_trigger_supplies_own_object(left)
+                    && event_object_trigger_supplies_own_object(right)
+            }
+            TriggerSpec::AnyOf(triggers) => {
+                !triggers.is_empty()
+                    && triggers.iter().all(event_object_trigger_supplies_own_object)
+            }
+            TriggerSpec::SpellCast { filter, .. } => filter.as_ref().is_none_or(|filter| {
+                let mut references_tag = false;
+                ironsmith_core::tag::TagKeyWalk::for_each_tag_key(filter, &mut |_| {
+                    references_tag = true
+                });
+                !filter.source && !references_tag
+            }),
+            TriggerSpec::PlayerPlaysLand { filter, .. } => {
+                let mut references_tag = false;
+                ironsmith_core::tag::TagKeyWalk::for_each_tag_key(filter, &mut |_| {
+                    references_tag = true
+                });
+                !filter.source && !references_tag
+            }
+            _ => false,
+        }
+    }
+    let trigger_supplies_own_object = matches!(
+        trigger_without_intro(trigger),
+        TriggerSpec::Either(..) | TriggerSpec::AnyOf(..)
+    ) && event_object_trigger_supplies_own_object(trigger_without_intro(trigger))
+        || {
         let event_filter = match trigger_without_intro(trigger) {
             TriggerSpec::PermanentBecomesTapped(filter)
             | TriggerSpec::Dies(filter)
@@ -1077,8 +1139,28 @@ pub(super) fn try_compile_timing_and_control_effect(
                 )
                 .map(Some);
             }
+            // "When this artifact leaves the battlefield this turn, destroy
+            // that creature": when the delayed event's own object is the
+            // source, a demonstrative in its body names the registering
+            // ability's object (captured with the delayed trigger), never
+            // the source that left.
             let (mut delayed_effects, _delayed_choices) =
-                compile_trigger_effects(Some(trigger), effects)?;
+                match ctx.last_object_tag.clone().filter(|_| {
+                    delayed_trigger_event_object_is_source(trigger)
+                }) {
+                    Some(outer) => {
+                        let lowered = compile_trigger_effects_with_imports(
+                            Some(trigger),
+                            effects,
+                            &ReferenceImports {
+                                last_object_tag: Some(outer.into()),
+                                ..Default::default()
+                            },
+                        )?;
+                        (lowered.effects.to_vec(), lowered.choices)
+                    }
+                    None => compile_trigger_effects(Some(trigger), effects)?,
+                };
             fuse_next_cast_entry_counter_body(trigger, *one_shot, &mut delayed_effects);
             let choices = Vec::new();
             match trigger {
@@ -1534,6 +1616,25 @@ pub(super) fn try_compile_timing_and_control_effect(
             let compiled = compile_effects_preserving_last_effect(effects, ctx);
             ctx.last_object_tag = previous_last;
             let (delayed_effects, choices) = compiled?;
+            if let Some(filter) = filter
+                && definite_description_of_announced_target(filter)
+            {
+                // "When the creature an opponent controls dies this turn"
+                // after "... fights target creature an opponent controls":
+                // the definite description names the announced target it
+                // describes, not the most recent object result.
+                let delayed = crate::effects::ScheduleDelayedTriggerEffect::new(
+                    ironsmith_core::DelayedTriggerSpec::ThisDies,
+                    delayed_effects,
+                    true,
+                    Vec::new(),
+                    PlayerFilter::You,
+                )
+                .watch_all_object_targets()
+                .with_target_filter(resolve_it_tag(filter, &current_reference_env(ctx))?)
+                .until_end_of_turn();
+                return Ok(Some((vec![Effect::new(delayed)], choices)));
+            }
             let mut delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
                 target_tag.clone().into(),
                 ironsmith_core::DelayedTriggerSpec::ThisDies,
@@ -1756,9 +1857,11 @@ fn compile_conditional_ast(
     // announces; with an established source antecedent it names the source
     // ("When you do, if it has four or more quest counters on it, put a
     // +1/+1 counter on target creature you control").
-    let antecedent_choice = if saved_last_tag.is_none()
-        && predicate_references_it
-        && (trailing || !saved_source_object_antecedent)
+    // A trailing condition's `it` ("Exile target creature if its power ...")
+    // names the target its own consequence announces, even when an earlier
+    // antecedent (an additional-cost reveal) is still in scope.
+    let antecedent_choice = if predicate_references_it
+        && (trailing || (saved_last_tag.is_none() && !saved_source_object_antecedent))
     {
         let mut antecedent_choice = None;
         for choice in true_choices.iter().chain(false_choices.iter()) {
@@ -1774,9 +1877,7 @@ fn compile_conditional_ast(
 
     let mut condition_reference_tag = saved_last_tag.clone();
     let mut prelude = Vec::new();
-    if condition_reference_tag.is_none()
-        && let Some(choice) = antecedent_choice.clone()
-    {
+    if let Some(choice) = antecedent_choice.clone() {
         let tag = if let Some(existing) = tagged_alias_for_choice(&true_effects, &choice) {
             existing
         } else {
@@ -1809,7 +1910,12 @@ fn compile_conditional_ast(
             }
         )
     );
-    let branch_last_player = predicate_names_target_player
+    // A leading condition ("Then if that player has more cards in hand than
+    // you, return ...") likewise reads its "that player" from the discourse
+    // before the branches; a branch's own player (the returned card's owner)
+    // must not become the condition's antecedent. A trailing condition may
+    // still name a player its consequence introduced.
+    let branch_last_player = (predicate_names_target_player || !trailing)
         .then(|| std::mem::replace(&mut ctx.last_player_filter, saved_last_player));
     let condition =
         compile_condition_from_predicate_ast(predicate, ctx, &condition_reference_tag)?;

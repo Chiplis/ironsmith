@@ -2,6 +2,40 @@ use super::*;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::SourcePredicateAst;
 
+/// Binds the replacement's pronouns to the default action's object up to and
+/// including the first action that moves that object to another zone
+/// ("instead exile it, then return that card to its owner's hand"). After
+/// the move the object is a new one (CR 400.7), so a later pronoun names the
+/// moved card through ordinary reference flow instead of the old target.
+fn replace_it_target_until_antecedent_moves(effects: &mut [EffectAst], target: &TargetAst) -> bool {
+    for effect in effects {
+        match effect {
+            EffectAst::Sequence { effects } | EffectAst::CommaThen { effects } => {
+                if replace_it_target_until_antecedent_moves(effects, target) {
+                    return true;
+                }
+            }
+            _ => {
+                replace_it_target(effect, target);
+                if matches!(
+                    effect,
+                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::ZoneMoves(
+                            ZoneMoveActionAst::Exile { .. }
+                                | ZoneMoveActionAst::ReturnToHand { .. }
+                                | ZoneMoveActionAst::MoveToZone { .. }
+                        ),
+                        ..
+                    })
+                ) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 /// "If this spell's madness cost was paid, instead gain control of that
 /// creature if its toughness is X or less" (Welcome to the Fold): the
 /// replacement's local gate reads the same object as its action ("that
@@ -451,7 +485,7 @@ pub(in super::super) fn post_rule_future_zone_and_self_replacement(
             .as_ref()
             .or(previous_target.as_ref())
         {
-            replace_it_target_in_effects(&mut if_true, target);
+            replace_it_target_until_antecedent_moves(&mut if_true, target);
         }
         if replacement_qualifies_antecedent && let Some(tag) = previous_result_tag.as_ref() {
             bind_replacement_it_characteristics_to_tag(&mut if_true, tag);

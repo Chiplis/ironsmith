@@ -1,6 +1,7 @@
 //! Add mana of imprinted card's colors effect implementation.
 //!
-//! Used by Chrome Mox to produce mana based on the colors of the exiled card.
+//! Used by Chrome Mox and Pit of Offerings-style permanents to produce mana
+//! based on the colors of the cards they exiled.
 
 use super::choice_helpers::{
     choose_mana_colors, credit_mana_symbols_from_context, mana_added_count_outcome,
@@ -26,42 +27,11 @@ impl EffectExecutor for AddManaOfImprintedColorsEffect {
         let source_id = ctx.source;
         let controller = ctx.controller;
 
-        // Get the imprinted cards
-        let imprinted = game.get_imprinted_cards(source_id).to_vec();
-
-        if imprinted.is_empty() {
-            // No imprinted card - can't produce mana
-            return Ok(EffectOutcome::count(0));
-        }
-
-        // Get colors from the first imprinted card (Chrome Mox only imprints one)
-        let imprinted_id = imprinted[0];
-        let colors: Vec<Color> = game
-            .object(imprinted_id)
-            .map(|obj| {
-                let color_set = obj.colors();
-                let mut colors = Vec::new();
-                if color_set.contains(Color::White) {
-                    colors.push(Color::White);
-                }
-                if color_set.contains(Color::Blue) {
-                    colors.push(Color::Blue);
-                }
-                if color_set.contains(Color::Black) {
-                    colors.push(Color::Black);
-                }
-                if color_set.contains(Color::Red) {
-                    colors.push(Color::Red);
-                }
-                if color_set.contains(Color::Green) {
-                    colors.push(Color::Green);
-                }
-                colors
-            })
-            .unwrap_or_default();
-
+        // "Any of the exiled card's/cards' colors": the cards this permanent
+        // imprinted or exiled with its linked ability (CR 607.2a).
+        let colors = linked_exiled_card_colors(game, source_id);
         if colors.is_empty() {
-            // Imprinted card is colorless - can't produce mana
+            // No linked card, or only colorless ones - can't produce mana.
             return Ok(EffectOutcome::count(0));
         }
 
@@ -93,28 +63,35 @@ impl EffectExecutor for AddManaOfImprintedColorsEffect {
         source: crate::ids::ObjectId,
         _controller: crate::ids::PlayerId,
     ) -> Option<Vec<ManaSymbol>> {
-        let imprinted_id = *game.get_imprinted_cards(source).first()?;
-        let color_set = game.object(imprinted_id)?.colors();
-
-        let mut symbols = Vec::new();
-        if color_set.contains(Color::White) {
-            symbols.push(ManaSymbol::White);
-        }
-        if color_set.contains(Color::Blue) {
-            symbols.push(ManaSymbol::Blue);
-        }
-        if color_set.contains(Color::Black) {
-            symbols.push(ManaSymbol::Black);
-        }
-        if color_set.contains(Color::Red) {
-            symbols.push(ManaSymbol::Red);
-        }
-        if color_set.contains(Color::Green) {
-            symbols.push(ManaSymbol::Green);
-        }
+        let symbols: Vec<ManaSymbol> = linked_exiled_card_colors(game, source)
+            .into_iter()
+            .map(ManaSymbol::from_color)
+            .collect();
         if symbols.is_empty() {
             return None;
         }
         Some(symbols)
     }
+}
+
+/// The distinct colors among the cards imprinted on, or exiled with,
+/// `source`, in WUBRG order.
+fn linked_exiled_card_colors(game: &GameState, source: crate::ids::ObjectId) -> Vec<Color> {
+    let imprinted = game.get_imprinted_cards(source);
+    let exiled_with = game.get_exiled_with_source_links(source);
+    [
+        Color::White,
+        Color::Blue,
+        Color::Black,
+        Color::Red,
+        Color::Green,
+    ]
+    .into_iter()
+    .filter(|color| {
+        imprinted.iter().chain(exiled_with).any(|&id| {
+            game.object(id)
+                .is_some_and(|object| object.colors().contains(*color))
+        })
+    })
+    .collect()
 }

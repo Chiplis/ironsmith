@@ -662,6 +662,15 @@ pub(super) fn object_has_ability_marker(object: &Object, marker: &str) -> bool {
     if abilities_have_marker(&object.abilities, marker) {
         return true;
     }
+    // Costed activated keywords ("Eternalize {4}{U}{U}", "Embalm {W}") are
+    // plain activated abilities; their printed line names the keyword.
+    if object
+        .ability_labels
+        .iter()
+        .any(|label| label_opens_with_keyword(label, marker))
+    {
+        return true;
+    }
 
     object.level_granted_abilities().iter().any(|ability| {
         matches!(
@@ -669,6 +678,21 @@ pub(super) fn object_has_ability_marker(object: &Object, marker: &str) -> bool {
             StaticAbilityId::KeywordMarker | StaticAbilityId::KeywordText
         ) && ability.display().eq_ignore_ascii_case(marker)
     })
+}
+
+fn label_opens_with_keyword(label: &str, marker: &str) -> bool {
+    let marker = marker.trim();
+    if !matches!(
+        marker.to_ascii_lowercase().as_str(),
+        "eternalize" | "embalm"
+    ) {
+        return false;
+    }
+    let label = label.trim_start();
+    label.len() > marker.len()
+        && label.is_char_boundary(marker.len())
+        && label[..marker.len()].eq_ignore_ascii_case(marker)
+        && label[marker.len()..].starts_with(|ch: char| ch.is_whitespace() || ch == '—')
 }
 
 pub(super) fn object_has_tap_activated_ability(object: &Object) -> bool {

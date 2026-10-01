@@ -266,6 +266,7 @@ pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ResolvesDespiteIllegalTargets => {}
         EffectAst::NoteActivationManaType => {}
         EffectAst::LookAtTopCardsAsViewer { .. } => {}
+        EffectAst::PlayerLooksAtTopCardsOfLibrary { .. } => {}
         EffectAst::RestartGame { .. } => {}
         EffectAst::PlaySubgame { .. } => {}
         EffectAst::Sequence { .. } => {}

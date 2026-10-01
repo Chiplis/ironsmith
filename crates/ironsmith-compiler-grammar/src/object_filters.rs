@@ -1127,10 +1127,52 @@ fn parse_not_targeted_by_ability_from_filter(
     Ok(Some(filter))
 }
 
+/// "an artifact or creature card from among those cards" (Spirit of
+/// Resilience): a selection restricted to the referenced set, wherever those
+/// cards now are. Returns the tokens before the scope phrase.
+pub(crate) fn split_from_among_those_cards_suffix(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<OwnedLexToken>> {
+    let view = TokenWordView::new(tokens);
+    let words = view.to_word_refs();
+    let scope_len = if crate::word_primitives::parse_sequence_suffix(
+        &words,
+        &["from", "among", "those", "cards"],
+    ) {
+        4
+    } else if crate::word_primitives::parse_sequence_suffix(&words, &["among", "those", "cards"]) {
+        3
+    } else {
+        return None;
+    };
+    if words.len() <= scope_len {
+        return None;
+    }
+    let end = view.map_word_or_end_to_token_boundary(words.len() - scope_len)?;
+    let base = super::util::trim_commas(&tokens[..end]);
+    (!base.is_empty()).then_some(base)
+}
+
+pub(crate) fn clear_zone_for_referenced_cards(filter: &mut ObjectFilter) {
+    filter.zone = None;
+    for branch in &mut filter.any_of {
+        clear_zone_for_referenced_cards(branch);
+    }
+}
+
 pub fn parse_object_filter(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some(base) = split_from_among_those_cards_suffix(tokens) {
+        let mut filter = parse_object_filter(&base, other)?;
+        clear_zone_for_referenced_cards(&mut filter);
+        filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+            tag: crate::tag::CompilerReferenceTag::ThoseCardsReference.key(),
+            relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+        });
+        return Ok(filter);
+    }
     if let Some((base, host)) = split_could_enchant_suffix(tokens)? {
         let mut filter = parse_object_filter(&base, other)?;
         filter.could_enchant_object = Some(Box::new(host));
@@ -1157,7 +1199,15 @@ pub fn parse_object_filter(
         filter.colors_chosen_while_drafting_named = Some(card_name);
         return Ok(finalize_public_object_filter(filter, &base_tokens));
     }
-    let filter = parse_object_filter_inner(tokens, other)?;
+    let mut filter = parse_object_filter_inner(tokens, other)?;
+    // "a creature card they revealed this way" (Valki): revealed cards are
+    // never on the battlefield, so the permanent-type noun's battlefield
+    // default does not apply; the revealed-set tag locates them.
+    if filter.prior_effect_action_surface() == Some(ironsmith_core::PriorEffectAction::Revealed)
+        && filter.zone == Some(crate::zone::Zone::Battlefield)
+    {
+        clear_zone_for_referenced_cards(&mut filter);
+    }
     Ok(finalize_public_object_filter(filter, tokens))
 }
 

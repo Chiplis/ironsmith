@@ -550,7 +550,7 @@ pub(super) fn compile_subject_verb_early(
                 true,
                 false,
                 true,
-                false,
+                true,
                 Effect::scry,
                 Effect::scry_player,
             )
@@ -564,7 +564,7 @@ pub(super) fn compile_subject_verb_early(
                 false,
                 false,
                 true,
-                false,
+                true,
                 Effect::surveil,
                 Effect::surveil_player,
             )
@@ -706,6 +706,8 @@ pub(super) fn compile_subject_verb_early(
             Ok((vec![Effect::monstrosity(amount)], Vec::new()))
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Discover { count }) => {
+            // "Discover X, where X is the exiled card's mana value" reads a
+            // paid or earlier object; bind that reference like other amounts.
             compile_subject_verb_player_value_effect(
                 role,
                 player,
@@ -714,7 +716,7 @@ pub(super) fn compile_subject_verb_early(
                 false,
                 false,
                 true,
-                false,
+                true,
                 Effect::discover,
                 Effect::discover_player,
             )
@@ -2252,12 +2254,16 @@ pub(super) fn compile_subject_verb_early(
             } else {
                 tag.clone().into()
             };
-            Ok((
-                vec![Effect::new(crate::effects::ReorderLibraryTopEffect::new(
-                    effective_tag,
-                ))],
-                Vec::new(),
-            ))
+            let mut reorder = crate::effects::ReorderLibraryTopEffect::new(effective_tag);
+            let mut choices = Vec::new();
+            // An authored player subject ("That player ..., then puts them
+            // back in any order") chooses the order.
+            if !matches!(player, PlayerAst::You | PlayerAst::Implicit) {
+                let subject = resolve_subject_verb_subject(role, player, ctx, true, true, false)?;
+                reorder = reorder.chosen_by(subject.clone_player_filter());
+                choices = subject.into_choices();
+            }
+            Ok((vec![Effect::new(reorder)], choices))
         }
         SubjectVerbActionAst::Mana(ManaActionAst::AddManaImprintedColors) => Ok((
             vec![Effect::new(
@@ -2320,7 +2326,21 @@ pub(super) fn compile_subject_verb_early(
             if *all && let ChooseSpec::Object(filter) = spec {
                 spec = ChooseSpec::All(filter);
             }
-            let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
+            // "This creature's owner shuffles it into their library. If that
+            // player does, ...": the owner of the ability's source, which is
+            // neither a target nor a prior object antecedent.
+            let subject = if player == PlayerAst::ItsOwner
+                && matches!(spec.base(), ChooseSpec::Source)
+                && ctx.last_object_tag.is_none()
+            {
+                let owner = PlayerFilter::OwnerOf(crate::target::ObjectRef::tagged(
+                    ironsmith_core::SOURCE_OBJECT_TAG,
+                ));
+                ctx.last_player_filter = Some(as_followup_player_alias(owner.clone()));
+                LoweredSubject::from_resolved(owner, Vec::new())
+            } else {
+                resolve_subject_verb_subject(role, player, ctx, true, true, true)?
+            };
             for choice in subject.into_choices() {
                 push_choice(&mut choices, choice);
             }
@@ -2559,6 +2579,7 @@ pub(super) fn compile_subject_verb_early(
                 source,
                 target,
                 reflect_damage_to_source_controller,
+                reflect_source_filter,
                 follow_up_effects,
             },
         ) => {
@@ -2631,6 +2652,9 @@ pub(super) fn compile_subject_verb_early(
             }
             if *reflect_damage_to_source_controller {
                 effect = effect.reflecting_to_source_controller();
+                if let Some(filter) = reflect_source_filter {
+                    effect = effect.reflecting_only_from_source_matching(filter.clone());
+                }
             }
             choices.extend(follow_up_choices);
             Ok((vec![Effect::new(effect)], choices))

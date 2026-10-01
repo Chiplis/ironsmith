@@ -2370,6 +2370,11 @@ impl GameState {
                 self.set_devoured_count(old_id, 0);
                 self.set_devoured_count(new_id, devoured);
             }
+            let devoured_objects = self.devoured_objects(old_id).to_vec();
+            if !devoured_objects.is_empty() {
+                self.set_devoured_objects(old_id, Vec::new());
+                self.set_devoured_objects(new_id, devoured_objects);
+            }
         }
         if choices.transfer_as_enters_source_links {
             self.transfer_exiled_with_source_links(old_id, new_id);
@@ -5200,4 +5205,46 @@ fn is_synthetic_granted_suspend(
 enum HandSizeModification {
     Static(StaticAbility, ObjectId, PlayerId),
     Restriction(super::RestrictionEffectInstance),
+}
+
+impl GameState {
+    /// Snapshot of the object whose effect granted `source` its ability at
+    /// `ability_index` — the Equipment in `Equipped creature has "... Return
+    /// Trusty Boomerang to its owner's hand."` — captured when that ability
+    /// is activated or triggers so its resolution can name the grantor under
+    /// [`crate::tag::GRANTING_SOURCE_TAG`]. `None` for the object's own
+    /// abilities.
+    pub(crate) fn granting_source_snapshot(
+        &self,
+        source: ObjectId,
+        ability_index: usize,
+    ) -> Option<crate::snapshot::ObjectSnapshot> {
+        let chars = self.current_characteristics(source)?;
+        let granting = chars.abilities.origin(ability_index)?.granting_source()?;
+        if granting == source {
+            return None;
+        }
+        let object = self.object(granting)?;
+        Some(crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+            object, self,
+        ))
+    }
+
+    /// The tag map entry exposing [`Self::granting_source_snapshot`].
+    pub(crate) fn insert_granting_source_tag(
+        &self,
+        source: ObjectId,
+        ability_index: usize,
+        tagged_objects: &mut std::collections::HashMap<
+            crate::tag::TagKey,
+            Vec<crate::snapshot::ObjectSnapshot>,
+        >,
+    ) {
+        if let Some(snapshot) = self.granting_source_snapshot(source, ability_index) {
+            tagged_objects.insert(
+                crate::tag::TagKey::from(crate::tag::GRANTING_SOURCE_TAG),
+                vec![snapshot],
+            );
+        }
+    }
 }

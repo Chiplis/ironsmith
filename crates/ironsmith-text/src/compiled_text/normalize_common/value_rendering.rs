@@ -2328,6 +2328,11 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
         ChooseSpec::SourceController => "you".to_string(),
         ChooseSpec::SourceOwner => "this source's owner".to_string(),
         ChooseSpec::Tagged(tag) => {
+            if tag.as_str() == ironsmith_core::GRANTING_SOURCE_TAG {
+                // Replaced by the card's name once the card is known
+                // (`debug_compiled_surface_lines`).
+                return super::super::GRANTING_SOURCE_RENDER_SURFACE.to_string();
+            }
             if tag.as_str().contains("copied") {
                 return "the copy".to_string();
             }

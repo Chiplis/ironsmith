@@ -386,7 +386,24 @@ fn read_control_flow_plan(input: &InnerChain<'_>) -> Result<Option<Vec<EffectAst
             crate::recognition::ParseOutcome::Match(matched) => {
                 let plan = matched.value;
                 let prevention = prevention_body_under_leading_duration(&plan);
-                let mut effects = if let Some(prevention) = prevention.as_ref() {
+                // "When you do, ~ deals damage ... unless that creature's
+                // controller has ~ deal that much damage to them" (Craig
+                // Boone): the causative choice is the body's own action
+                // choice, not a trailing control-flow predicate.
+                let causative_unless_body = if prevention.is_none()
+                    && !plan.parse_original_with_legacy
+                {
+                    super::super::subject_verb_primitives::parse_sentence_damage_unless_controller_has_source_deal_damage(
+                        super::super::subject_verb_primitives::SubjectVerbPrimitiveClause::new(
+                            plan.body_tokens,
+                        ),
+                    )?
+                } else {
+                    None
+                };
+                let mut effects = if let Some(effects) = causative_unless_body {
+                    effects
+                } else if let Some(prevention) = prevention.as_ref() {
                     // "Until your next turn, prevent all damage that would be
                     // dealt to you": the prevention grammar spells its own
                     // duration; the leading scope replaces it when lowered.

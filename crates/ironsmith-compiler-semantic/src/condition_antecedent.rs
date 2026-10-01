@@ -28,6 +28,12 @@ pub fn predicate_object_filter_antecedent(predicate: &PredicateAst) -> Option<Ob
         // "if enchanted creature is untapped, tap it": the tagged condition
         // subject is the antecedent for "it" in the body effects.
         PredicateAst::TaggedMatches(tag, _) => Some(ObjectFilter::tagged(tag.clone())),
+        // "put a +1/+1 counter on enchanted creature if it attacked or
+        // blocked since your last upkeep. Otherwise, remove a counter from
+        // it": the tested object is the enchanted permanent.
+        PredicateAst::EnchantedPermanentAttackedOrBlockedSinceLastUpkeep => Some(
+            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::Enchanted.key()),
+        ),
         PredicateAst::AttachedToSourceMatches(_) => {
             // The attachment's host is the referent; the tested property
             // (for example flying) is not a restriction on later references.
@@ -227,6 +233,9 @@ fn effect_establishes_body_object_antecedent(effect: &EffectAst) -> bool {
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice {
                 target, ..
             })
+            | SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters {
+                target, ..
+            })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach {
                 target, ..
@@ -299,6 +308,9 @@ fn bind_condition_antecedent_in_effect(
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice {
                 target, ..
             })
+            | SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters {
+                target, ..
+            })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach {
                 target, ..
@@ -367,6 +379,36 @@ pub fn bind_condition_antecedent_in_effects(
     mode: ConditionAntecedentBinding,
 ) {
     let _ = bind_condition_antecedent_in_effects_internal(effects, antecedent, mode);
+}
+
+/// "Put a +1/+1 counter on enchanted creature if it attacked ... Otherwise,
+/// remove a +1/+1 counter from it.": when the condition tests one tagged
+/// object, every bare `it` of the fallback branch names that object.
+pub fn bind_fallback_it_to_condition_tag(effects: &mut [EffectAst], predicate: &PredicateAst) {
+    use ironsmith_core::tag::TagKeyWalk;
+    let Some(antecedent) = predicate_object_filter_antecedent(predicate) else {
+        return;
+    };
+    let [constraint] = antecedent.tagged_constraints.as_slice() else {
+        return;
+    };
+    if constraint.relation != TaggedOpbjectRelation::IsTaggedObject {
+        return;
+    }
+    let mut bare = antecedent.clone();
+    bare.tagged_constraints.clear();
+    if bare != ObjectFilter::default() {
+        return;
+    }
+    let tag = constraint.tag.clone();
+    let it = crate::tag::CompilerReferenceTag::It.as_str();
+    for effect in effects {
+        effect.map_tag_keys(&mut |key| {
+            if key.as_str() == it {
+                *key = tag.clone();
+            }
+        });
+    }
 }
 
 /// Bind an explicit collection choice such as "choose one of those creatures"
@@ -875,6 +917,62 @@ fn resolve_it_animations_to_source_internal(effects: &mut [EffectAst]) -> bool {
 
 pub fn resolve_it_animations_to_source(effects: &mut [EffectAst]) {
     let _ = resolve_it_animations_to_source_internal(effects);
+}
+
+/// The counter-holder and animation half of
+/// [`resolve_it_animations_to_source`], for a trigger that announces a spell:
+/// "Whenever you cast an instant or sorcery spell, if this artifact has fewer
+/// than three charge counters on it, put a charge counter on it" puts the
+/// counter on the source, and "When an opponent casts a creature spell, if
+/// this permanent is an enchantment, it becomes a 4/4 Giant creature" animates
+/// the source, while a granted ability ("that spell gains rebound") stays with
+/// the announced spell.
+pub fn resolve_it_counter_and_animation_targets_to_source(effects: &mut [EffectAst]) {
+    for effect in effects {
+        if let EffectAst::SubjectVerb(subject_verb) = effect
+            && let SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
+                target, ..
+            })
+            | SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters {
+                target,
+                ..
+            })
+            | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeBasePtCreature { target, .. },
+            ) = &mut subject_verb.action
+        {
+            resolve_it_animation_target_to_source(target);
+        }
+        for_each_nested_effects_mut(effect, true, |nested| {
+            resolve_it_counter_and_animation_targets_to_source(nested);
+        });
+    }
+}
+
+/// The grant half for a trigger that announces a spell: "Whenever you cast an
+/// instant or sorcery spell from your hand, if Taigam attacked this turn,
+/// that spell gains rebound". The source condition makes the source the
+/// antecedent of a bare `it`, but the parsed grant subject keeps no surface
+/// to tell "that spell" from `it`, and a granted ability in a cast trigger
+/// names the announced spell.
+pub fn resolve_it_grant_targets_to_triggering_spell(effects: &mut [EffectAst]) {
+    for effect in effects {
+        if let EffectAst::SubjectVerb(subject_verb) = effect
+            && let SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
+                target,
+                ..
+            })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { target, .. }) =
+                &mut subject_verb.action
+            && let TargetAst::Tagged(tag, _) = target
+            && tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+        {
+            *tag = crate::tag::CompilerReferenceTag::Triggering.bind();
+        }
+        for_each_nested_effects_mut(effect, true, |nested| {
+            resolve_it_grant_targets_to_triggering_spell(nested);
+        });
+    }
 }
 
 /// Bind a condition's anaphoric filter to the antecedent it refers back to.

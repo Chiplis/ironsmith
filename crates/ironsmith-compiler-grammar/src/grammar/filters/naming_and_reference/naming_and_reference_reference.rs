@@ -167,6 +167,24 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         all_words.truncate(relation_idx);
     }
 
+    // "a Vehicle crewed by this creature this turn" (Balthier and Fran): the
+    // source tapped to pay that Vehicle's crew cost this turn.
+    if let Some(relation_idx) = find_crewed_by_source_this_turn_phrase(all_words) {
+        filter.crewed_by_source_this_turn = true;
+        // Keep the token-backed characteristic pass in sync: the crewer's
+        // noun ("this creature") is not a characteristic of the Vehicle.
+        let segment_words = GrammarFilterNormalizedWords::new(segment_tokens.as_slice());
+        let segment_word_refs = segment_words.to_word_refs();
+        if let Some(segment_idx) =
+            find_crewed_by_source_this_turn_phrase(&segment_word_refs)
+            && let Some(token_start) =
+                segment_words.map_word_or_end_to_token_boundary(segment_idx)
+        {
+            segment_tokens.truncate(token_start);
+        }
+        all_words.truncate(relation_idx);
+    }
+
     // "that weren't put there this way" — exclude the objects the previous
     // effect just moved to this zone (the sacrificed set).
     for phrase in [
@@ -568,10 +586,25 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         }
         // Milling moves cards from a library to a graveyard. Establish that
         // zone before the creature noun's default battlefield inference.
-        if action == ironsmith_core::PriorEffectAction::Milled {
+        if matches!(
+            action,
+            ironsmith_core::PriorEffectAction::Milled
+                | ironsmith_core::PriorEffectAction::PutIntoGraveyard
+        ) {
             filter.zone.get_or_insert(Zone::Graveyard);
         }
         filter.set_prior_effect_action_surface(Some(action));
+        // "For each opponent, exile a creature card they revealed this way"
+        // (Valki): each iteration chooses among the cards that player
+        // revealed, from wherever they revealed them.
+        if action == ironsmith_core::PriorEffectAction::Revealed
+            && action_start
+                .checked_sub(1)
+                .and_then(|idx| all_words.get(idx))
+                .is_some_and(|word| *word == "they")
+        {
+            filter.owner.get_or_insert(PlayerFilter::IteratedPlayer);
+        }
         let relation = if action_start
             .checked_sub(1)
             .and_then(|idx| all_words.get(idx))
@@ -597,8 +630,18 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         } else {
             TaggedOpbjectRelation::IsTaggedObject
         };
+        // "creatures tapped this way" names the objects a preceding "tap
+        // all" actually tapped; normalization binds the marker (or falls
+        // back to the ordinary `it` antecedent).
+        let reference = if action == ironsmith_core::PriorEffectAction::Tapped
+            && relation == TaggedOpbjectRelation::IsTaggedObject
+        {
+            crate::tag::CompilerReferenceTag::TappedThisWay
+        } else {
+            crate::tag::CompilerReferenceTag::It
+        };
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
+            tag: (reference.bind()).into(),
             relation,
         });
     }

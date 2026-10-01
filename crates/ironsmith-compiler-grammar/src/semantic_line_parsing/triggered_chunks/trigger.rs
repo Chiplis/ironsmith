@@ -126,6 +126,17 @@ fn bind_cast_origin_predicate_to_entering_object(
     rewrite(predicate)
 }
 
+/// "Whenever you cast an instant or sorcery spell, if Taigam attacked this
+/// turn, that spell gains rebound": a source condition does not retarget an
+/// `it`-bound grant to the source over the spell the trigger announced.
+fn trigger_announces_cast_spell(trigger: &TriggerSpec) -> bool {
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => trigger_announces_cast_spell(trigger),
+        TriggerSpec::SpellCast { .. } | TriggerSpec::SpellCastSameNameCardInZone { .. } => true,
+        _ => false,
+    }
+}
+
 pub fn apply_explicit_intervening_if_to_triggered_chunk(
     chunk: LineAst,
     explicit_intervening_if: Option<PredicateAst>,
@@ -179,7 +190,16 @@ pub fn apply_explicit_intervening_if_to_triggered_chunk(
                 bind_condition_counter_antecedent_in_effects(&mut effects, counter_type);
             }
             if predicate.establishes_source_object_antecedent() {
-                resolve_it_animations_to_source(&mut effects);
+                if trigger_announces_cast_spell(&trigger) {
+                    ironsmith_compiler_semantic::condition_antecedent::resolve_it_counter_and_animation_targets_to_source(
+                        &mut effects,
+                    );
+                    ironsmith_compiler_semantic::condition_antecedent::resolve_it_grant_targets_to_triggering_spell(
+                        &mut effects,
+                    );
+                } else {
+                    resolve_it_animations_to_source(&mut effects);
+                }
             }
             if matches!(
                 effects.as_slice(),
@@ -203,7 +223,13 @@ pub fn apply_explicit_intervening_if_to_triggered_chunk(
             }
         }
         LineAst::Ability(mut parsed) => {
+            let announces_cast_spell = parsed
+                .trigger_spec
+                .as_deref()
+                .is_some_and(trigger_announces_cast_spell);
             if let Some(mut effects_ast) = parsed.effects_ast.take() {
+                // A bare `it` continues the source the condition names; a
+                // demonstrative ("that spell") names the announced spell.
                 parsed.reference_imports.source_object_antecedent |=
                     predicate.establishes_source_object_antecedent();
                 if let Some(antecedent) = predicate_object_filter_antecedent(&predicate) {
@@ -218,7 +244,16 @@ pub fn apply_explicit_intervening_if_to_triggered_chunk(
                     bind_condition_counter_antecedent_in_effects(&mut effects_ast, counter_type);
                 }
                 if predicate.establishes_source_object_antecedent() {
-                    resolve_it_animations_to_source(&mut effects_ast);
+                    if announces_cast_spell {
+                        ironsmith_compiler_semantic::condition_antecedent::resolve_it_counter_and_animation_targets_to_source(
+                            &mut effects_ast,
+                        );
+                        ironsmith_compiler_semantic::condition_antecedent::resolve_it_grant_targets_to_triggering_spell(
+                            &mut effects_ast,
+                        );
+                    } else {
+                        resolve_it_animations_to_source(&mut effects_ast);
+                    }
                 }
                 parsed.effects_ast = Some(effects_ast);
             }

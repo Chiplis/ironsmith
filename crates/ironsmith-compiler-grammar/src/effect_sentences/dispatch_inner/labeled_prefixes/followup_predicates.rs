@@ -28,7 +28,12 @@ pub fn parse_token_copy_modifier_sentence_lexed(
             Kind::SacrificeAtNextEndStep => TokenCopyFollowup::SacrificeAtNextEndStep(
                 token_copy_action_reference_surface(tokens, "sacrifice")?,
             ),
-            Kind::SacrificeAtNextUpkeep => TokenCopyFollowup::SacrificeAtNextUpkeep,
+            Kind::SacrificeAtNextUpkeep => {
+                TokenCopyFollowup::SacrificeAtNextUpkeep(crate::cards::builders::PlayerAst::Any)
+            }
+            Kind::SacrificeAtYourNextUpkeep => {
+                TokenCopyFollowup::SacrificeAtNextUpkeep(crate::cards::builders::PlayerAst::You)
+            }
             Kind::ExileAtNextEndStep => TokenCopyFollowup::ExileAtNextEndStep(
                 token_copy_action_reference_surface(tokens, "exile")?,
             ),

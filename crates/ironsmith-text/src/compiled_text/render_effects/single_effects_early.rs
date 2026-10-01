@@ -2609,8 +2609,11 @@ pub(super) fn describe_permanent_keyword_choice(
 pub(super) fn describe_inline_action_choice(
     choose: &crate::effects::ChooseModeEffect,
 ) -> Option<String> {
+    // An inline "A or B" instruction is chosen by its performer: the ability's
+    // controller, or the named player who performs both alternatives
+    // ("unless that player discards two cards or sacrifices a creature").
     if choose.modes.len() != 2
-        || choose.chooser != Some(PlayerFilter::You)
+        || choose.chooser.is_none()
         || choose.min != Value::Fixed(1)
         || choose.max != Value::Fixed(1)
         || choose.choose_count != Value::Fixed(1)
@@ -2714,11 +2717,20 @@ pub(super) fn describe_inline_action_choice(
             }
             _ => false,
         });
-    let second = if shared_you || clauses[0].starts_with("You ") || clauses[0].starts_with("you ") {
+    let second = if choose.chooser == Some(PlayerFilter::You)
+        && (shared_you || clauses[0].starts_with("You ") || clauses[0].starts_with("you "))
+    {
         clauses[1]
             .strip_prefix("You ")
             .or_else(|| clauses[1].strip_prefix("you "))
             .unwrap_or(&clauses[1])
+    } else if choose.chooser != Some(PlayerFilter::You) {
+        // A non-controller chooser renders inline only when both alternatives
+        // name that same performing player.
+        let shared = ["That player ", "that player "]
+            .into_iter()
+            .find(|prefix| clauses[0].starts_with(prefix) && clauses[1].starts_with(prefix))?;
+        &clauses[1][shared.len()..]
     } else {
         &clauses[1]
     };

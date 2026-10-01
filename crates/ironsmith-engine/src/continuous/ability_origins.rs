@@ -60,6 +60,17 @@ impl AbilityOrigin {
             Self::Borrowed { effect, .. } => Some(effect.source),
         }
     }
+
+    /// The object whose effect granted this ability to the object that has
+    /// it ("Equipped creature has '...'"), which the ability's own text may
+    /// name. A borrowed ability keeps the grantor of the ability it copies.
+    pub(crate) fn granting_source(&self) -> Option<ObjectId> {
+        match self {
+            Self::Printed(_) => None,
+            Self::Effect { effect, .. } => Some(effect.source),
+            Self::Borrowed { origin, .. } => origin.granting_source(),
+        }
+    }
 }
 
 /// Mutations preserve the origin paired with each definition. There is no

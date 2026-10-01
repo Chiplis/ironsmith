@@ -336,8 +336,8 @@ impl PredicateAst {
             // a comparison whose subject is the source names the source as
             // the clause's object antecedent, exactly like the typed
             // source-state predicates above.
-            PredicateAst::ValueComparison { left, .. }
-                if value_measures_source_object(left) =>
+            PredicateAst::ValueComparison { left, right, .. }
+                if value_measures_source_object(left) || value_measures_source_object(right) =>
             {
                 Some(PredicateReferenceAntecedent::SourceObject)
             }

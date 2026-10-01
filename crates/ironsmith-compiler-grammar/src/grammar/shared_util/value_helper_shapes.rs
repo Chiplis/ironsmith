@@ -229,6 +229,23 @@ pub fn parse_prior_effect_action(words: &[&str]) -> Option<(PriorEffectAction, u
             &["put", "into", "graveyards"],
             PriorEffectAction::PutIntoGraveyard,
         ),
+        // Object-filter callers pass article-stripped words.
+        (
+            &["put", "into", "graveyard"],
+            PriorEffectAction::PutIntoGraveyard,
+        ),
+        (
+            &["put", "into", "your", "graveyard"],
+            PriorEffectAction::PutIntoGraveyard,
+        ),
+        (
+            &["put", "into", "their", "graveyard"],
+            PriorEffectAction::PutIntoGraveyard,
+        ),
+        (
+            &["put", "into", "their", "graveyards"],
+            PriorEffectAction::PutIntoGraveyard,
+        ),
         (&["dealt", "damage"], PriorEffectAction::DealtDamage),
         (
             &["counters", "put", "on", "it"],

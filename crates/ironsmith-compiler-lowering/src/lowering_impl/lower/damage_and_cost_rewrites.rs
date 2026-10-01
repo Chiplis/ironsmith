@@ -128,11 +128,33 @@ fn effect_uses_persistent_chosen_object(effect: &crate::effect::Effect) -> bool 
     {
         return true;
     }
+    if effect
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        .is_some_and(|apply| {
+            apply
+                .target_spec
+                .as_ref()
+                .is_some_and(choose_spec_uses_persistent_chosen_object)
+        })
+    {
+        return true;
+    }
     let mut found = false;
     effect.visit_child_effects(&mut |child| {
         found |= effect_uses_persistent_chosen_object(child);
     });
     found
+}
+
+fn activated_ability_uses_persistent_chosen_object(
+    activated: &crate::ability::ActivatedAbility,
+) -> bool {
+    activated
+        .effects
+        .segments
+        .iter()
+        .flat_map(|segment| segment.default_effects.iter())
+        .any(effect_uses_persistent_chosen_object)
 }
 
 fn triggered_ability_uses_persistent_chosen_object(
@@ -183,6 +205,9 @@ fn remember_single_cross_ability_object_choice(builder: &mut CardDefinitionBuild
                 }
                 AbilityKind::Static(static_ability) => {
                     static_ability_uses_persistent_chosen_object(static_ability)
+                }
+                AbilityKind::Activated(activated) => {
+                    activated_ability_uses_persistent_chosen_object(activated)
                 }
                 _ => false,
             }

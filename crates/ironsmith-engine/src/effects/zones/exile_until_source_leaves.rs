@@ -112,6 +112,15 @@ impl EffectExecutor for ExileUntilEffect {
                     } else {
                         game.add_exiled_with_source_link(ctx.source, new_id);
                     }
+                    if (self.duration != ExileUntilDuration::SourceLeavesBattlefield
+                        || leave_watcher == ctx.source)
+                        && let Some(object) = game.object(new_id)
+                    {
+                        // "Other cards exiled with ~" excludes what this
+                        // resolution exiled with the source.
+                        let snapshot = crate::snapshot::ObjectSnapshot::from_object(object, game);
+                        ctx.tag_object(ironsmith_core::SOURCE_EXILED_THIS_RESOLUTION_TAG, snapshot);
+                    }
                     if self.duration == ExileUntilDuration::OpponentBecomesMonarch
                         && let Some(exiled) = game.object(new_id)
                     {

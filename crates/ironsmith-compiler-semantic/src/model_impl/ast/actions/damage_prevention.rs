@@ -38,6 +38,10 @@ pub enum DamagePreventionActionAst {
         source: PreventNextTimeDamageSourceAst,
         target: PreventNextTimeDamageTargetAst,
         reflect_damage_to_source_controller: bool,
+        /// "If damage from a red source is prevented this way, ...": the
+        /// reflected damage happens only when the prevented damage's source
+        /// matches this filter at that time.
+        reflect_source_filter: Option<ObjectFilter>,
         follow_up_effects: Vec<EffectAst>,
     },
     ReplaceNextDamageToTarget {

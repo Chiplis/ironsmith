@@ -336,6 +336,42 @@ pub(in super::super) fn parse_object_filter_inner(
         }
     }
 
+    // "other than that creature" (Pawpatch Recruit, Saw) excludes the
+    // previously referenced object by identity. Without this pass the
+    // generic "other than <type>" pass below reads the demonstrative's noun
+    // as an excluded card type ("noncreature creature"). A coordinated
+    // "other than that creature or this Equipment" keeps the remaining
+    // "other than this Equipment" for the source-exclusion pass.
+    let mut idx = 0usize;
+    while idx + 3 < base_tokens.len() {
+        if parse_phrase_whole(
+            &non_article_parser_word_refs(&base_tokens[idx..idx + 2]),
+            OTHER_THAN_PREFIX,
+        )
+        .is_none()
+            || !base_tokens[idx + 2].is_word("that")
+            || !base_tokens[idx + 3]
+                .as_word()
+                .is_some_and(|word| parse_word_choice(word, OBJECT_REFERENCE_NOUN_WORDS).is_some())
+        {
+            idx += 1;
+            continue;
+        }
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
+            relation: TaggedOpbjectRelation::IsNotTaggedObject,
+        });
+        if base_tokens
+            .get(idx + 4)
+            .is_some_and(|token| token.is_word("or") || token.is_word("and"))
+            && base_tokens.len() > idx + 5
+        {
+            base_tokens.drain(idx + 2..idx + 5);
+        } else {
+            base_tokens.drain(idx..idx + 4);
+        }
+    }
+
     // "other than <source>" marks an exclusion, not an additional type
     // selector. Keep "other" and capture the source surface when available.
     let mut idx = 0usize;
@@ -461,6 +497,33 @@ pub(in super::super) fn parse_object_filter_inner(
             }
         }
         return Ok(disjunction);
+    }
+    // "the number of Goblins it devoured" (Voracious Dragon): the objects
+    // this permanent sacrificed to devour as it entered (CR 702.82b), not
+    // every matching object now on the battlefield.
+    {
+        let words = parser_token_word_refs(&base_tokens);
+        let len = words.len();
+        let suffix_len = if len >= 3 && words[len - 2] == "it" && words[len - 1] == "devoured" {
+            2
+        } else if len >= 4
+            && words[len - 3] == "this"
+            && words[len - 2] == "creature"
+            && words[len - 1] == "devoured"
+        {
+            3
+        } else {
+            0
+        };
+        if suffix_len > 0
+            && let Some(start) = token_index_after_word_prefix(&base_tokens, len - suffix_len)
+        {
+            base_tokens.truncate(start);
+            filter.tagged_constraints.push(TaggedObjectConstraint {
+                tag: crate::tag::CompilerReferenceTag::SourceDevoured.key(),
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            });
+        }
     }
     let mut segment_tokens = base_tokens.clone();
 
@@ -736,6 +799,24 @@ pub(in super::super) fn parse_object_filter_inner(
     let _ = try_apply_exactly_two_colors_clause(&mut filter, &mut all_words);
 
     strip_be_put_on_reference_prefix(&mut all_words, &segment_tokens);
+
+    // "the discarded card" (Pitchstone Wall) is a definite reference to the
+    // card an earlier discard produced, like "that card", not a fresh
+    // selection among every card in the zone.
+    if !all_words_with_articles
+        .first()
+        .is_some_and(|word| matches!(*word, "a" | "an"))
+        && all_words.len() >= 2
+        && all_words[0] == "discarded"
+        && matches!(all_words[1], "card" | "cards")
+    {
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: crate::tag::CompilerReferenceTag::DiscardedCardReference.key(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        filter.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Discarded));
+        all_words.remove(0);
+    }
 
     let _ = try_apply_leading_tagged_reference_prefix(&mut filter, &mut all_words);
 
@@ -2626,7 +2707,9 @@ pub(in super::super) fn parse_object_filter_inner(
         // been split out by the caller before passing to the filter parser.
         for (idx, _) in input_words.iter().enumerate() {
             if idx > 0
-                && parse_phrase_at_head(&input_words[idx..], STRICT_FOR_EACH_TAIL_PREFIX).is_some()
+                && (parse_phrase_at_head(&input_words[idx..], STRICT_FOR_EACH_TAIL_PREFIX)
+                    .is_some()
+                    || parse_phrase_at_head(&input_words[idx..], &["for", "every"]).is_some())
             {
                 return Err(CardTextError::ParseError(format!(
                     "object filter has unconsumed 'for each' clause '{}' (full input: '{}')",

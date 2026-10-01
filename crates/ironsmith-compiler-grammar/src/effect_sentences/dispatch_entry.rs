@@ -1399,7 +1399,9 @@ fn try_merge_otherwise_into_previous_conditional(
         }
         _ => return false,
     };
-    let EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_false, .. }) = conditional
+    let EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+        predicate, if_false, ..
+    }) = conditional
     else {
         unreachable!("conditional shape was proven above")
     };
@@ -1423,6 +1425,12 @@ fn try_merge_otherwise_into_previous_conditional(
         }
         None => otherwise_effects.clone(),
     };
+    // "Put a +1/+1 counter on enchanted creature if it attacked ... Otherwise,
+    // remove a +1/+1 counter from it.": the fallback's `it` names the object
+    // the condition tests.
+    ironsmith_compiler_semantic::condition_antecedent::bind_fallback_it_to_condition_tag(
+        if_false, predicate,
+    );
     true
 }
 
@@ -2309,6 +2317,7 @@ fn parse_effect_sentences_from_sentence_inputs(
     let mut sentence_idx = 0usize;
     let mut carried_context: Option<CarryContext> = None;
     let mut carried_where_x: Option<Value> = None;
+    let mut carried_where_x_snapshot_at: Option<usize> = None;
     let mut last_numeric_result_branch_line: Option<usize> = None;
 
     while sentence_idx < sentences.len() {
@@ -2408,6 +2417,19 @@ fn parse_effect_sentences_from_sentence_inputs(
         // the outer single-sentence boundary, so apply the same typed ownership
         // proof here. The embedded history verb is then part of the target
         // declaration rather than a second zone-change action.
+        if let Some((first, second)) =
+            super::super::grammar::effects::clause_dispatch_shapes::split_coordinated_choose_target_clauses(
+                authored_sentence,
+            )
+        {
+            // "You choose target A, and that opponent chooses target B": two
+            // attributed declarations, parsed as the two sentences they are.
+            effects.push(super::parse_effect_clause_lexed(first)?);
+            effects.push(super::parse_effect_clause_lexed(second)?);
+            carried_context = None;
+            sentence_idx += 1;
+            continue;
+        }
         if let Some(declarations) =
             super::clause_pattern_helpers::parse_choose_target_prelude_sentence(authored_sentence)?
         {
@@ -2801,6 +2823,7 @@ fn parse_effect_sentences_from_sentence_inputs(
             ));
             if let Some(where_value) = sequence_where_x {
                 carried_where_x = Some(where_value);
+                carried_where_x_snapshot_at = None;
             }
             effects.append(&mut matched.effects);
             sentence_idx += matched.consumed_sentences;
@@ -3073,11 +3096,28 @@ fn parse_effect_sentences_from_sentence_inputs(
                 &crate::lexer::token_word_refs(&parse_plan.tokens).join(" "),
             )?;
         } else if let Some(where_value) = carried_where_x.as_ref() {
+            let before = sentence_effects.clone();
             replace_unbound_x_in_effects_anywhere(
                 &mut sentence_effects,
                 where_value,
                 &crate::lexer::token_word_refs(&parse_plan.tokens).join(" "),
             )?;
+            if sentence_effects != before
+                && let Some(index) = carried_where_x_snapshot_at.take()
+                && index <= effects.len()
+            {
+                let snapshot = EffectAst::SnapshotLastObjectTag {
+                    into: crate::tag::CompilerReferenceTag::WhereXObjectAntecedent.bind(),
+                };
+                // Keep the defining sentence's boundary: the snapshot opens
+                // that sentence rather than becoming a sentence of its own.
+                match effects.get_mut(index) {
+                    Some(EffectAst::SourceSentence { effects: inner, .. }) => {
+                        inner.insert(0, snapshot)
+                    }
+                    _ => effects.insert(index, snapshot),
+                }
+            }
         }
         super::chain_carry::bind_adjacent_shared_x_life_stat_values(
             &mut sentence_effects,
@@ -3245,7 +3285,21 @@ fn parse_effect_sentences_from_sentence_inputs(
         parse_trace::event(format!("effects: {}", summarize_effects(&sentence_effects)));
         last_numeric_result_branch_line =
             numeric_result_branch_line(&sentence_effects, &sentence_tokens);
-        if let Some(where_value) = sentence_where_x {
+        if let Some(mut where_value) = sentence_where_x {
+            // "..., where X is that creature's power. If ..., draw X cards":
+            // the carried pronoun names the antecedent current where X was
+            // defined, not whatever a later sentence made current.
+            use ironsmith_core::tag::TagKeyWalk;
+            let alias = crate::tag::CompilerReferenceTag::WhereXObjectAntecedent.bind();
+            let mut names_antecedent = false;
+            where_value.map_tag_keys(&mut |tag| {
+                if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
+                    *tag = alias.key.clone();
+                    names_antecedent = true;
+                }
+            });
+            // The snapshot is inserted only once a later sentence reuses X.
+            carried_where_x_snapshot_at = names_antecedent.then_some(effects.len());
             carried_where_x = Some(where_value);
         }
         effects.extend(sentence_effects);
@@ -5404,7 +5458,11 @@ fn parse_composable_typed_statements(
             // resolve before the reflexive ability exists.
             if sentence_start > 0
                 && (crate::tag_support::effects_reference_it_tag(&statement_effects)
-                    || crate::tag_support::effects_reference_its_controller(&statement_effects))
+                    || crate::tag_support::effects_reference_its_controller(&statement_effects)
+                    || crate::tag_support::effects_reference_tag(
+                        &statement_effects,
+                        crate::tag::CompilerReferenceTag::WhereXObjectAntecedent.as_str(),
+                    ))
                 && let Some(reflexive_body) =
                     effects.last_mut().and_then(trailing_reflexive_body_mut)
             {
@@ -13000,7 +13058,7 @@ pub fn parse_token_copy_followup_sentence(tokens: &[OwnedLexToken]) -> Option<To
             "upkeep"
         ]
     ) {
-        return Some(TokenCopyFollowup::SacrificeAtNextUpkeep);
+        return Some(TokenCopyFollowup::SacrificeAtNextUpkeep(PlayerAst::Any));
     }
 
     parse_token_copy_modifier_sentence(tokens)
@@ -13079,7 +13137,7 @@ pub fn parse_token_copy_followup_sentence_lexed(
             "upkeep"
         ]
     ) {
-        return Some(TokenCopyFollowup::SacrificeAtNextUpkeep);
+        return Some(TokenCopyFollowup::SacrificeAtNextUpkeep(PlayerAst::Any));
     }
 
     super::parse_token_copy_modifier_sentence_lexed(tokens)
@@ -13210,9 +13268,9 @@ fn apply_unapplied_token_copy_followup(
                 },
             )]
         }
-        TokenCopyFollowup::SacrificeAtNextUpkeep => vec![EffectAst::Delayed(
+        TokenCopyFollowup::SacrificeAtNextUpkeep(player) => vec![EffectAst::Delayed(
             DelayedEffectAst::DelayedUntilNextUpkeep {
-                player: PlayerAst::Any,
+                player,
                 effects: vec![EffectAst::subject_verb_sacrifice(
                     PlayerAst::Implicit,
                     ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
@@ -13383,7 +13441,7 @@ pub fn try_apply_token_copy_followup(
                     }
                     TokenCopyFollowup::EnterTappedAndAttackingThatPlayer
                     | TokenCopyFollowup::GainHasteUntilEndOfTurn(_)
-                    | TokenCopyFollowup::SacrificeAtNextUpkeep
+                    | TokenCopyFollowup::SacrificeAtNextUpkeep(_)
                     | TokenCopyFollowup::SacrificeAtEndOfCombat => return Ok(false),
                 },
                 SubjectVerbActionAst::KeywordActions(KeywordActionAst::Meld {
@@ -13465,7 +13523,7 @@ pub fn try_apply_token_copy_followup(
                         true
                     }
                     TokenCopyFollowup::GainHasteUntilEndOfTurn(_)
-                    | TokenCopyFollowup::SacrificeAtNextUpkeep
+                    | TokenCopyFollowup::SacrificeAtNextUpkeep(_)
                     | TokenCopyFollowup::SacrificeAtEndOfCombat => return Ok(false),
                 },
                 SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
@@ -13492,7 +13550,7 @@ pub fn try_apply_token_copy_followup(
                     | TokenCopyFollowup::EnterTappedAndAttackingThatPlayer
                     | TokenCopyFollowup::GainHasteUntilEndOfTurn(_)
                     | TokenCopyFollowup::SacrificeAtNextEndStep(_)
-                    | TokenCopyFollowup::SacrificeAtNextUpkeep
+                    | TokenCopyFollowup::SacrificeAtNextUpkeep(_)
                     | TokenCopyFollowup::ExileAtNextEndStep(_) => return Ok(false),
                 },
                 _ => false,

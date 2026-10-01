@@ -354,9 +354,189 @@ pub fn compile_annotated_effects_with_context(
         idx += 1;
     }
 
+    rebind_attachment_host_followups(&mut compiled, ctx);
+    bind_exiled_host_before_its_attachments(&mut compiled);
     let compiled = prepend_missing_target_choice_prelude(compiled, &choices);
     card_selection_validation::validate_card_selections(&compiled, &choices)?;
     Ok((compiled, choices))
+}
+
+/// "Exile enchanted creature and all Auras attached to it. ... return that
+/// card ...": the exiled host of a coordinated "X and all Auras attached to
+/// it" exile is the sentence's exiled result (the later "that card"), and its
+/// Auras are the ones attached to that host, not to the source's whole
+/// exiled collection. Give the host exile the result identity and bind the
+/// dependent Aura exile to it.
+fn bind_exiled_host_before_its_attachments(compiled: &mut [Effect]) {
+    let source_exiled = crate::tag::CompilerReferenceTag::SourceExiled.as_str();
+    for index in 1..compiled.len() {
+        let Some(host) = compiled[index - 1].downcast_ref::<crate::effects::ExileEffect>() else {
+            continue;
+        };
+        if host.spec.is_target()
+            || !host.spec.count().is_single()
+            || !matches!(host.spec.base(), ChooseSpec::Object(_))
+        {
+            continue;
+        }
+        let Some(dependents) = compiled[index].downcast_ref::<crate::effects::TaggedEffect>() else {
+            continue;
+        };
+        let result_tag = dependents.tag.clone();
+        let Some(mut dependent_exile) = dependents
+            .effect
+            .downcast_ref::<crate::effects::ExileEffect>()
+            .cloned()
+        else {
+            continue;
+        };
+        let ChooseSpec::All(filter) = &mut dependent_exile.spec else {
+            continue;
+        };
+        let mut rebound = false;
+        for constraint in &mut filter.tagged_constraints {
+            if constraint.relation == TaggedOpbjectRelation::AttachedToTaggedObject
+                && constraint.tag.as_str() == source_exiled
+            {
+                constraint.tag = result_tag.clone();
+                rebound = true;
+            }
+        }
+        if !rebound {
+            continue;
+        }
+        compiled[index - 1] = compiled[index - 1].clone().tag(result_tag);
+        compiled[index] = Effect::new(dependent_exile);
+    }
+}
+
+/// "Return any number of Aura cards that were attached to it from your
+/// graveyard to the battlefield attached to target creature, then attach any
+/// number of Equipment that were attached to it to that creature.": after a
+/// move of attachments that were attached to a host, onto an announced
+/// destination, a follow-up attach whose objects "were attached to" the
+/// moved attachments and whose destination is those attachments names the
+/// same former host and the same destination. Declare the destination once
+/// and bind both references.
+fn rebind_attachment_host_followups(compiled: &mut Vec<Effect>, ctx: &mut EffectLoweringContext) {
+    fn was_attached_host(filter: &ObjectFilter) -> Option<&TagKey> {
+        filter
+            .tagged_constraints
+            .iter()
+            .find(|constraint| constraint.relation == TaggedOpbjectRelation::WasAttachedToTaggedObject)
+            .map(|constraint| &constraint.tag)
+    }
+    fn object_filter_mut(spec: &mut ChooseSpec) -> Option<&mut ObjectFilter> {
+        match spec {
+            ChooseSpec::SurfaceHinted { spec, .. }
+            | ChooseSpec::Target(spec)
+            | ChooseSpec::WithCount(spec, _)
+            | ChooseSpec::WithCountValue(spec, ..) => object_filter_mut(spec),
+            ChooseSpec::Object(filter) | ChooseSpec::All(filter) => Some(filter),
+            _ => None,
+        }
+    }
+    fn object_filter(spec: &ChooseSpec) -> Option<&ObjectFilter> {
+        match spec {
+            ChooseSpec::SurfaceHinted { spec, .. }
+            | ChooseSpec::Target(spec)
+            | ChooseSpec::WithCount(spec, _)
+            | ChooseSpec::WithCountValue(spec, ..) => object_filter(spec),
+            ChooseSpec::Object(filter) | ChooseSpec::All(filter) => Some(filter),
+            _ => None,
+        }
+    }
+    fn tagged_mut(spec: &mut ChooseSpec) -> Option<&mut TagKey> {
+        match spec {
+            ChooseSpec::SurfaceHinted { spec, .. } => tagged_mut(spec),
+            ChooseSpec::Tagged(tag) => Some(tag),
+            _ => None,
+        }
+    }
+
+    let mut index = 1;
+    while index < compiled.len() {
+        let Some(first_attach) = compiled[index].downcast_ref::<crate::effects::AttachObjectsEffect>()
+        else {
+            index += 1;
+            continue;
+        };
+        let Some(move_tagged) = compiled[index - 1].downcast_ref::<crate::effects::TaggedEffect>()
+        else {
+            index += 1;
+            continue;
+        };
+        let moved_tag = move_tagged.tag.clone();
+        let Some(former_host) = move_tagged
+            .effect
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            .and_then(|moved| object_filter(&moved.target))
+            .and_then(was_attached_host)
+            .cloned()
+        else {
+            index += 1;
+            continue;
+        };
+        let destination = first_attach.target.clone();
+        if first_attach.objects != ChooseSpec::All(ObjectFilter::tagged(moved_tag.clone()))
+            || !destination.is_target()
+            || !destination.count().is_single()
+            || !matches!(destination.base(), ChooseSpec::Object(_))
+        {
+            index += 1;
+            continue;
+        }
+        let followups = (index + 1..compiled.len())
+            .filter(|&later| {
+                compiled[later]
+                    .downcast_ref::<crate::effects::AttachObjectsEffect>()
+                    .is_some_and(|attach| {
+                        object_filter(&attach.objects)
+                            .and_then(was_attached_host)
+                            .is_some_and(|host| host == &moved_tag)
+                            && {
+                                let mut target = attach.target.clone();
+                                tagged_mut(&mut target).is_some_and(|tag| *tag == moved_tag)
+                            }
+                    })
+            })
+            .collect::<Vec<_>>();
+        if followups.is_empty() {
+            index += 1;
+            continue;
+        }
+        let destination_tag = ctx.next_tag("attachment_target");
+        for later in followups {
+            let mut attach = compiled[later]
+                .downcast_ref::<crate::effects::AttachObjectsEffect>()
+                .expect("follow-up attach was matched above")
+                .clone();
+            if let Some(filter) = object_filter_mut(&mut attach.objects) {
+                for constraint in &mut filter.tagged_constraints {
+                    if constraint.relation == TaggedOpbjectRelation::WasAttachedToTaggedObject
+                        && constraint.tag == moved_tag
+                    {
+                        constraint.tag = former_host.clone();
+                    }
+                }
+            }
+            if let Some(tag) = tagged_mut(&mut attach.target) {
+                *tag = destination_tag.clone();
+            }
+            compiled[later] = Effect::new(attach);
+        }
+        let mut first_attach = compiled[index]
+            .downcast_ref::<crate::effects::AttachObjectsEffect>()
+            .expect("first attach was matched above")
+            .clone();
+        first_attach.target = ChooseSpec::Tagged(destination_tag.clone());
+        compiled[index] = Effect::new(first_attach);
+        compiled.insert(
+            index - 1,
+            Effect::new(crate::effects::TargetOnlyEffect::new(destination)).tag(destination_tag),
+        );
+        index += 2;
+    }
 }
 
 /// Merge a lowered child program's choices without erasing target
@@ -1411,6 +1591,21 @@ fn resolve_effect_player_filter(
                 PlayerFilter::Opponent,
             ))],
         ),
+        // "For each permanent exiled this way, its controller cloaks ...":
+        // inside an object iteration the possessive names the iterated
+        // object's controller, not a target's controller.
+        PlayerAst::ThatPlayerOrTargetController
+            if ctx.iterated_object
+                && !ctx.iterated_player
+                && ctx.last_object_tag.as_ref().is_some_and(|tag| {
+                    tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                }) =>
+        {
+            (
+                resolve_non_target_player_filter(PlayerAst::ItsController, &refs)?,
+                Vec::new(),
+            )
+        }
         _ => (resolve_non_target_player_filter(player, &refs)?, Vec::new()),
     };
 
@@ -2963,7 +3158,16 @@ fn build_creature_token_definition(
         builder = builder.indestructible();
     }
     if rules.copies_exiled_triggered_abilities {
-        let filter = ObjectFilter::default().in_zone(Zone::Exile);
+        // "all triggered abilities of the exiled cards" (The Book of Vile
+        // Darkness): the cards the creating ability exiled as its cost, which
+        // the token records as it is created, not every card in exile.
+        let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
+        filter
+            .tagged_constraints
+            .push(crate::filter::TaggedObjectConstraint {
+                tag: ironsmith_core::tag::COST_EXILED_TAG.into(),
+                relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            });
         builder = builder.with_ability(Ability::static_ability(
             StaticAbility::copy_triggered_abilities(
                 CopyTriggeredAbilities::new(filter)

@@ -1180,6 +1180,106 @@ fn link_death_replacement_to_exiled_attachment(
 /// a return-and-reattach procedure. The intervening Aura result becomes the
 /// destination reference, but it must not replace the historical object in
 /// the later "Equipment that were attached to it" filter.
+/// "Its controller chooses target permanent another player controls that
+/// shares a card type with it. Exchange control of those permanents.": the
+/// plural anaphor names the two referents of the preceding declaration, the
+/// declared target and the object its description is relative to. Reference
+/// resolution has no single antecedent for the pair, so the exchange is left
+/// as an unbound two-permanent choice. Tag the declared target and exchange
+/// it with that object.
+fn bind_exchange_of_declared_target_and_its_referent(
+    segments: &mut [crate::resolution::ResolutionSegment],
+) {
+    fn unbound_pair(spec: &ChooseSpec) -> bool {
+        let ChooseSpec::WithCount(inner, count) = spec.unhinted() else {
+            return false;
+        };
+        if count.min != 2 || count.max != Some(2) {
+            return false;
+        }
+        let ChooseSpec::Target(inner) = inner.unhinted() else {
+            return false;
+        };
+        let ChooseSpec::Object(filter) = inner.unhinted() else {
+            return false;
+        };
+        !filter.tagged_constraints.is_empty()
+            && filter.tagged_constraints.iter().all(|constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    && constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+            })
+    }
+
+    let mut declaration_at: Option<(usize, usize)> = None;
+    for segment_index in 0..segments.len() {
+        for effect_index in 0..segments[segment_index].default_effects.len() {
+            let effect = &segments[segment_index].default_effects[effect_index];
+            if effect
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                .is_some()
+            {
+                declaration_at = Some((segment_index, effect_index));
+                continue;
+            }
+            let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() else {
+                declaration_at = None;
+                continue;
+            };
+            let exchanged_tag = tagged.tag.clone();
+            let Some(exchange) = tagged
+                .effect
+                .downcast_ref::<crate::effects::ExchangeControlEffect>()
+                .cloned()
+            else {
+                declaration_at = None;
+                continue;
+            };
+            let Some((declaration_segment, declaration_index)) = declaration_at.take() else {
+                continue;
+            };
+            if exchange.permanent1 != exchange.permanent2 || !unbound_pair(&exchange.permanent1) {
+                continue;
+            }
+            let Some(declaration) = segments[declaration_segment].default_effects
+                [declaration_index]
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+            else {
+                continue;
+            };
+            if !declaration.target.is_target() || !declaration.target.count().is_single() {
+                continue;
+            }
+            let ChooseSpec::Object(target_filter) = declaration.target.base() else {
+                continue;
+            };
+            // The object the declared target's description is relative to
+            // ("that shares a card type with it").
+            let mut referents = target_filter
+                .tagged_constraints
+                .iter()
+                .map(|constraint| constraint.tag.clone())
+                .collect::<Vec<_>>();
+            referents.dedup();
+            let [referent] = referents.as_slice() else {
+                continue;
+            };
+            if referent.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
+                continue;
+            }
+            let referent = referent.clone();
+            let target_tag = TagKey::new(format!("{}_counterpart", exchanged_tag.as_str()));
+            let declared = segments[declaration_segment].default_effects[declaration_index].clone();
+            segments[declaration_segment].default_effects[declaration_index] =
+                declared.tag(target_tag.clone());
+            let mut rebound = exchange;
+            rebound.permanent1 = ChooseSpec::Tagged(referent);
+            rebound.permanent2 = ChooseSpec::Tagged(target_tag);
+            segments[segment_index].default_effects[effect_index] =
+                Effect::new(rebound).tag(exchanged_tag);
+        }
+    }
+}
+
 pub fn bind_returned_attachment_history_to_triggering_object(
     segments: &mut [crate::resolution::ResolutionSegment],
 ) {
@@ -1515,6 +1615,7 @@ fn materialize_source_sentence_segments(
     normalize_cross_segment_fight_sequences(&mut segments);
     link_death_replacement_to_exiled_attachment(&mut segments);
     bind_returned_attachment_history_to_triggering_object(&mut segments);
+    bind_exchange_of_declared_target_and_its_referent(&mut segments);
     fold_cross_segment_counter_rewrites(&mut segments);
     if let Some(first) = segments.first_mut() {
         first.default_effects = prepend_effect_prelude(
@@ -1767,6 +1868,23 @@ fn materialize_trailing_self_replacement(
             replacement_imports.last_object_tag = Some(tag.clone());
             replacement_imports.last_it_choice_is_set =
                 default_lowered.exports.last_it_choice_is_set;
+        } else if replacement_imports.last_object_tag.is_none()
+            && predicate_uses_implicit_object_reference(predicate)
+            && let Some((tag, _)) = last_tagged_default_target(
+                &prefix_lowered
+                    .effects
+                    .flattened_default_effects()
+                    .iter()
+                    .chain(default_lowered.effects.flattened_default_effects())
+                    .cloned()
+                    .collect::<Vec<_>>(),
+            )
+        {
+            // "Target creature you control gets +1/+1 until end of turn. Put
+            // a +1/+1 counter on it instead if it's a Mount. Then it deals
+            // damage ...": the replacement's `it` is the object the condition
+            // tests, the target the default action declared.
+            replacement_imports.last_object_tag = Some(tag);
         }
         let replacement_lowered =
             compile_statement_effects_with_imports(&effective_if_true, &replacement_imports)?;

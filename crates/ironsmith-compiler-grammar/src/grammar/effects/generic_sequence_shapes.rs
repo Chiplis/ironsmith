@@ -510,7 +510,10 @@ fn prevented_this_way_opening<'a>(input: &mut LexStream<'a>) -> WResult<()> {
 fn source_controller_reflect_tail<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<PreventionSourceControllerReflectTail> {
-    primitives::phrase(&["that", "much", "damage", "to", "that"])
+    primitives::phrase(&["that", "much", "damage", "to"])
+        .void()
+        .parse_next(input)?;
+    alt((primitives::kw("that"), primitives::kw("the")))
         .void()
         .parse_next(input)?;
     alt((primitives::kw("source's"), primitives::kw("sources")))
@@ -536,15 +539,61 @@ fn source_controller_reflect_tail<'a>(
 /// sentence is a rider on that shield rather than an independent effect.
 pub fn parse_prevention_source_controller_reflect_followup_shape(
     tokens: &[OwnedLexToken],
-) -> Option<PreventionSourceControllerReflectTail> {
+) -> Option<(
+    Option<&[OwnedLexToken]>,
+    PreventionSourceControllerReflectTail,
+)> {
     let clause = trimmed(tokens);
-    let ((), rest) = primitives::parse_prefix(clause, prevented_this_way_opening)?;
+    let (source_quality, rest) = if let Some(((), rest)) =
+        primitives::parse_prefix(clause, prevented_this_way_opening)
+    {
+        (None, rest)
+    } else {
+        let (quality, rest) =
+            primitives::parse_prefix(clause, qualified_source_prevented_this_way_opening)?;
+        (Some(quality), rest)
+    };
     let (deal_idx, (), after_deal) = primitives::find_prefix(rest, || deal_marker)?;
     if deal_idx == 0 {
         return None;
     }
     let (tail, remainder) = primitives::parse_prefix(after_deal, source_controller_reflect_tail)?;
-    trimmed(remainder).is_empty().then_some(tail)
+    trimmed(remainder)
+        .is_empty()
+        .then_some((source_quality, tail))
+}
+
+/// "If damage from a red source is prevented this way, ...": the rider only
+/// applies when the prevented damage's source has the named quality. Returns
+/// the quality tokens between the article and "source".
+fn qualified_source_prevented_this_way_opening<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<&'a [OwnedLexToken]> {
+    primitives::phrase(&["if", "damage", "from"])
+        .void()
+        .parse_next(input)?;
+    alt((primitives::kw("a"), primitives::kw("an")))
+        .void()
+        .parse_next(input)?;
+    let quality = winnow::combinator::repeat_till::<_, _, (), _, _, _, _>(
+        1..,
+        winnow::token::any.void(),
+        winnow::combinator::peek(primitives::phrase(&[
+            "source",
+            "is",
+            "prevented",
+            "this",
+            "way",
+        ])),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)?;
+    primitives::phrase(&["source", "is", "prevented", "this", "way"])
+        .void()
+        .parse_next(input)?;
+    opt(primitives::comma()).void().parse_next(input)?;
+    Ok(quality)
 }
 
 fn prevention_gain_life_followup<'a>(input: &mut LexStream<'a>) -> WResult<()> {

@@ -422,6 +422,16 @@ pub fn recognize_coordination(tokens: &[OwnedLexToken]) -> ParseOutcome<Coordina
         }) {
             continue;
         }
+        // "... loses 2 life unless that player sacrifices a permanent or
+        // discards a card": an `or` after `unless` lists the alternatives
+        // the unless-player may perform, not a second top-level effect.
+        if candidate.operator == CoordinationOperatorAst::Or
+            && tokens[member_start..candidate.start]
+                .iter()
+                .any(|token| token.is_word("unless"))
+        {
+            continue;
+        }
         let before = trim_lexed_commas(&tokens[member_start..candidate.start]);
         let after = trim_lexed_commas(&tokens[candidate.end..]);
         if before.is_empty() || after.is_empty() {

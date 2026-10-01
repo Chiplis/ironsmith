@@ -92,6 +92,16 @@ pub(super) fn parse_effect_clause_unstacked(
     } else {
         tokens
     };
+    // "the owner of each card exiled with this Saga puts that card on the
+    // bottom of their library": the whole source-exiled set moves, whatever
+    // procedure (a vote result, a condition) reached this clause.
+    if let Some(effect) =
+        crate::effect_sentences::dispatch_inner::parse_source_exiled_owner_library_bottom_subject_verb(
+            tokens,
+        )
+    {
+        return Ok(effect);
+    }
     if let Some(shape) = crate::grammar::effects::parse_shuffle_object_shape_lexed(tokens)
         && shape.owner_subject_target_tokens.is_some()
         && let Some(effects) =

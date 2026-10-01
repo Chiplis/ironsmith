@@ -3695,6 +3695,21 @@ pub(crate) fn describe_target_only_then_exchange_control(effects: &[&Effect]) ->
 
     let exchange = unwrap_render_wrappers(exchange_effect)
         .downcast_ref::<crate::effects::ExchangeControlEffect>()?;
+    // Lowering binds "those permanents" to the triggering object and the
+    // declared target once the declaration carries its own tag.
+    let binds_triggering_and_target = matches!(
+        exchange.permanent1.unhinted(),
+        ChooseSpec::Tagged(tag) if tag == &tag_triggering.tag
+    ) && target_tag.is_some_and(|target_tag| {
+        matches!(exchange.permanent2.unhinted(), ChooseSpec::Tagged(tag) if tag == target_tag)
+    });
+    if binds_triggering_and_target && exchange.shared_type.is_none() {
+        return Some(format!(
+            "{} chooses {}. Exchange control of those permanents",
+            capitalize_first(&describe_player_filter(chooser)),
+            describe_exchange_target_choice(&target_only.target)
+        ));
+    }
     if exchange.permanent1 != exchange.permanent2 {
         return None;
     }

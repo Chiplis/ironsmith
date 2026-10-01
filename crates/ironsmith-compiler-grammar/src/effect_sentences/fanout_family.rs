@@ -638,6 +638,41 @@ fn target_context_for_damage_part(part: &CompoundDamagePart) -> Option<PlayerFil
     }
 }
 
+/// Bind a damage part's authored controller tail onto its object filter.
+fn apply_damage_part_controller_surface(
+    filter: &mut crate::target::ObjectFilter,
+    surface: fanout_grammar::ControllerSurface,
+    player_context: Option<PlayerFilter>,
+) {
+    filter.controller = Some(match surface {
+        fanout_grammar::ControllerSurface::TargetPlayerOrControllerOfTarget => {
+            PlayerFilter::TargetPlayerOrControllerOfTarget
+        }
+        fanout_grammar::ControllerSurface::ContextualTargetPlayer => {
+            player_context.unwrap_or_else(PlayerFilter::target_player)
+        }
+        fanout_grammar::ControllerSurface::Opponent => PlayerFilter::Opponent,
+        fanout_grammar::ControllerSurface::You => PlayerFilter::You,
+        // "... and 1 damage to each other creature with the same controller":
+        // the preceding recipient's controller, excluding that recipient.
+        fanout_grammar::ControllerSurface::SameAsPriorRecipient => {
+            filter.other = false;
+            for relation in [
+                crate::filter::TaggedOpbjectRelation::SameControllerAsTagged,
+                crate::filter::TaggedOpbjectRelation::IsNotTaggedObject,
+            ] {
+                filter
+                    .tagged_constraints
+                    .push(crate::filter::TaggedObjectConstraint {
+                        tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                        relation,
+                    });
+            }
+            return;
+        }
+    });
+}
+
 fn lower_damage_part_shape(
     shape: fanout_grammar::DamagePartShape,
     player_context: Option<PlayerFilter>,
@@ -659,17 +694,10 @@ fn lower_damage_part_shape(
                 Ok(filter) => filter,
                 Err(_) => return Ok(None),
             };
-            if filter.controller.is_none() {
-                filter.controller = controller.map(|surface| match surface {
-                    fanout_grammar::ControllerSurface::TargetPlayerOrControllerOfTarget => {
-                        PlayerFilter::TargetPlayerOrControllerOfTarget
-                    }
-                    fanout_grammar::ControllerSurface::ContextualTargetPlayer => {
-                        player_context.unwrap_or_else(PlayerFilter::target_player)
-                    }
-                    fanout_grammar::ControllerSurface::Opponent => PlayerFilter::Opponent,
-                    fanout_grammar::ControllerSurface::You => PlayerFilter::You,
-                });
+            if filter.controller.is_none()
+                && let Some(surface) = controller
+            {
+                apply_damage_part_controller_surface(&mut filter, surface, player_context);
             }
             Ok(Some(CompoundDamagePart::EachObject(filter)))
         }
@@ -698,16 +726,7 @@ fn lower_damage_part_shape(
                 && let Some(filter) = target_object_filter_mut(&mut target)
                 && filter.controller.is_none()
             {
-                filter.controller = Some(match controller {
-                    fanout_grammar::ControllerSurface::TargetPlayerOrControllerOfTarget => {
-                        PlayerFilter::TargetPlayerOrControllerOfTarget
-                    }
-                    fanout_grammar::ControllerSurface::ContextualTargetPlayer => {
-                        player_context.unwrap_or_else(PlayerFilter::target_player)
-                    }
-                    fanout_grammar::ControllerSurface::Opponent => PlayerFilter::Opponent,
-                    fanout_grammar::ControllerSurface::You => PlayerFilter::You,
-                });
+                apply_damage_part_controller_surface(filter, controller, player_context);
             }
             Ok(Some(CompoundDamagePart::Target(target)))
         }
@@ -803,6 +822,49 @@ fn compound_damage_part_to_effect(part: CompoundDamagePart, amount: Value) -> Ef
                 TargetAst::Player(PlayerFilter::IteratedPlayer, None),
             )],
         ),
+    }
+}
+
+/// "it deals that much damage to each other creature and each player": the
+/// pronoun is the damage source (an antecedent object, possibly not the
+/// ability's source), so each recipient part keeps that explicit source.
+fn bind_pronoun_damage_source(effects: &mut [EffectAst]) {
+    for effect in effects.iter_mut() {
+        let replacement = match effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::Damage(DamageActionAst::DealDamage {
+                        amount,
+                        target,
+                        unpreventable: false,
+                    }),
+                ..
+            }) => Some(EffectAst::subject_verb_damage_with_source(
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
+                amount.clone(),
+                target.clone(),
+            )),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, filter }),
+                ..
+            }) => {
+                let mut filter = filter.clone();
+                filter.set_plural_object_noun_surface(true);
+                Some(EffectAst::subject_verb_damage_with_source(
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
+                    amount.clone(),
+                    TargetAst::Object(filter, None, None),
+                ))
+            }
+            _ => None,
+        };
+        if let Some(replacement) = replacement {
+            *effect = replacement;
+            continue;
+        }
+        crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+            bind_pronoun_damage_source(nested);
+        });
     }
 }
 
@@ -978,7 +1040,23 @@ pub fn parse_compound_damage_fanout_sentence(
         return Ok(None);
     };
 
+    // "it deals that much damage to each other creature and each player"
+    // (Arcbond): "other" is measured against the damage source, so the
+    // pronoun source must stay explicit for the exclusion to name it.
+    let excludes_damage_source = matches!(
+        &left,
+        CompoundDamagePart::EachObject(filter) if filter.other
+    ) || matches!(&right, CompoundDamagePart::EachObject(filter) if filter.other);
     let mut effects = compound_damage_effects(shape.amount, left, right);
+    if excludes_damage_source
+        && crate::word_primitives::parse_sequence_complete(&source_words, &["it"])
+    {
+        // The recipients are dealt damage simultaneously. Deal the player
+        // part first so the object part's damage result cannot become the
+        // pronoun's antecedent for the player part.
+        effects.sort_by_key(|effect| !matches!(effect, EffectAst::ForEach(_)));
+        bind_pronoun_damage_source(&mut effects);
+    }
     apply_where_x_to_damage_amounts(tokens, &mut effects)?;
     Ok(Some(vec![EffectAst::Coordinated {
         effects,

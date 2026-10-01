@@ -195,6 +195,24 @@ pub fn materialize_compiler_total_cost(
 /// compiler-owned cost component. This is used by compiler ability/static
 /// nodes at the lowering boundary; recognition never receives the runtime
 /// cost value.
+/// "Sacrifice enchanted creature": a cost is paid before resolution, so no
+/// `enchanted`/`equipped` tag has been seeded yet. The paid object is the one
+/// this source is attached to.
+fn bind_cost_attachment_reference_to_source(
+    filter: &ObjectFilter,
+) -> ObjectFilter {
+    let mut filter = filter.clone();
+    let before = filter.tagged_constraints.len();
+    filter.tagged_constraints.retain(|constraint| {
+        !(matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
+    });
+    if filter.tagged_constraints.len() != before && filter.with_attached_object.is_none() {
+        filter.with_attached_object = Some(Box::new(ObjectFilter::source()));
+    }
+    filter
+}
+
 pub fn materialize_compiler_core_total_cost(
     cost: &ironsmith_core::TotalCost<CompilerCost>,
 ) -> Result<TotalCost, CardTextError> {
@@ -279,7 +297,7 @@ fn materialization_cost(cost: &CompilerCost) -> MaterializationCost {
         },
         CompilerCost::Sacrifice { count, filter, .. } => MaterializationCost::SacrificeChosen {
             count: *count,
-            filter: filter.clone(),
+            filter: bind_cost_attachment_reference_to_source(filter),
         },
         CompilerCost::Unattach { count, filter } => MaterializationCost::UnattachChosen {
             count: *count,

@@ -84,6 +84,27 @@ impl YouDiscardCardTrigger {
         usize::from(self.event_card_matches_filter(e, ctx))
     }
 
+    /// Last-known information for every card of this discard batch that
+    /// matched a "one or more" trigger ("exile them"), in batch order.
+    pub(crate) fn matching_batch_snapshots(
+        &self,
+        e: &CardDiscardedEvent,
+        ctx: &TriggerContext,
+    ) -> Vec<ObjectSnapshot> {
+        if !self.one_or_more {
+            return Vec::new();
+        }
+        e.batch_snapshots
+            .iter()
+            .filter(|snapshot| {
+                self.filter
+                    .as_ref()
+                    .is_none_or(|filter| Self::snapshot_matches_filter(snapshot, filter, ctx))
+            })
+            .cloned()
+            .collect()
+    }
+
     fn is_first_matching_card_in_batch(
         &self,
         e: &CardDiscardedEvent,

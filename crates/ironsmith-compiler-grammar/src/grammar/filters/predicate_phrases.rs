@@ -1113,7 +1113,8 @@ fn parse_source_bare_state_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAs
         return None;
     }
     let state_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
-    source_state_predicate_from_clause(state_clause, false)
+    it_attachment_state_predicate(subject_clause, state_clause, false)
+        .or_else(|| source_state_predicate_from_clause(state_clause, false))
 }
 
 fn parse_source_copula_state_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -1126,7 +1127,8 @@ fn parse_source_positive_copula_state_shape(tokens: &[OwnedLexToken]) -> Option<
     if !is_source_state_subject_clause(relation.subject_clause) {
         return None;
     }
-    source_state_predicate_from_clause(relation.tail_clause, false)
+    it_attachment_state_predicate(relation.subject_clause, relation.tail_clause, false)
+        .or_else(|| source_state_predicate_from_clause(relation.tail_clause, false))
 }
 
 fn parse_source_negative_copula_state_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -1159,7 +1161,39 @@ fn parse_source_negative_copula_state_shape(tokens: &[OwnedLexToken]) -> Option<
         return None;
     }
     let state_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
-    source_state_predicate_from_clause(state_clause, true)
+    it_attachment_state_predicate(subject_clause, state_clause, true)
+        .or_else(|| source_state_predicate_from_clause(state_clause, true))
+}
+
+/// "Gain control of target creature ... If it's equipped, ...": a bare `it`
+/// subject names the current object antecedent, which reference resolution
+/// binds (falling back to the source only when the source is that
+/// antecedent). Explicit source subjects keep the source-state predicates.
+fn it_attachment_state_predicate(
+    subject_clause: LexedClause<'_>,
+    state_clause: LexedClause<'_>,
+    negative: bool,
+) -> Option<PredicateAst> {
+    if !surface::exact_any(subject_clause, &[&["it"], &["it's"], &["its"]]) {
+        return None;
+    }
+    let attachment = if surface::exact(state_clause, &["equipped"]) {
+        crate::types::Subtype::Equipment
+    } else if surface::exact(state_clause, &["enchanted"]) {
+        crate::types::Subtype::Aura
+    } else {
+        return None;
+    };
+    let mut filter = ObjectFilter::default();
+    let mut attached = ObjectFilter::default();
+    attached.subtypes.push(attachment);
+    filter.with_attached_object = Some(Box::new(attached));
+    let predicate = PredicateAst::ItMatches(filter);
+    Some(if negative {
+        PredicateAst::Not(Box::new(predicate))
+    } else {
+        predicate
+    })
 }
 
 fn is_source_state_subject_clause(clause: LexedClause<'_>) -> bool {

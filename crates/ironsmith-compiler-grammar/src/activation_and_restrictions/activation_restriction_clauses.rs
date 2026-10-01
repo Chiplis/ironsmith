@@ -637,6 +637,21 @@ pub fn parse_player_restriction_subject(
         return Ok(Some((player, None)));
     }
 
+    // "Enchanted creature's controller can't cast creature spells." (Brand of
+    // Ill Omen): the controller of the object this attachment is attached
+    // to, not an unbound "it".
+    if let [attached @ ("enchanted" | "equipped"), noun, "controller"] =
+        crate::lexer::parser_token_word_refs(subject_tokens).as_slice()
+        && ["creature", "permanent", "land", "artifact", "enchantment", "planeswalker"]
+            .iter()
+            .any(|kind| noun.starts_with(kind))
+    {
+        return Ok(Some((
+            PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(*attached)),
+            None,
+        )));
+    }
+
     let player = match parse_subject(subject_tokens) {
         crate::cards::builders::SubjectAst::Player(PlayerAst::You | PlayerAst::Implicit) => {
             PlayerFilter::You
@@ -1039,8 +1054,16 @@ pub fn parse_negated_object_restriction_clause(
                 &["that", "permanent"],
                 &["them"],
                 &["those", "creatures"],
+                &["each", "of", "them"],
             ],
-        ) {
+        ) || (crate::word_primitives::parse_any_sequence_complete(
+            &subject_words,
+            &[&["each", "of", "them"], &["each", "of", "those", "creatures"]],
+        ) && tokens[neg_end..].iter().any(|token| token.is_word("untap")))
+        {
+            // "Tap up to one target creature ... Each of those creatures
+            // doesn't untap": the distributive demonstrative names the same
+            // tapped set as a plain "those creatures" subject.
             // A pronoun/demonstrative subject back-references the object the
             // trigger introduced (e.g. "Whenever this blocks or becomes
             // blocked, it can't be regenerated this turn"), not a filter over
@@ -1048,6 +1071,21 @@ pub fn parse_negated_object_restriction_clause(
             // cant-restriction path (no spurious "choose it").
             (
                 ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
+                None,
+                None,
+            )
+        } else if crate::word_primitives::parse_sequence_complete(
+            &subject_words,
+            &["each", "of", "those", "creatures"],
+        ) {
+            // "Each of those creatures can't attack you ..." (Promise of
+            // Loyalty): the referenced creatures that are still on the
+            // battlefield, never objects a prior clause already sacrificed.
+            (
+                ObjectFilter::creature().match_tagged(
+                    crate::tag::CompilerReferenceTag::It.bind(),
+                    TaggedOpbjectRelation::IsTaggedObject,
+                ),
                 None,
                 None,
             )

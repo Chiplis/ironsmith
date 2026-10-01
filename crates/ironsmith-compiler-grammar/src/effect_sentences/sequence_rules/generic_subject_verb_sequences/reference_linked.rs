@@ -662,7 +662,60 @@ pub fn parse_directional_adjacent_player_control(
         filter,
         left_option: "left".to_string(),
         right_option: "right".to_string(),
+        all_matching: false,
     }]))
+}
+
+/// "Choose left or right. Each player gains control of all <objects>
+/// controlled by the next player in the chosen direction." (Aminatou, the
+/// Fateshifter): every player simultaneously takes the matching objects of
+/// the neighbour in the chosen direction.
+pub fn parse_directional_adjacent_player_control_all(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let (Some(choice), Some(gain)) = (sentences.get(sentence_idx), sentences.get(sentence_idx + 1))
+    else {
+        return Ok(None);
+    };
+    let choice_words = crate::lexer::token_word_refs(choice.lowered());
+    if choice_words.as_slice() != ["choose", "left", "or", "right"] {
+        return Ok(None);
+    }
+    let gain_tokens = gain.lowered();
+    let gain_words = crate::lexer::token_word_refs(gain_tokens);
+    const PREFIX: &[&str] = &["each", "player", "gains", "control", "of", "all"];
+    const SUFFIX: &[&str] = &[
+        "controlled", "by", "the", "next", "player", "in", "the", "chosen", "direction",
+    ];
+    if gain_words.len() <= PREFIX.len() + SUFFIX.len()
+        || !gain_words.starts_with(PREFIX)
+        || !gain_words.ends_with(SUFFIX)
+    {
+        return Ok(None);
+    }
+    let view = crate::lexer::TokenWordView::new(gain_tokens);
+    let Some(object_range) =
+        view.token_span_for_words(PREFIX.len(), gain_words.len() - SUFFIX.len())
+    else {
+        return Ok(None);
+    };
+    let object_tokens = trim_commas(&gain_tokens[object_range]);
+    let Ok(filter) = parse_object_filter_lexed(&object_tokens, false) else {
+        return Ok(None);
+    };
+    Ok(Some(vec![
+        EffectAst::subject_verb_choose_named_option(
+            PlayerAst::You,
+            vec!["left".to_string(), "right".to_string()],
+        ),
+        EffectAst::DirectionalAdjacentPlayerControl {
+            filter,
+            left_option: "left".to_string(),
+            right_option: "right".to_string(),
+            all_matching: true,
+        },
+    ]))
 }
 
 pub fn parse_reciprocal_creature_control_sequence(
@@ -1512,10 +1565,9 @@ pub fn graveyard_cast_with_exile_replacement_surface(
         .card_types
         .iter()
         .any(|card_type| matches!(card_type, CardType::Instant | CardType::Sorcery));
-    if filter.zone != Some(Zone::Graveyard)
-        || !matches!(filter.owner, None | Some(PlayerFilter::You))
-        || !spell_card
-    {
+    // The graveyard's owner may be another player ("from an opponent's
+    // graveyard", "from that player's graveyard"); the filter carries it.
+    if filter.zone != Some(Zone::Graveyard) || !spell_card {
         return Ok(None);
     }
 

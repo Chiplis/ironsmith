@@ -154,7 +154,20 @@ pub fn parse_extremum_object_filter_words(
     let mut selected =
         crate::object_filters::parse_object_filter_words(split.subject_words, other)?;
     let scope = if let Some(scope_words) = split.scope_words {
-        let scope = crate::object_filters::parse_object_filter_words(scope_words, false)?;
+        let mut scope = crate::object_filters::parse_object_filter_words(scope_words, false)?;
+        // "a creature an opponent controls with the greatest power among
+        // creatures that player controls": the scope's player is the
+        // candidate's own controller, not an iterated player.
+        if scope.controller == Some(PlayerFilter::IteratedPlayer)
+            && selected
+                .controller
+                .as_ref()
+                .is_some_and(|controller| *controller != PlayerFilter::IteratedPlayer)
+        {
+            scope.controller = Some(PlayerFilter::ControllerOf(
+                crate::filter::ObjectRef::FilterCandidate,
+            ));
+        }
         inherit_scope_boundaries(&mut selected, &scope);
         scope
     } else {

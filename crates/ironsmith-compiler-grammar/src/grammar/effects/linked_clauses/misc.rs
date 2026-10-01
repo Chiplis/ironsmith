@@ -301,8 +301,28 @@ const CAST_PREFIX: &[&[&str]] = &[
     &["you", "may", "cast", "an"],
     &["you", "may", "cast", "a"],
 ];
-const CAST_FROM_GRAVEYARD: &[&[&str]] =
-    &[&["from", "your", "graveyard"], &["from", "a", "graveyard"]];
+const CAST_FROM_GRAVEYARD: &[&[&str]] = &[
+    &["from", "your", "graveyard"],
+    &["from", "a", "graveyard"],
+    &["from", "an", "opponent's", "graveyard"],
+    &["from", "an", "opponents", "graveyard"],
+    &["from", "that", "player's", "graveyard"],
+    &["from", "that", "players", "graveyard"],
+];
+/// Graveyards other than the caster's own ("from an opponent's graveyard",
+/// "from that player's graveyard").
+const CAST_FROM_OTHER_PLAYER_GRAVEYARD: &[&[&str]] = &[
+    &["from", "an", "opponent's", "graveyard"],
+    &["from", "an", "opponents", "graveyard"],
+    &["from", "that", "player's", "graveyard"],
+    &["from", "that", "players", "graveyard"],
+];
+
+/// "you may cast target instant or sorcery card from an opponent's
+/// graveyard": the permission names a graveyard other than the caster's.
+pub fn graveyard_cast_permission_names_other_player_graveyard(cast: &[OwnedLexToken]) -> bool {
+    contains_sequence_phrase(cast, CAST_FROM_OTHER_PLAYER_GRAVEYARD)
+}
 const WITHOUT_MANA: &[&[&str]] = &[&["without", "paying", "its", "mana", "cost"]];
 const THAT_SPELL_YOUR_GRAVEYARD_REPLACEMENT: &[&str] = &[
     "if",

@@ -967,8 +967,17 @@ pub fn parse_must_block_if_able_clause(
     match shape {
         clause_shapes::MustBlockShape::SubjectThisTurn { subject_tokens } => {
             let subject_clause = LexedClause::new(subject_tokens).trimmed();
-            let target = parse_target_phrase(subject_clause.tokens())?;
             let ability = GrantedAbilityAst::MustBlock;
+            // "Untap those creatures. They block this turn if able.": the
+            // plural pronoun names the prior object set, not the source.
+            if crate::lexer::parser_token_word_refs(subject_clause.tokens()) == ["they"] {
+                return Ok(Some(EffectAst::subject_verb_grant_abilities_all(
+                    ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
+                    vec![ability],
+                    Until::EndOfTurn,
+                )));
+            }
+            let target = parse_target_phrase(subject_clause.tokens())?;
             if starts_with_target_indicator(subject_clause.tokens()) {
                 return Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
                     target,
@@ -1614,6 +1623,26 @@ pub fn parse_deal_damage_equal_to_power_clause(
                 }));
             }
             let mut target = parse_target_phrase(target_tokens)?;
+            // "Target creature an opponent controls deals damage equal to
+            // its power to that player": the only player named is the
+            // targeted source's controller (lowering binds it to the source's
+            // declaration), not an undeclared player target.
+            if crate::word_primitives::parse_any_sequence_complete(
+                &TokenWordView::new(target_tokens).to_word_refs(),
+                &[&["that", "player"], &["that", "opponent"]],
+            ) && matches!(
+                &source,
+                TargetAst::Object(filter, Some(_), _)
+                    if filter
+                        .controller
+                        .as_ref()
+                        .is_some_and(|controller| *controller != PlayerFilter::You)
+            ) {
+                target = TargetAst::Player(
+                    PlayerFilter::ControllerOf(crate::target::ObjectRef::Target),
+                    None,
+                );
+            }
             if target_tokens
                 .first()
                 .is_some_and(|token| token.is_word("each"))

@@ -122,7 +122,9 @@ pub fn parse_choose_then_do_same_for_filter_sentence(
     else {
         return Ok(None);
     };
-    let tag = crate::tag::CompilerReferenceTag::It.bind();
+    // Every repeated choice adds to one collection ("Return those cards"):
+    // the implicit `it` tag would keep only the latest choice.
+    let tag = crate::tag::CompilerReferenceTag::Chosen.bind();
 
     let followup_filter = parse_object_filter(shape.filter_tokens, false)?;
     if followup_filter.controller.is_some() || followup_filter.owner.is_some() {

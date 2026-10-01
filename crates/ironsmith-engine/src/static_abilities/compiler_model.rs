@@ -198,6 +198,12 @@ impl StaticAbility {
                         .to_string(),
                 });
             }
+            Some(StaticAbilityId::PreventAllCombatDamageToAndByPermanentsMatching) => {
+                return Err(StaticAbilityModelConversionError {
+                    detail: "filtered combat-damage prevention needs its object-filter payload"
+                        .to_string(),
+                });
+            }
             Some(StaticAbilityId::PreventAllNoncombatDamageToPermanentsMatching) => {
                 return Err(StaticAbilityModelConversionError {
                     detail: "filtered noncombat-damage prevention needs its object-filter payload"

@@ -1638,6 +1638,7 @@ impl EffectExecutor for DevourEffect {
 
         let pending_start = game.effect_store.pending_trigger_events.len();
         let mut sacrificed_count: i32 = 0;
+        let mut devoured_snapshots = Vec::new();
         let mut sacrifice_events = Vec::new();
         let mut graveyard_zone_changes = Vec::new();
         for id in chosen {
@@ -1657,6 +1658,7 @@ impl EffectExecutor for DevourEffect {
                 EventOutcome::Prevented | EventOutcome::NotApplicable => {}
                 EventOutcome::Proceed(result) => {
                     sacrificed_count += 1;
+                    devoured_snapshots.extend(pre_snapshot.clone());
                     if result.final_zone == Zone::Graveyard {
                         if let Some(snapshot) = pre_snapshot.clone() {
                             graveyard_zone_changes.push((
@@ -1674,9 +1676,11 @@ impl EffectExecutor for DevourEffect {
                 }
                 EventOutcome::Replaced => {
                     sacrificed_count += 1;
+                    devoured_snapshots.extend(pre_snapshot.clone());
                 }
             }
         }
+        game.set_devoured_objects(ctx.source, devoured_snapshots);
 
         if graveyard_zone_changes.len() > 1 {
             let event_objects = graveyard_zone_changes

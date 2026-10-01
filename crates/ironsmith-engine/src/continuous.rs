@@ -4691,6 +4691,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.blocked
         || filter.blocked_by.is_some()
         || filter.blocked_by_source
+        || filter.crewed_by_source_this_turn
         || filter.blocked_or_was_blocked_by_this_turn.is_some()
         || filter.attached_to_object.is_some()
         || filter.unblocked

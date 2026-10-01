@@ -3413,6 +3413,18 @@ pub fn parse_prevent_all_combat_damage_to_matching_permanents_line(
             render_token_slice(tokens)
         )));
     }
+    // "... dealt to and dealt by enchanted creature": the permanent is both
+    // the recipient and the source of the prevented damage.
+    if target_tokens.len() > 3
+        && target_tokens[0].is_word("and")
+        && target_tokens[1].is_word("dealt")
+        && target_tokens[2].is_word("by")
+    {
+        let filter = parse_object_filter_lexed(&trim_commas(&target_tokens[3..]), false)?;
+        return Ok(Some(
+            StaticAbility::prevent_all_combat_damage_to_and_by_permanents_matching(filter),
+        ));
+    }
     if let Some(by_idx) =
         crate::slice_primitives::select_position(target_tokens.as_slice(), |token| {
             token.is_word("by")
@@ -4330,7 +4342,9 @@ pub fn parse_you_may_static_grant_line(
                 filter.clone(),
                 Zone::Exile,
             )
-            .with_beneficiary(PlayerFilter::Any),
+            // "During each player's turn, that player may cast ...": only the
+            // player whose turn it is holds the permission.
+            .with_beneficiary(PlayerFilter::Active),
         );
         let mana_permission = StaticAbility::mana_spend_permission(
             crate::effect::ManaSpendPermission::any_color_for_casting_matching(

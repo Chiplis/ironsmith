@@ -670,6 +670,34 @@ impl OrTrigger {
         ))
     }
 
+    /// The graveyard-or-exile pair of the source, unioned with the same pair
+    /// for another matching object (Psychomancer).
+    fn this_or_another_graveyard_or_exile_display(&self) -> Option<String> {
+        let [first, second] = self.triggers.as_slice() else {
+            return None;
+        };
+        let pair_filter = |trigger: &Trigger| -> Option<ObjectFilter> {
+            let pair = trigger.downcast_ref::<OrTrigger>()?;
+            pair.battlefield_graveyard_or_exile_display()?;
+            let [inner, _] = pair.triggers.as_slice() else {
+                return None;
+            };
+            let inner = inner.downcast_ref::<ZoneChangeTrigger>()?;
+            (!inner.this_object).then(|| inner.object_filter.clone())
+        };
+        let source = pair_filter(first)?;
+        let mut other = pair_filter(second)?;
+        if !source.source || !other.other || other.source {
+            return None;
+        }
+        let source_text = source.source_surface.as_ref()?.display_text();
+        other.other = false;
+        let other_subject = strip_leading_article(&other.description()).to_string();
+        Some(format!(
+            "Whenever {source_text} or another {other_subject} is put into a graveyard from the battlefield or is put into exile from the battlefield"
+        ))
+    }
+
     fn battlefield_graveyard_or_exile_display(&self) -> Option<String> {
         let [first, second] = self.triggers.as_slice() else {
             return None;
@@ -774,6 +802,23 @@ impl OrTrigger {
             return true;
         }
         false
+    }
+
+    /// "Whenever you cast <spell> or activate <ability>": one player's cast
+    /// and activation arms share the subject written once.
+    fn shared_player_cast_or_activate_display(&self) -> Option<String> {
+        let [cast, activate] = self.triggers.as_slice() else {
+            return None;
+        };
+        cast.downcast_ref::<SpellCastTrigger>()?;
+        activate.downcast_ref::<AbilityActivatedTrigger>()?;
+        let cast = cast.display();
+        let activate = activate.display();
+        let cast_rest = cast.strip_prefix("Whenever you cast ")?;
+        let activate_rest = activate.strip_prefix("Whenever you activate ")?;
+        Some(format!(
+            "Whenever you cast {cast_rest} or activate {activate_rest}"
+        ))
     }
 
     fn you_cast_or_activate_display(&self) -> Option<String> {
@@ -1250,6 +1295,9 @@ impl TriggerMatcher for OrTrigger {
         if let Some(display) = self.battlefield_graveyard_or_exile_display() {
             return display;
         }
+        if let Some(display) = self.this_or_another_graveyard_or_exile_display() {
+            return display;
+        }
         if let Some(display) = self.spell_other_than_first_or_copy_display() {
             return display;
         }
@@ -1257,6 +1305,9 @@ impl TriggerMatcher for OrTrigger {
             return display;
         }
         if let Some(display) = self.spell_or_activated_ability_x_cost_display() {
+            return display;
+        }
+        if let Some(display) = self.shared_player_cast_or_activate_display() {
             return display;
         }
         if let Some(display) = self.artifact_tapped_or_artifact_ability_without_tap_cost_display() {

@@ -26,6 +26,17 @@ impl RewriteNormalizationState {
                 tag.clone(),
             ));
         }
+        if let Some(tag) = additional_cost_imports.last_object_tag.as_ref()
+            && crate::tag::is_sentence_helper_tag(tag, "revealed")
+        {
+            // "As an additional cost ..., reveal a card ... the revealed
+            // card's power": the reveal payment is the public reveal the body
+            // names.
+            additional_cost_imports.snapshot_tag_aliases.push((
+                crate::tag::CompilerReferenceTag::PublicRevealed.key(),
+                tag.clone(),
+            ));
+        }
         if !additional_cost_imports.is_empty() {
             return additional_cost_imports;
         }

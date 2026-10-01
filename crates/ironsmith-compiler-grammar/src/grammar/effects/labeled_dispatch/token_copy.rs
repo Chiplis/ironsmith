@@ -85,6 +85,9 @@ pub enum TokenCopyModifierKind {
     EnterTappedAndAttackingThatPlayer,
     SacrificeAtNextEndStep,
     SacrificeAtNextUpkeep,
+    /// "... at the beginning of your next upkeep": the delayed trigger is
+    /// bound to the controller's own upkeep, not the next upkeep of any player.
+    SacrificeAtYourNextUpkeep,
     ExileAtNextEndStep,
 }
 

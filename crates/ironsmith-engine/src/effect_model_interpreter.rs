@@ -367,6 +367,9 @@ where
             converted = converted.exile_at_next_end_step();
         }
         converted = converted.next_end_step_player(payload.next_end_step_player.clone());
+        if payload.link_source_exiled_this_resolution {
+            converted = converted.linking_source_exiled_this_resolution();
+        }
         return Ok(Effect::new(converted));
     }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::TapEffect>(&effect) {
@@ -1292,6 +1295,9 @@ where
         )?);
         if payload.reflect_damage_to_source_controller {
             effect = effect.reflecting_to_source_controller();
+        }
+        if let Some(filter) = &payload.reflect_source_filter {
+            effect = effect.reflecting_only_from_source_matching(filter.clone());
         }
         return Ok(Effect::new(effect));
     }
