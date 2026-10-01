@@ -164,7 +164,25 @@ const COUNTER_LAB_POSITIVE_STACK_PRESET = {
   oracleText: "",
 };
 
+// A real creature fixture makes it possible to verify the complete battlefield
+// treatment in one click: the card has printed P/T, enters with a fractional
+// +1/+1 counter, and therefore renders both attack/defense and the counter chip.
+// The counter is seeded directly by the counter-lab path so this remains a
+// deterministic visual test even when trigger execution is disabled.
+const COUNTER_LAB_CREATURE_PRESET = {
+  id: "counter-lab-creature-plus-one-plus-one",
+  label: "Creature 2/2 +1/+1 (3/3)",
+  counter: { kind: "Plus One Plus One", amount: 1 },
+  name: "Counter Lab Creature 2/2 +1/+1",
+  cardTypes: ["Creature"],
+  subtypes: ["Mutant"],
+  oracleText: "This creature enters with a +1/+1 counter on it.",
+  power: "2",
+  toughness: "2",
+};
+
 const COUNTER_LAB_SHOWCASE_PRESETS = [
+  COUNTER_LAB_CREATURE_PRESET,
   ...COUNTER_LAB_PRESETS,
   COUNTER_LAB_MIXED_PRESET,
   COUNTER_LAB_THREE_THREE_PRESET,
@@ -180,6 +198,7 @@ function counterLabDraft(preset) {
       ...face,
       name: preset.name,
       cardTypes: [...preset.cardTypes],
+      subtypes: [...(preset.subtypes || [])],
       oracleText: preset.oracleText,
       power: preset.power || "",
       toughness: preset.toughness || "",

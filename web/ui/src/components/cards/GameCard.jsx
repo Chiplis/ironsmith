@@ -784,6 +784,12 @@ export default function GameCard({
       .map(buildCounterBadge)
       .filter(Boolean)
     : [];
+  const powerToughnessCounterBadges = counterBadges.filter(
+    (badge) => badge.variant === "power-toughness"
+  );
+  const standardCounterBadges = counterBadges.filter(
+    (badge) => badge.variant !== "power-toughness"
+  );
   const totalBattlefieldCounters = counterBadges.reduce(
     (sum, badge) => sum + (badge.sourceCount ?? badge.amount),
     0
@@ -1699,9 +1705,22 @@ export default function GameCard({
         )}
 
       </div>
-      {variant === "battlefield" && !useTokenBattlefield && counterBadges.length > 0 && (
+      {variant === "battlefield" && !useTokenBattlefield && powerToughnessCounterBadges.length > 0 && (
+        <div
+          className="battlefield-counter-rail battlefield-counter-rail--power-toughness"
+          aria-label="Power and toughness counters"
+        >
+          {powerToughnessCounterBadges.map((badge, index) => (
+            <BattlefieldCounterBadge
+              key={`${badge.fullLabel}-${index}`}
+              badge={badge}
+            />
+          ))}
+        </div>
+      )}
+      {variant === "battlefield" && !useTokenBattlefield && standardCounterBadges.length > 0 && (
         <div className="battlefield-counter-rail">
-          {counterBadges.map((badge, index) => (
+          {standardCounterBadges.map((badge, index) => (
             <BattlefieldCounterBadge
               key={`${badge.fullLabel}-${index}`}
               badge={badge}

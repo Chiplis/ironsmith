@@ -1163,6 +1163,19 @@
   left: auto;
 }
 
+/* Keep the fractional P/T rail above the footer even when portrait-card
+   sizing overrides the shared battlefield counter rail. */
+.game-card.field-card.battlefield-portrait-card .battlefield-counter-rail--power-toughness {
+  top: auto;
+  right: auto;
+  left: clamp(2px, calc(var(--bf-card-width, 124px) * 0.022), 4px);
+  bottom: calc(
+    clamp(2px, calc(var(--bf-card-height, 96px) * 0.022), 4px)
+    + clamp(15px, calc(var(--bf-card-height, 96px) * 0.18), 20px)
+    + 3px
+  );
+}
+
 /* Hidden hands use compact portrait card backs instead of full-width rows. */
 .zone-hidden-card-list,
 .battlefield-panel--opponents .zone-hidden-card-list {

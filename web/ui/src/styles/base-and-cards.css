@@ -3743,3 +3743,89 @@
   margin-left: 5px;
   border-radius: 2px;
 }
+
+/* Fractional P/T counters sit immediately above the printed attack/defense
+   badge. Keep this rail intentionally identical to the compact graveyard /
+   exile treatment; keyword counters continue to use the detailed rail at the
+   lower-right of the battlefield card. */
+.battlefield-counter-rail--power-toughness {
+  top: auto;
+  right: auto;
+  left: clamp(2px, calc(var(--bf-card-width, 124px) * 0.022), 4px);
+  bottom: calc(
+    clamp(2px, calc(var(--bf-card-height, 96px) * 0.022), 4px)
+    + clamp(15px, calc(var(--bf-card-height, 96px) * 0.18), 20px)
+    + 3px
+  );
+  max-width: calc(100% - clamp(4px, calc(var(--bf-card-width, 124px) * 0.044), 8px));
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.battlefield-counter-rail--power-toughness .battlefield-counter-chip,
+.battlefield-counter-rail--power-toughness .battlefield-counter-chip--power-toughness {
+  box-sizing: border-box;
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  width: auto !important;
+  min-width: 24px;
+  max-width: 100%;
+  height: 16px !important;
+  min-height: 16px !important;
+  aspect-ratio: auto !important;
+  gap: 2px !important;
+  padding: 0 4px !important;
+  overflow: hidden;
+  border: 1px solid var(--counter-stroke, #b7cbe0) !important;
+  border-radius: 3px !important;
+  background: var(--counter-fill, #16202b) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  clip-path: none !important;
+  filter: none !important;
+  opacity: 1 !important;
+  white-space: nowrap;
+}
+
+.battlefield-counter-rail--power-toughness .battlefield-counter-chip::before,
+.battlefield-counter-rail--power-toughness .battlefield-counter-chip::after,
+.battlefield-counter-rail--power-toughness .battlefield-counter-frame {
+  display: none !important;
+  content: none !important;
+}
+
+.battlefield-counter-rail--power-toughness .battlefield-counter-chip > .battlefield-counter-symbol,
+.battlefield-counter-rail--power-toughness .battlefield-counter-chip > .battlefield-counter-symbol--power,
+.battlefield-counter-rail--power-toughness .battlefield-counter-chip > .battlefield-counter-amount {
+  position: relative;
+  inset: auto;
+  left: auto;
+  right: auto;
+  top: auto;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  transform: none;
+  color: #fff;
+  font-size: 11px !important;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1;
+  text-align: center;
+  text-shadow: none !important;
+}
+
+.game-card:hover .battlefield-counter-rail--power-toughness .battlefield-counter-chip,
+.game-card.hovered .battlefield-counter-rail--power-toughness .battlefield-counter-chip,
+.game-card.inspected .battlefield-counter-rail--power-toughness .battlefield-counter-chip {
+  background: var(--counter-fill, #16202b) !important;
+  border-color: var(--counter-stroke, #b7cbe0) !important;
+  box-shadow: none !important;
+  filter: none !important;
+}
