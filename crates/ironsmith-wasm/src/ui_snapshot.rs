@@ -799,6 +799,17 @@ impl SnapshotObjectViewCache {
         game: &GameState,
         obj: &ironsmith::object::Object,
     ) -> Arc<PermanentObjectView> {
+        let current = game.calculated_characteristics_arc(obj.id);
+        // The engine keeps the battlefield-entry flag for every permanent so
+        // it can be cleared consistently on turn changes.  The UI indicator,
+        // however, represents summoning sickness: only creatures can have it
+        // and be unable to attack.  A newly-entered Aura or land must not get
+        // the creature-only badge.
+        let is_creature = current
+            .as_ref()
+            .map(|chars| chars.card_types.contains(&CardType::Creature))
+            .unwrap_or_else(|| obj.card_types.contains(&CardType::Creature));
+        let summoning_sick = is_creature && game.is_summoning_sick(obj.id);
         let tapped = game.is_tapped(obj.id);
         let counter_signature = counter_signature_for_group(obj);
         let key = PermanentObjectViewCacheKey {
@@ -817,7 +828,7 @@ impl SnapshotObjectViewCache {
             phase: game.turn.phase as u8,
             step: game.turn.step.map(|step| step as u8),
             tapped,
-            summoning_sick: game.is_summoning_sick(obj.id),
+            summoning_sick,
             has_active_aura: has_active_aura(game, obj),
             flipped: game.is_flipped(obj.id),
             face_down: game.is_face_down(obj.id),
@@ -826,7 +837,6 @@ impl SnapshotObjectViewCache {
             counter_signature,
         };
 
-        let current = game.calculated_characteristics_arc(obj.id);
         if let Some(view) = self.battlefield.borrow_mut().get(&key).cloned()
             && match (&view.characteristics, &current) {
                 (Some(before), Some(after)) => Arc::ptr_eq(before, after),
@@ -840,20 +850,35 @@ impl SnapshotObjectViewCache {
             .as_ref()
             .map(|chars| chars.card_types.as_slice())
             .unwrap_or(&obj.card_types);
-        let summoning_sick = game.is_summoning_sick(obj.id);
         let aura_active = has_active_aura(game, obj);
         let name = current
             .as_ref()
             .map(|chars| chars.name.to_owned_string())
             .unwrap_or_else(|| obj.name.to_string());
         let power_toughness = {
+            // Keep printed/base P/T and +1/+1/-1/-1 counters visually
+            // separate. Calculated characteristics include both counter
+            // deltas and continuous effects (auras, anthems, etc.); removing
+            // only the counter delta lets the badge show the effective value
+            // from other effects without making the same counter look applied
+            // twice. For example, a 2/2 with a +1/+1 counter enchanted by
+            // Rancor (+2/+0) renders a separate +1/+1 chip and a 4/2 badge.
+            let (counter_power_delta, counter_toughness_delta) = obj.pt_counter_deltas();
             let p = current
                 .as_ref()
-                .and_then(|chars| chars.power)
+                .and_then(|chars| {
+                    chars
+                        .power
+                        .map(|power| power - counter_power_delta)
+                })
                 .or_else(|| obj.power());
             let t = current
                 .as_ref()
-                .and_then(|chars| chars.toughness)
+                .and_then(|chars| {
+                    chars
+                        .toughness
+                        .map(|toughness| toughness - counter_toughness_delta)
+                })
                 .or_else(|| obj.toughness());
             match (p, t) {
                 (Some(power), Some(toughness)) => Some(format!("{power}/{toughness}")),
@@ -4942,6 +4967,48 @@ mod tests {
 
         assert!(bear_snapshot.summoning_sick);
         assert!(bear_snapshot.has_active_aura);
+    }
+
+    #[test]
+    fn battlefield_snapshot_keeps_pt_counters_separate_from_other_modifiers() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bear = game.create_object_from_card(&test_bears_card(), alice, Zone::Battlefield);
+        game.object_mut(bear)
+            .expect("bear should exist")
+            .add_counters(CounterType::PlusOnePlusOne, 1);
+
+        // Model an attached aura's continuous +2/+0 effect. The snapshot
+        // should retain this modifier while excluding the separate +1/+1
+        // counter from the P/T badge.
+        game.effect_store
+            .continuous_effects
+            .add_effect(ContinuousEffect::new(
+                bear,
+                alice,
+                EffectTarget::Specific(bear),
+                Modification::ModifyPowerToughness {
+                    power: 2,
+                    toughness: 0,
+                },
+            ));
+
+        let (battlefield, _) = grouped_battlefield_for_player(&game, alice, &HashSet::new());
+        let bear_snapshot = battlefield
+            .iter()
+            .find(|permanent| permanent.member_ids.contains(&bear.0))
+            .expect("expected Bears in battlefield snapshot");
+
+        assert_eq!(bear_snapshot.power_toughness.as_deref(), Some("4/2"));
+        assert_eq!(
+            bear_snapshot
+                .counters
+                .iter()
+                .find(|counter| counter.kind == "+1/+1")
+                .map(|counter| counter.amount),
+            Some(1)
+        );
     }
 
     #[test]

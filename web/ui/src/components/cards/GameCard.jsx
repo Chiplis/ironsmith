@@ -1692,9 +1692,7 @@ export default function GameCard({
             title={ui("Summoning sickness")}
           >
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M6.2 8.4a6.2 6.2 0 1 1 .5 6.7" />
-              <path d="M6.2 4.8v3.7h3.7" />
-              <path d="M17.8 15.4v-3.7h-3.7" />
+              <path d="M18.9 8.1c-1.6-3.5-6.2-4.7-9.6-2.5-3.4 2.1-3.8 6.8-.9 9.4 2.8 2.5 7.4 1.3 8.4-2.2.8-2.8-1.9-5.4-4.7-4.4-2.1.7-2.5 3.6-.7 4.6 1.4.8 3.1-.2 3-1.7" />
             </svg>
           </span>
         )}
