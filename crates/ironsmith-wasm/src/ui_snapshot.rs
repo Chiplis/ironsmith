@@ -98,6 +98,7 @@ struct PermanentObjectView {
     /// text remains the authoritative source when the list is unchanged.
     abilities: Vec<String>,
     power_toughness: Option<String>,
+    power_toughness_without_counters: Option<String>,
     counters: Vec<CounterSnapshot>,
 }
 
@@ -836,20 +837,19 @@ impl SnapshotObjectViewCache {
             .as_ref()
             .map(|chars| chars.name.to_owned_string())
             .unwrap_or_else(|| obj.name.to_string());
-        let power_toughness = {
-            let p = current
+        let (power, toughness) = (
+            current
                 .as_ref()
                 .and_then(|chars| chars.power)
-                .or_else(|| obj.power());
-            let t = current
+                .or_else(|| obj.power()),
+            current
                 .as_ref()
                 .and_then(|chars| chars.toughness)
-                .or_else(|| obj.toughness());
-            match (p, t) {
-                (Some(power), Some(toughness)) => Some(format!("{power}/{toughness}")),
-                _ => None,
-            }
-        };
+                .or_else(|| obj.toughness()),
+        );
+        let power_toughness = format_power_toughness(power, toughness);
+        let power_toughness_without_counters =
+            format_power_toughness_without_pt_counters(obj, power, toughness);
         let oracle_text = current
             .as_ref()
             .map(|chars| chars.compiled_card_text.to_string())
@@ -876,6 +876,7 @@ impl SnapshotObjectViewCache {
             oracle_text,
             abilities,
             power_toughness,
+            power_toughness_without_counters,
             counters: counter_snapshots_for_object(obj),
         });
 
@@ -1303,6 +1304,28 @@ fn counter_signature_for_group(obj: &ironsmith::object::Object) -> String {
         .map(|(kind, amount)| format!("{kind}:{amount}"))
         .collect::<Vec<_>>()
         .join("|")
+}
+
+fn format_power_toughness(power: Option<i32>, toughness: Option<i32>) -> Option<String> {
+    match (power, toughness) {
+        (Some(power), Some(toughness)) => Some(format!("{power}/{toughness}")),
+        _ => None,
+    }
+}
+
+/// Keep the current calculated P/T for rules and inspection, while exposing a
+/// display value with numeric P/T counter deltas removed for the battlefield
+/// footer. Continuous effects and other non-counter changes remain included.
+fn format_power_toughness_without_pt_counters(
+    obj: &ironsmith::object::Object,
+    power: Option<i32>,
+    toughness: Option<i32>,
+) -> Option<String> {
+    let (power_delta, toughness_delta) = obj.pt_counter_deltas();
+    format_power_toughness(
+        power.map(|value| value - power_delta),
+        toughness.map(|value| value - toughness_delta),
+    )
 }
 
 fn sorted_name_signature<T, F>(items: &[T], mut name: F) -> String
@@ -1851,6 +1874,8 @@ fn grouped_battlefield_for_ids(
                 .map(|view| view.name.clone())
                 .unwrap_or_else(|| key.name.clone());
             let power_toughness = representative.and_then(|view| view.power_toughness.clone());
+            let power_toughness_without_counters = representative
+                .and_then(|view| view.power_toughness_without_counters.clone());
             let mana_cost = representative.and_then(|view| view.mana_cost.clone());
             let compiled_card_text = representative
                 .map(|view| view.oracle_text.clone())
@@ -1876,6 +1901,7 @@ fn grouped_battlefield_for_ids(
                 oracle_text: compiled_card_text,
                 abilities,
                 power_toughness,
+                power_toughness_without_counters,
                 counter_signature: key.counter_signature.clone(),
                 counters,
             }
@@ -2117,6 +2143,7 @@ pub(super) struct PermanentSnapshot {
     pub(super) oracle_text: String,
     pub(super) abilities: Vec<String>,
     pub(super) power_toughness: Option<String>,
+    pub(super) power_toughness_without_counters: Option<String>,
     pub(super) counter_signature: String,
     pub(super) counters: Vec<CounterSnapshot>,
 }
@@ -4951,6 +4978,41 @@ mod tests {
             check_incremental(&game, &mut incremental, &HashSet::new());
         }
     }
+    fn battlefield_snapshot_separates_pt_counter_delta_from_card_stats() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let definition = CardDefinitionBuilder::new(
+            CardId::from_raw(92_001),
+            "Base P/T 0/0 Creature With +1/+1 Counter",
+        )
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(0, 0))
+        .build();
+        let creature = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        game.object_mut(creature)
+            .expect("creature should exist")
+            .add_counters(CounterType::PlusOnePlusOne, 1);
+
+        let (battlefield, _) = grouped_battlefield_for_player(
+            &game,
+            alice,
+            &std::collections::HashSet::new(),
+        );
+        let snapshot = battlefield
+            .iter()
+            .find(|permanent| permanent.id == creature.0)
+            .expect("counter creature should be in the battlefield snapshot");
+
+        assert_eq!(snapshot.power_toughness.as_deref(), Some("1/1"));
+        assert_eq!(
+            snapshot.power_toughness_without_counters.as_deref(),
+            Some("0/0")
+        );
+        assert_eq!(snapshot.counter_signature, "Plus One Plus One:1");
+    }
+
+>>>>>>> 11127d9438826a9ad31c4af94d4fc6e66ed1cc74
     #[test]
     fn battlefield_grouping_splits_each_protected_legal_target() {
         let _id_counter_guard = crate::test_id_counter_guard();

@@ -538,12 +538,17 @@ function renderBattlefieldBadgeGraphic(symbolId, options) {
   return clipPathId ? <g clipPath={`url(#${clipPathId})`}>{shape}</g> : shape;
 }
 
+function battlefieldPowerToughness(card) {
+  return card?.power_toughness_without_counters || card?.power_toughness || null;
+}
+
 function battlefieldPrimaryInfo(card) {
-  if (card?.power_toughness) {
+  const powerToughness = battlefieldPowerToughness(card);
+  if (powerToughness) {
     return {
       kind: "number",
-      label: String(card.power_toughness),
-      title: `Power/Toughness ${card.power_toughness}`,
+      label: String(powerToughness),
+      title: `Power/Toughness ${powerToughness}`,
     };
   }
   if (card?.loyalty != null) {
@@ -1693,10 +1698,10 @@ export default function GameCard({
           </div>
         )}
 
-        {variant === "battlefield" && !useTokenBattlefield && card.power_toughness && (
+        {variant === "battlefield" && !useTokenBattlefield && battlefieldPowerToughness(card) && (
           <div className="battlefield-footer">
             <span className="battlefield-pt-badge">
-              {card.power_toughness}
+              {battlefieldPowerToughness(card)}
             </span>
           </div>
         )}

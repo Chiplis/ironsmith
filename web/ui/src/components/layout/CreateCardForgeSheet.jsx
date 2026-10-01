@@ -78,7 +78,7 @@ function blankDraft() {
 // Keep this list aligned with the engine's CounterType enum. The showcase
 // uses direct counter seeding, so it can inspect every supported badge without
 // changing card rules or requiring a bespoke oracle-text sentence per type.
-const COUNTER_LAB_COUNTER_KINDS = [
+const COUNTER_SHOWCASE_COUNTER_KINDS = [
   "Plus One Plus One", "Minus One Minus One", "+1/+0", "+0/+1", "+1/+2", "+2/+2",
   "-0/-1", "-0/-2", "-2/-1", "-2/-2", "Deathtouch", "Decayed", "Double Strike",
   "First Strike", "Flying", "Haste", "Hexproof", "Indestructible", "Lifelink", "Menace",
@@ -100,19 +100,19 @@ const COUNTER_LAB_COUNTER_KINDS = [
   "Winch", "Wind", "Wish",
 ];
 
-function counterLabLabel(kind) {
+function counterShowcaseLabel(kind) {
   return counterDisplayLabel(kind)
     || String(kind).replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
 }
 
-const COUNTER_LAB_PRESETS = COUNTER_LAB_COUNTER_KINDS.map((kind, index) => {
-  const label = counterLabLabel(kind);
+const COUNTER_SHOWCASE_PRESETS = COUNTER_SHOWCASE_COUNTER_KINDS.map((kind, index) => {
+  const label = counterShowcaseLabel(kind);
   const slug = label.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
   return {
-    id: `counter-lab-${index}-${slug}`,
+    id: `counter-showcase-${index}-${slug}`,
     label,
     counter: { kind, amount: 1 },
-    name: `Counter Lab ${label}`,
+    name: `Counter Showcase — ${label}`,
     cardTypes: ["Artifact"],
     oracleText: "",
   };
@@ -122,8 +122,8 @@ const COUNTER_LAB_PRESETS = COUNTER_LAB_COUNTER_KINDS.map((kind, index) => {
 // changing engine rules. The engine seeds the first source so the card is a
 // real compiled object; the UI override supplies the complete source list for
 // this visual lab card (4 × +1/+1, 1 × +1/+0, 1 × -1/-1 => net +4/+3).
-const COUNTER_LAB_MIXED_PRESET = {
-  id: "counter-lab-mixed-power-toughness",
+const COUNTER_SHOWCASE_MIXED_PRESET = {
+  id: "counter-showcase-mixed-power-toughness",
   label: "Mixed P/T (+4/+3)",
   counter: { kind: "Plus One Plus One", amount: 4 },
   overrideCounters: [
@@ -131,65 +131,66 @@ const COUNTER_LAB_MIXED_PRESET = {
     { kind: "+1/+0", amount: 1 },
     { kind: "Minus One Minus One", amount: 1 },
   ],
-  name: "Counter Lab Mixed P/T +4/+3",
+  name: "Mixed P/T Counters +4/+3",
   cardTypes: ["Artifact"],
   // Keep the engine-facing text empty: this card is a visual fixture and the
   // descriptive breakdown lives in the UI-only override below.
   oracleText: "",
 };
 
-const COUNTER_LAB_THREE_THREE_PRESET = {
-  id: "counter-lab-net-three-three",
+const COUNTER_SHOWCASE_THREE_THREE_PRESET = {
+  id: "counter-showcase-net-three-three",
   label: "Net P/T (+3/3)",
   counter: { kind: "Minus One Minus One", amount: 1 },
   overrideCounters: [
     { kind: "Minus One Minus One", amount: 1 },
     { kind: "+2/+2", amount: 2 },
   ],
-  name: "Counter Lab Net +3/+3",
+  name: "Combined P/T Counters +3/+3",
   cardTypes: ["Artifact"],
   oracleText: "",
 };
 
-const COUNTER_LAB_POSITIVE_STACK_PRESET = {
-  id: "counter-lab-positive-stack",
+const COUNTER_SHOWCASE_POSITIVE_STACK_PRESET = {
+  id: "counter-showcase-positive-stack",
   label: "Positive P/T (+5/5)",
   counter: { kind: "Plus One Plus One", amount: 1 },
   overrideCounters: [
     { kind: "Plus One Plus One", amount: 1 },
     { kind: "+2/+2", amount: 2 },
   ],
-  name: "Counter Lab Positive Stack +5/+5",
+  name: "Stacked P/T Counters +5/+5",
   cardTypes: ["Artifact"],
   oracleText: "",
 };
 
 // A real creature fixture makes it possible to verify the complete battlefield
-// treatment in one click: the card has printed P/T, enters with a fractional
-// +1/+1 counter, and therefore renders both attack/defense and the counter chip.
-// The counter is seeded directly by the counter-lab path so this remains a
+// treatment in one click: the card is printed 0/0, enters with a fractional
+// +1/+1 counter, and therefore renders its base attack/defense beside the
+// separate counter chip instead of misleadingly looking like a 1/1 base card.
+// The counter is seeded directly by the counter showcase path so this remains a
 // deterministic visual test even when trigger execution is disabled.
-const COUNTER_LAB_CREATURE_PRESET = {
-  id: "counter-lab-creature-plus-one-plus-one",
-  label: "Creature 2/2 +1/+1 (3/3)",
+const COUNTER_SHOWCASE_CREATURE_PRESET = {
+  id: "counter-showcase-creature-plus-one-plus-one",
+  label: "Creature 0/0 +1/+1 (1/1)",
   counter: { kind: "Plus One Plus One", amount: 1 },
-  name: "Counter Lab Creature 2/2 +1/+1",
+  name: "Creature Base 0/0 with +1/+1 Counter",
   cardTypes: ["Creature"],
   subtypes: ["Mutant"],
   oracleText: "This creature enters with a +1/+1 counter on it.",
-  power: "2",
-  toughness: "2",
+  power: "0",
+  toughness: "0",
 };
 
-const COUNTER_LAB_SHOWCASE_PRESETS = [
-  COUNTER_LAB_CREATURE_PRESET,
-  ...COUNTER_LAB_PRESETS,
-  COUNTER_LAB_MIXED_PRESET,
-  COUNTER_LAB_THREE_THREE_PRESET,
-  COUNTER_LAB_POSITIVE_STACK_PRESET,
+const COUNTER_SHOWCASE_PRESET_LIST = [
+  COUNTER_SHOWCASE_CREATURE_PRESET,
+  ...COUNTER_SHOWCASE_PRESETS,
+  COUNTER_SHOWCASE_MIXED_PRESET,
+  COUNTER_SHOWCASE_THREE_THREE_PRESET,
+  COUNTER_SHOWCASE_POSITIVE_STACK_PRESET,
 ];
 
-function counterLabDraft(preset) {
+function counterShowcaseDraft(preset) {
   const face = blankFace(preset.name);
   return {
     layout: "single",
@@ -531,7 +532,7 @@ export default function CreateCardForgeSheet({
   const [open, setOpen] = useState(false);
   const [seedLoading, setSeedLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [counterLabLoading, setCounterLabLoading] = useState(false);
+  const [counterShowcaseLoading, setCounterShowcaseLoading] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const [seedDraft, setSeedDraft] = useState(null);
@@ -685,21 +686,21 @@ export default function CreateCardForgeSheet({
     });
   }, [draft, game, primaryName, refresh, runWasmInteraction, selectedPlayer, setStatus, skipTriggers, zone]);
 
-  const handleCounterLab = useCallback(async () => {
+  const handleCounterShowcase = useCallback(async () => {
     const result = await runWasmInteraction(async () => {
       if (!game || typeof game.createCustomCard !== "function") {
         setStatus("This WASM build does not expose custom card compilation", true);
         return false;
       }
 
-      setCounterLabLoading(true);
+      setCounterShowcaseLoading(true);
       const created = [];
       const failed = [];
       try {
-        for (const preset of COUNTER_LAB_SHOWCASE_PRESETS) {
+        for (const preset of COUNTER_SHOWCASE_PRESET_LIST) {
           try {
             await game.createCustomCard({
-              draft: normalizeDraftForApi(counterLabDraft(preset)),
+              draft: normalizeDraftForApi(counterShowcaseDraft(preset)),
               playerIndex: selectedPlayer,
               counterSeed: preset.counter,
               // Reuse the placement selector so the showcase can exercise
@@ -721,7 +722,7 @@ export default function CreateCardForgeSheet({
           return false;
         }
 
-        // Counter Lab cards intentionally have custom names, so the regular
+        // Counter showcase cards intentionally have descriptive custom names, so the regular
         // name-based art resolver cannot find a printing for them. Apply any
         // already-known art immediately; resolving a fallback printing must
         // never hold the WASM operation open or delay the visible cards.
@@ -729,15 +730,15 @@ export default function CreateCardForgeSheet({
           || draft.faces?.[0]?.artUrl
           || "";
         setCustomCardCounterOverrides({
-          [COUNTER_LAB_MIXED_PRESET.name]: COUNTER_LAB_MIXED_PRESET.overrideCounters,
-          [COUNTER_LAB_THREE_THREE_PRESET.name]: COUNTER_LAB_THREE_THREE_PRESET.overrideCounters,
-          [COUNTER_LAB_POSITIVE_STACK_PRESET.name]: COUNTER_LAB_POSITIVE_STACK_PRESET.overrideCounters,
+          [COUNTER_SHOWCASE_MIXED_PRESET.name]: COUNTER_SHOWCASE_MIXED_PRESET.overrideCounters,
+          [COUNTER_SHOWCASE_THREE_THREE_PRESET.name]: COUNTER_SHOWCASE_THREE_THREE_PRESET.overrideCounters,
+          [COUNTER_SHOWCASE_POSITIVE_STACK_PRESET.name]: COUNTER_SHOWCASE_POSITIVE_STACK_PRESET.overrideCounters,
         });
-        setCustomCardArtUrls(COUNTER_LAB_SHOWCASE_PRESETS.map((preset) => ({
+        setCustomCardArtUrls(COUNTER_SHOWCASE_PRESET_LIST.map((preset) => ({
           name: preset.name,
           artUrl: knownArtUrl,
         })));
-        setCompiledCardNames(COUNTER_LAB_SHOWCASE_PRESETS.map((preset) => preset.name));
+        setCompiledCardNames(COUNTER_SHOWCASE_PRESET_LIST.map((preset) => preset.name));
 
         setOpen(false);
         await refresh(
@@ -761,7 +762,7 @@ export default function CreateCardForgeSheet({
           if (!artSourceName) return;
           const showcaseArtUrl = await resolveScryfallImageUrl(artSourceName, "normal").catch(() => "");
           if (!showcaseArtUrl) return;
-          setCustomCardArtUrls(COUNTER_LAB_SHOWCASE_PRESETS.map((preset) => ({
+          setCustomCardArtUrls(COUNTER_SHOWCASE_PRESET_LIST.map((preset) => ({
             name: preset.name,
             artUrl: showcaseArtUrl,
           })));
@@ -769,7 +770,7 @@ export default function CreateCardForgeSheet({
         })().catch(() => {});
         return true;
       } finally {
-        setCounterLabLoading(false);
+        setCounterShowcaseLoading(false);
       }
     });
     if (result === undefined) {
@@ -852,13 +853,13 @@ export default function CreateCardForgeSheet({
                 variant="secondary"
                 size="sm"
                 className="stone-pill"
-                disabled={disabled || submitting || counterLabLoading || seedLoading || previewLoading}
-                onClick={() => void handleCounterLab()}
+                disabled={disabled || submitting || counterShowcaseLoading || seedLoading || previewLoading}
+                onClick={() => void handleCounterShowcase()}
               >
-                {counterLabLoading ? (
+                {counterShowcaseLoading ? (
                   <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
                 ) : null}
-                {counterLabLoading ? ui("Loading counters...") : ui("Load counter showcase")}
+                {counterShowcaseLoading ? ui("Loading counters...") : ui("Load counter showcase")}
               </Button>
             </div>
           </div>
