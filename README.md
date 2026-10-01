@@ -737,42 +737,6 @@ Serving from a subdirectory needs no extra configuration.
 ### npm package
 
 The engine is also published as the `ironsmith-wasm` npm package:
-Requirements: a Rust toolchain installed through `rustup`, Python 3, Node, and `pnpm`.
-
-```sh
-./rebuild-wasm.sh
-cd web/ui && pnpm install && pnpm dev
-```
-
-### Preview deploy from the fork
-
-The fork's `main` branch is wired to GitHub Pages.
-Every push to that branch, or a manual run of **Deploy IronSmith UI to GitHub
-Pages**, builds the WASM runtime when its source cache changes and the Vite UI,
-then publishes `web/ui/dist`. For a manual run, use the `ref` input to choose
-`main`, another branch, a tag, or an exact commit SHA.
-The first run can take longer because it downloads the Scryfall card data and
-creates the browser card assets; later UI-only runs reuse the exact engine
-cache and do not rebuild those assets.
-
-Enable **Settings → Pages → Source: GitHub Actions** once in the fork. The
-preview will then be available at:
-
-`https://fiammamuscari.github.io/ironsmith/`
-
-The build uses the relative Vite base already configured by the UI, so the same
-artifact also works when the app is served below `/ironsmith/` on a custom host.
-
-The first `./rebuild-wasm.sh` downloads the Scryfall card list, builds the card registry
-at `reports/engine-status.sqlite3`, compiles a snapshot of every supported card, and writes
-the per-card assets the browser loads from `web/ui/public/cards/`, so expect it to run for a
-while. It also installs the `wasm32-unknown-unknown` target and the pinned `wasm-bindgen`
-CLI if they are missing. Later runs only pick up cards the registry does not have yet, and
-`./rebuild-wasm.sh --release` additionally runs the shipped optimizer over the WASM.
-
-## Browser / npm package
-
-Build and verify the lean `ironsmith-wasm` npm artifact with:
 
 ```sh
 node scripts/build-npm-package.mjs
