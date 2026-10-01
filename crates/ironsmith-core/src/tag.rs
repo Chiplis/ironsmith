@@ -90,6 +90,9 @@ pub const GRANTING_SOURCE_TAG: &str = "__granting_source__";
 /// resolution, so the delayed registration preserves those players under
 /// this system tag.
 pub const DELAYED_TARGET_PLAYERS_TAG: &str = "__delayed_target_players__";
+/// The player chosen for "up to N target cards from a player's graveyard"
+/// when no card was targeted; "that player" names them (Lodestone Bauble).
+pub const TARGET_GRAVEYARD_PLAYER_TAG: &str = "__target_graveyard_player__";
 /// The single player a permanent's own entering trigger targeted, exposed to
 /// that permanent's linked leaves-the-battlefield trigger as "that player"
 /// (CR 607.2a).

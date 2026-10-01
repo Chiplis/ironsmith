@@ -227,6 +227,11 @@ pub fn static_ability_for_keyword_action(action: KeywordAction) -> Option<Compil
                 crate::ability::ProtectionFrom::ColorsOutsideCommanderIdentity,
             ))
         }
+        KeywordAction::ProtectionFromManaValuesOtherThanChosenNumber => {
+            Some(CompilerStaticAbility::protection(
+                crate::ability::ProtectionFrom::ManaValuesOtherThanChosenNumber,
+            ))
+        }
         KeywordAction::ProtectionFromFilter(filter) => Some(CompilerStaticAbility::protection(
             crate::ability::ProtectionFrom::Permanents(filter),
         )),

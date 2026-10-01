@@ -20,7 +20,7 @@ export default function CardFrameRulesBox({ children, label, onFit, onMeasure, r
     let frame = 0;
     let active = true;
     const fit = () => measureCardFrameLayout(box, () => {
-      const line = box.querySelector(".interactive-card-frame__rule-line");
+      const line = box.querySelector(".interactive-card-frame__rule-line, .inspector-mana-line");
       if (!line || !box.clientWidth || !box.clientHeight) return;
       const flavor = box.querySelector(".inspector-flavor-text");
       box.style.removeProperty("--card-fitted-rules-font-size");
@@ -29,7 +29,7 @@ export default function CardFrameRulesBox({ children, label, onFit, onMeasure, r
       box.style.setProperty("--card-rules-spacing-scale", "1");
       box.dataset.textOverflow = "false";
       const preferred = parseFloat(getComputedStyle(box).fontSize);
-      const flavorPreferred = flavor ? parseFloat(getComputedStyle(flavor).fontSize) : preferred;
+      const flavorPreferred = preferred;
       for (const paragraph of box.querySelectorAll('[data-reminder-aligned]')) {
         paragraph.style.removeProperty('margin-top');
         delete paragraph.dataset.reminderAligned;
@@ -62,7 +62,7 @@ export default function CardFrameRulesBox({ children, label, onFit, onMeasure, r
       // registered frames flow their paragraphs from it instead of shrinking.
       if (onMeasureRef.current) {
         let top = Infinity, bottom = -Infinity;
-        for (const node of box.querySelectorAll('.interactive-card-frame__rule-line')) {
+        for (const node of box.querySelectorAll('.interactive-card-frame__rule-line, .inspector-mana-line')) {
           const range = document.createRange();
           range.selectNodeContents(node);
           const rect = range.getBoundingClientRect();
@@ -104,7 +104,7 @@ export default function CardFrameRulesBox({ children, label, onFit, onMeasure, r
           ? box.closest('.interactive-card-frame__rules-section')?.querySelector('.interactive-card-frame__printed-stats')?.getBoundingClientRect()
           : null;
         const inset = side => Math.max(0, parseFloat(style.getPropertyValue(`padding-${side}`)) || 0);
-        return [...box.querySelectorAll('.interactive-card-frame__rule-line')].every(node => {
+        return [...box.querySelectorAll('.interactive-card-frame__rule-line, .inspector-mana-line')].every(node => {
           const range = document.createRange();
           range.selectNodeContents(node);
           const text = range.getBoundingClientRect();
@@ -125,33 +125,27 @@ export default function CardFrameRulesBox({ children, label, onFit, onMeasure, r
             && right <= bounds.right - inset('right') + .5 && text.left >= bounds.left + inset('left') - .5;
         });
       };
-      // Remove UI-only padding/gaps before changing the printing's typography.
-      if (!fits()) {
-        box.style.setProperty("--card-rules-spacing-scale", "0");
-        if (fits()) {
-          let low = 0, high = 1;
-          for (let i = 0; i < 8; i++) {
-            const spacing = (low + high) / 2;
-            box.style.setProperty("--card-rules-spacing-scale", String(spacing));
-            if (fits()) low = spacing; else high = spacing;
+      // Live abilities keep the natural printed size. Short rules may grow to
+      // the frame's normal maximum (4.5% of card width); never shrink to hide
+      // overflow. All visible rules, reminder and flavor participate in fits().
+      const registered = box.closest('.registered-card-frame__field');
+      const stage = box.closest('.interactive-card-frame-stage');
+      const width = stage?.querySelector('.interactive-card-frame')?.clientWidth || box.clientWidth;
+      const maximum = registered ? preferred : Math.max(preferred,
+        stage?.dataset.sourceFrame === 'true' ? width * .045 : Math.min(16.5, width * .045));
+      if (fits() && maximum > preferred) {
+        let low = 1, high = maximum / preferred;
+        apply(high);
+        if (!fits()) {
+          for (let i = 0; i < 12; i++) {
+            const scale = (low + high) / 2;
+            apply(scale);
+            if (fits()) low = scale; else high = scale;
           }
-          box.style.setProperty("--card-rules-spacing-scale", String(low));
-        } else {
-          // Longer translations/live text may need smaller type, but never
-          // collapse an entire card to one-pixel lettering to hide overflow.
-          let low = .75, high = 1;
           apply(low);
-          if (fits()) {
-            for (let i = 0; i < 10; i++) {
-              const scale = (low + high) / 2;
-              apply(scale);
-              if (fits()) low = scale; else high = scale;
-            }
-            apply(low);
-          }
-          box.dataset.textOverflow = String(!fits());
         }
       }
+      box.dataset.textOverflow = String(!fits());
       box.scrollTop = 0;
       onFitRef.current?.(Number(box.style.getPropertyValue("--card-rules-fit-scale")) || 1);
     });

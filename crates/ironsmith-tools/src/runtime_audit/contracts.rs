@@ -330,6 +330,9 @@ impl Auditor {
             | "TriggeringObjectsNoneWereCastOrNoManaSpent"
             | "TriggeringAttackerBlockers"
             | "TriggeringAbilityIsManaAbility"
+            | "YouWonTriggeringClash"
+            | "TriggeringAbilityManaSpentToActivateAtLeast"
+            | "TriggeringObjectEnteredTransformed"
             | "ManaFromSourceSpentOnTriggeringAction" => scope.event,
             _ => return,
         };

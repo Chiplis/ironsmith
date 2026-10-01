@@ -306,6 +306,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
             decode_as::<T, ironsmith_core::GrantNextSpellCostReductionEffect>(effect)
         }
         "GrantPlayTaggedEffect" => decode_as::<T, ironsmith_core::GrantPlayTaggedEffect>(effect),
+        "GrantEndThisEffectPaymentEffect" => {
+            decode_as::<T, ironsmith_core::GrantEndThisEffectPaymentEffect>(effect)
+        }
         "GrantRepeatableManaPaymentActionUntilEndOfTurnEffect" => decode_as::<
             T,
             ironsmith_core::GrantRepeatableManaPaymentActionUntilEndOfTurnEffect<wire::WireEffect>,

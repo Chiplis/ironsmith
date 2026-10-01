@@ -412,7 +412,7 @@ fn resolve_runtime_modification(
             })
         }
         RuntimeModification::SetAuraAttachmentFilter(filter) => {
-            Ok(Modification::SetAuraAttachmentFilter(filter.clone()))
+            Ok(Modification::SetAuraAttachmentFilter(filter.clone().into()))
         }
     }
 }
@@ -1104,7 +1104,8 @@ impl EffectExecutor for ApplyContinuousEffect {
                 crate::continuous::continuous_effect_duration_and_condition_are_active(
                     &effect, game,
                 );
-            game.effect_store.continuous_effects.add_effect(effect);
+            let id = game.effect_store.continuous_effects.add_effect(effect);
+            ctx.created_continuous_effects.push(id);
         }
 
         game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;

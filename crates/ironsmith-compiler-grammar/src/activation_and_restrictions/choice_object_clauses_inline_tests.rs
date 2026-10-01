@@ -387,7 +387,7 @@ fn chosen_opponent_relative_permanent_count_preserves_comparison() {
         assert_eq!(chooser, PlayerAst::You);
         assert!(!random);
         assert_eq!(previous, 0);
-        let PlayerFilter::OpponentWithMoreControlledObjectsThan { player, filter } = filter else {
+        let PlayerFilter::OpponentWithMoreControlledObjectsThan { player, filter, .. } = filter else {
             panic!("relative opponent filter");
         };
         assert_eq!(*player, PlayerFilter::You);

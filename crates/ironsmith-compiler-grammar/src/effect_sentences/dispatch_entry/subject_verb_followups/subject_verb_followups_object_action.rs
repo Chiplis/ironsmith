@@ -19,6 +19,20 @@ pub(super) fn pre_rule_token_followups(
         .get(sentence_idx)
         .map(SentenceInput::lexed)
         .unwrap_or(sentence_tokens);
+    // "Create a ... token. ... When it leaves the battlefield, it deals ..."
+    // (Splintering Wind): an unquoted trigger sentence in a resolving
+    // instruction is a delayed triggered ability watching the created token
+    // (CR 603.7), not a rule of the token itself. Leave it to the delayed
+    // leaves-the-battlefield sentence parser.
+    if crate::grammar::effects::delayed_sentence_shapes::parse_delayed_tagged_leaves_shape(
+        authored_reminder_tokens,
+    )
+    .is_some_and(|shape| {
+        shape.kind
+            == crate::grammar::effects::delayed_sentence_shapes::DelayedLeavesObjectKind::Pronoun
+    }) {
+        return Ok(None);
+    }
     let reminder_facts = followup_shapes::token_reminder_followup_facts(reminder_tokens);
     if try_bind_conditional_token_entry_followup(state.effects, authored_reminder_tokens)? {
         return Ok(Some(PreParseFollowupResult::Handled {

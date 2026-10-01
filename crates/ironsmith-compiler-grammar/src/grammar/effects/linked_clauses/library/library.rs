@@ -113,11 +113,18 @@ pub fn parse_reveal_top_matching_followup_shape(
     )?;
     let tail_start = initial_len.saturating_sub(input.len());
     let tail = &tokens[tail_start..];
-    if !contains_sequence_phrase(tail, &[&["into", "your", "hand"]]) {
+    let matched_zone = if starts_sequence(tail, &[&["into", "your", "hand"]]) {
+        crate::zone::Zone::Hand
+    } else if starts_sequence(tail, &[&["into", "your", "graveyard"]]) {
+        crate::zone::Zone::Graveyard
+    } else if contains_sequence_phrase(tail, &[&["into", "your", "hand"]]) {
+        crate::zone::Zone::Hand
+    } else {
         return None;
-    }
+    };
     let bottom_order = parse_bottom_order(tail);
-    let graveyard = contains_content_sequence(tail, REST_GRAVEYARD)
+    let graveyard = matched_zone == crate::zone::Zone::Hand
+        && contains_content_sequence(tail, REST_GRAVEYARD)
         && contains_sequence_word(tail, "graveyard");
     let remainder = if let Some(order) = bottom_order {
         RevealTopRemainder::LibraryBottom(order)
@@ -129,6 +136,7 @@ pub fn parse_reveal_top_matching_followup_shape(
     Some(RevealTopMatchingFollowupShape {
         filter: filter_start..filter_end,
         chosen_type_reference: contains_sequence_phrase(filter, CHOSEN_TYPE),
+        matched_zone,
         remainder,
     })
 }

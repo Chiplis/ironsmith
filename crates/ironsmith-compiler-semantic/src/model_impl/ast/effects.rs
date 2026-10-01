@@ -63,6 +63,12 @@ pub enum EffectAst {
     ResolvesDespiteIllegalTargets,
     /// "Note the type of mana spent to pay this activation cost."
     NoteActivationManaType,
+    /// "You may pay [cost] to end this effect." (Licids): offers the
+    /// resolving ability's controller a special action (CR 116.2c) that ends
+    /// the continuous effects the ability's earlier instructions created.
+    PayToEndThisEffect {
+        cost: ManaCost,
+    },
     /// A player other than the library's owner privately looks at its top
     /// cards ("They look at the top four cards of your library").
     LookAtTopCardsAsViewer {
@@ -5264,6 +5270,24 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Counters(CounterActionAst::MoveAllCounters { from, to }),
+        )
+    }
+
+    pub fn subject_verb_move_counters(
+        counter_type: CounterType,
+        count: Value,
+        from: TargetAst,
+        to: TargetAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Counters(CounterActionAst::MoveCounters {
+                counter_type,
+                count,
+                from,
+                to,
+            }),
         )
     }
 

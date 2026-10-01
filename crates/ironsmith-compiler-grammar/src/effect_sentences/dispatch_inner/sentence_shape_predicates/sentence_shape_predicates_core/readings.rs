@@ -89,6 +89,22 @@ pub(super) const COMPOSITION_REGISTRY: RuleId = RuleId::new("sentence-compositio
 /// The readings, in the order they were ranked.
 const SENTENCE_READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("pay-to-end-this-effect"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_pay_to_end_this_effect(input)),
+    },
+    Reading {
+        id: RuleId::new("owned-exile-free-cast"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| {
+            input.outcome(Ok(
+                crate::effect_sentences::dispatch_entry::parse_owned_exile_free_cast(input.tokens),
+            ))
+        },
+    },
+    Reading {
         id: RuleId::new("win-the-game"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -605,6 +621,8 @@ const SENTENCE_READINGS: &[Reading] = &[
                 && { let words = crate::lexer::parser_token_word_refs(tokens); !(crate::word_primitives::parse_sequence_prefix(&words, &["if", "you", "dont"]) || crate::word_primitives::parse_sequence_prefix(&words, &["if", "any"])) }
                 // A conditional copy ("if ..., copy that spell") is the conditional readers'.
                 && { let conditional = if tokens.first().is_some_and(|token| token.is_word("then")) { &tokens[1..] } else { tokens }; !conditional.first().is_some_and(|token| token.is_word("if")) }
+                // A delayed "when you next activate ..." copy is the delayed trigger's.
+                && crate::effect_sentences::dispatch_inner::parse_next_activation_with_mana_spent_delayed_sentence(tokens).ok().flatten().is_none()
                 // A copy coordinated with another action ("copy that spell ..., and you may choose new targets") is the coordinated chain's.
                 && {
                     let segments = super::super::super::lex_chain_helpers::split_effect_chain_on_and_lexed(tokens);
@@ -1668,6 +1686,39 @@ const SENTENCE_COMPOSITION: &[Reading] = &[
         read: |input| input.outcome(part_5::read_top_level_subject_verb_recognition(input)),
     },
 ];
+
+/// "You may pay <mana> to end this effect." (Licids) is not a payment made
+/// while the ability resolves: it offers a later special action (CR 116.2c)
+/// that ends the effect the ability's earlier sentences created.
+fn read_pay_to_end_this_effect(
+    input: &Sentence<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation(input.tokens);
+    let words = crate::lexer::parser_token_word_refs(&tokens);
+    if words.len() < 8
+        || words[..3] != ["you", "may", "pay"]
+        || words[words.len() - 4..] != ["to", "end", "this", "effect"]
+    {
+        return Ok(None);
+    }
+    let Some(pay_idx) = tokens.iter().position(|token| token.is_word("pay")) else {
+        return Ok(None);
+    };
+    let Some(to_idx) = tokens.iter().rposition(|token| token.is_word("to")) else {
+        return Ok(None);
+    };
+    if to_idx <= pay_idx + 1 {
+        return Ok(None);
+    }
+    let Ok(cost) = crate::grammar::values::parse_mana_cost_tokens(&tokens[pay_idx + 1..to_idx])
+    else {
+        return Ok(None);
+    };
+    if cost.pips().is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(vec![EffectAst::PayToEndThisEffect { cost }]))
+}
 
 /// The sentence's reading: a specific reading if one claims it, else the
 /// first composition reader that does.

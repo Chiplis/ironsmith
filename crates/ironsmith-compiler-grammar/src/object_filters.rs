@@ -30,6 +30,32 @@ use super::util::{
 const ORIGINAL_PRINTING_SET_PREFIX: &[&str] =
     &["with", "a", "name", "originally", "printed", "in", "the"];
 const SACRIFICED_AS_IT_ENTERED_SUFFIX: &[&str] = &["sacrificed", "as", "it", "entered"];
+const DRAFTED_NOTED_NAME_QUALIFIER: &[&str] = &[
+    "with", "a", "name", "you", "noted", "for", "cards", "named",
+];
+
+/// "creatures with a name you noted for cards named Noble Banneret": the
+/// base selector plus the named draft-note card group.
+pub(crate) fn split_drafted_noted_name_qualifier_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<(Vec<OwnedLexToken>, String)> {
+    let view = TokenWordView::new(tokens);
+    let words = view.to_word_refs();
+    let qualifier_start =
+        crate::word_primitives::parse_sequence_start(&words, DRAFTED_NOTED_NAME_QUALIFIER)?;
+    let name_start = qualifier_start + DRAFTED_NOTED_NAME_QUALIFIER.len();
+    if qualifier_start == 0 || name_start >= words.len() {
+        return None;
+    }
+    let base_token_end = view.map_word_or_end_to_token_boundary(qualifier_start)?;
+    let name_token_start = view.map_word_or_end_to_token_boundary(name_start)?;
+    let name = render_token_slice(tokens.get(name_token_start..)?)
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    (!name.is_empty()).then(|| (super::util::trim_commas(&tokens[..base_token_end]), name))
+}
+
 const DRAFTED_COLOR_QUALIFIER: &[&str] = &[
     "one", "or", "more", "of", "the", "colors", "chosen", "as", "you", "drafted", "cards", "named",
 ];
@@ -868,6 +894,51 @@ fn preserve_terminal_characteristic_union_domain(
     }
 }
 
+/// "enchantment, instant, or sorcery card ... from an opponent's graveyard"
+/// (Saruman of Many Colors): one terminal `card` noun and one zone phrase
+/// qualify every listed card type. A permanent-type arm left on the default
+/// battlefield domain would make the union reach an unrelated permanent, so
+/// the arms adopt the one non-battlefield zone (and its owner) the list names.
+fn share_terminal_card_type_union_zone(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
+    let words = parser_token_word_refs(tokens);
+    let has_one_shared_card_noun = words
+        .iter()
+        .filter(|word| matches!(**word, "card" | "cards"))
+        .count()
+        == 1;
+    if !has_one_shared_card_noun
+        || filter.any_of.len() < 2
+        || !filter.any_of.iter().all(|branch| {
+            !branch.card_types.is_empty() && branch.controller.is_none() && branch.any_of.is_empty()
+        })
+    {
+        return;
+    }
+    let mut shared = None;
+    for branch in &filter.any_of {
+        let Some(zone) = branch.zone.filter(|zone| *zone != Zone::Battlefield) else {
+            continue;
+        };
+        match &shared {
+            None => shared = Some((zone, branch.owner.clone())),
+            Some((seen_zone, seen_owner)) => {
+                if *seen_zone != zone || *seen_owner != branch.owner {
+                    return;
+                }
+            }
+        }
+    }
+    let Some((zone, owner)) = shared else {
+        return;
+    };
+    for branch in &mut filter.any_of {
+        if branch.zone == Some(Zone::Battlefield) && branch.owner.is_none() {
+            branch.zone = Some(zone);
+            branch.owner = owner.clone();
+        }
+    }
+}
+
 /// A singular chosen-object noun identifies the earlier choice (CR 700.7).
 /// Keep its authored noun for rendering without imposing a current card type.
 /// Qualified or plural filters retain their ordinary type predicates.
@@ -918,6 +989,7 @@ fn finalize_public_object_filter(
     );
     preserve_public_spell_filter_facts(&mut filter, tokens);
     preserve_terminal_characteristic_union_domain(&mut filter, tokens);
+    share_terminal_card_type_union_zone(&mut filter, tokens);
     preserve_chosen_object_reference_noun(&mut filter, tokens);
     deduplicate_tagged_constraints(filter)
 }
@@ -1232,10 +1304,68 @@ fn shares_producible_mana_type_with_triggering() -> crate::filter::TaggedObjectC
     }
 }
 
+/// Source-relative relation phrases that must be lifted out of an object
+/// filter before its noun list is parsed.
+pub(crate) struct SourceRelationPhraseSplit {
+    pub(crate) tokens: Vec<OwnedLexToken>,
+    pub(crate) attacking_same_defender_as_source: bool,
+    pub(crate) could_be_enchanted_by_source: bool,
+}
+
+/// "another target creature attacking the same player or planeswalker"
+/// (Kitesail Skirmisher) relates the candidate to the source's attack
+/// target; its "or planeswalker" must never join the noun list. "a creature
+/// at random this Aura can enchant" (Infectious Rage) requires a legal
+/// attachment host for the source Aura.
+pub(crate) fn split_source_relation_phrases(
+    tokens: &[OwnedLexToken],
+) -> Option<SourceRelationPhraseSplit> {
+    let mut kept = tokens.to_vec();
+    let mut attacking_same_defender_as_source = false;
+    if let Some(start) = kept.windows(6).position(|window| {
+        window[0].is_word("attacking")
+            && window[1].is_word("the")
+            && window[2].is_word("same")
+            && window[3].is_word("player")
+            && window[4].is_word("or")
+            && window[5].is_word("planeswalker")
+    }) {
+        attacking_same_defender_as_source = true;
+        kept.drain(start + 1..start + 6).for_each(drop);
+    }
+    let could_be_enchanted_by_source = kept.len() >= 4 && {
+        let tail = &kept[kept.len() - 4..];
+        tail[0].is_word("this")
+            && tail[1].is_word("aura")
+            && tail[2].is_any_word(&["can", "could"])
+            && tail[3].is_word("enchant")
+    };
+    if could_be_enchanted_by_source {
+        kept.truncate(kept.len() - 4);
+    }
+    (attacking_same_defender_as_source || could_be_enchanted_by_source).then_some(
+        SourceRelationPhraseSplit {
+            tokens: kept,
+            attacking_same_defender_as_source,
+            could_be_enchanted_by_source,
+        },
+    )
+}
+
+fn apply_source_relation_phrases(filter: &mut ObjectFilter, split: &SourceRelationPhraseSplit) {
+    filter.attacking_same_defender_as_source |= split.attacking_same_defender_as_source;
+    filter.could_be_enchanted_by_source |= split.could_be_enchanted_by_source;
+}
+
 pub fn parse_object_filter(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some(split) = split_source_relation_phrases(tokens) {
+        let mut filter = parse_object_filter(&split.tokens, other)?;
+        apply_source_relation_phrases(&mut filter, &split);
+        return Ok(filter);
+    }
     if let Some(base) = strip_as_you_cast_this_spell_suffix(tokens) {
         return parse_object_filter(base, other);
     }
@@ -1279,6 +1409,11 @@ pub fn parse_object_filter(
     if let Some((base_tokens, card_name)) = split_drafted_color_qualifier_tokens(tokens) {
         let mut filter = parse_object_filter_inner(&base_tokens, other)?;
         filter.colors_chosen_while_drafting_named = Some(card_name);
+        return Ok(finalize_public_object_filter(filter, &base_tokens));
+    }
+    if let Some((base_tokens, card_name)) = split_drafted_noted_name_qualifier_tokens(tokens) {
+        let mut filter = parse_object_filter_inner(&base_tokens, other)?;
+        filter.name_noted_while_drafting_named = Some(card_name);
         return Ok(finalize_public_object_filter(filter, &base_tokens));
     }
     let mut filter = parse_object_filter_inner(tokens, other)?;
@@ -1549,6 +1684,11 @@ pub fn parse_object_filter_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some(split) = split_source_relation_phrases(tokens) {
+        let mut filter = parse_object_filter_lexed(&split.tokens, other)?;
+        apply_source_relation_phrases(&mut filter, &split);
+        return Ok(filter);
+    }
     if let Some(base) = strip_as_you_cast_this_spell_suffix(tokens) {
         return parse_object_filter_lexed(base, other);
     }
@@ -1580,6 +1720,11 @@ pub fn parse_object_filter_lexed(
     if let Some((base_tokens, card_name)) = split_drafted_color_qualifier_tokens(tokens) {
         let mut filter = parse_object_filter_lexed_inner(&base_tokens, other)?;
         filter.colors_chosen_while_drafting_named = Some(card_name);
+        return Ok(finalize_public_object_filter(filter, &base_tokens));
+    }
+    if let Some((base_tokens, card_name)) = split_drafted_noted_name_qualifier_tokens(tokens) {
+        let mut filter = parse_object_filter_lexed_inner(&base_tokens, other)?;
+        filter.name_noted_while_drafting_named = Some(card_name);
         return Ok(finalize_public_object_filter(filter, &base_tokens));
     }
     let filter = parse_object_filter_lexed_inner(tokens, other)?;
@@ -1697,6 +1842,7 @@ pub fn spell_filter_has_identity(filter: &ObjectFilter) -> bool {
         || filter.has_x_in_cost
         || filter.chosen_color
         || filter.colors_chosen_while_drafting_named.is_some()
+        || filter.name_noted_while_drafting_named.is_some()
         || filter.chosen_creature_type
         || filter.chosen_card_type
         || filter.excluded_chosen_creature_type
@@ -1784,6 +1930,9 @@ pub fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) {
     base.chosen_color |= extra.chosen_color;
     if base.colors_chosen_while_drafting_named.is_none() {
         base.colors_chosen_while_drafting_named = extra.colors_chosen_while_drafting_named;
+    }
+    if base.name_noted_while_drafting_named.is_none() {
+        base.name_noted_while_drafting_named = extra.name_noted_while_drafting_named;
     }
     base.chosen_creature_type |= extra.chosen_creature_type;
     base.chosen_card_type |= extra.chosen_card_type;

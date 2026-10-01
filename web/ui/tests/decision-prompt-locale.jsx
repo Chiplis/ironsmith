@@ -20,10 +20,11 @@ const decision = {
   player: 0,
   source_id: sourceId,
   source_name: sourceId === 8 ? "Yawgmoth, Thran Physician's ability" : "Ivy, Gleeful Spellthief",
+  context_text: params.get("context"),
   description: params.get("description") || "Copy that spell",
   options: [{index: 1, description: "Yes"}, {index: 0, description: "No"}],
 };
-const state = {perspective: 0, players: [{id: 0, name: "Alice", battlefield: [ivy, yawgmoth]}], stack_objects: [], decision};
+const state = {perspective: 0, players: [{id: 0, name: "Alice", battlefield: [ivy, yawgmoth]}], stack_objects: params.has("stack") ? [{id: sourceId, name: decision.source_name, effect_text: "Full spell text with all modes."}] : [], decision};
 
 createRoot(document.getElementById("root")).render(
   <I18nProvider><GameContext.Provider value={{state}}>

@@ -253,6 +253,147 @@ pub(super) fn take_self_replacement_condition(
     }
 }
 
+/// "If you control a Villain with greater mana value than that creature, ...
+/// instead" (Evil's Thrall): the gate compares against the default action's
+/// object. A self-replacement gate is evaluated before either branch runs, so
+/// no tag names that object yet, and an unbound `it` would fall back to the
+/// source. Report it rather than comparing against the wrong object.
+fn gate_compares_against_unbound_antecedent(predicate: &PredicateAst) -> bool {
+    fn reads_it(value: &Value) -> bool {
+        match value {
+            Value::PowerOf(spec) | Value::ToughnessOf(spec) | Value::ManaValueOf(spec) => {
+                matches!(spec.base(), crate::target::ChooseSpec::Tagged(found)
+                    if found.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
+            }
+            Value::SurfaceHinted { value, .. } => reads_it(value),
+            _ => false,
+        }
+    }
+    fn comparison_reads_it(comparison: Option<&crate::filter::Comparison>) -> bool {
+        use crate::filter::Comparison as C;
+        matches!(
+            comparison,
+            Some(
+                C::EqualExpr(value)
+                    | C::NotEqualExpr(value)
+                    | C::LessThanExpr(value)
+                    | C::LessThanOrEqualExpr(value)
+                    | C::GreaterThanExpr(value)
+                    | C::GreaterThanOrEqualExpr(value)
+            ) if reads_it(value)
+        )
+    }
+    fn filter_reads_it(filter: &ObjectFilter) -> bool {
+        comparison_reads_it(filter.power.as_ref())
+            || comparison_reads_it(filter.toughness.as_ref())
+            || comparison_reads_it(filter.mana_value.as_ref())
+            || filter.any_of.iter().any(filter_reads_it)
+    }
+    use crate::cards::builders::PlayerPredicateAst as P;
+    match predicate {
+        PredicateAst::Player(
+            P::PlayerControls { filter, .. }
+            | P::PlayerControlsNo { filter, .. }
+            | P::PlayerControlsExactly { filter, .. }
+            | P::PlayerHasAtLeast { filter, .. },
+        ) => filter_reads_it(filter),
+        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
+            gate_compares_against_unbound_antecedent(left)
+                || gate_compares_against_unbound_antecedent(right)
+        }
+        PredicateAst::Not(inner) => gate_compares_against_unbound_antecedent(inner),
+        _ => false,
+    }
+}
+
+/// The resolution-time spec for the default action's single announced
+/// target. The runtime evaluates a self-replacement gate with that action's
+/// targets in scope, so a target spec reads the targeted object.
+fn gate_antecedent_target_spec(target: &TargetAst) -> Option<crate::target::ChooseSpec> {
+    use crate::target::ChooseSpec;
+    match target {
+        TargetAst::Object(filter, Some(_), _) => {
+            Some(ChooseSpec::Target(Box::new(ChooseSpec::Object(filter.clone()))))
+        }
+        TargetAst::AnyTarget(Some(_)) => Some(ChooseSpec::AnyTarget),
+        TargetAst::AnyOtherTarget(Some(_)) => Some(ChooseSpec::AnyOtherTarget),
+        TargetAst::WithCount(inner, count) | TargetAst::WithCountValue(inner, count, _)
+            if count.min == 1 && count.max == Some(1) =>
+        {
+            gate_antecedent_target_spec(inner)
+        }
+        _ => None,
+    }
+}
+
+/// Rebinds the gate's characteristic comparisons that read the unbound `it`
+/// ("than that creature") to the default action's announced target.
+fn bind_gate_antecedent_comparisons_to_target(
+    predicate: &mut PredicateAst,
+    target: &crate::target::ChooseSpec,
+) {
+    fn bind_spec(spec: &mut crate::target::ChooseSpec, target: &crate::target::ChooseSpec) {
+        if let crate::target::ChooseSpec::SurfaceHinted { spec, .. } = spec {
+            bind_spec(spec, target);
+            return;
+        }
+        if matches!(spec, crate::target::ChooseSpec::Tagged(found)
+            if found.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
+        {
+            *spec = target.clone();
+        }
+    }
+    fn bind_value(value: &mut Value, target: &crate::target::ChooseSpec) {
+        match value {
+            Value::PowerOf(spec) | Value::ToughnessOf(spec) | Value::ManaValueOf(spec) => {
+                bind_spec(spec, target)
+            }
+            Value::SurfaceHinted { value, .. } => bind_value(value, target),
+            _ => {}
+        }
+    }
+    fn bind_comparison(
+        comparison: Option<&mut crate::filter::Comparison>,
+        target: &crate::target::ChooseSpec,
+    ) {
+        use crate::filter::Comparison as C;
+        if let Some(
+            C::EqualExpr(value)
+            | C::NotEqualExpr(value)
+            | C::LessThanExpr(value)
+            | C::LessThanOrEqualExpr(value)
+            | C::GreaterThanExpr(value)
+            | C::GreaterThanOrEqualExpr(value),
+        ) = comparison
+        {
+            bind_value(value, target);
+        }
+    }
+    fn bind_filter(filter: &mut ObjectFilter, target: &crate::target::ChooseSpec) {
+        bind_comparison(filter.power.as_mut(), target);
+        bind_comparison(filter.toughness.as_mut(), target);
+        bind_comparison(filter.mana_value.as_mut(), target);
+        for branch in &mut filter.any_of {
+            bind_filter(branch, target);
+        }
+    }
+    use crate::cards::builders::PlayerPredicateAst as P;
+    match predicate {
+        PredicateAst::Player(
+            P::PlayerControls { filter, .. }
+            | P::PlayerControlsNo { filter, .. }
+            | P::PlayerControlsExactly { filter, .. }
+            | P::PlayerHasAtLeast { filter, .. },
+        ) => bind_filter(filter, target),
+        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
+            bind_gate_antecedent_comparisons_to_target(left, target);
+            bind_gate_antecedent_comparisons_to_target(right, target);
+        }
+        PredicateAst::Not(inner) => bind_gate_antecedent_comparisons_to_target(inner, target),
+        _ => {}
+    }
+}
+
 fn explicit_self_replacement_result_tag(effect: &EffectAst) -> Option<TagKey> {
     match effect {
         EffectAst::TagAffected { tag, .. }
@@ -436,6 +577,22 @@ pub(in super::super) fn post_rule_future_zone_and_self_replacement(
             ));
         };
         let previous_target = primary_target_from_effect(&previous);
+        let mut predicate = predicate;
+        if gate_compares_against_unbound_antecedent(&predicate)
+            && let Some(target) = previous_target
+                .as_ref()
+                .and_then(gate_antecedent_target_spec)
+        {
+            bind_gate_antecedent_comparisons_to_target(&mut predicate, &target);
+        }
+        if gate_compares_against_unbound_antecedent(&predicate)
+            && !matches!(previous_target.as_ref(), Some(TargetAst::Source(_)))
+        {
+            return Err(CardTextError::ParseError(format!(
+                "self-replacement gate compares against the default action's object, which is unbound when the gate is evaluated (clause: '{}')",
+                LexedClause::new(sentence_tokens).text(),
+            )));
+        }
         let mut previous_result_tag = explicit_self_replacement_result_tag(&previous);
         let replacement_qualifies_antecedent = if_true
             .iter()

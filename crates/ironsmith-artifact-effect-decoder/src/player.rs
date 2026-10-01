@@ -87,6 +87,9 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "GrantPlayTaggedEffect" => {
             decode_as::<ironsmith_core::GrantPlayTaggedEffect>(payload).map(Some)
         }
+        "GrantEndThisEffectPaymentEffect" => {
+            decode_as::<ironsmith_core::GrantEndThisEffectPaymentEffect>(payload).map(Some)
+        }
         "GrantTaggedSpellFreeCastUntilEndOfTurnEffect" => {
             decode_as::<ironsmith_core::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>(payload)
                 .map(Some)

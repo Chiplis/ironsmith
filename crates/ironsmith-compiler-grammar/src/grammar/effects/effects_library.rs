@@ -190,7 +190,7 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         && let Some(EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::Choices(crate::cards::builders::ChoiceActionAst::ChoosePlayer {
-                    filter: PlayerFilter::OpponentWithMoreControlledObjectsThan { player, filter },
+                    filter: PlayerFilter::OpponentWithMoreControlledObjectsThan { player, filter, .. },
                     tag,
                     ..
                 }),
@@ -327,7 +327,16 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             | Some(SearchLibrarySameNameReference::Choose { .. })
     );
 
-    let named_filters = if basic_land_type_slots.is_none() && count_used == 0 {
+    // A bare article count ("for a card named A and a card named B") leaves
+    // the named items to supply their own one-card counts.
+    let article_count_only = count_used == 1
+        && count.is_single()
+        && count_value.is_none()
+        && search_tokens
+            .get(for_idx + 1)
+            .is_some_and(|token| token.is_word("a") || token.is_word("an"));
+    let named_filters = if basic_land_type_slots.is_none() && (count_used == 0 || article_count_only)
+    {
         split_search_named_item_filters_lexed(&filter_tokens, &clause_display)?
     } else {
         None
@@ -537,11 +546,17 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             ));
         }
         sequence
-    } else if let Some(named_filters) = named_filters {
+    } else if let Some(named_items) = named_filters {
         let searched_tag: TagKey = crate::tag::declared_key("searched_named").into();
         let zones = search_zones_override.unwrap_or_else(|| vec![Zone::Library]);
+        // "a card named A and/or a card named B": up to one of each name.
+        let (named_count, named_search_mode) = if named_items.each_optional {
+            (ChoiceCount::up_to(1), SearchSelectionMode::Optional)
+        } else {
+            (ChoiceCount::exactly(1), SearchSelectionMode::Exact)
+        };
         let mut sequence = Vec::new();
-        for mut named_filter in named_filters {
+        for mut named_filter in named_items.filters {
             if named_filter.owner.is_none()
                 && let Some(owner) = forced_library_owner.clone()
             {
@@ -551,12 +566,12 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             sequence.push(EffectAst::ObjectChoices(
                 ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
                     filter: named_filter,
-                    count: ChoiceCount::exactly(1),
+                    count: named_count,
                     count_value: None,
                     player: chooser,
                     tag: crate::tag::TagRef::of(searched_tag.clone()),
                     zones: zones.clone(),
-                    search_mode: Some(SearchSelectionMode::Exact),
+                    search_mode: Some(named_search_mode),
                 },
             ));
         }

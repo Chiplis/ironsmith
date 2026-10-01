@@ -388,6 +388,9 @@ pub fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAct
                 ))
                 .map(KeywordAction::ProtectionFromEachManaValueAmong)
             }
+            ProtectionTargetKind::ManaValuesOtherThanChosenNumber => {
+                Some(KeywordAction::ProtectionFromManaValuesOtherThanChosenNumber)
+            }
             ProtectionTargetKind::Spell => {
                 Some(KeywordAction::ProtectionFromFilter(ObjectFilter::spell()))
             }

@@ -2768,6 +2768,38 @@ fn infer_attached_subject_filter_from_condition_tokens(
     crate::grammar::primitives::probe_shape(parse_object_filter(subject_tokens, false))
 }
 
+/// "<this source> and those <objects>" after a counted condition ("you
+/// control one or more <objects>"): the source together with the objects the
+/// condition counts.
+fn source_and_condition_counted_subject(
+    subject_tokens: &[OwnedLexToken],
+    condition: Option<&PredicateAst>,
+) -> Option<ObjectFilter> {
+    let Some(PredicateAst::CountComparison {
+        count: AnthemCountExpression::MatchingFilter(counted),
+        ..
+    }) = condition
+    else {
+        return None;
+    };
+    let and_idx = subject_tokens.iter().position(|token| token.is_word("and"))?;
+    let left = trim_commas(&subject_tokens[..and_idx]);
+    let right_words = crate::lexer::parser_token_word_refs(&subject_tokens[and_idx + 1..]);
+    if !matches!(right_words.as_slice(), ["those", _]) {
+        return None;
+    }
+    let left_words = crate::lexer::parser_token_word_refs(&left);
+    if !(anthem_grant_grammar::is_source_it_subject(&left)
+        || crate::util::is_source_reference_words(&left_words))
+    {
+        return None;
+    }
+    Some(ObjectFilter {
+        any_of: vec![ObjectFilter::source(), counted.clone()],
+        ..ObjectFilter::default()
+    })
+}
+
 fn parse_anthem_subject_with_attached_fallback(
     tokens: &[OwnedLexToken],
     attached_subject_filter: Option<&ObjectFilter>,
@@ -3941,8 +3973,16 @@ pub fn parse_anthem_clause(
     let attached_subject_filter = prefix_attached_subject
         .as_ref()
         .or(suffix_attached_subject.as_ref());
-    let mut subject =
-        parse_anthem_subject_with_attached_fallback(&subject_tokens, attached_subject_filter)?;
+    // "As long as you control one or more creatures with a name you noted
+    // ..., this creature and those creatures get +1/+1" (Noble Banneret):
+    // "those creatures" are the ones the leading condition counts.
+    let mut subject = if let Some(filter) =
+        source_and_condition_counted_subject(&subject_tokens, prefix_condition.as_ref())
+    {
+        AnthemSubjectAst::Filter(filter)
+    } else {
+        parse_anthem_subject_with_attached_fallback(&subject_tokens, attached_subject_filter)?
+    };
 
     let condition = match (prefix_condition, suffix_condition) {
         (Some(_prefix), Some(_)) => {

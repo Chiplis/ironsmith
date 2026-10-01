@@ -893,6 +893,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     ChooseNamedOptionAsEnters {
         options: Vec<String>,
         display: String,
+        /// "choose 2, 3, or 4 at random": the option is picked uniformly at
+        /// random rather than by the controller.
+        #[cfg_attr(feature = "serde", serde(default))]
+        at_random: bool,
     },
     ChoosePowerToughnessAsEntersOrTurnsFaceUp {
         options: Vec<PowerToughnessChoiceOption<T, E, C, Cond, ICond>>,
@@ -2311,9 +2315,15 @@ where
             StaticAbilityPayload::ChooseCreatureTypeAsEnters(display) => {
                 StaticAbilityPayload::ChooseCreatureTypeAsEnters(display)
             }
-            StaticAbilityPayload::ChooseNamedOptionAsEnters { options, display } => {
-                StaticAbilityPayload::ChooseNamedOptionAsEnters { options, display }
-            }
+            StaticAbilityPayload::ChooseNamedOptionAsEnters {
+                options,
+                display,
+                at_random,
+            } => StaticAbilityPayload::ChooseNamedOptionAsEnters {
+                options,
+                display,
+                at_random,
+            },
             StaticAbilityPayload::ChoosePowerToughnessAsEntersOrTurnsFaceUp {
                 options,
                 display,
@@ -2380,6 +2390,7 @@ where
                         conditional_additional_counters: spec
                             .conditional_additional_counters
                             .clone(),
+                        copy_followups: spec.copy_followups,
                     },
                     display,
                 }
@@ -3257,6 +3268,17 @@ impl<
             label: "megamorph".to_string(),
             payload: StaticAbilityPayload::Megamorph(cost),
         }
+    }
+
+    /// "If this enchantment leaves the battlefield, this effect continues
+    /// until end of turn."
+    pub fn static_effects_continue_until_end_of_turn_after_leaving(
+        display: impl Into<String>,
+    ) -> Self {
+        Self::identified(
+            StaticAbilityId::StaticEffectsContinueUntilEndOfTurnAfterLeaving,
+            display,
+        )
     }
 
     pub fn keyword_marker(marker: impl std::fmt::Debug) -> Self {
@@ -5283,7 +5305,27 @@ impl<
         Self {
             id: Some(StaticAbilityId::ChooseNamedOptionAsEnters),
             label: display.clone(),
-            payload: StaticAbilityPayload::ChooseNamedOptionAsEnters { options, display },
+            payload: StaticAbilityPayload::ChooseNamedOptionAsEnters {
+                options,
+                display,
+                at_random: false,
+            },
+        }
+    }
+
+    pub fn choose_named_option_at_random_as_enters(
+        options: Vec<String>,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ChooseNamedOptionAsEnters),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ChooseNamedOptionAsEnters {
+                options,
+                display,
+                at_random: true,
+            },
         }
     }
 

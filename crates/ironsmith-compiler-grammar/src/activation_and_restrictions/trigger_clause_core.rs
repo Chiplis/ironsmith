@@ -2112,7 +2112,108 @@ use crate::recognition::ParseOutcome;
 #[path = "trigger_clause_core/trigger_clause_readings.rs"]
 mod trigger_clause_readings;
 
+/// "<a Faerie> is championed with this creature" (Mistbind Clique): a
+/// permanent is championed when this object's champion ability exiles it
+/// (CR 702.72c). The exile is caused by this object, so the trigger watches
+/// battlefield-to-exile moves of matching permanents whose cause source is
+/// the trigger's own source.
+fn try_parse_championed_with_this_trigger_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<TriggerSpec>, CardTextError> {
+    let trimmed = trim_edge_punctuation_tokens(tokens);
+    let words = crate::lexer::token_word_refs(trimmed);
+    let Some(is_idx) = words
+        .windows(4)
+        .position(|window| window == ["is", "championed", "with", "this"])
+    else {
+        return Ok(None);
+    };
+    if is_idx == 0 || words.len() > is_idx + 5 {
+        return Ok(None);
+    }
+    let Some(subject_end) = trigger_word_token_start(trimmed, is_idx) else {
+        return Ok(None);
+    };
+    let subject_tokens = crate::util::strip_leading_articles(&trimmed[..subject_end]);
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+    let filter = parse_object_filter_lexed(&subject_tokens, false)?;
+    let mut source = ObjectFilter::default();
+    source.source = true;
+    Ok(Some(TriggerSpec::PutIntoExileFromZones {
+        filter,
+        from: vec![Zone::Battlefield],
+        one_or_more: false,
+        during_turn: None,
+        cause_filter: Some(crate::events::cause::CauseFilter {
+            cause_type: None,
+            source_filter: Some(source),
+            controller_filter: None,
+        }),
+    }))
+}
+
+/// "<a permanent you control> transforms or <a permanent you control> enters
+/// transformed" (Corruption of Towashi): either a matching permanent
+/// transforms, or a matching permanent enters the battlefield with its back
+/// face up. Neither branch is a plain battlefield entry.
+fn try_parse_transforms_or_enters_transformed_trigger_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<TriggerSpec>, CardTextError> {
+    let trimmed = trim_edge_punctuation_tokens(tokens);
+    let words = crate::lexer::token_word_refs(trimmed);
+    if !words.ends_with(&["enters", "transformed"]) {
+        return Ok(None);
+    }
+    let Some(split) = words
+        .windows(2)
+        .position(|window| window == ["transforms", "or"])
+    else {
+        return Ok(None);
+    };
+    let enters_idx = words.len() - 2;
+    if split == 0 || split + 2 >= enters_idx {
+        return Ok(None);
+    }
+    let (Some(first_end), Some(second_start), Some(second_end)) = (
+        trigger_word_token_start(trimmed, split),
+        trigger_word_token_start(trimmed, split + 2),
+        trigger_word_token_start(trimmed, enters_idx),
+    ) else {
+        return Ok(None);
+    };
+    let first_subject = crate::util::strip_leading_articles(&trimmed[..first_end]);
+    let second_subject = crate::util::strip_leading_articles(&trimmed[second_start..second_end]);
+    if first_subject.is_empty() || second_subject.is_empty() {
+        return Ok(None);
+    }
+    let transforms_filter = parse_object_filter_lexed(&first_subject, false)?;
+    let enters_filter = parse_object_filter_lexed(&second_subject, false)?;
+    Ok(Some(TriggerSpec::Either(
+        Box::new(TriggerSpec::PermanentTransforms(transforms_filter)),
+        Box::new(TriggerSpec::ConditionQualified {
+            trigger: Box::new(TriggerSpec::EntersBattlefield {
+                filter: enters_filter,
+                cause_filter: None,
+                origin_condition: None,
+                during_turn: None,
+            }),
+            condition: crate::cards::builders::PredicateAst::Triggering(
+                crate::cards::builders::TriggeringPredicateAst::TriggeringObjectEnteredTransformed,
+            ),
+            surface: "transformed".to_string(),
+        }),
+    )))
+}
+
 pub fn parse_trigger_clause_lexed(tokens: &[OwnedLexToken]) -> Result<TriggerSpec, CardTextError> {
+    if let Some(trigger) = try_parse_transforms_or_enters_transformed_trigger_lexed(tokens)? {
+        return Ok(trigger);
+    }
+    if let Some(championed) = try_parse_championed_with_this_trigger_lexed(tokens)? {
+        return Ok(championed);
+    }
     if let Some(qualified) = try_parse_while_source_is_attacking_trigger_lexed(tokens)? {
         return Ok(qualified);
     }

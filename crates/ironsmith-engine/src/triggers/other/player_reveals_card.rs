@@ -24,6 +24,45 @@ impl PlayerRevealsCardTrigger {
     }
 }
 
+fn event_value_operand(value: &crate::effect::Value) -> bool {
+    match value {
+        crate::effect::Value::SurfaceHinted { value, .. } => event_value_operand(value),
+        crate::effect::Value::EventValue(
+            crate::effect::EventValueSpec::Amount | crate::effect::EventValueSpec::DieResult,
+        ) => true,
+        _ => false,
+    }
+}
+
+fn comparison_uses_event_value(comparison: &crate::filter::Comparison) -> bool {
+    use crate::filter::Comparison;
+    match comparison {
+        Comparison::EqualExpr(value)
+        | Comparison::NotEqualExpr(value)
+        | Comparison::LessThanExpr(value)
+        | Comparison::LessThanOrEqualExpr(value)
+        | Comparison::GreaterThanExpr(value)
+        | Comparison::GreaterThanOrEqualExpr(value) => event_value_operand(value),
+        _ => false,
+    }
+}
+
+fn bind_event_value_comparison(
+    comparison: &crate::filter::Comparison,
+    amount: i32,
+) -> crate::filter::Comparison {
+    use crate::filter::Comparison;
+    match comparison {
+        Comparison::EqualExpr(_) => Comparison::Equal(amount),
+        Comparison::NotEqualExpr(_) => Comparison::NotEqual(amount),
+        Comparison::LessThanExpr(_) => Comparison::LessThan(amount),
+        Comparison::LessThanOrEqualExpr(_) => Comparison::LessThanOrEqual(amount),
+        Comparison::GreaterThanExpr(_) => Comparison::GreaterThan(amount),
+        Comparison::GreaterThanOrEqualExpr(_) => Comparison::GreaterThanOrEqual(amount),
+        other => other.clone(),
+    }
+}
+
 impl TriggerMatcher for PlayerRevealsCardTrigger {
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
         if event.kind() != EventKind::CardRevealed {
@@ -51,6 +90,17 @@ impl TriggerMatcher for PlayerRevealsCardTrigger {
 
         let mut filter = self.filter.clone();
         filter.zone = None;
+        // "with mana value less than the result this way" (Priority
+        // Boarding): "the result" is the number from the event that triggered
+        // the revealing ability, carried on the reveal event.
+        if let Some(comparison) = filter.mana_value.as_ref()
+            && comparison_uses_event_value(comparison)
+        {
+            let Some(amount) = revealed.reveal_context_amount else {
+                return false;
+            };
+            filter.mana_value = Some(bind_event_value_comparison(comparison, amount));
+        }
 
         if let Some(snapshot) = revealed.snapshot.as_ref() {
             return filter.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game);

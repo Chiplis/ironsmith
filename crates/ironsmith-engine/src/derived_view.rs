@@ -1,4 +1,5 @@
 use crate::filter::ObjectFilterExt as _;
+use crate::marker::CounterTypeExt as _;
 use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashSet;
 
@@ -1940,6 +1941,11 @@ impl<'a> DerivedGameView<'a> {
             return true;
         }
         if self.game.is_face_down(object_id) {
+            return true;
+        }
+        // Keyword counters participate in layer six without a registered
+        // continuous instruction. The raw printed-ability fast path omits them.
+        if object.counters.iter().any(|(kind, count)| *count > 0 && kind.is_ability_counter()) {
             return true;
         }
         self.battlefield_characteristic_scope

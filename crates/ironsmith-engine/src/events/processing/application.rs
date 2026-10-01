@@ -643,6 +643,7 @@ pub(super) fn apply_trait_replacement(
             added_subtypes,
             added_abilities,
             set_base_power_toughness,
+            copy_followups,
         } => {
             let modified = apply_trait_enter_as_copy(
                 &event,
@@ -660,6 +661,7 @@ pub(super) fn apply_trait_replacement(
                 added_subtypes,
                 added_abilities,
                 *set_base_power_toughness,
+                copy_followups,
             );
             match modified {
                 Some(e) => TraitApplyResult::Modified(e),
@@ -1648,12 +1650,14 @@ fn apply_trait_enter_as_copy(
     added_subtypes: &[crate::types::Subtype],
     added_abilities: &[crate::ability::Ability],
     set_base_power_toughness: Option<(i32, i32)>,
+    copy_followups: &[ironsmith_core::EnterAsCopyFollowup],
 ) -> Option<Event> {
     use crate::events::{EnterBattlefieldEvent, ZoneChangeEvent, downcast_event};
 
     let apply_copy_modifiers = |mut etb: EnterBattlefieldEvent| {
         etb = etb
             .with_copy_of(source_id)
+            .with_copy_followups(copy_followups)
             .with_copy_duration(copy_duration.clone())
             .with_linked_exile_objects(linked_exile_objects)
             .with_copy_name_override(name_override.clone())

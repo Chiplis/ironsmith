@@ -4,6 +4,15 @@ const TEXT: &str = "Enchant creature\nThis Aura enters with four task counters o
 
 #[test]
 fn attached_source_counter_release_removes_counters_from_the_granting_aura() {
+    run_attached_source_counter_release(false);
+}
+
+#[test]
+fn attached_source_counter_release_with_activation_granting_source_context() {
+    run_attached_source_counter_release(true);
+}
+
+fn run_attached_source_counter_release(capture_granting_source: bool) {
     for name in ["Heliod's Punishment", "Binding Hourglass"] {
         for holder_counters in [0, 2] {
             let oracle = TEXT.replace("Heliod's Punishment", name);
@@ -61,10 +70,18 @@ fn attached_source_counter_release_removes_counters_from_the_granting_aura() {
                         _ => None,
                     })
                     .expect("enchanted creature must retain its granted release ability");
-                game.push_to_stack(
-                    crate::game_state::StackEntry::ability(captive, bob, activated.effects)
-                        .with_ability_index(index),
-                );
+                let mut entry = crate::game_state::StackEntry::ability(
+                    captive, bob, activated.effects,
+                ).with_ability_index(index);
+                if capture_granting_source {
+                    let snapshot = crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                        game.object(aura).expect("granting Aura exists"), &game,
+                    );
+                    entry = entry.with_tagged_objects(std::collections::HashMap::from([
+                        (crate::tag::TagKey::from(crate::tag::GRANTING_SOURCE_TAG), vec![snapshot]),
+                    ]));
+                }
+                game.push_to_stack(entry);
                 crate::game_loop::resolve_stack_entry(&mut game).unwrap();
                 assert_eq!(
                     game.object(captive)

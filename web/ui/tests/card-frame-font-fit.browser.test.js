@@ -50,7 +50,7 @@ test('faint printed lines require a second line at the same size before replacin
   } finally { await browser.close(); await vite.close(); }
 });
 
-test('short text keeps its size, spacing shrinks first, and long text has a readable floor',async()=>{
+test('rules keep natural size, short rules grow to the cap, and overflow scrolls',async()=>{
   const vite=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});
   await vite.listen();const browser=await chromium.launch();
   try {
@@ -61,12 +61,20 @@ test('short text keeps its size, spacing shrinks first, and long text has a read
       const box=n.querySelector('[data-fit-text]');const flavor=n.querySelector('.inspector-flavor-text');
       return [n.dataset.sample,{font:parseFloat(getComputedStyle(n.querySelector('.interactive-card-frame__rule-line')).fontSize),flavor:flavor&&parseFloat(getComputedStyle(flavor).fontSize),spacing:Number(box.style.getPropertyValue('--card-rules-spacing-scale')),overflow:box.dataset.textOverflow,scroll:getComputedStyle(box).overflowY}];
     })));
-    const reserved=await page.locator('[data-sample="reserved"] [data-fit-text]').evaluate(box=>{
-      const range=document.createRange();range.selectNodeContents(box.querySelector('.interactive-card-frame__rule-line'));
-      return {text:range.getBoundingClientRect().bottom,bottom:box.getBoundingClientRect().bottom-paddingBottom(box)};
-      function paddingBottom(e){return parseFloat(getComputedStyle(e).paddingBottom)||0;}
+    const growth=await page.locator('[data-sample="grow"]').evaluate(node=>{
+      const text=node.querySelector('.interactive-card-frame__rule-line');
+      return {font:parseFloat(getComputedStyle(text).fontSize),reminder:parseFloat(getComputedStyle(node.querySelector('.rules-reminder-text')).fontSize),flavor:parseFloat(getComputedStyle(node.querySelector('.inspector-flavor-text')).fontSize)};
     });
-    assert.ok(reserved.text<=reserved.bottom+1,JSON.stringify(reserved));
+    assert.ok(growth.font>12&&growth.font<=16.2+.01,JSON.stringify(growth));
+    assert.equal(growth.reminder,growth.font);
+    assert.equal(growth.flavor,growth.font);
+    const scrolled=await page.locator('[data-sample="long"] [data-fit-text]').evaluate(box=>{
+      box.scrollTop=box.scrollHeight;
+      return {top:box.scrollTop,remaining:box.scrollHeight-box.clientHeight-box.scrollTop};
+    });
+    assert.ok(scrolled.top>0);
+    assert.ok(scrolled.remaining<=1);
+    assert.equal(metrics.reserved.font,metrics.short.font);
     // A card that gained abilities must stay readable as separate paragraphs.
     // Closing UI spacing is the fitter's first move, but the printing separates
     // its paragraphs too, so the gap has a floor and the type gives way instead.
@@ -78,10 +86,22 @@ test('short text keeps its size, spacing shrinks first, and long text has a read
         spacing:Number(box.style.getPropertyValue('--card-rules-spacing-scale')),
         bottom:rects.at(-1).bottom-box.getBoundingClientRect().bottom};
     });
-    assert.ok(paragraphs.spacing<1,`the sample should need the fitter: ${JSON.stringify(paragraphs)}`);
+    assert.equal(paragraphs.spacing,1,`the sample should need the fitter: ${JSON.stringify(paragraphs)}`);
     assert.ok(Math.min(...paragraphs.gaps)>=paragraphs.font*.3,
       `paragraphs must keep a printed-sized gap: ${JSON.stringify(paragraphs)}`);
-    assert.ok(paragraphs.bottom<=1,`paragraphs must stay inside the box: ${JSON.stringify(paragraphs)}`);
+    assert.equal(paragraphs.font,metrics.short.font,'granted abilities preserve natural size');
+    assert.equal(metrics.paragraphs.overflow,'true');
+    assert.equal(metrics.paragraphs.scroll,'auto');
+    await page.waitForSelector('.registered-card-frame__column');
+    const column=await page.locator('.registered-card-frame__column').evaluate(node=>{
+      const fonts=[...node.querySelectorAll('.interactive-card-frame__rule-line')].map(line=>parseFloat(getComputedStyle(line).fontSize));
+      node.scrollTop=node.scrollHeight;
+      const last=node.querySelector('[data-field-kind="flavor"]').getBoundingClientRect();
+      return {fonts,scrolled:node.scrollTop,lastBottom:last.bottom,bottom:node.getBoundingClientRect().bottom,top:node.getBoundingClientRect().top};
+    });
+    assert.equal(column.fonts[0],column.fonts[1],'registered rules and flavor share a natural size');
+    assert.ok(column.scrolled>0,'registered overflow remains reachable');
+    assert.ok(column.lastBottom<=column.bottom+1&&column.lastBottom>column.top,'can scroll to the final flavor text');
     const measured=await page.evaluate(async()=>{
       const {measureRulesFirstLine,measureFlavorFirstLine,measureReminderText}=await import('/src/lib/card-frame-colors.js');
       const canvas=document.createElement('canvas');canvas.width=400;canvas.height=180;
@@ -128,10 +148,10 @@ test('short text keeps its size, spacing shrinks first, and long text has a read
     assert.equal(metrics.registered.font,22,'registered fields keep the printed size without the preview clamp');
     assert.equal(metrics.registered.overflow,'false','flush text is not overflow');
     assert.equal(metrics.short.font,16.5);
-    assert.equal(metrics.short.flavor,18);
+    assert.equal(metrics.short.flavor,metrics.short.font);
     assert.equal(metrics.spacing.font,metrics.short.font);
-    assert.ok(metrics.spacing.spacing<1);
-    assert.equal(metrics.long.font,metrics.short.font*.75);
+    assert.equal(metrics.spacing.spacing,1);
+    assert.equal(metrics.long.font,metrics.short.font);
     assert.equal(metrics.long.overflow,'true');assert.equal(metrics.long.scroll,'auto');
   } finally {await browser.close();await vite.close();}
 });

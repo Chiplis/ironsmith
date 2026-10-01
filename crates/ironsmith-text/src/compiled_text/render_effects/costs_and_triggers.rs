@@ -2294,6 +2294,9 @@ pub(crate) fn describe_total_cost(cost: &crate::cost::TotalCost) -> String {
             if let Some(generic) = waterbend_generic_from_branches(branches) {
                 return format!("Waterbend {{{generic}}}");
             }
+            if let Some(factored) = describe_one_of_with_shared_prefix(branches) {
+                return factored;
+            }
             branches
                 .iter()
                 .map(describe_total_cost)
@@ -2301,6 +2304,53 @@ pub(crate) fn describe_total_cost(cost: &crate::cost::TotalCost) -> String {
                 .join(" or ")
         }
     }
+}
+
+/// "{1}{R}, Remove a +1/+1 counter from a permanent you control or remove a
+/// charge counter from a permanent you control": alternatives that share
+/// their leading components (Ion Storm's shared "{1}{R}") are rendered with
+/// that prefix once, followed by the alternatives that differ.
+fn describe_one_of_with_shared_prefix(branches: &[crate::cost::TotalCost]) -> Option<String> {
+    let parts = branches
+        .iter()
+        .map(|branch| match branch.kind() {
+            ironsmith_core::TotalCostKind::All(costs) => Some(describe_cost_component_parts(costs)),
+            ironsmith_core::TotalCostKind::OneOf(_) => None,
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let (first, rest) = parts.split_first()?;
+    if rest.is_empty() {
+        return None;
+    }
+    let mut shared = 0usize;
+    while shared < first.len()
+        && parts
+            .iter()
+            .all(|branch| branch.len() > shared + 1 && branch[shared] == first[shared])
+    {
+        shared += 1;
+    }
+    if shared == 0 {
+        return None;
+    }
+    let alternatives = parts
+        .iter()
+        .enumerate()
+        .map(|(index, branch)| {
+            let text = branch[shared..].join(", ");
+            if index == 0 {
+                text
+            } else {
+                let mut chars = text.chars();
+                match chars.next() {
+                    Some(first) => first.to_lowercase().collect::<String>() + chars.as_str(),
+                    None => text,
+                }
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" or ");
+    Some(format!("{}, {alternatives}", first[..shared].join(", ")))
 }
 
 pub(super) fn waterbend_generic_from_branches(branches: &[crate::cost::TotalCost]) -> Option<u32> {

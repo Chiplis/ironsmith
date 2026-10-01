@@ -452,7 +452,12 @@ pub fn parse_become_clause(
                 .filter(|word| crate::util::parse_supertype_word(word).is_none())
                 .collect::<Vec<_>>();
             let prefix = become_grammar::parse_become_leading_creature_prefix(&descriptor_words);
+            // A sentence-final period ("it becomes a 4/4 Crocodile creature.",
+            // Veiled Crocodile) is not an animation suffix.
             let mut suffix_tokens = suffix_tokens;
+            while suffix_tokens.last().is_some_and(|token| token.is_period()) {
+                suffix_tokens = &suffix_tokens[..suffix_tokens.len() - 1];
+            }
             // "becomes a 4/4 Spirit artifact creature that's no longer an
             // Equipment" (Haunted Plate Mail): a trailing subtype removal.
             let mut removed_subtypes = Vec::new();

@@ -120,6 +120,29 @@ impl EffectExecutor for GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
                     .grant_registry
                     .grant_alternative_cast_to_card(object_id, zone, player_id, method, source);
             }
+            // "You may cast a creature spell from among them without paying
+            // its mana cost" (Idol of Endurance): the free cost is a way to
+            // use the same permission, so it shares that permission's total
+            // budget rather than outliving it.
+            let shared_usage_id = game
+                .effect_store
+                .grant_registry
+                .grants
+                .iter()
+                .rev()
+                .find(|grant| {
+                    grant.target_id == Some(object_id)
+                        && grant.player == player_id
+                        && matches!(grant.grantable, crate::grant::Grantable::PlayFrom)
+                        && grant.source.source_id() == ctx.source
+                        && grant.shared_usage_id.is_some()
+                })
+                .and_then(|grant| grant.shared_usage_id);
+            if let Some(shared_usage_id) = shared_usage_id
+                && let Some(alternative) = game.effect_store.grant_registry.grants.last_mut()
+            {
+                alternative.shared_usage_id = Some(shared_usage_id);
+            }
             granted += 1;
         }
 

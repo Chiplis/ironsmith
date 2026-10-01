@@ -265,6 +265,7 @@ pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::SolveCase => {}
         EffectAst::ResolvesDespiteIllegalTargets => {}
         EffectAst::NoteActivationManaType => {}
+        EffectAst::PayToEndThisEffect { .. } => {}
         EffectAst::LookAtTopCardsAsViewer { .. } => {}
         EffectAst::PlayerLooksAtTopCardsOfLibrary { .. } => {}
         EffectAst::RestartGame { .. } => {}

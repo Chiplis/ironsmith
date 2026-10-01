@@ -76,7 +76,13 @@ impl TriggerMatcher for ConditionQualifiedTrigger {
         };
         // An adverbial qualification ("from anywhere other than exile",
         // "during your turn") reads directly after the event.
-        if condition.starts_with("from ") || condition.starts_with("during ") {
+        // "by spending four or more mana to activate it" and "enters
+        // transformed" are likewise part of the event's own wording.
+        if condition.starts_with("from ")
+            || condition.starts_with("during ")
+            || condition.starts_with("by ")
+            || condition == "transformed"
+        {
             return format!("{} {}", self.trigger.display(), condition);
         }
         format!("{} while {}", self.trigger.display(), condition)

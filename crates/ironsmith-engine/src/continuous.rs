@@ -404,6 +404,43 @@ impl From<ironsmith_core::CompiledContinuousEffectTarget> for EffectTarget {
     }
 }
 
+/// The semantic restriction carried by a registered continuous effect.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RestrictionKind {
+    CantBeBlocked,
+    CantAttack,
+    CantBlock,
+    DoesntUntap,
+}
+
+/// A restriction and its canonical ability occurrence. Calculation clones the
+/// payload; it must not register a fresh occurrence on every read.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RegisteredRestriction {
+    kind: RestrictionKind,
+    ability: StaticAbility,
+}
+
+impl RegisteredRestriction {
+    pub fn new(kind: RestrictionKind) -> Self {
+        let ability = match kind {
+            RestrictionKind::CantBeBlocked => StaticAbility::unblockable(),
+            RestrictionKind::CantAttack => StaticAbility::defender(),
+            RestrictionKind::CantBlock => StaticAbility::cant_block(),
+            RestrictionKind::DoesntUntap => StaticAbility::doesnt_untap(),
+        };
+        Self { kind, ability }
+    }
+
+    pub fn kind(&self) -> RestrictionKind {
+        self.kind
+    }
+
+    pub fn ability(&self) -> &StaticAbility {
+        &self.ability
+    }
+}
+
 /// The modification a continuous effect makes.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Modification {
@@ -463,7 +500,7 @@ pub enum Modification {
     SetSubtypes(Vec<Subtype>),
 
     /// Set an Aura attachment restriction for legality checks.
-    SetAuraAttachmentFilter(crate::object::AuraAttachmentFilter),
+    SetAuraAttachmentFilter(crate::object::AuraAttachmentMetadata),
 
     /// Add supertypes
     AddSupertypes(Vec<Supertype>),
@@ -553,17 +590,8 @@ pub enum Modification {
     /// Remove all non-mana abilities
     RemoveAllAbilitiesExceptMana,
 
-    /// Grant "can't be blocked"
-    CantBeBlocked,
-
-    /// Grant "can't attack"
-    CantAttack,
-
-    /// Grant "can't block"
-    CantBlock,
-
-    /// Grant "doesn't untap"
-    DoesntUntap,
+    /// Apply a registered restriction without regenerating its ability identity.
+    Restriction(RegisteredRestriction),
 
     // === Layer 7: Power/Toughness ===
     /// Set power (7a or 7b depending on source)
@@ -602,6 +630,10 @@ pub enum Modification {
 }
 
 impl Modification {
+    pub fn restriction(kind: RestrictionKind) -> Self {
+        Self::Restriction(RegisteredRestriction::new(kind))
+    }
+
     pub fn try_from_model<StaticModel, AbilityModel, Error>(
         modification: ironsmith_core::CompiledContinuousModification<StaticModel, AbilityModel>,
         mut convert_static_ability: impl FnMut(StaticModel) -> Result<StaticAbility, Error>,
@@ -680,7 +712,7 @@ impl Modification {
                 value: toughness,
                 sublayer: sublayer.into(),
             },
-            ironsmith_core::CompiledContinuousModification::DoesntUntap => Self::DoesntUntap,
+            ironsmith_core::CompiledContinuousModification::DoesntUntap => Self::restriction(RestrictionKind::DoesntUntap),
             ironsmith_core::CompiledContinuousModification::MakeColorless => Self::MakeColorless,
             ironsmith_core::CompiledContinuousModification::SwitchPowerToughness => {
                 Self::SwitchPowerToughness
@@ -730,10 +762,7 @@ impl Modification {
             | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
             | Modification::RemoveAllAbilitiesExceptMana
-            | Modification::CantBeBlocked
-            | Modification::CantAttack
-            | Modification::CantBlock
-            | Modification::DoesntUntap => Layer::Ability,
+            | Modification::Restriction(_) => Layer::Ability,
 
             Modification::SetPower { .. }
             | Modification::SetToughness { .. }
@@ -827,6 +856,16 @@ impl TextBoxOverlay {
         self.ability_labels = ability_labels.into();
         self
     }
+}
+
+/// Chronology used by permanent, attachment and counter-generated effects.
+/// This does not substitute for the registered resolution effects themselves.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContinuousTimestampState {
+    pub current_timestamp: u64,
+    pub object_entries: Vec<(ObjectId, u64)>,
+    pub counters: Vec<((ObjectId, CounterType), u64)>,
+    pub attachments: Vec<(ObjectId, u64)>,
 }
 
 /// Manages all continuous effects in the game.
@@ -1328,6 +1367,44 @@ impl ContinuousEffectManager {
         self.current_timestamp
     }
 
+
+    pub fn timestamp_state(&self) -> ContinuousTimestampState {
+        ContinuousTimestampState {
+            current_timestamp: self.current_timestamp,
+            object_entries: self.object_entry_timestamps_snapshot(),
+            counters: self.counter_timestamps_snapshot(),
+            attachments: self.attachment_timestamps_snapshot(),
+        }
+    }
+
+    /// Restore the complete chronology atomically. Replaying entry/attachment
+    /// setters would create new timestamps and change replacement applicability.
+    pub fn restore_timestamp_state(&mut self, state: ContinuousTimestampState) -> Result<(), String> {
+        if state.current_timestamp == u64::MAX {
+            return Err("serialized timestamp clock cannot advance".into());
+        }
+        fn checked_map<K: std::hash::Hash + Eq>(
+            entries: Vec<(K, u64)>, clock: u64,
+        ) -> Result<crate::FxMap<K, u64>, String> {
+            let mut map = crate::FxMap::default();
+            for (key, timestamp) in entries {
+                if timestamp > clock || map.insert(key, timestamp).is_some() {
+                    return Err("duplicate or future timestamp in checkpoint".into());
+                }
+            }
+            Ok(map)
+        }
+        let entries = checked_map(state.object_entries, state.current_timestamp)?;
+        let counters = checked_map(state.counters, state.current_timestamp)?;
+        let attachments = checked_map(state.attachments, state.current_timestamp)?;
+        self.object_entry_timestamps = entries;
+        self.counter_timestamps = counters;
+        self.attachment_timestamps = attachments;
+        self.current_timestamp = state.current_timestamp;
+        self.revision += 1;
+        Ok(())
+    }
+
     /// Snapshot object entry timestamps in deterministic order.
     pub fn object_entry_timestamps_snapshot(&self) -> Vec<(ObjectId, u64)> {
         let mut entries: Vec<(ObjectId, u64)> = self
@@ -1351,6 +1428,7 @@ impl ContinuousEffectManager {
                 left_id
                     .cmp(right_id)
                     .then_with(|| left_counter.description().cmp(&right_counter.description()))
+                    .then_with(|| left_counter.cmp(right_counter))
             },
         );
         entries
@@ -1858,6 +1936,7 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
     // CR 709.4: outside the stack and battlefield a split card starts from
     // both halves' combined types (colors() already combines them).
     let split_combined = object.split_combined_active();
+    let abilities = object.materialized_text_box_abilities();
     let supertypes = split_combined
         .map_or_else(|| object.supertypes.clone(), |combined| combined.supertypes.clone());
     let mut chars = CalculatedCharacteristics {
@@ -1876,13 +1955,12 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         supertypes,
         colors: object.colors(),
         loyalty: object.base_loyalty,
-        abilities: object.abilities.clone().into(),
-        static_abilities: extract_static_abilities(&object.abilities).into(),
+        abilities: abilities.clone().into(),
+        static_abilities: extract_static_abilities(&abilities).into(),
         ability_gain_prohibitions: Vec::new(),
         aura_attach_filter: object.aura_attach_filter_owned(),
         controller: object.owner,
     };
-    install_enchant_metadata(&mut chars);
     chars
 }
 
@@ -1901,7 +1979,7 @@ fn install_enchant_metadata(chars: &mut CalculatedCharacteristics) {
 
 fn replace_enchant_metadata(
     chars: &mut CalculatedCharacteristics,
-    filter: &crate::object::AuraAttachmentFilter,
+    metadata: &crate::object::AuraAttachmentMetadata,
 ) {
     chars.abilities.retain(|ability| {
         !matches!(
@@ -1911,8 +1989,8 @@ fn replace_enchant_metadata(
     chars
         .static_abilities
         .retain(|ability| ability.enchant_filter().is_none());
-    chars.aura_attach_filter = Some(filter.clone());
-    install_enchant_metadata(chars);
+    chars.aura_attach_filter = Some(metadata.to_owned_value());
+    push_static_ability_once(chars, metadata.enchant_ability());
 }
 
 fn retain_active_static_abilities(
@@ -2227,7 +2305,8 @@ pub(crate) fn calculate_characteristics_batch_with_effects(
                 game,
             );
             #[cfg(feature = "shadow-continuous")]
-            for (&id, chars) in &batch {
+            game.with_shadow_characteristic_evaluation(|| {
+                for (&id, chars) in &batch {
                 let object = objects
                     .get(&id)
                     .expect("batch returned characteristics for an unknown object");
@@ -2248,6 +2327,7 @@ pub(crate) fn calculate_characteristics_batch_with_effects(
                     id.0
                 );
             }
+            });
             calculated.extend(batch);
         } else {
             for id in pending {
@@ -4747,6 +4827,8 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.unblocked
         || filter.is_target_object
         || filter.in_combat_with_source
+        || filter.attacking_same_defender_as_source
+        || filter.could_be_enchanted_by_source
         || filter.in_combat_with.is_some()
         || filter.entered_since_your_last_turn_ended
         || filter.controlled_continuously_since_turn_began.is_some()
@@ -5627,17 +5709,8 @@ fn apply_modification_to_chars(
 
         // Direct restriction modifications materialize as static abilities in
         // the ability layer, matching the single-object layer resolver.
-        Modification::CantBeBlocked => {
-            push_static_ability_once(chars, StaticAbility::unblockable());
-        }
-        Modification::CantAttack => {
-            push_static_ability_once(chars, StaticAbility::defender());
-        }
-        Modification::CantBlock => {
-            push_static_ability_once(chars, StaticAbility::cant_block());
-        }
-        Modification::DoesntUntap => {
-            push_static_ability_once(chars, StaticAbility::doesnt_untap());
+        Modification::Restriction(restriction) => {
+            push_granted_static_ability(chars, restriction.ability().clone());
         }
 
         // Other modifications that don't affect characteristics calculation

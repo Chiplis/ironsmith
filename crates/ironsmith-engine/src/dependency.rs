@@ -1474,10 +1474,7 @@ pub(crate) fn apply_modification_to_chars_for_dependency(
         | Modification::SetTextBox(_)
         | Modification::SetName(_)
         | Modification::InsertNameWords { .. }
-        | Modification::CantBeBlocked
-        | Modification::CantAttack
-        | Modification::CantBlock
-        | Modification::DoesntUntap => {}
+        | Modification::Restriction(_) => {}
     }
     enforce_ability_gain_prohibitions(chars, modification);
 }
@@ -2148,6 +2145,9 @@ pub(crate) fn condition_could_be_affected_by(
         | C::TriggeringObjectBecameTappedFirstTimeThisTurn
         | C::TriggeringObjectHadCountersPutFirstTimeThisTurn
         | C::TriggeringObjectHadToAttackThisCombat
+        | C::YouWonTriggeringClash
+        | C::TriggeringAbilityManaSpentToActivateAtLeast(_)
+        | C::TriggeringObjectEnteredTransformed
         | C::EvolveEnteringCreatureIsLarger
         | C::SoulbondPairingPossible
         | C::SourceClassLevelAtLeast(_)

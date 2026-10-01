@@ -3145,6 +3145,44 @@ fn shared_head_supertype_subtype_anthem_remains_one_typed_subject() {
     }));
 }
 
+/// "Creatures you control have base power and toughness each equal to the
+/// number of creatures you control." (Porcelain Gallery) is a layer 7b
+/// base-P/T setting effect on the subject objects, not a characteristic-
+/// defining ability of the source and not a granted ability.
+pub fn parse_has_base_power_toughness_each_equal_static_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    let Some((subject_tokens, value_tokens)) =
+        anthem_grant_grammar::parse_base_power_toughness_each_equal_shape(&tokens)
+    else {
+        return Ok(None);
+    };
+    let AnthemSubjectAst::Filter(mut filter) = parse_anthem_subject(subject_tokens)? else {
+        return Ok(None);
+    };
+    filter.set_set_quantifier_surface(leading_set_quantifier_surface(subject_tokens));
+    let Some(value) = parse_characteristic_defining_stat_value(value_tokens) else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported base power/toughness value (value: '{}')",
+            crate::lexer::token_word_refs(value_tokens).join(" ")
+        )));
+    };
+    // Source-relative readings ("each equal to its power") would bind to the
+    // source instead of each affected object; keep those unsupported.
+    if matches!(value, Value::SourcePower | Value::SourceToughness) {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported per-object base power/toughness value (value: '{}')",
+            crate::lexer::token_word_refs(value_tokens).join(" ")
+        )));
+    }
+    Ok(Some(StaticAbility::set_base_power_toughness_value(
+        filter,
+        value.clone(),
+        value,
+    )))
+}
+
 pub fn parse_has_base_power_toughness_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -3511,6 +3549,7 @@ pub fn parse_filter_has_granted_ability_line(
         crate::keyword_static::parse_source_can_block_shadow_as_though_no_shadow_line(tokens),
         Ok(Some(_))
     ) || anthem_grant_grammar::parse_base_power_toughness_grant_shape(tokens).is_some()
+        || anthem_grant_grammar::parse_base_power_toughness_each_equal_shape(tokens).is_some()
     {
         return Ok(None);
     }

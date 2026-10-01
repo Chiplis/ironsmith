@@ -3445,6 +3445,14 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::TriggeringObjectHadToAttackThisCombat => {
             "that creature had to attack this combat".to_string()
         }
+        Condition::YouWonTriggeringClash => "you won".to_string(),
+        Condition::TriggeringObjectEnteredTransformed => {
+            "that permanent entered transformed".to_string()
+        }
+        Condition::TriggeringAbilityManaSpentToActivateAtLeast(amount) => format!(
+            "{} or more mana was spent to activate that ability",
+            amount
+        ),
         Condition::SourceClassLevelAtLeast(level) => format!("this Class is level {level} or higher"),
         Condition::SoulbondPairingPossible => "you control both this creature and that creature and both are unpaired".to_string(),
         Condition::EvolveEnteringCreatureIsLarger => "that creature's power is greater than this creature's power and/or that creature's toughness is greater than this creature's toughness".to_string(),

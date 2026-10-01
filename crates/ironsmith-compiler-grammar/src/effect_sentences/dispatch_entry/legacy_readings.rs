@@ -758,63 +758,76 @@ fn read_reveal_hand_then_put_same_name_as_permanent(
 fn read_exile_cast_permission(
     input: &LegacyDocument<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    const EXILE_CAST_PREFIX: &[&str] = &[
-        "you", "may", "cast", "a", "spell", "from", "among", "cards", "you", "own", "in", "exile",
+    // "You may cast a [<card type>] spell from among cards you own in exile
+    // [with <kind> counters on them] without paying its mana cost."
+    // (Goliath Daydreamer, Dragon-Kami's Egg)
+    Ok(parse_owned_exile_free_cast(input.tokens))
+}
+
+pub(crate) fn parse_owned_exile_free_cast(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    const POOL_WORDS: &[&str] = &[
+        "spell", "from", "among", "cards", "you", "own", "in", "exile",
     ];
-    let tokens = input.tokens;
-    let source_words = crate::lexer::parser_token_word_refs(tokens);
-    let ordinary_exile_cast = source_words
-        .get(EXILE_CAST_PREFIX.len()..)
-        .is_some_and(|tail| {
-            crate::word_primitives::parse_sequence_complete(
-                tail,
-                &["without", "paying", "its", "mana", "cost"],
-            )
-        });
-    let dream_exile_cast = source_words
-        .get(EXILE_CAST_PREFIX.len()..)
-        .is_some_and(|tail| {
-            crate::word_primitives::parse_sequence_complete(
-                tail,
-                &[
-                    "with", "dream", "counters", "on", "them", "without", "paying", "its", "mana",
-                    "cost",
-                ],
-            )
-        });
-    if crate::word_primitives::parse_sequence_prefix(&source_words, EXILE_CAST_PREFIX)
-        && (ordinary_exile_cast || dream_exile_cast)
-    {
-        let tag = crate::tag::CompilerReferenceTag::ChosenCounteredExileSpell.bind();
-        let mut filter = ObjectFilter::default()
-            .owned_by(PlayerFilter::You)
-            .in_zone(Zone::Exile);
-        if dream_exile_cast {
-            filter = filter.with_counter_type(crate::object::CounterType::Dream);
+    const FREE_WORDS: &[&str] = &["without", "paying", "its", "mana", "cost"];
+    let tokens = crate::util::trim_edge_punctuation(tokens);
+    let source_words = crate::lexer::parser_token_word_refs(&tokens);
+    let Some(rest) = source_words
+        .strip_prefix(&["you", "may", "cast"][..])
+        .and_then(|rest| {
+            rest.strip_prefix(&["a"][..])
+                .or_else(|| rest.strip_prefix(&["an"][..]))
+        })
+    else {
+        return None;
+    };
+    let (spell_type, rest) = match rest.split_first() {
+        Some((word, tail)) if tail.first() == Some(&"spell") => {
+            let Some(card_type) = crate::util::parse_card_type(word) else {
+                return None;
+            };
+            (Some(card_type), tail)
         }
-        return Ok(Some(vec![EffectAst::Permissions(
-            PermissionEffectAst::May {
-                effects: vec![
-                    EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-                        filter,
-                        count: ChoiceCount::exactly(1),
-                        count_value: None,
-                        player: PlayerAst::You,
-                        tag: tag.clone(),
-                    }),
-                    EffectAst::subject_verb_cast_tagged(
-                        tag,
-                        PlayerAst::You,
-                        false,
-                        false,
-                        true,
-                        None,
-                    ),
-                ],
-            },
-        )]));
+        _ => (None, rest),
+    };
+    let Some(rest) = rest.strip_prefix(POOL_WORDS) else {
+        return None;
+    };
+    let (counter_type, rest) = match rest {
+        ["with", counter_word, "counters", "on", "them", tail @ ..] => {
+            let Some(counter_type) =
+                crate::grammar::filters::parse_counter_type_words(&[*counter_word, "counter"])
+            else {
+                return None;
+            };
+            (Some(counter_type), tail)
+        }
+        _ => (None, rest),
+    };
+    if rest != FREE_WORDS {
+        return None;
     }
-    Ok(None)
+    let tag = crate::tag::CompilerReferenceTag::ChosenCounteredExileSpell.bind();
+    let mut filter = ObjectFilter::default()
+        .owned_by(PlayerFilter::You)
+        .in_zone(Zone::Exile);
+    if let Some(card_type) = spell_type {
+        filter = filter.with_type(card_type);
+    }
+    if let Some(counter_type) = counter_type {
+        filter = filter.with_counter_type(counter_type);
+    }
+    Some(vec![EffectAst::Permissions(PermissionEffectAst::May {
+        effects: vec![
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                filter,
+                count: ChoiceCount::exactly(1),
+                count_value: None,
+                player: PlayerAst::You,
+                tag: tag.clone(),
+            }),
+            EffectAst::subject_verb_cast_tagged(tag, PlayerAst::You, false, false, true, None),
+        ],
+    })])
 }
 fn read_delegated_categorical_library_choice(
     input: &LegacyDocument<'_>,

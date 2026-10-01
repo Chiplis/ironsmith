@@ -857,7 +857,10 @@ fn repeatable_mana_payment_action(
         .repeatable_mana_payment_actions
         .get(action_index)
         .ok_or(ActionError::InvalidTarget)?;
-    if action.player != player || action.is_expired(game.turn.turn_number) {
+    if action.player != player
+        || action.is_expired(game.turn.turn_number)
+        || !action.end_effect_offer_is_live(game)
+    {
         return Err(ActionError::InvalidTiming);
     }
     Ok(action)
@@ -879,6 +882,23 @@ fn perform_repeatable_mana_payment_action(
     decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
     let action = repeatable_mana_payment_action(game, player, action_index)?.clone();
+
+    // CR 116.2c: "pay [cost] to end this effect" ends the linked continuous
+    // effects at once (no stack) and uses up the offer.
+    if !action.ends_continuous_effects.is_empty() {
+        for id in &action.ends_continuous_effects {
+            game.effect_store.continuous_effects.remove_effect(*id);
+        }
+        game.effect_store
+            .repeatable_mana_payment_actions
+            .remove(action_index);
+        game.refresh_continuous_state()
+            .map_err(|error| ActionError::ExecutionFailure {
+                source: action.source,
+                error: crate::effects::ExecutionError::ContinuousDiscovery(error),
+            })?;
+        return Ok(());
+    }
 
     let mut ctx = ExecutionContext::new(action.source, action.controller, decision_maker)
         .with_targets(action.targets)

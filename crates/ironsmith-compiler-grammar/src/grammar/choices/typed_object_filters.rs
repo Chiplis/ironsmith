@@ -125,6 +125,9 @@ pub fn parse_typed_choice_object_clause_tokens(
         parse_typed_choice_filter_words(&filter_words)?
     };
     filter = expand_graveyard_or_hand_disjunction_filter(filter, shape.filter_facts);
+    if shape.references.source_aura_can_enchant {
+        filter.could_be_enchanted_by_source = true;
+    }
     if references_it {
         if (shape.references.explicit_container_reference
             && matches!(filter.zone, None | Some(Zone::Battlefield)))

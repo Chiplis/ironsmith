@@ -35,9 +35,20 @@ pub(in super::super) fn parse_object_filter_inner(
     } else {
         tokens
     };
+    let source_relation_split = crate::object_filters::split_source_relation_phrases(tokens);
+    let (attacking_same_defender_as_source, could_be_enchanted_by_source) = source_relation_split
+        .as_ref()
+        .map(|split| (split.attacking_same_defender_as_source, split.could_be_enchanted_by_source))
+        .unwrap_or((false, false));
+    let tokens = source_relation_split
+        .as_ref()
+        .map(|split| split.tokens.as_slice())
+        .unwrap_or(tokens);
     let chosen_type_reference = parse_chosen_type_reference_tokens(tokens);
     let mut filter = ObjectFilter::default();
     filter.could_have_attacked_this_turn = trailing_couldnt_attack_exception;
+    filter.attacking_same_defender_as_source = attacking_same_defender_as_source;
+    filter.could_be_enchanted_by_source = could_be_enchanted_by_source;
     if other {
         filter.other = true;
     }

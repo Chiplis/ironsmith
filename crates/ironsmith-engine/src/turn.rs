@@ -942,7 +942,7 @@ fn modification_may_affect_untap(modification: &crate::continuous::Modification)
         | Modification::SetTextBox(_) => true,
         // Materializes StaticAbility::doesnt_untap() in calculated
         // characteristics (see apply path in continuous.rs).
-        Modification::DoesntUntap => true,
+        Modification::Restriction(restriction) => static_ability_may_affect_untap(restriction.ability()),
         Modification::AddAbility(static_ability) => static_ability_may_affect_untap(static_ability),
         Modification::AddAbilityGeneric(ability) => ability_may_affect_untap(ability),
         Modification::SetAbilities(abilities) => abilities.iter().any(ability_may_affect_untap),

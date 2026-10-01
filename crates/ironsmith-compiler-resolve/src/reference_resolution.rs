@@ -1981,7 +1981,8 @@ fn advance_reference_frame_for_effect(
                     }
                 }
                 SubjectVerbActionAst::Counters(CounterActionAst::MoveAllCounters { from, to })
-                | SubjectVerbActionAst::Counters(CounterActionAst::MoveOneCounter { from, to }) => {
+                | SubjectVerbActionAst::Counters(CounterActionAst::MoveOneCounter { from, to })
+                | SubjectVerbActionAst::Counters(CounterActionAst::MoveCounters { from, to, .. }) => {
                     if frame.auto_tag_object_targets {
                         let _ = next_reference_tag(id_gen, "from");
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "to"));
@@ -3289,6 +3290,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::SolveCase
         | EffectAst::ResolvesDespiteIllegalTargets
         | EffectAst::NoteActivationManaType
+        | EffectAst::PayToEndThisEffect { .. }
         | EffectAst::LookAtTopCardsAsViewer { .. }
         | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay)
         | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce)
@@ -3520,19 +3522,32 @@ fn annotate_effect_sequence_with_env_internal(
         // alternative to the gated branch, which never ran when the fallback
         // does. Its references see what the gate itself saw, not objects the
         // gated branch introduced.
+        // "If you win the flip, exile this permanent ... If you lose the
+        // flip, sacrifice it" (Frenetic Sliver): a negative branch is the
+        // alternative to the positive one in the same way.
         let is_otherwise_fallback = matches!(
             &effect,
             EffectAst::Conditionals(
                 ConditionalEffectAst::IfResult {
-                    predicate: IfResultPredicate::Otherwise,
+                    predicate: IfResultPredicate::Otherwise
+                        | IfResultPredicate::DidNot
+                        | IfResultPredicate::ExplicitDidNot,
                     ..
                 } | ConditionalEffectAst::ResolvedIfResult {
-                    predicate: IfResultPredicate::Otherwise,
+                    predicate: IfResultPredicate::Otherwise
+                        | IfResultPredicate::DidNot
+                        | IfResultPredicate::ExplicitDidNot,
                     ..
                 }
             )
         ) || result_gate_surface(&effect).is_some_and(|(predicate, reflexive)| {
-            !reflexive && *predicate == IfResultPredicate::Otherwise
+            !reflexive
+                && matches!(
+                    predicate,
+                    IfResultPredicate::Otherwise
+                        | IfResultPredicate::DidNot
+                        | IfResultPredicate::ExplicitDidNot
+                )
         });
         if is_otherwise_fallback
             && let Some(gate) = annotated.last()
@@ -6187,6 +6202,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnTarget { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::MoveAllCounters { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::MoveOneCounter { .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::MoveCounters { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::ForEachCounterKindPutOrRemove {
                 ..
             })
@@ -7395,7 +7411,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                     + bind_unresolved_it_in_target(target, seed_tag)
             }
             SubjectVerbActionAst::Counters(CounterActionAst::MoveAllCounters { from, to })
-            | SubjectVerbActionAst::Counters(CounterActionAst::MoveOneCounter { from, to }) => {
+            | SubjectVerbActionAst::Counters(CounterActionAst::MoveOneCounter { from, to })
+                | SubjectVerbActionAst::Counters(CounterActionAst::MoveCounters { from, to, .. }) => {
                 bind_unresolved_it_in_target(from, seed_tag)
                     + bind_unresolved_it_in_target(to, seed_tag)
             }

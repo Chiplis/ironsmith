@@ -11629,7 +11629,8 @@ fn describe_cross_segment_locked_set_tap_untap_window(
         || apply.target_spec.is_some()
         || !matches!(
             apply.modification.as_ref(),
-            Some(crate::continuous::Modification::DoesntUntap)
+            Some(crate::continuous::Modification::Restriction(restriction))
+                if restriction.kind() == crate::continuous::RestrictionKind::DoesntUntap
         )
         || !apply.additional_modifications.is_empty()
         || !apply.runtime_modifications.is_empty()
@@ -11704,7 +11705,7 @@ mod locked_set_tap_untap_window_tests {
     fn exact_apply(filter: ObjectFilter) -> crate::effects::ApplyContinuousEffect {
         crate::effects::ApplyContinuousEffect::new(
             crate::continuous::EffectTarget::Filter(filter),
-            crate::continuous::Modification::DoesntUntap,
+            crate::continuous::Modification::restriction(crate::continuous::RestrictionKind::DoesntUntap),
             Until::SourceUntaps,
         )
         .with_condition(Condition::SourceIsTapped)
@@ -11727,7 +11728,7 @@ mod locked_set_tap_untap_window_tests {
 
         let unlocked = crate::effects::ApplyContinuousEffect::new(
             crate::continuous::EffectTarget::Filter(other_artifacts()),
-            crate::continuous::Modification::DoesntUntap,
+            crate::continuous::Modification::restriction(crate::continuous::RestrictionKind::DoesntUntap),
             Until::SourceUntaps,
         )
         .with_condition(Condition::SourceIsTapped);
@@ -15151,6 +15152,7 @@ mod relative_player_target_consult_program_tests {
                 PlayerFilter::OpponentWithMoreControlledObjectsThan {
                     player: Box::new(PlayerFilter::Active),
                     filter: Box::new(ObjectFilter::creature()),
+                    fewer: false,
                 },
             )))
             .with_chooser(PlayerFilter::Active),

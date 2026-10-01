@@ -91,6 +91,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::Game(GameActionAst::LoseGame)
             | SubjectVerbActionAst::Counters(CounterActionAst::MoveAllCounters { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::MoveOneCounter { .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::MoveCounters { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryNthFromTop { .. })
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayAnyEnergy { .. })
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayAnyLife { .. })
@@ -1619,6 +1620,38 @@ pub(super) fn compile_subject_verb_late(
             let effect = tag_object_target_effect(
                 tag_object_target_effect(
                     Effect::move_all_counters(from_spec.clone(), to_spec.clone()),
+                    &from_spec,
+                    ctx,
+                    "from",
+                ),
+                &to_spec,
+                ctx,
+                "to",
+            );
+            Ok((vec![effect], choices))
+        }
+        SubjectVerbActionAst::Counters(CounterActionAst::MoveCounters {
+            counter_type,
+            count,
+            from,
+            to,
+        }) => {
+            let resolved_count = resolve_value_it_tag(count, &current_reference_env(ctx))?;
+            let (from_spec, mut choices) =
+                resolve_target_spec_with_choices(from, &current_reference_env(ctx))?;
+            let (to_spec, to_choices) =
+                resolve_target_spec_with_choices(to, &current_reference_env(ctx))?;
+            for choice in to_choices {
+                push_choice(&mut choices, choice);
+            }
+            let effect = tag_object_target_effect(
+                tag_object_target_effect(
+                    Effect::new(crate::effects::MoveCountersEffect::new(
+                        *counter_type,
+                        resolved_count,
+                        from_spec.clone(),
+                        to_spec.clone(),
+                    )),
                     &from_spec,
                     ctx,
                     "from",

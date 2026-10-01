@@ -383,6 +383,7 @@ fn acquired_copy_replacement_changes_the_pending_entry() {
         additional_counters_source_filter: None,
         added_abilities_source_filter: None,
         set_base_power_toughness_from_self: false,
+        copy_followups: Vec::new(),
         conditional_additional_counters: vec![],
     };
     let partner = CardDefinitionBuilder::new(CardId::new(), "Copy replacement partner")
@@ -634,6 +635,7 @@ fn copying_deadpool_before_entry_exchanges_the_copied_text_box() {
         additional_counters_source_filter: None,
         added_abilities_source_filter: None,
         set_base_power_toughness_from_self: false,
+        copy_followups: Vec::new(),
         conditional_additional_counters: vec![],
     };
     let clone = CardDefinitionBuilder::new(CardId::new(), "Unprinted replica")

@@ -1497,6 +1497,12 @@ pub enum PlayerFilter {
     OpponentWithMoreControlledObjectsThan {
         player: Box<PlayerFilter>,
         filter: Box<ObjectFilter>,
+        /// Compare in the other direction: the opponent has strictly fewer
+        /// matching objects than that player (Oath of Ghouls). When `filter`
+        /// names a zone other than the battlefield, each player's count is
+        /// the matching cards they own in that zone.
+        #[cfg_attr(feature = "serde", serde(default))]
+        fewer: bool,
     },
     /// The unique in-game player who controls more objects matching `filter`
     /// than every other in-game player. No player matches when the lead is
@@ -1641,7 +1647,7 @@ impl PlayerFilter {
                 base.mentions_iterated_player() || sources.mentions_iterated_player()
             }
             Self::HasMoreLifeThanYou { base } => base.mentions_iterated_player(),
-            Self::OpponentWithMoreControlledObjectsThan { player, filter } => {
+            Self::OpponentWithMoreControlledObjectsThan { player, filter, .. } => {
                 player.mentions_iterated_player() || filter.mentions_iterated_player()
             }
             Self::ControlsMost { filter } => filter.mentions_iterated_player(),
@@ -1739,7 +1745,28 @@ impl PlayerFilter {
                     base.description()
                 )
             }
-            Self::OpponentWithMoreControlledObjectsThan { player, filter } => format!(
+            Self::OpponentWithMoreControlledObjectsThan {
+                player,
+                filter,
+                fewer: true,
+            } => {
+                let mut counted = filter.as_ref().clone();
+                let zone = counted.zone.take();
+                let zone_tail = match zone {
+                    Some(Zone::Graveyard) => " in their graveyard",
+                    Some(Zone::Hand) => " in their hand",
+                    Some(Zone::Library) => " in their library",
+                    Some(Zone::Exile) => " in exile",
+                    _ => "",
+                };
+                format!(
+                    "an opponent of {} who has fewer {}{} than they do",
+                    player.description(),
+                    pluralize_count_terminal_word(&counted.description()),
+                    zone_tail
+                )
+            }
+            Self::OpponentWithMoreControlledObjectsThan { player, filter, .. } => format!(
                 "an opponent of {} who controls more {} than they do",
                 player.description(),
                 pluralize_count_terminal_word(&filter.description())
@@ -2061,6 +2088,10 @@ pub struct ObjectFilter {
     /// Candidate shares at least one color with the pregame draft choices
     /// recorded for the indicated named card group.
     pub colors_chosen_while_drafting_named: Option<String>,
+    /// Candidate's name is one its filter player ("you") noted while
+    /// drafting cards with the indicated name ("a name you noted for cards
+    /// named Noble Banneret").
+    pub name_noted_while_drafting_named: Option<String>,
     pub chosen_land_type: bool,
     /// Requires at least one of the five basic land subtypes.  This is not
     /// the same as requiring the Basic supertype: nonbasic dual lands can
@@ -2167,6 +2198,18 @@ pub struct ObjectFilter {
     /// Oracle-facing `target` determiner used by a choice specification.
     pub is_target_object: bool,
     pub in_combat_with_source: bool,
+    /// Requires an attacking creature whose attack target (player,
+    /// planeswalker, or battle) is the same one the current source is
+    /// attacking ("another target creature attacking the same player or
+    /// planeswalker", Kitesail Skirmisher).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub attacking_same_defender_as_source: bool,
+    /// Requires an object the current source Aura could legally enchant
+    /// (CR 303.4: its enchant ability and protection), wherever that Aura
+    /// currently is ("a creature at random this Aura can enchant",
+    /// Infectious Rage).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub could_be_enchanted_by_source: bool,
     /// Requires the candidate creature to be in the current combat with the
     /// referenced creature: either it blocks that creature or that creature
     /// blocks it. This is distinct from `in_combat_with_source` because some
@@ -2911,6 +2954,7 @@ impl ObjectFilter {
             || self.required_colors.is_some()
             || self.chosen_color
             || self.colors_chosen_while_drafting_named.is_some()
+            || self.name_noted_while_drafting_named.is_some()
             || self.chosen_land_type
             || self.has_basic_land_type
             || self.has_nonbasic_land_type
@@ -2933,6 +2977,7 @@ impl ObjectFilter {
             || self.enlist_eligible
             || self.attached_to_object.is_some()
             || self.could_enchant_object.is_some()
+            || self.could_be_enchanted_by_source
             || self.blocked_or_was_blocked_by_this_turn.is_some()
             || self.attached_to_player.is_some()
             || self.surveilled_this_turn
@@ -3737,6 +3782,23 @@ impl ObjectFilter {
     }
 
     pub fn description(&self) -> String {
+        // "each creature except for tokens you control" (Ajani Unrelenting):
+        // the survivors are the base objects that you don't control or that
+        // are nontoken.
+        if let [left, right] = self.any_of.as_slice() {
+            let not_you = ObjectFilter::default().controlled_by(PlayerFilter::NotYou);
+            let mut nontoken = ObjectFilter::default();
+            nontoken.nontoken = true;
+            if ((*left == not_you && *right == nontoken) || (*left == nontoken && *right == not_you))
+                && self.controller.is_none()
+                && !self.token
+                && !self.nontoken
+            {
+                let mut base = self.clone();
+                base.any_of.clear();
+                return format!("{} except for tokens you control", base.description());
+            }
+        }
         // A union of bare result tags ("those tokens" across several
         // creation results) is one referenced set; describe it as one.
         if self.any_of.len() > 1
@@ -4334,6 +4396,11 @@ impl ObjectFilter {
                 "with a name originally printed in the {set_name} expansion"
             ));
         }
+        if let Some(card_name) = &self.name_noted_while_drafting_named {
+            post_noun_qualifiers.push(format!(
+                "with a name you noted for cards named {card_name}"
+            ));
+        }
         if self.excluded_chosen_creature_type || self.excluded_any_chosen_creature_type {
             let qualifier = if self.has_chosen_type_this_way_surface() {
                 "that aren't of a type chosen this way"
@@ -4755,6 +4822,7 @@ impl ObjectFilter {
         } else {
             if self.attacking
                 && !self.attacking_alone
+                && !self.attacking_same_defender_as_source
                 && self
                     .attacking_player_or_planeswalker_controlled_by
                     .is_none()
@@ -4829,6 +4897,12 @@ impl ObjectFilter {
                 other => other.description(),
             };
             post_noun_qualifiers.push(format!("{player} protects"));
+        }
+        if self.attacking_same_defender_as_source {
+            post_noun_qualifiers.push("attacking the same player or planeswalker".to_string());
+        }
+        if self.could_be_enchanted_by_source {
+            post_noun_qualifiers.push("this Aura can enchant".to_string());
         }
         if self.in_combat_with_source {
             post_noun_qualifiers.push(if self.blocking {
@@ -6809,7 +6883,10 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
                 describe_player_filter(base)
             )
         }
-        PlayerFilter::OpponentWithMoreControlledObjectsThan { player, filter } => format!(
+        PlayerFilter::OpponentWithMoreControlledObjectsThan { fewer: true, .. } => {
+            format!("{}'s", filter.description())
+        }
+        PlayerFilter::OpponentWithMoreControlledObjectsThan { player, filter, .. } => format!(
             "an opponent of {} who controls more {} than they do's",
             describe_player_filter(player),
             pluralize_count_terminal_word(&filter.description())
@@ -6921,7 +6998,11 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
                 describe_player_filter(base)
             )
         }
-        PlayerFilter::OpponentWithMoreControlledObjectsThan { player, filter } => format!(
+        PlayerFilter::OpponentWithMoreControlledObjectsThan { fewer: true, .. } => filter
+            .description()
+            .trim_start_matches("an ")
+            .to_string(),
+        PlayerFilter::OpponentWithMoreControlledObjectsThan { player, filter, .. } => format!(
             "opponent of {} who controls more {} than they do",
             describe_player_filter(player),
             pluralize_count_terminal_word(&filter.description())

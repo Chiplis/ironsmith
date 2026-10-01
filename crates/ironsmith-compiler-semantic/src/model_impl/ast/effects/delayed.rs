@@ -71,5 +71,9 @@ pub enum DelayedEffectAst {
     DelayedWhenLastObjectLeavesBattlefield {
         filter: ObjectFilter,
         effects: Vec<EffectAst>,
+        /// "When it leaves the battlefield, it deals ...": the delayed
+        /// ability's effects use the watched object (as it last existed) as
+        /// their source.
+        watched_object_is_source: bool,
     },
 }

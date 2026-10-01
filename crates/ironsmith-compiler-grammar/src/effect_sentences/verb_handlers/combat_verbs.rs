@@ -556,6 +556,37 @@ fn parse_damage_each_filter(
                 return Ok(included);
             }
         }
+        // "each creature except for tokens you control" (Ajani Unrelenting):
+        // the survivors are the included objects that are nontoken or that
+        // you don't control.
+        if excluded.controller == Some(PlayerFilter::You)
+            && excluded.token
+            && !excluded.nontoken
+            && included.any_of.is_empty()
+        {
+            let mut residue = excluded.clone();
+            residue.controller = None;
+            residue.token = false;
+            residue
+                .card_types
+                .retain(|card_type| !included.card_types.contains(card_type));
+            residue.union_surface = ObjectFilter::default().union_surface;
+            if residue == ObjectFilter::default() {
+                let mut nontoken = ObjectFilter::default();
+                nontoken.nontoken = true;
+                included.any_of = vec![
+                    ObjectFilter::default().controlled_by(PlayerFilter::NotYou),
+                    nontoken,
+                ];
+                return Ok(included);
+            }
+        }
+        // Any other exclusion would be read into the included filter by the
+        // whole-phrase parser below, inverting it.
+        return Err(CardTextError::ParseError(format!(
+            "unsupported damage exclusion clause (clause: '{}')",
+            crate::lexer::token_word_refs(filter_tokens).join(" ")
+        )));
     }
     let mut filter = parse_object_filter(filter_tokens, false)?;
     let words = crate::lexer::token_word_refs(filter_tokens);

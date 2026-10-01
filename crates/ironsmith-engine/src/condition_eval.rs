@@ -283,6 +283,54 @@ fn triggering_spell_mana_spent_at_least(
         .is_some_and(|obj| mana_pool_amount(&obj.mana_spent_to_cast, symbol) >= amount)
 }
 
+/// "Whenever you clash, ... If you won, ...": the triggering clash event
+/// names its winner (CR 701.30c); the condition holds only when that winner
+/// is this ability's controller.
+fn you_won_triggering_clash(triggering_event: Option<&TriggerEvent>, controller: PlayerId) -> bool {
+    let Some(event) =
+        triggering_event.and_then(|event| event.downcast::<crate::events::other::KeywordActionEvent>())
+    else {
+        return false;
+    };
+    event.action == crate::events::other::KeywordActionKind::Clash
+        && event
+            .player_tags
+            .get(&crate::tag::TagKey::from("winner"))
+            .is_some_and(|winners| winners.contains(&controller))
+}
+
+/// The entering permanent shows the back face of a transforming double-faced
+/// card and has not transformed since it entered: it entered transformed
+/// (CR 712.14). Transform-like families keep the front face at the lower card
+/// id.
+fn triggering_object_entered_transformed(
+    game: &GameState,
+    triggering_event: Option<&TriggerEvent>,
+) -> bool {
+    let Some(object_id) = triggering_event.and_then(|event| event.object_id()) else {
+        return false;
+    };
+    let Some(object) = game.object(object_id) else {
+        return false;
+    };
+    if object.linked_face_layout != crate::card::LinkedFaceLayout::TransformLike
+        || game.transform_count(object_id) != 0
+    {
+        return false;
+    }
+    let Some(current) = game.linked_face_definition_by_name_or_id(Some(&object.name), object.card)
+    else {
+        return false;
+    };
+    let Some(other) = game.linked_face_definition_by_name_or_id(
+        object.other_face_name.as_deref(),
+        object.other_face,
+    ) else {
+        return false;
+    };
+    current.card.id.0 > other.card.id.0
+}
+
 fn triggering_spell_was_kicked(game: &GameState, triggering_event: Option<&TriggerEvent>) -> bool {
     let Some(spell_cast) =
         triggering_event.and_then(|event| event.downcast::<crate::events::SpellCastEvent>())
@@ -4785,6 +4833,18 @@ fn evaluate_condition_in_context(
         Condition::TriggeringObjectHadToAttackThisCombat => Ok(
             triggering_object_had_to_attack_this_combat(game, shared.triggering_event),
         ),
+        Condition::YouWonTriggeringClash => Ok(you_won_triggering_clash(
+            shared.triggering_event,
+            shared.controller,
+        )),
+        Condition::TriggeringObjectEnteredTransformed => Ok(triggering_object_entered_transformed(
+            game,
+            shared.triggering_event,
+        )),
+        Condition::TriggeringAbilityManaSpentToActivateAtLeast(amount) => Ok(shared
+            .triggering_event
+            .and_then(|event| event.downcast::<crate::events::AbilityActivatedEvent>())
+            .is_some_and(|activation| activation.mana_spent_total >= *amount)),
         Condition::SourceClassLevelAtLeast(level) => {
             Ok(game.class_level(shared.source) >= *level)
         }

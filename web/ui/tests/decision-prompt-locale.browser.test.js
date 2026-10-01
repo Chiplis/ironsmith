@@ -44,6 +44,12 @@ test("a decision prompt follows the source card's localized printing", async () 
       /Sacrificar otra criatura/
     );
 
+    const modalPrompt = await promptText(page, port,
+      "locale=en&stack=1&context=You%20may%20gain%202%20life.&description=Choose%20whether%20to%20gain%20life"
+    );
+    assert.match(modalPrompt, /You may gain 2 life/);
+    assert.doesNotMatch(modalPrompt, /Full spell text/);
+
     assert.deepEqual(errors, []);
   } finally { await browser.close(); await vite.close(); }
 });

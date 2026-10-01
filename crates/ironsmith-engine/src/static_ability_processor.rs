@@ -1468,4 +1468,100 @@ mod checked_discovery_tests {
             }
         }).unwrap().join().unwrap();
     }
+#[test]
+fn controller_setter_does_not_commit_when_complete_discovery_fails() {
+    std::thread::Builder::new()
+        .stack_size(128 * 1024 * 1024)
+        .spawn(|| {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = game.players[0].id;
+            let bob = game.players[1].id;
+            let card = CardBuilder::new(CardId::new(), "Unresolved control recipient")
+                .card_types(vec![CardType::Artifact])
+                .build();
+            let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+            let calls = Arc::new(AtomicUsize::new(0));
+            game.object_mut(source)
+                .expect("source exists")
+                .abilities_mut()
+                .push(Ability::static_ability(StaticAbility::new(RegrantParent(
+                    calls,
+                ))));
+            assert!(
+                matches!(
+                    game.try_all_continuous_effects(),
+                    Err(StaticEffectDiscoveryError::RoundLimit {
+                        maximum: 128,
+                        generated_effects: 129
+                    })
+                ),
+                "fixture actually fails complete discovery before the setter"
+            );
+            let revision = game.effect_store.continuous_effects.revision();
+            let sickness = game.is_summoning_sick(source);
+            let resolution_effects = game.effect_store.continuous_effects.effects().len();
+            game.set_current_controller(source, bob);
+            assert_eq!(
+                game.effect_store.continuous_effects.effects().len(),
+                resolution_effects,
+                "an unresolved discovery failure must not commit the control effect"
+            );
+            assert_eq!(
+                game.effect_store.continuous_effects.revision(),
+                revision,
+                "failed control must preserve continuous state revision"
+            );
+            assert_eq!(
+                game.is_summoning_sick(source),
+                sickness,
+                "failed control must preserve summoning sickness"
+            );
+        })
+        .expect("fixture worker starts")
+        .join()
+        .expect("fixture worker completes");
+}
+
+fn assert_finite_prospective_entry_replacement_is_complete(generic: bool) {
+    use crate::effects::EffectExecutor;
+    std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(move || {
+        for depth in [1, 8, 9, 10, 12] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = game.players[0].id;
+            let card = CardBuilder::new(CardId::new(), "Prospective nested entry recipient")
+                .card_types(vec![CardType::Land]).build();
+            let source = game.create_object_from_card(&card, alice, Zone::Hand);
+            let mut model = ironsmith_core::StaticAbility::enters_untapped_for_filter(ObjectFilter::source());
+            for _ in 0..depth {
+                model = ironsmith_core::StaticAbility::grant_object_ability_for_filter(
+                    ObjectFilter::source(), ironsmith_core::Ability::static_ability(model), "Source has ability");
+            }
+            game.object_mut(source).expect("source exists").abilities_mut()
+                .push(Ability::static_ability(StaticAbility::from_model(model)));
+            game.try_all_continuous_effects().expect("original hand state has complete discovery");
+            let instruction = crate::effects::PutOntoBattlefieldEffect::you_control(
+                crate::target::ChooseSpec::SpecificObject(source), true);
+            let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
+            if generic {
+                crate::effects::execute_effect(&mut game, &crate::effect::Effect::new(instruction), &mut ctx)
+            } else {
+                instruction.execute(&mut game, &mut ctx)
+            }.expect("finite prospective discovery must resolve entry");
+            assert!(!ctx.decision_maker.awaiting_choice(), "single entry replacement needs no unanswered choice");
+            let entered = game.current_object_id_after_zone_change(source).expect("entry gives current identity");
+            assert_eq!(game.object(entered).expect("entered object").zone, Zone::Battlefield);
+            assert!(!game.is_tapped(entered), "depth={depth}, generic={generic}: prospective nested untapper must replace authored tapped entry");
+        }
+    }).expect("fixture worker starts").join().expect("fixture worker completes");
+}
+
+#[test]
+fn direct_entry_uses_complete_finite_prospective_replacement_discovery() {
+    assert_finite_prospective_entry_replacement_is_complete(false);
+}
+#[test]
+fn generic_entry_uses_complete_finite_prospective_replacement_discovery() {
+    assert_finite_prospective_entry_replacement_is_complete(true);
+}
+
 }

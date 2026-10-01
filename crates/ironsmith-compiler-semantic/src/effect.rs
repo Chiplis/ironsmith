@@ -675,6 +675,17 @@ impl Effect {
         if let Some(payload) = self.downcast_ref::<crate::effects::IncubateEffect>() {
             return payload.controller_target.as_ref();
         }
+        if let Some(payload) =
+            self.downcast_ref::<crate::effects::RedirectNextDamageToTargetEffect>()
+            && payload.protected_target.is_some()
+            && payload.destination == ironsmith_core::RedirectNextDamageDestination::TargetObject
+            && payload
+                .destination_target
+                .as_ref()
+                .is_some_and(|destination| destination.is_target())
+        {
+            return payload.destination_target.as_ref();
+        }
         None
     }
 

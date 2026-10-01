@@ -3041,6 +3041,26 @@ pub(super) fn compile_subject_verb_early(
                         amount,
                         destination_spec,
                     );
+                    // "The next X damage that would be dealt to target A this
+                    // turn is dealt to another target B instead": A is the
+                    // first target announced (CR 601.2c); the redirect itself
+                    // declares B, which must differ from A.
+                    if let Some(protected) = protected_spec.clone()
+                        && protected.is_target()
+                        && effect
+                            .destination_target
+                            .as_ref()
+                            .is_some_and(|destination| destination.is_target())
+                    {
+                        effect.protected_target = protected_spec;
+                        return Ok(Some((
+                            vec![
+                                Effect::new(crate::effects::TargetOnlyEffect::new(protected)),
+                                Effect::new(effect),
+                            ],
+                            choices,
+                        )));
+                    }
                     effect.protected_target = protected_spec;
                     effect
                 }

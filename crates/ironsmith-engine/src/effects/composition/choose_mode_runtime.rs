@@ -490,36 +490,44 @@ pub(crate) fn run_choose_mode(
     }
     for &idx in &valid_chosen_indices {
         if let Some(mode) = effect.modes.get(idx) {
-            let mut active_scope: Option<(
-                Vec<crate::effects::ResolvedTarget>,
-                Vec<TargetAssignment>,
-            )> = None;
-            for inner in &mode.effects {
-                let inner_target_assignments = active_target_assignments_for_inner_effect(
-                    game,
-                    inner,
-                    ctx,
-                    &mut consumed_modal_selection,
-                    &available_assignments,
-                    &mut assignment_cursor,
-                );
-                if !inner_target_assignments.is_empty() {
-                    let (inner_targets, inner_target_assignments) =
-                        rebase_target_scope(&ctx.targets, &inner_target_assignments);
-                    active_scope = Some((inner_targets, inner_target_assignments));
-                }
-                let outcome = if let Some((inner_targets, inner_target_assignments)) = &active_scope
-                {
-                    ctx.with_temp_targets(inner_targets.clone(), |ctx| {
-                        ctx.with_temp_target_assignments(inner_target_assignments.clone(), |ctx| {
-                            execute_effect(game, inner, ctx)
+            let previous_context = game.replace_resolving_mode_context(
+                Some((ctx.source, mode.source_text.clone())),
+            );
+            let mode_result = (|| -> Result<(), ExecutionError> {
+                let mut active_scope: Option<(
+                    Vec<crate::effects::ResolvedTarget>,
+                    Vec<TargetAssignment>,
+                )> = None;
+                for inner in &mode.effects {
+                    let inner_target_assignments = active_target_assignments_for_inner_effect(
+                        game,
+                        inner,
+                        ctx,
+                        &mut consumed_modal_selection,
+                        &available_assignments,
+                        &mut assignment_cursor,
+                    );
+                    if !inner_target_assignments.is_empty() {
+                        let (inner_targets, inner_target_assignments) =
+                            rebase_target_scope(&ctx.targets, &inner_target_assignments);
+                        active_scope = Some((inner_targets, inner_target_assignments));
+                    }
+                    let outcome = if let Some((inner_targets, inner_target_assignments)) = &active_scope
+                    {
+                        ctx.with_temp_targets(inner_targets.clone(), |ctx| {
+                            ctx.with_temp_target_assignments(inner_target_assignments.clone(), |ctx| {
+                                execute_effect(game, inner, ctx)
+                            })
                         })
-                    })
-                } else {
-                    execute_effect(game, inner, ctx)
-                };
-                outcomes.push(continue_past_illegal_target(outcome)?);
-            }
+                    } else {
+                        execute_effect(game, inner, ctx)
+                    };
+                    outcomes.push(continue_past_illegal_target(outcome)?);
+                }
+                Ok(())
+            })();
+            game.replace_resolving_mode_context(previous_context);
+            mode_result?;
         }
     }
 
@@ -568,6 +576,35 @@ mod tests {
             self.captured = Some(ctx.clone());
             Vec::new()
         }
+    }
+
+    #[test]
+    fn modal_choices_quote_each_mode_and_restore_outer_context() {
+        #[derive(Default)]
+        struct Capture(Vec<String>);
+        impl DecisionMaker for Capture {
+            fn decide_boolean(&mut self, _game: &GameState, ctx: &crate::decisions::BooleanContext) -> bool {
+                self.0.push(ctx.ui_hints.context_text.clone().expect("mode context"));
+                false
+            }
+        }
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        game.replace_resolving_mode_context(Some((source, "Outer mode".into())));
+        let mut dm = Capture::default();
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_chosen_modes(Some(vec![0, 1]))
+            .with_decision_maker(&mut dm);
+        let effect = ChooseModeEffect::new(vec![
+            EffectMode::new("You may gain 1 life.", vec![Effect::may(vec![Effect::gain_life(1)])]),
+            EffectMode::new("You may gain 2 life.", vec![Effect::may(vec![Effect::gain_life(2)])]),
+        ], Value::Fixed(2), Value::Fixed(2), false);
+        run_choose_mode(&effect, &mut game, &mut ctx).unwrap();
+        assert_eq!(dm.0, vec!["You may gain 1 life.", "You may gain 2 life."]);
+        assert_eq!(game.resolving_mode_context(source), Some("Outer mode"));
+        let other_source = game.new_object_id();
+        assert_eq!(game.resolving_mode_context(other_source), None);
     }
 
     #[test]

@@ -104,11 +104,35 @@ runtime_savepoint! {
     pending_crypto_audit_before: Option<CryptoAuditState>,
     active_resolving_stack_object: Option<StackObjectSnapshot>,
     loaded_decks: Vec<Vec<String>>,
+    last_snapshot_perf: Option<SnapshotPerfMetrics>,
+    last_replay_execution_perf: Option<ReplayExecutionPerfMetrics>,
+    last_advance_until_decision_perf: Option<AdvanceUntilDecisionPerfMetrics>,
+    dispatch_advance_until_decision_perfs: Vec<AdvanceUntilDecisionPerfMetrics>,
+    last_dispatch_perf: Option<DispatchPerfMetrics>,
     manabrew_game_id: String,
     manabrew_human_players: Vec<bool>,
     manabrew_next_prompt_id: u32,
     manabrew_open_prompt: Option<ManabrewOpenPrompt>,
     cached_snapshot: Option<CachedSnapshot>,
+}
+
+impl WasmGame {
+    /// Execute on a candidate branch while retaining the original runtime and
+    /// its analysis jobs. Session catalog registrations remain shared.
+    fn with_runtime_transaction<T, E>(
+        &mut self,
+        operation: impl FnOnce(&mut Self) -> Result<T, E>,
+    ) -> Result<T, E> {
+        let mut previous = RuntimeSavepoint::capture(self);
+        previous.exchange(self);
+        match operation(self) {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                previous.exchange(self);
+                Err(error)
+            }
+        }
+    }
 }
 
 #[wasm_bindgen]

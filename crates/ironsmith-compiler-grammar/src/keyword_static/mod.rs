@@ -1598,6 +1598,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_passthrough_rule!(parse_composed_anthem_effects_line),
         single_static_ability_ast_rule!(parse_enter_as_copy_as_enters_line),
         single_static_ability_ast_rule!(parse_has_base_power_toughness_static_line),
+        single_static_ability_ast_rule!(parse_has_base_power_toughness_each_equal_static_line),
         single_static_ability_ast_rule!(parse_isnt_creature_line),
         single_static_ability_ast_passthrough_rule!(parse_as_long_as_source_is_a_land_line),
         single_static_ability_ast_passthrough_rule!(
@@ -4175,6 +4176,12 @@ pub fn parse_choose_named_options_as_enters_line(
     };
     let choice_offset = shape.choice_word;
     let choice_words = &tail_words[choice_offset..];
+    // "choose 2, 3, or 4 at random" (Haktos the Unscarred): the game picks
+    // one listed option uniformly instead of the controller.
+    let (choice_words, at_random) = match choice_words {
+        [head @ .., "at", "random"] if !head.is_empty() => (head, true),
+        _ => (choice_words, false),
+    };
     if parse_choose_color_phrase_words(choice_words)?
         .is_some_and(|(consumed, _)| consumed == choice_words.len())
         || parse_choose_player_phrase_words(choice_words) == Some(choice_words.len())
@@ -4194,7 +4201,7 @@ pub fn parse_choose_named_options_as_enters_line(
     }
 
     let mut card_type_options = Vec::new();
-    for word in choice_words.iter().skip(1) {
+    for word in choice_words.iter().skip(1).filter(|_| !at_random) {
         if *word == "or" || *word == "," {
             continue;
         }
@@ -4239,9 +4246,10 @@ pub fn parse_choose_named_options_as_enters_line(
         .flat_map(|option| {
             let words = option.split_whitespace().collect::<Vec<_>>();
             if words.len() > 1
-                && words
+                && (words
                     .iter()
                     .all(|word| crate::util::parse_subtype_word(word).is_some())
+                    || (at_random && words.iter().all(|word| word.parse::<u32>().is_ok())))
             {
                 words.into_iter().map(str::to_string).collect::<Vec<_>>()
             } else {
@@ -4251,6 +4259,17 @@ pub fn parse_choose_named_options_as_enters_line(
         .collect::<Vec<_>>();
     if options.len() < 2 {
         return Ok(None);
+    }
+    if at_random {
+        let display_options = match options.as_slice() {
+            [first, second] => format!("{first} or {second}"),
+            [head @ .., last] => format!("{}, or {last}", head.join(", ")),
+            _ => return Ok(None),
+        };
+        return Ok(Some(StaticAbility::choose_named_option_at_random_as_enters(
+            options,
+            format!("As {display_subject} enters, choose {display_options} at random."),
+        )));
     }
 
     let display_options = options
@@ -4848,6 +4867,7 @@ fn parse_damage_amount_replacement_target_filters(
         PermanentOrPlayer,
         OpponentOrPermanentOpponentControls,
         YouOrPermanentYouControl,
+        CreatureBattleOrOpponent,
     }
 
     const DAMAGE_REPLACEMENT_TARGET_PHRASES: &[(&[&str], DamageReplacementTargetKind)] = &[
@@ -4899,6 +4919,11 @@ fn parse_damage_amount_replacement_target_filters(
             &["you", "or", "permanent", "you", "control"],
             DamageReplacementTargetKind::YouOrPermanentYouControl,
         ),
+        // "a creature, battle, or opponent" (Disciples of the Inferno).
+        (
+            &["creature", "battle", "or", "opponent"],
+            DamageReplacementTargetKind::CreatureBattleOrOpponent,
+        ),
     ];
 
     let words = strip_leading_word_refs_any(words, &["a", "an"]);
@@ -4930,6 +4955,10 @@ fn parse_damage_amount_replacement_target_filters(
         DamageReplacementTargetKind::YouOrPermanentYouControl => Ok((
             Some(PlayerFilter::You),
             Some(ObjectFilter::permanent().you_control()),
+        )),
+        DamageReplacementTargetKind::CreatureBattleOrOpponent => Ok((
+            Some(PlayerFilter::Opponent),
+            Some(ObjectFilter::creature().with_type(CardType::Battle)),
         )),
     }
 }
@@ -4981,10 +5010,58 @@ pub fn parse_enter_as_copy_as_enters_line(
         )
     }
 
+    let full_display = render_token_slice(tokens).trim().to_string();
+    fn strip_followup(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+        keyword_static_lines::split_enter_as_copy_followup_tokens(tokens)
+            .map_or(tokens, |(core, _)| core)
+    }
+    // "Mind Swap — You may have ... enter as a copy ...": the ability word is
+    // presentation; the replacement grammar reads the body.
+    let (tokens, labeled) = match crate::grammar::effects::labeled_dispatch::parse_leading_effect_label_tokens(tokens) {
+        Some(label)
+            if keyword_static_lines::parse_enter_as_copy_tokens(strip_followup(
+                label.body_tokens,
+            ))
+            .is_some() =>
+        {
+            (label.body_tokens, true)
+        }
+        _ => (tokens, false),
+    };
+    // "When you do, exile that card." / "If you do, it gains haste until end
+    // of turn.": the rest of the copy choice, carried on the replacement.
+    let (tokens, copy_followup) =
+        match keyword_static_lines::split_enter_as_copy_followup_tokens(tokens) {
+            Some((core, followup)) => (core, Some(followup)),
+            None => (tokens, None),
+        };
     let Some(shape) = keyword_static_lines::parse_enter_as_copy_tokens(tokens) else {
         return Ok(None);
     };
     let clause_words = parser_token_word_refs(tokens);
+    // An unrecognized result follow-up after an optional copy must not be
+    // dropped silently (a quoted granted ability may carry its own "If you
+    // do", and the linked-exile wording leads with its own "If you do").
+    if copy_followup.is_none()
+        && matches!(shape, keyword_static_lines::EnterAsCopyShape::May { .. })
+        && !tokens.iter().any(|token| token.kind == TokenKind::Quote)
+        && keyword_static_lines::has_enter_as_copy_result_followup_sentence(tokens)
+    {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported enters-as-copy follow-up sentence (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+    if copy_followup.is_some()
+        && !matches!(shape, keyword_static_lines::EnterAsCopyShape::May { .. })
+    {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported enters-as-copy follow-up for a mandatory copy (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+    let copy_followups: Vec<ironsmith_core::EnterAsCopyFollowup> =
+        copy_followup.into_iter().collect();
     let display = render_token_slice(tokens).trim().to_string();
 
     match shape {
@@ -5026,6 +5103,7 @@ pub fn parse_enter_as_copy_as_enters_line(
                     additional_counters_source_filter: None,
                     added_abilities_source_filter: None,
                     set_base_power_toughness_from_self: false,
+                    copy_followups: Vec::new(),
                     conditional_additional_counters: Vec::new(),
                 },
                 render_token_slice(tokens).trim().to_string(),
@@ -5073,6 +5151,7 @@ pub fn parse_enter_as_copy_as_enters_line(
                     additional_counters_source_filter: None,
                     added_abilities_source_filter: None,
                     set_base_power_toughness_from_self: false,
+                    copy_followups: Vec::new(),
                     conditional_additional_counters: Vec::new(),
                 },
                 display,
@@ -5086,7 +5165,9 @@ pub fn parse_enter_as_copy_as_enters_line(
             exception_display_split,
             exception_tokens,
         } => {
-            let display = if let Some(split) = exception_display_split {
+            let display = if labeled || !copy_followups.is_empty() {
+                full_display.clone()
+            } else if let Some(split) = exception_display_split {
                 format!(
                     "{} {}",
                     render_token_slice(split.before_separator).trim(),
@@ -5137,6 +5218,25 @@ pub fn parse_enter_as_copy_as_enters_line(
                             clause_words.join(" ")
                         ))
                     })?;
+                // "except his name is X and he's a 4/4 Spider Human Hero in
+                // addition to his other types": a name exception followed by
+                // a characteristic exception in one clause.
+                let mut exceptions = vec![exception];
+                if matches!(
+                    exceptions[0],
+                    keyword_static_lines::CopyExceptionShape::Name { .. }
+                ) && let Some(and_index) = exception_tokens.windows(2).position(|pair| {
+                    pair[0].is_word("and") && pair[1].is_any_word(&["it's", "it’s", "it"])
+                }) && let Some(
+                    characteristics @ keyword_static_lines::CopyExceptionShape::Characteristics {
+                        ..
+                    },
+                ) = keyword_static_lines::parse_copy_exception_tokens(
+                    &exception_tokens[and_index + 1..],
+                ) {
+                    exceptions.push(characteristics);
+                }
+                for exception in exceptions {
                 match exception {
                     keyword_static_lines::CopyExceptionShape::ConditionalCounters {
                         entries,
@@ -5163,9 +5263,22 @@ pub fn parse_enter_as_copy_as_enters_line(
                         if use_named_subject {
                             name_override = named_copy_subject.clone();
                         } else {
-                            let name_words = parser_token_word_refs(name_tokens);
-                            if !name_words.is_empty() {
-                                name_override = Some(name_words.join(" "));
+                            // The copy's name is the authored spelling
+                            // ("Superior Spider-Man", "Chameleon, Master of
+                            // Disguise"), not the lowercased parser words.
+                            let mut name = String::new();
+                            for token in name_tokens {
+                                if token.kind == TokenKind::Comma {
+                                    name.push(',');
+                                    continue;
+                                }
+                                if !name.is_empty() {
+                                    name.push(' ');
+                                }
+                                name.push_str(token.literal_surface());
+                            }
+                            if !name.trim().is_empty() {
+                                name_override = Some(name.trim().to_string());
                             }
                         }
                     }
@@ -5328,6 +5441,7 @@ pub fn parse_enter_as_copy_as_enters_line(
                         }
                     }
                 }
+                }
             }
 
             Ok(Some(StaticAbility::with_enter_as_copy_as_enters(
@@ -5351,6 +5465,7 @@ pub fn parse_enter_as_copy_as_enters_line(
                     additional_counters_source_filter,
                     added_abilities_source_filter,
                     set_base_power_toughness_from_self,
+                    copy_followups: copy_followups.clone(),
                     conditional_additional_counters,
                     added_supertypes,
                     removed_supertypes,
@@ -5607,6 +5722,13 @@ pub fn parse_characteristic_defining_pt_line(
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let sentence_tokens = trim_edge_punctuation(tokens);
     if split_lexed_sentences(&sentence_tokens).len() > 1 {
+        return Ok(None);
+    }
+    // "<objects> have base power and toughness each equal to ..." sets the
+    // base P/T of other objects (layer 7b); it is not a CDA of the source.
+    if anthem_grant_grammar::parse_base_power_toughness_each_equal_shape(&sentence_tokens)
+        .is_some()
+    {
         return Ok(None);
     }
     let sentence_words = parser_token_word_refs(&sentence_tokens);

@@ -10,6 +10,9 @@ use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 pub struct TransformsTrigger {
     pub this_object_surface: Option<SourceReferenceSurface>,
     pub destination_name: Option<String>,
+    /// Watch every permanent matching this filter instead of only the
+    /// trigger's source ("Whenever a permanent you control transforms").
+    pub permanent_filter: Option<crate::target::ObjectFilter>,
 }
 
 impl TransformsTrigger {
@@ -17,7 +20,13 @@ impl TransformsTrigger {
         Self {
             this_object_surface: None,
             destination_name: None,
+            permanent_filter: None,
         }
+    }
+
+    pub fn permanent_filter(mut self, filter: crate::target::ObjectFilter) -> Self {
+        self.permanent_filter = Some(filter);
+        self
     }
 
     pub fn this_surface(mut self, surface: SourceReferenceSurface) -> Self {
@@ -63,6 +72,13 @@ impl TriggerMatcher for TransformsTrigger {
         let Some(e) = event.downcast::<TransformedEvent>() else {
             return false;
         };
+        if let Some(filter) = &self.permanent_filter {
+            use crate::filter::ObjectFilterExt as _;
+            return ctx
+                .game
+                .object(e.permanent)
+                .is_some_and(|object| filter.matches(object, &ctx.filter_ctx, ctx.game));
+        }
         if e.permanent != ctx.source_id {
             return false;
         }
@@ -85,6 +101,13 @@ impl TriggerMatcher for TransformsTrigger {
     }
 
     fn display(&self) -> String {
+        if let Some(filter) = &self.permanent_filter {
+            use crate::filter::ObjectFilterExt as _;
+            return format!(
+                "Whenever {} transforms",
+                filter.description()
+            );
+        }
         if self.destination_name.is_some() {
             return format!(
                 "Whenever {} transforms into {}",

@@ -929,8 +929,20 @@ fn split_quoted_granted_ability_list(tokens: &[OwnedLexToken]) -> Option<Vec<&[O
             return None;
         }
         // `gains "A" and "B"`: two quoted abilities with no leading keyword.
+        // The tail must be one whole quoted ability: a tail cut short of its
+        // closing quote means the caller split inside a quoted rule (Nerd
+        // Rage's quoted "... until end of turn." taken as the grant's own
+        // duration), and reading that fragment grants a truncated ability.
         if prefix.is_empty() {
-            return Some(vec![quoted, tail]);
+            let tail_is_whole_quote = tail
+                .first()
+                .is_some_and(|token| token.kind == TokenKind::Quote)
+                && tail
+                    .iter()
+                    .filter(|token| token.kind == TokenKind::Quote)
+                    .count()
+                    == 2;
+            return tail_is_whole_quote.then(|| vec![quoted, tail]);
         }
         return Some(vec![prefix, quoted, tail]);
     }

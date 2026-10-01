@@ -1,9 +1,17 @@
 use super::*;
 
+/// Named search items joined by a connective. `each_optional` is set when
+/// the items are joined by "and/or" ("a card named A and/or a card named B"):
+/// each named card is then found independently, up to one of each.
+pub struct SearchNamedItems {
+    pub filters: Vec<ObjectFilter>,
+    pub each_optional: bool,
+}
+
 pub fn split_search_named_item_filters_lexed(
     filter_tokens: &[OwnedLexToken],
     clause_display: &str,
-) -> Result<Option<Vec<ObjectFilter>>, CardTextError> {
+) -> Result<Option<SearchNamedItems>, CardTextError> {
     if !crate::lexer::contains_token_word(filter_tokens, "named") {
         return Ok(None);
     }
@@ -96,6 +104,9 @@ pub fn split_search_named_item_filters_lexed(
         return Ok(None);
     }
 
+    let each_optional = filter_tokens
+        .iter()
+        .any(|token| search_library_token_is_any_word(token, &["and/or"]));
     let mut filters = Vec::new();
     for (pos, start) in item_starts.iter().enumerate() {
         let end = item_starts
@@ -114,7 +125,10 @@ pub fn split_search_named_item_filters_lexed(
         }
         filters.push(item_filter);
     }
-    Ok(Some(filters))
+    Ok(Some(SearchNamedItems {
+        filters,
+        each_optional,
+    }))
 }
 
 pub fn parse_search_library_leading_effect_prelude_lexed<'a>(

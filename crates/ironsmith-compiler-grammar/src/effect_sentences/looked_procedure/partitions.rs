@@ -757,6 +757,7 @@ fn reveal_top_matching(
     super::super::search_library::normalize_search_library_filter(&mut filter);
     filter.zone = None;
     group.view_style = ViewStyle::LookThenRevealTagged;
+    let matched_zone = shape.matched_zone;
     match shape.remainder {
         RevealTopRemainder::LibraryBottom(order) => {
             let matched_tag = helper_tag_for_tokens(tokens, "matched");
@@ -777,7 +778,7 @@ fn reveal_top_matching(
                     tag: crate::tag::TagRef::of(matched_tag.clone()),
                     effects: vec![EffectAst::subject_verb_move_to_zone(
                         it(),
-                        Zone::Hand,
+                        matched_zone,
                         false,
                         ReturnControllerAst::Preserve,
                         false,

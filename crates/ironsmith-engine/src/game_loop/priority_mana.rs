@@ -2751,7 +2751,21 @@ pub(crate) fn propose_spell_cast(
         }
         _ => None,
     };
-    let shared_usage_to_consume = selected_plain_grant.as_ref().and_then(|grant| grant.shared_usage_id);
+    // A cast through a granted alternative cost ("without paying its mana
+    // cost") still uses the play permission from the same source; a
+    // permission with a shared budget ("you may cast a creature spell from
+    // among them", Idol of Endurance) spends it either way.
+    let shared_usage_to_consume = match &selected_plain_grant {
+        Some(grant) => grant.shared_usage_id,
+        None if selected_grant.is_some() => match casting_method {
+            CastingMethod::PlayFrom {source, zone, ..} | CastingMethod::SplitOtherHalfPlayFrom {source, zone, ..} =>
+                game.effect_store.grant_registry
+                    .selected_play_from_grant_for_card(game, spell_id, *zone, caster, *source)
+                    .and_then(|grant| grant.shared_usage_id),
+            _ => None,
+        },
+        None => None,
+    };
 
     let new_id = game
         .move_object_by_effect(spell_id, Zone::Stack)

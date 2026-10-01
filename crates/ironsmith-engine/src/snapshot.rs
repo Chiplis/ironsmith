@@ -81,7 +81,7 @@ impl CopiableValues {
             supertypes: obj.supertypes.to_vec(),
             colors: obj.colors(),
             loyalty: obj.base_loyalty,
-            abilities: obj.abilities.clone(),
+            abilities: obj.materialized_copiable_abilities(),
             aura_attach_filter: if let Some(restore) = bestow_restore {
                 restore
                     .aura_attach_filter
@@ -468,7 +468,7 @@ impl ObjectSnapshot {
                 .unwrap_or_default(),
 
             // Non-copiable state (from game state extension maps)
-            counters: obj.counters.clone(),
+            counters: obj.counters.counts().clone(),
             is_token: obj.kind == ObjectKind::Token,
             tapped: game.is_tapped(obj.id),
             attacking: game

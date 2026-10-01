@@ -20,6 +20,8 @@ pub enum ProtectionTargetKind {
     EachManaValueAmong {
         filter_word_first: usize,
     },
+    /// "each mana value other than the chosen number" (Haktos the Unscarred).
+    ManaValuesOtherThanChosenNumber,
     Spell,
     PermanentCastThisTurn,
     ManaValue {
@@ -369,6 +371,12 @@ fn parse_protection_head_word_stream(
 
 fn classify_protection_target(words: &[&str], target_word: usize) -> ProtectionTargetKind {
     let tail = words.get(target_word..).unwrap_or_default();
+    if matches!(
+        tail,
+        ["each", "mana", "value", "other", "than", "the", "chosen", "number"]
+    ) {
+        return ProtectionTargetKind::ManaValuesOtherThanChosenNumber;
+    }
     if word_phrase_prefix(tail, &["each", "mana", "value", "among"]) {
         return ProtectionTargetKind::EachManaValueAmong {
             filter_word_first: target_word + 4,

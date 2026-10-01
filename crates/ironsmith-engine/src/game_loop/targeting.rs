@@ -456,6 +456,8 @@ pub(super) fn queue_ability_activated_event(
     let stack_entry_provenance = activation_entry.map(|entry| entry.provenance);
     let x_value = activation_entry.and_then(|entry| entry.x_value);
     let activation_cost_has_x = activation_entry.is_some_and(|entry| entry.activation_cost_has_x);
+    let mana_spent_total =
+        activation_entry.map_or(0, |entry| entry.mana_spent_on_activation.total());
     let mana_sources_tag = crate::tag::TagKey::from(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG);
     let mana_sources_spent = game
         .stack
@@ -477,7 +479,8 @@ pub(super) fn queue_ability_activated_event(
             .with_x_value(x_value)
             .with_stack_entry_provenance(stack_entry_provenance)
             .with_snapshot(snapshot)
-            .with_mana_sources_spent(mana_sources_spent),
+            .with_mana_sources_spent(mana_sources_spent)
+            .with_mana_spent_total(mana_spent_total),
         event_provenance,
     );
     queue_triggers_from_event(game, trigger_queue, event, true);
@@ -1948,6 +1951,11 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                             requirements,
                         );
                     }
+                    for requirement in &mut requirements[mode_requirement_start..] {
+                        requirement.description = format!(
+                            "{} — {}", mode.source_text, requirement.description
+                        );
+                    }
                     if let Some(group) = distinct_player_group
                         && let Some(requirement) = requirements[mode_requirement_start..]
                             .iter_mut()
@@ -2246,6 +2254,18 @@ fn prior_relative_target_requirement(
             requirements
                 .iter()
                 .rposition(|requirement| matches!(requirement.spec.base(), ChooseSpec::Object(_)))
+        }
+        ChooseSpec::ObjectOrPlayer(filter, _)
+            if filter.other
+                && filter.source_surface.is_none()
+                && filter.tagged_constraints.is_empty() =>
+        {
+            requirements.iter().rposition(|requirement| {
+                matches!(
+                    requirement.spec.base(),
+                    ChooseSpec::ObjectOrPlayer(_, _) | ChooseSpec::Object(_)
+                )
+            })
         }
         _ => None,
     }
@@ -2585,9 +2605,11 @@ fn specialize_iterated_player_filter(filter: &PlayerFilter, player: PlayerId) ->
         PlayerFilter::OpponentWithMoreControlledObjectsThan {
             player: compared,
             filter,
+            fewer,
         } => PlayerFilter::OpponentWithMoreControlledObjectsThan {
             player: Box::new(specialize_iterated_player_filter(compared, player)),
             filter: Box::new(specialize_iterated_player_object_filter(filter, player)),
+            fewer: *fewer,
         },
         PlayerFilter::ControlsMost { filter } => PlayerFilter::ControlsMost {
             filter: Box::new(specialize_iterated_player_object_filter(filter, player)),
@@ -4314,6 +4336,23 @@ mod captured_incarnation_target_contract_tests {
         });
         ChooseSpec::Object(filter)
     }
+    #[test]
+    fn modal_target_requirements_quote_their_modes() {
+        let game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let effects = vec![Effect::new(crate::effects::ChooseModeEffect::choose_one(vec![
+            crate::effect::EffectMode::new(
+                "Deal 1 damage to any target.",
+                vec![Effect::deal_damage(1, ChooseSpec::AnyTarget)],
+            ),
+        ]))];
+        let requirements = extract_target_requirements_with_modes(
+            &game, &effects, alice, None, Some(&[0]),
+        );
+        assert_eq!(requirements.len(), 1);
+        assert!(requirements[0].description.starts_with("Deal 1 damage to any target. — "));
+    }
+
     #[test]
     fn captured_incarnation_is_a_resolution_reference() {
         let spec = reference(crate::filter::TaggedOpbjectRelation::SameObjectId);

@@ -165,6 +165,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "GrantNextSpellAbilityEffect" => Some(EffectFamily::Player),
         "GrantNextSpellCostReductionEffect" => Some(EffectFamily::Player),
         "GrantPlayTaggedEffect" => Some(EffectFamily::Player),
+        "GrantEndThisEffectPaymentEffect" => Some(EffectFamily::Player),
         "GrantRepeatableManaPaymentActionUntilEndOfTurnEffect" => Some(EffectFamily::CompositionAL),
         "GrantTaggedSpellFreeCastUntilEndOfTurnEffect" => Some(EffectFamily::Player),
         "GrantTaggedSpellLifeCostByManaValueEffect" => Some(EffectFamily::Player),

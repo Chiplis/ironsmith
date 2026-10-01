@@ -795,6 +795,7 @@ pub(super) fn attach_compiler_trigger_facts(
                             crate::PlayerFilter::OpponentWithMoreControlledObjectsThan {
                                 player: Box::new(crate::PlayerFilter::Active),
                                 filter: Box::new(crate::ObjectFilter::land()),
+                                fewer: false,
                             },
                             Some(crate::TextSpan::synthetic()),
                         ),
@@ -842,6 +843,7 @@ pub(super) fn attach_compiler_trigger_facts(
                                 crate::PlayerFilter::OpponentWithMoreControlledObjectsThan {
                                     player: Box::new(crate::PlayerFilter::Active),
                                     filter: Box::new(crate::ObjectFilter::creature()),
+                                    fewer: false,
                                 },
                                 Some(crate::TextSpan::synthetic()),
                             ),
@@ -985,29 +987,34 @@ pub(super) fn attach_compiler_trigger_facts(
                 graveyard_creatures.zone = Some(crate::Zone::Graveyard);
 
                 let mut return_filter = graveyard_creatures.clone();
-                return_filter.owner = Some(crate::PlayerFilter::IteratedPlayer);
+                return_filter.owner = Some(crate::PlayerFilter::Active);
+                // "that player chooses target player whose graveyard has fewer
+                // creature cards in it than their graveyard does and is their
+                // opponent": a real target, chosen by the upkeep player, so
+                // the ability is removed if no opponent qualifies or the
+                // target is illegal on resolution (CR 608.2b).
                 Some((
                     trigger,
-                    vec![crate::host::EffectAst::Conditionals(
-                        ConditionalEffectAst::Conditional {
-                            predicate: crate::host::PredicateAst::AnOpponentHasFewerThanPlayer {
-                                player: crate::PlayerAst::That,
-                                filter: graveyard_creatures,
-                            },
-                            if_true: vec![crate::host::EffectAst::Permissions(
-                                PermissionEffectAst::MayByPlayer {
-                                    player: crate::PlayerAst::That,
-                                    effects: vec![
-                                        crate::host::EffectAst::subject_verb_return_to_hand(
-                                            crate::TargetAst::Object(return_filter, None, None),
-                                            false,
-                                        ),
-                                    ],
+                    vec![
+                        crate::host::EffectAst::subject_verb_explicit_target_only_for_chooser(
+                            crate::TargetAst::Player(
+                                crate::PlayerFilter::OpponentWithMoreControlledObjectsThan {
+                                    player: Box::new(crate::PlayerFilter::Active),
+                                    filter: Box::new(graveyard_creatures),
+                                    fewer: true,
                                 },
+                                Some(crate::TextSpan::synthetic()),
+                            ),
+                            crate::PlayerAst::Active,
+                        ),
+                        crate::host::EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
+                            player: crate::PlayerAst::Active,
+                            effects: vec![crate::host::EffectAst::subject_verb_return_to_hand(
+                                crate::TargetAst::Object(return_filter, None, None),
+                                false,
                             )],
-                            if_false: Vec::new(),
-                        },
-                    )],
+                        }),
+                    ],
                 ))
             }
             _ => None,

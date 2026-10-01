@@ -462,6 +462,7 @@ fn push_enter_as_copy_effects_for_spec(
                             added_subtypes: spec.added_subtypes.clone(),
                             added_abilities: added_abilities_for_source(copy_candidate),
                             set_base_power_toughness,
+                            copy_followups: spec.copy_followups.clone(),
                         },
                     )
                     .with_priority_override(crate::events::ReplacementPriority::CopyEffect),
@@ -522,6 +523,7 @@ fn push_enter_as_copy_effects_for_spec(
                     added_subtypes: spec.added_subtypes.clone(),
                     added_abilities: added_abilities_for_source(candidate),
                     set_base_power_toughness,
+                    copy_followups: spec.copy_followups.clone(),
                 },
             )
             .with_priority_override(crate::events::ReplacementPriority::CopyEffect),
@@ -4434,6 +4436,8 @@ pub struct EtbEventResult {
     pub new_destination: Option<Zone>,
     /// If set, the object enters as a copy of this source object.
     pub enters_as_copy_of: Option<crate::ids::ObjectId>,
+    /// Consequences of that copy choice ("When you do, exile that card").
+    pub copy_followups: Vec<ironsmith_core::EnterAsCopyFollowup>,
     /// Duration of a temporary as-enters copy effect, if any.
     pub copy_duration: Option<crate::effect::Until>,
     pub copy_name_override: Option<String>,
@@ -6277,6 +6281,7 @@ fn prepare_etb_replacements_inner(
             enters_with_counters,
             linked_exile_with_entering: Vec::new(),
             enters_as_copy_of: None,
+            copy_followups: Vec::new(),
             copy_duration: None,
             copy_name_override: None,
             added_colors: crate::color::ColorSet::new(),
@@ -6513,6 +6518,7 @@ fn prepare_etb_replacements_inner(
                         prevented: false,
                         new_destination: None,
                         enters_as_copy_of: etb.enters_as_copy_of,
+                        copy_followups: etb.copy_followups.clone(),
                         copy_duration: etb.copy_duration.clone(),
                         copy_name_override: etb.copy_name_override.clone(),
                         added_colors: etb.added_colors,
@@ -7339,6 +7345,7 @@ mod tests {
                 additional_counters_source_filter: None,
                 added_abilities_source_filter: None,
                 set_base_power_toughness_from_self: false,
+                copy_followups: Vec::new(),
                 conditional_additional_counters: Vec::new(),
             },
             "Creatures enter as a copy of this creature.".to_string(),
@@ -7485,6 +7492,7 @@ mod tests {
                         additional_counters_source_filter: None,
                         added_abilities_source_filter: None,
                         set_base_power_toughness_from_self: false,
+                        copy_followups: Vec::new(),
                         conditional_additional_counters: Vec::new(),
                     },
                     "This permanent enters as a copy of a creature.".to_string(),

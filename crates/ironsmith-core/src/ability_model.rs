@@ -93,6 +93,10 @@ pub enum ManaSpendBonusCondition {
     IfThatManaIsSpentToCast,
     IfThisManaIsSpentOn,
     IfThatManaIsSpentOn,
+    /// "If any of that mana is spent on ..." (the multi-mana errata wording,
+    /// e.g. Generator Servant, Arena of Glory). Each restricted unit carries
+    /// the bonus, so spending any one of them on a matching spell applies it.
+    IfAnyOfThatManaIsSpentOn,
     WhenYouSpendThisManaToCast,
 }
 
@@ -358,6 +362,11 @@ pub enum ProtectionFrom {
     /// granting instruction resolves. Materialized to [`Self::Color`] before
     /// the ability is applied; unmaterialized it protects from nothing.
     ColorsOf(Box<crate::target_model::ChooseSpec>),
+    /// "protection from each mana value other than the chosen number"
+    /// (Haktos the Unscarred): every mana value except the number chosen for
+    /// the protected permanent as it entered. With no chosen number, every
+    /// mana value.
+    ManaValuesOtherThanChosenNumber,
     Everything,
 }
 

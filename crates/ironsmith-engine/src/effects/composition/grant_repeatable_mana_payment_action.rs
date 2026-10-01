@@ -43,6 +43,46 @@ impl EffectExecutor for GrantRepeatableManaPaymentActionUntilEndOfTurnEffect {
                 tagged_objects: ctx.tagged_objects.clone(),
                 tagged_players: ctx.tagged_players.clone(),
                 expires_end_of_turn: game.turn.turn_number,
+                ends_continuous_effects: Vec::new(),
+            });
+        Ok(EffectOutcome::resolved())
+    }
+}
+
+/// "You may pay [cost] to end this effect." (Licids)
+///
+/// CR 116.2c: an effect may let a player take a later action that ends a
+/// continuous effect; taking it is a special action, usable any time that
+/// player has priority. "This effect" is what the resolving ability's earlier
+/// instructions created: the continuous effects this resolution registered
+/// before this instruction. Paying once ends them all and uses up the offer.
+pub type GrantEndThisEffectPaymentEffect = ironsmith_core::GrantEndThisEffectPaymentEffect;
+
+impl EffectExecutor for GrantEndThisEffectPaymentEffect {
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let ends_continuous_effects = ctx.created_continuous_effects.clone();
+        if ends_continuous_effects.is_empty() {
+            return Ok(EffectOutcome::resolved());
+        }
+        let player = resolve_player_filter(game, &self.player, ctx)?;
+        game.effect_store
+            .repeatable_mana_payment_actions
+            .push(RepeatableManaPaymentAction {
+                player,
+                source: ctx.source,
+                controller: ctx.controller,
+                cost: self.cost.clone(),
+                effects: Vec::new(),
+                targets: Vec::new(),
+                tagged_objects: Default::default(),
+                tagged_players: Default::default(),
+                // The offer lasts as long as the effect it ends.
+                expires_end_of_turn: u32::MAX,
+                ends_continuous_effects,
             });
         Ok(EffectOutcome::resolved())
     }

@@ -71,6 +71,9 @@ pub struct ChoiceObjectReferenceFacts {
     pub references_container_it: bool,
     pub explicit_container_reference: bool,
     pub excludes_chosen_this_way: bool,
+    /// "a creature at random this Aura can enchant" (Infectious Rage): the
+    /// chosen object must be a legal host for the source Aura.
+    pub source_aura_can_enchant: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -209,6 +212,7 @@ pub fn parse_choice_object_clause_tokens(
     }
     if parse_aura_eligibility_suffix(&words) {
         words.truncate(words.len().saturating_sub(4));
+        references.source_aura_can_enchant = true;
     }
     match &count_source {
         Some(ChoiceObjectCountSource::CardsDiscardedThisWay) => {
@@ -670,6 +674,7 @@ fn parse_opponent_controlled_count_tail_lexed(input: &mut LexStream<'_>) -> WRes
     Ok(PlayerFilter::OpponentWithMoreControlledObjectsThan {
         player: Box::new(PlayerFilter::You),
         filter: Box::new(crate::ObjectFilter::default().with_type(card_type)),
+        fewer: false,
     })
 }
 

@@ -605,6 +605,11 @@ pub enum TriggerKind {
         surface: SourceReferenceSurface,
         destination_name: Option<String>,
     },
+    /// "Whenever a permanent you control transforms": any permanent matching
+    /// `filter` transforms (CR 701.27).
+    PermanentTransforms {
+        filter: ObjectFilter,
+    },
     YouCastThisSpell,
     KeywordActionMatchingObject {
         action: KeywordActionKind,
@@ -2106,6 +2111,9 @@ impl Trigger {
                 destination_name,
             },
         )
+    }
+    pub fn permanent_transforms(filter: ObjectFilter) -> Self {
+        Self::typed("permanent_transforms", TriggerKind::PermanentTransforms { filter })
     }
     pub fn you_cast_this_spell() -> Self {
         Self::typed("you_cast_this_spell", TriggerKind::YouCastThisSpell)

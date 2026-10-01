@@ -334,6 +334,7 @@ impl Event {
                 enters_with_counters,
                 linked_exile_with_entering: Vec::new(),
                 enters_as_copy_of: None,
+                copy_followups: Vec::new(),
                 copy_duration: None,
                 copy_name_override: None,
                 added_colors: crate::color::ColorSet::new(),

@@ -265,12 +265,14 @@ impl CounterTypeExt for CounterType {
             CounterType::Trample => Some(StaticAbilityId::Trample),
             CounterType::Vigilance => Some(StaticAbilityId::Vigilance),
             CounterType::Haste => Some(StaticAbilityId::Haste),
+            CounterType::Named(name) if name.eq_ignore_ascii_case("shadow") => Some(StaticAbilityId::Shadow),
             _ => None,
         }
     }
 
     fn is_ability_counter(&self) -> bool {
         self.granted_ability().is_some()
+            || matches!(self, CounterType::Named(name) if name.eq_ignore_ascii_case("exalted"))
     }
 }
 

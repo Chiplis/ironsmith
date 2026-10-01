@@ -95,7 +95,7 @@ export default function DecisionSummary({
     }
     return `${stackPrefix}: ${rawStackText}`;
   })();
-  const contextText = resolvingStackContextText || localize(normalizeLine(decision?.context_text));
+  const contextText = localize(normalizeLine(decision?.context_text)) || resolvingStackContextText;
   const consequenceText = localize(normalizeLine(decision?.consequence_text));
 
   const lines = useMemo(() => {

@@ -505,6 +505,22 @@ where
         "named",
     )?;
     remove_word_range(all_words, named_idx, name_end);
+    // "creatures with a name you noted for cards named Noble Banneret": the
+    // name is the draft-note card group, not the candidate's name.
+    for qualifier in [
+        &["with", "a", "name", "you", "noted", "for", "cards"][..],
+        &["with", "name", "you", "noted", "for", "cards"][..],
+    ] {
+        if named_idx >= qualifier.len()
+            && all_words[named_idx - qualifier.len()..named_idx] == *qualifier
+        {
+            remove_word_range(all_words, named_idx - qualifier.len(), named_idx);
+            let card_name = literal_name_surface_after_marker(source_tokens, &[NAMED_WORD])
+                .unwrap_or(name);
+            filter.name_noted_while_drafting_named = Some(card_name);
+            return Ok(true);
+        }
+    }
     // "a permanent named A or a permanent named B" / "a card named A and/or a
     // card named B": each "named" starts its own name. The repeated head noun
     // matches the outer filter, so the alternatives are name-only branches.

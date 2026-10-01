@@ -3324,7 +3324,11 @@ fn parse_effect_sentences_from_sentence_inputs(
                     parse_trace::event(format!(
                         "post-parse followup handled sentence(s): {consumed_sentences}"
                     ));
-                    sentence_idx += consumed_sentences;
+                    // A pre-parse plan may already have consumed several
+                    // sentences ("Copy the exiled card. You may cast the
+                    // copy ..."); a post rule that relocates the effects must
+                    // not hand the later sentence back to be parsed again.
+                    sentence_idx += consumed_sentences.max(parse_plan.consumed_sentences);
                     continue;
                 }
                 Some(PostParseFollowupResult::Annotated) | None => {}
@@ -3858,6 +3862,19 @@ fn parse_complete_simple_draw_sentence(
         }
         Some(subject)
     };
+    // "Target player draws a card at the beginning of the next turn's upkeep"
+    // (Sapphire Charm): the player is targeted as the spell is cast and the
+    // delayed draw refers back to that target. The delayed-timing-suffix
+    // statement owns that hoist; this shortcut would put the target choice
+    // inside the delayed trigger.
+    if matches!(
+        subject,
+        Some(SubjectAst::Player(PlayerAst::Target | PlayerAst::TargetOpponent))
+    ) && effect_grammar::delayed_step_shapes::parse_delayed_timing_marker_shape(tokens)
+        .is_some_and(|marker| marker.start_word > draw_idx)
+    {
+        return Ok(None);
+    }
     super::verb_handlers::parse_draw(&tokens[draw_idx + 1..], subject).map(Some)
 }
 
@@ -6031,6 +6048,7 @@ pub fn parse_effect_sentences_lexed(
         || {
             let mut effects = parse_effect_sentences_lexed_unfinalized(tokens)?;
             transport_coin_flip_outcomes_into_owner(&mut effects);
+            bind_triggering_clash_win_followups(&mut effects);
             preserve_linked_target_fanout_group(tokens, &mut effects);
             bind_where_x_threshold_conditions(tokens, &mut effects);
             merge_cast_this_way_tax_into_play_permission(tokens, &mut effects);
@@ -6265,6 +6283,7 @@ fn parse_effect_sentences_lexed_after_direct(
 }
 
 mod legacy_readings;
+pub(crate) use legacy_readings::parse_owned_exile_free_cast;
 
 #[inline(never)]
 fn parse_effect_sentences_lexed_legacy(
@@ -7129,6 +7148,101 @@ fn is_coin_flip_outcome(effect: &EffectAst) -> bool {
 /// it also lets declining an optional flip masquerade as losing it. Moving
 /// only contiguous win/lose branches into an owner whose final action is a
 /// coin flip preserves both the optional and per-iteration scopes.
+fn effect_contains_clash(effect: &EffectAst) -> bool {
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect
+        && matches!(
+            action,
+            SubjectVerbActionAst::KeywordActions(crate::cards::builders::KeywordActionAst::Clash { .. })
+        )
+    {
+        return true;
+    }
+    let mut found = false;
+    crate::model::visit::for_each_nested_effects(effect, true, |nested| {
+        found |= nested.iter().any(effect_contains_clash);
+    });
+    found
+}
+
+/// "Whenever you clash, ... If you won, ..." (Rebellion of the Flamekin,
+/// Entangling Trap): with no clash among the ability's own instructions, the
+/// clash-win follow-up asks about the clash that triggered the ability, not
+/// about the result of the preceding instruction.
+fn bind_triggering_clash_win_followups(effects: &mut [EffectAst]) {
+    fn clash_win_followup_mut(effect: &mut EffectAst) -> Option<&mut EffectAst> {
+        if matches!(
+            effect,
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                predicate: IfResultPredicate::WonClash,
+                ..
+            })
+        ) {
+            return Some(effect);
+        }
+        if let EffectAst::ControlFlow(control) = effect
+            && let crate::model::control_flow::ControlFlowNodeAst::Condition {
+                condition,
+                alternative_program: None,
+                reflexive: false,
+                ..
+            } = &control.node
+            && matches!(
+                condition.predicate,
+                crate::model::control_flow::ControlPredicateAst::Result(IfResultPredicate::WonClash)
+            )
+        {
+            return Some(effect);
+        }
+        if let EffectAst::SourceSentence { effects, .. } = effect
+            && effects.len() == 1
+        {
+            return clash_win_followup_mut(&mut effects[0]);
+        }
+        None
+    }
+    fn clash_win_followup_body(effect: EffectAst) -> Vec<EffectAst> {
+        match effect {
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. }) => effects,
+            EffectAst::ControlFlow(control) => {
+                let crate::model::control_flow::ControlFlowNodeAst::Condition {
+                    consequence_program,
+                    ..
+                } = &control.node
+                else {
+                    unreachable!("matched a clash-win condition");
+                };
+                control
+                    .program(*consequence_program)
+                    .map(|program| program.effects.clone())
+                    .unwrap_or_default()
+            }
+            _ => unreachable!("matched a clash-win follow-up"),
+        }
+    }
+    for index in 0..effects.len() {
+        if clash_win_followup_mut(&mut effects[index]).is_none()
+            || effects[..index].iter().any(effect_contains_clash)
+        {
+            continue;
+        }
+        let followup = clash_win_followup_mut(&mut effects[index])
+            .expect("matched a clash-win follow-up above");
+        let body = clash_win_followup_body(std::mem::replace(
+            followup,
+            EffectAst::Sequence {
+                effects: Vec::new(),
+            },
+        ));
+        *followup = EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::Triggering(
+                crate::cards::builders::TriggeringPredicateAst::YouWonTriggeringClash,
+            ),
+            if_true: body,
+            if_false: Vec::new(),
+        });
+    }
+}
+
 fn transport_coin_flip_outcomes_into_owner(effects: &mut Vec<EffectAst>) {
     let mut owner_index = 0;
     while owner_index < effects.len() {
@@ -12319,6 +12433,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnEach { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::MoveAllCounters { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::MoveOneCounter { .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::MoveCounters { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::ForEachCounterKindPutOrRemove {
                 ..
             })
@@ -13126,8 +13241,10 @@ pub fn most_recent_extra_turn_player(effects: &[EffectAst]) -> Option<PlayerAst>
 pub fn rewrite_when_one_or_more_this_way_clause_prefix(
     tokens: &[OwnedLexToken],
 ) -> Vec<OwnedLexToken> {
-    // Generic "When one or more ... this way, ..." follow-ups are semantically
-    // "If you do, ..." against the immediately previous effect result.
+    // Generic "When one or more ... this way, ..." follow-ups are reflexive
+    // triggered abilities (CR 603.12) on the immediately previous effect
+    // result: "When you do, ...". Targets are chosen as the reflexive ability
+    // is put on the stack, after the antecedent has happened.
     let this_way_in_prefix = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
         .map(|(before, _after)| grammar::has_phrase(before, &["this", "way"]))
         .unwrap_or(false);
@@ -13160,7 +13277,7 @@ pub fn rewrite_when_one_or_more_this_way_clause_prefix(
         let mut rewritten = Vec::new();
 
         let mut if_token = tokens[0].clone();
-        if_token.replace_word("if");
+        if_token.replace_word("when");
         rewritten.push(if_token);
 
         let mut you_token = tokens.get(1).cloned().unwrap_or_else(|| tokens[0].clone());

@@ -122,6 +122,7 @@ fn parse_combat_damage_trigger_lexed(
         .map(|(_, card_type)| PlayerFilter::OpponentWithMoreControlledObjectsThan {
             player: Box::new(PlayerFilter::You),
             filter: Box::new(ObjectFilter::default().with_type(card_type)),
+            fewer: false,
         }),
         // "Whenever a creature deals combat damage to its owner": the damaged
         // player is the damage source's own owner/controller.
@@ -5024,8 +5025,22 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             }) {
                 let subject_word_view = ActivationRestrictionCompatWords::new(subject_tokens);
                 let subject_words = subject_word_view.to_word_refs();
+                // "this creature or another <filter> dies", and "this creature
+                // or a Dragon you control dies" (Dragon-Kami's Egg).
                 if let Some(or_word_idx) =
                     crate::word_primitives::parse_sequence_start(&subject_words, OR_ANOTHER_WORDS)
+                        .or_else(|| {
+                            crate::word_primitives::parse_sequence_start(
+                                &subject_words,
+                                &["or", "a"],
+                            )
+                        })
+                        .or_else(|| {
+                            crate::word_primitives::parse_sequence_start(
+                                &subject_words,
+                                &["or", "an"],
+                            )
+                        })
                 {
                     let rhs_word_idx = or_word_idx + 2;
                     let rhs_token_idx = trigger_word_token_start(subject_tokens, rhs_word_idx)

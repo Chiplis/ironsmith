@@ -285,6 +285,8 @@ pub enum ReplacementAction {
         added_subtypes: Vec<Subtype>,
         added_abilities: Vec<Ability>,
         set_base_power_toughness: Option<(i32, i32)>,
+        /// What else happens once this copy is chosen.
+        copy_followups: Vec<ironsmith_core::EnterAsCopyFollowup>,
     },
 
     /// Enter with permanent characteristic changes.

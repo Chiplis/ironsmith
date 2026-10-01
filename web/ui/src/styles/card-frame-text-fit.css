@@ -75,3 +75,19 @@
 .registered-card-frame__field {
   transition: none !important;
 }
+
+/* One typography size throughout the abilities box, including italic text. */
+.interactive-card-frame__rules[data-fit-text="true"] :is(.rules-reminder-text, .inspector-flavor-text) {
+  font-size: inherit !important;
+}
+.interactive-card-frame__rules[data-fit-text="true"][data-text-overflow="true"] {
+  overflow: auto;
+}
+.interactive-card-frame__stats-text {
+  max-width: 100%;
+  font-size: inherit;
+  flex-shrink: 0;
+}
+.registered-card-frame__field .interactive-card-frame__rules[data-text-overflow="true"] {
+  overflow: auto;
+}

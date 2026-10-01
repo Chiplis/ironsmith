@@ -3911,3 +3911,60 @@ pub(super) fn all_of_history_all_at_once_adds_time_counters_to_each_eligible_obj
         "time travel should offer one choice per eligible object"
     );
 }
+
+#[test]
+pub(super) fn each_exalted_counter_contributes_an_independent_attack_trigger() {
+    for count in [0, 1, 2, 3] {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let card = CardBuilder::new(CardId::new(), "Counter Attacker")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1)).build();
+        let attacker = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        if count > 0 {
+            game.add_counters(attacker, crate::object::CounterType::Named("exalted".into()), count)
+                .expect("positive counter placement produces an event");
+        }
+        game.remove_summoning_sickness(attacker);
+        game.turn.active_player = alice;
+        game.turn.phase = Phase::Combat;
+        game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+        let mut combat = CombatState::default();
+        let mut queue = TriggerQueue::new();
+        apply_attacker_declarations(&mut game, &mut combat, &mut queue,
+            &[AttackerDeclaration { creature: attacker, target: AttackTarget::Player(bob) }])
+            .expect("attacking alone is legal");
+        assert_eq!(queue.entries.len(), count as usize,
+            "each exalted counter grants a separate triggered ability (count={count})");
+    }
+}
+
+#[test]
+pub(super) fn printed_exalted_uses_same_public_attack_trigger_queue() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let card = CardBuilder::new(CardId::new(), "Printed Exalted Attacker")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1)).build();
+    let attacker = game.create_object_from_card(&card, alice, Zone::Battlefield);
+    game.object_mut(attacker).expect("attacker exists").abilities = std::sync::Arc::new(vec![
+        Ability::triggered(crate::triggers::Trigger::attacks_alone(
+            crate::target::ObjectFilter::creature().you_control()),
+            crate::resolution::ResolutionProgram::from_effects(vec![
+                Effect::tag_triggering_object("exalted_attacker"),
+                Effect::pump(1, 1, crate::target::ChooseSpec::Tagged("exalted_attacker".into()),
+                    crate::effect::Until::EndOfTurn),
+            ]))]);
+    game.remove_summoning_sickness(attacker);
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+    let mut combat = CombatState::default();
+    let mut queue = TriggerQueue::new();
+    apply_attacker_declarations(&mut game, &mut combat, &mut queue,
+        &[AttackerDeclaration { creature: attacker, target: AttackTarget::Player(bob) }])
+        .expect("printed exalted attacker can attack alone");
+    assert_eq!(queue.entries.len(), 1, "public declaration queues printed exalted immediately");
+}

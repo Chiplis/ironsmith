@@ -399,6 +399,9 @@ impl StaticAbility {
             Some(StaticAbilityId::DoubleAgenda) => Self::double_agenda(),
             Some(StaticAbilityId::KeywordText) => Self::keyword_text(label),
             Some(StaticAbilityId::KeywordMarker) => Self::keyword_marker(label),
+            Some(StaticAbilityId::StaticEffectsContinueUntilEndOfTurnAfterLeaving) => {
+                Self::static_effects_continue_until_end_of_turn_after_leaving(label)
+            }
             Some(StaticAbilityId::KeywordFallbackText) => Self::keyword_fallback_text(label),
             Some(StaticAbilityId::RuleFallbackText) => Self::rule_fallback_text(label),
             Some(StaticAbilityId::UnsupportedParserLine) => {

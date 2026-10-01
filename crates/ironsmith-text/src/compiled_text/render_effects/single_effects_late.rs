@@ -1446,6 +1446,9 @@ pub(super) fn describe_mana_usage_restriction(
                 crate::ability::ManaSpendBonusCondition::IfThatManaIsSpentOn => {
                     format!("If that mana is spent on {spell_text}")
                 }
+                crate::ability::ManaSpendBonusCondition::IfAnyOfThatManaIsSpentOn => {
+                    format!("If any of that mana is spent on {spell_text}")
+                }
                 crate::ability::ManaSpendBonusCondition::WhenYouSpendThisManaToCast => {
                     format!("When you spend this mana to cast {spell_text}")
                 }

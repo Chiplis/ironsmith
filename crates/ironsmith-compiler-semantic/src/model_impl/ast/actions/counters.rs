@@ -54,6 +54,14 @@ pub enum CounterActionAst {
         from: TargetAst,
         to: TargetAst,
     },
+    /// "Move X +1/+1 counters from <from> onto <to>" (Blaster, Morale
+    /// Booster): a counted move of one counter kind (CR 122.5).
+    MoveCounters {
+        counter_type: CounterType,
+        count: Value,
+        from: TargetAst,
+        to: TargetAst,
+    },
     ForEachCounterKindPutOrRemove {
         target: TargetAst,
         counter_source: Option<TargetAst>,

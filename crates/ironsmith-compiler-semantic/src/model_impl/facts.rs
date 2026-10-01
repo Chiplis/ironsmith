@@ -182,6 +182,12 @@ pub struct LoweringFrame {
     /// resolution so composed effects can reference an earlier looked-at pool
     /// even after a later `ChooseObjects` clobbers `last_object_tag`.
     pub snapshot_tag_aliases: Vec<(TagKey, TagKey)>,
+    /// `(created, source)`: the result tag of an unmodified token-copy
+    /// creation and the tag of the object it copied. A later "create a token
+    /// that's a copy of that creature" names the copied object, not the token
+    /// (Tempt with Reflections), and an unmodified copy's copiable values are
+    /// the source's anyway (CR 707.2).
+    pub token_copy_sources: Vec<(TagKey, TagKey)>,
     pub last_revealed_tag: Option<TagKey>,
     pub last_revealed_zone: Option<Zone>,
     pub last_revealed_player_filter: Option<PlayerFilter>,

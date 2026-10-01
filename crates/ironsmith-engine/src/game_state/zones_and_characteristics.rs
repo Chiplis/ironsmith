@@ -162,6 +162,62 @@ fn merge_retained_tagged_objects(
 }
 
 impl GameState {
+    /// The rest of an enter-as-copy choice once the copy entered: "If you do,
+    /// it gains haste until end of turn" applies as part of the replacement;
+    /// "When you do, exile that card" is a reflexive triggered ability
+    /// (CR 603.12) whose "that card" is the copied object as it was.
+    fn apply_enter_as_copy_followups(
+        &mut self,
+        new_id: ObjectId,
+        copy_source_id: ObjectId,
+        followups: &[ironsmith_core::EnterAsCopyFollowup],
+    ) {
+        let Some(controller) = self.controller_of_id(new_id) else {
+            return;
+        };
+        for followup in followups {
+            match followup {
+                ironsmith_core::EnterAsCopyFollowup::GainsHasteUntilEndOfTurn => {
+                    let effect = crate::continuous::ContinuousEffect::new(
+                        new_id,
+                        controller,
+                        crate::continuous::EffectTarget::Specific(new_id),
+                        crate::continuous::Modification::AddAbility(
+                            crate::static_abilities::StaticAbility::haste(),
+                        ),
+                    )
+                    .until(crate::effect::Until::EndOfTurn)
+                    .with_expires_end_of_turn(self.turn.turn_number)
+                    .with_source_type(crate::continuous::EffectSourceType::Resolution {
+                        locked_targets: vec![new_id],
+                    });
+                    self.effect_store.continuous_effects.add_effect(effect);
+                    self.mark_continuous_state_dirty();
+                }
+                ironsmith_core::EnterAsCopyFollowup::ExileCopiedObject => {
+                    let Some(copied) = self.object(copy_source_id) else {
+                        continue;
+                    };
+                    let copied_tag = crate::tag::TagKey::from("copied_object");
+                    let snapshot = crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                        copied, self,
+                    );
+                    let mut tagged_objects = std::collections::HashMap::new();
+                    tagged_objects.insert(copied_tag.clone(), vec![snapshot]);
+                    crate::effects::composition::queue_reflexive_trigger(
+                        self,
+                        new_id,
+                        controller,
+                        vec![crate::effect::Effect::exile(crate::target::ChooseSpec::Tagged(
+                            copied_tag,
+                        ))],
+                        tagged_objects,
+                    );
+                }
+            }
+        }
+    }
+
     /// CR 400.4a: an instant or sorcery card cannot enter the battlefield.
     ///
     /// This is a zone-change rule, not a replacement effect, so callers must
@@ -539,6 +595,62 @@ impl GameState {
         Ok(())
     }
 
+    /// "If this enchantment leaves the battlefield, this effect continues
+    /// until end of turn" (Titania's Song): as the permanent leaves, the
+    /// continuous effects its other static abilities generate are registered
+    /// until end of turn, keeping their timestamp and applying to whatever
+    /// their filters match, as they did while the source was on the
+    /// battlefield. They form one effect for CR 613.6.
+    fn register_lingering_static_effects_on_leave(&mut self, source: ObjectId) {
+        use crate::static_abilities::StaticAbilityId;
+        if !self.current_has_static_ability_id(
+            source,
+            StaticAbilityId::StaticEffectsContinueUntilEndOfTurnAfterLeaving,
+        ) {
+            return;
+        }
+        let Some(abilities) = self.current_abilities(source) else {
+            return;
+        };
+        let Some(object) = self.object(source) else {
+            return;
+        };
+        let controller = self.controller_of(object);
+        let zone = object.zone;
+        let mut effects = Vec::new();
+        for ability in &abilities {
+            let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+                continue;
+            };
+            if !ability.functions_in(&zone)
+                || static_ability.id()
+                    == StaticAbilityId::StaticEffectsContinueUntilEndOfTurnAfterLeaving
+            {
+                continue;
+            }
+            effects.extend(static_ability.generate_effects(source, controller, self));
+        }
+        if effects.is_empty() {
+            return;
+        }
+        let timestamp = self
+            .effect_store
+            .continuous_effects
+            .get_object_timestamp(source)
+            .unwrap_or(0);
+        let group = self.effect_store.continuous_effects.next_effect_group_id();
+        for mut effect in effects {
+            effect.duration = crate::effect::Until::EndOfTurn;
+            effect.timestamp = timestamp;
+            effect.group = Some(group);
+            effect.source_type = crate::continuous::EffectSourceType::StaticAbility;
+            effect.originating_static_ability = None;
+            effect.originating_ability = None;
+            self.effect_store.continuous_effects.add_effect(effect);
+        }
+        self.mark_continuous_state_dirty();
+    }
+
     pub fn move_object(
         &mut self,
         old_id: ObjectId,
@@ -764,6 +876,7 @@ impl GameState {
             .is_some_and(|object| object.zone == Zone::Battlefield)
             && new_zone != Zone::Battlefield
         {
+            self.register_lingering_static_effects_on_leave(old_id);
             self.release_phase_out_holds_for_source(old_id);
             self.note_attraction_left_battlefield(old_id);
             // CR 506.4: a planeswalker or battle that leaves the battlefield
@@ -2155,6 +2268,18 @@ impl GameState {
                 }
             }
             if let Some(spec) = static_ability.named_option_choice_as_enters()
+                && spec.at_random
+                && !spec.options.is_empty()
+            {
+                // "As this enters, choose 2, 3, or 4 at random": no player
+                // makes this choice; the game's deterministic RNG picks one
+                // listed option uniformly.
+                let mut indices = (0..spec.options.len()).collect::<Vec<_>>();
+                self.shuffle_slice(&mut indices);
+                if let Some(option) = indices.first().map(|idx| spec.options[*idx].clone()) {
+                    choices.chosen_named_option = Some(option);
+                }
+            } else if let Some(spec) = static_ability.named_option_choice_as_enters()
                 && !spec.options.is_empty()
             {
                 let display_options = spec
@@ -2943,7 +3068,7 @@ impl GameState {
             .chain(&choices.as_enters_counters)
         {
             if let Some(obj) = self.object_mut(new_id) {
-                *obj.counters.entry(*counter_type).or_insert(0) += count;
+                obj.add_counters(*counter_type, *count);
             }
             if *count == 0 {
                 continue;
@@ -3004,6 +3129,12 @@ impl GameState {
             };
             self.add_exiled_with_source_link(new_id, exiled_id);
             self.record_zone_change_results(*linked_old_id, vec![exiled_id]);
+        }
+
+        if let Some(copy_source_id) = result.enters_as_copy_of
+            && !result.copy_followups.is_empty()
+        {
+            self.apply_enter_as_copy_followups(new_id, copy_source_id, &result.copy_followups);
         }
 
         // If this is an Aura entering from a non-stack zone, choose what to attach to
@@ -5234,10 +5365,7 @@ impl GameState {
             | Modification::CopyStaticAbilityVariants { .. }
             // Restriction modifications materialize as cant-relevant static
             // abilities in calculated characteristics.
-            | Modification::CantBeBlocked
-            | Modification::CantAttack
-            | Modification::CantBlock
-            | Modification::DoesntUntap
+            | Modification::Restriction(_)
             // Removals can strip cant-relevant statics granted by other
             // effects; rerun the scan rather than reason about ordering.
             | Modification::RemoveAbility(_)

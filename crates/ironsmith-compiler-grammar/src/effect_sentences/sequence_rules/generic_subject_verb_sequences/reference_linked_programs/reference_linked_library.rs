@@ -451,6 +451,7 @@ pub fn parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard(
                 count,
                 filter,
                 order,
+                shape.matched_zone,
             )
         }
         effect_grammar::RevealTopRemainder::Graveyard => {
@@ -475,6 +476,7 @@ pub(super) fn compose_reveal_top_put_matching_into_hand_rest_on_bottom(
     count: Value,
     mut filter: ObjectFilter,
     order: LibraryBottomOrderAst,
+    matched_zone: Zone,
 ) -> Vec<EffectAst> {
     let looked_tag = helper_tag_for_tokens(look_tokens, "revealed");
     let matched_tag = helper_tag_for_tokens(matched_tokens, "matched");
@@ -499,7 +501,7 @@ pub(super) fn compose_reveal_top_put_matching_into_hand_rest_on_bottom(
             tag: crate::tag::TagRef::of(matched_tag.clone()),
             effects: vec![EffectAst::subject_verb_move_to_zone(
                 TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
-                Zone::Hand,
+                matched_zone,
                 false,
                 ReturnControllerAst::Preserve,
                 false,

@@ -389,6 +389,9 @@ pub struct ExecutionContext<'a> {
     /// Aura enters attached to X (CR 303.4f) and stays in its zone when it
     /// can't legally enchant X (CR 303.4i) instead of choosing on its own.
     pub(crate) pending_entry_attachment: Option<crate::target::ChooseSpec>,
+    /// Continuous effects this resolution has registered so far, in order.
+    /// "You may pay [cost] to end this effect" (Licids) ends exactly these.
+    pub(crate) created_continuous_effects: Vec<crate::continuous::ContinuousEffectId>,
 }
 
 // Keep the checkpoint's owned fields in one list. The exhaustive context
@@ -458,6 +461,7 @@ execution_context_checkpoint! {
     resolution_object_id_floor: Option<ObjectId>,
     public_search_reveal_tag: Option<TagKey>,
     pending_entry_attachment: Option<crate::target::ChooseSpec>,
+    created_continuous_effects: Vec<crate::continuous::ContinuousEffectId>,
 }
 
 
@@ -561,6 +565,7 @@ impl<'a> ExecutionContext<'a> {
             resolution_object_id_floor: None,
             public_search_reveal_tag: None,
             pending_entry_attachment: None,
+            created_continuous_effects: Vec::new(),
         }
     }
 
@@ -621,6 +626,7 @@ impl<'a> ExecutionContext<'a> {
             resolution_object_id_floor: None,
             public_search_reveal_tag: None,
             pending_entry_attachment: None,
+            created_continuous_effects: Vec::new(),
         }
     }
 
@@ -671,6 +677,7 @@ impl<'a> ExecutionContext<'a> {
             resolution_object_id_floor: self.resolution_object_id_floor,
             public_search_reveal_tag: self.public_search_reveal_tag,
             pending_entry_attachment: self.pending_entry_attachment,
+            created_continuous_effects: self.created_continuous_effects,
         }
     }
 

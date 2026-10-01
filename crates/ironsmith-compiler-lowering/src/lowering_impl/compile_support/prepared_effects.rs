@@ -840,6 +840,57 @@ fn normalize_cross_segment_fight_sequences(segments: &mut [crate::resolution::Re
     }
 }
 
+/// "Tap target creature you control and target creature of an opponent's
+/// choice they control. Those creatures fight each other." (Magus of the
+/// Arena): "those creatures" are exactly the two tapped creatures, so the
+/// mutual fight names each tapped slot instead of the chosen-objects
+/// collection, which nothing in this program binds.
+fn bind_mutual_fight_to_tapped_pair(segments: &mut [crate::resolution::ResolutionSegment]) {
+    for idx in 1..segments.len() {
+        let [fight_effect] = segments[idx].default_effects.as_slice() else {
+            continue;
+        };
+        let Some(fight) = fight_effect.downcast_ref::<crate::effects::FightEffect>() else {
+            continue;
+        };
+        let chosen = crate::tag::CompilerReferenceTag::ChosenObjects.as_str();
+        if !matches!(&fight.creature1, ChooseSpec::Tagged(tag) if tag.as_str() == chosen)
+            || !matches!(&fight.creature2, ChooseSpec::Tagged(tag) if tag.as_str() == chosen)
+        {
+            continue;
+        }
+        let Some(previous) = segments[idx - 1].default_effects.last() else {
+            continue;
+        };
+        let Some(sequence) = previous.downcast_ref::<crate::effects::SequenceEffect>() else {
+            continue;
+        };
+        let tapped_tags = sequence
+            .effects
+            .iter()
+            .filter_map(|effect| {
+                let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+                tagged
+                    .effect
+                    .downcast_ref::<crate::effects::TapEffect>()
+                    .map(|_| tagged.tag.clone())
+            })
+            .collect::<Vec<_>>();
+        let [first, second] = tapped_tags.as_slice() else {
+            continue;
+        };
+        if first == second {
+            continue;
+        }
+        let mut rebound = crate::effects::FightEffect::new(
+            ChooseSpec::Tagged(first.clone()),
+            ChooseSpec::Tagged(second.clone()),
+        );
+        rebound.mutual_surface = fight.mutual_surface;
+        segments[idx].default_effects = vec![Effect::new(rebound)];
+    }
+}
+
 fn single_is_tagged_constraint(filter: &ObjectFilter, expected: &TagKey) -> bool {
     matches!(
         filter.tagged_constraints.as_slice(),
@@ -1613,6 +1664,7 @@ fn materialize_source_sentence_segments(
     normalize_cross_segment_iterated_consult_exile_collections(&mut segments);
     normalize_cross_segment_correlated_created_result_fights(&mut segments);
     normalize_cross_segment_fight_sequences(&mut segments);
+    bind_mutual_fight_to_tapped_pair(&mut segments);
     link_death_replacement_to_exiled_attachment(&mut segments);
     bind_returned_attachment_history_to_triggering_object(&mut segments);
     bind_exchange_of_declared_target_and_its_referent(&mut segments);

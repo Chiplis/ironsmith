@@ -2392,7 +2392,7 @@ pub(super) fn rewrite_when_one_or_more_this_way_prefix_only_rewrites_when_this_w
         super::super::effect_sentences::rewrite_when_one_or_more_this_way_clause_prefix(&tokens);
 
     let words = token_word_refs(&rewritten);
-    assert_eq!(words[..3], ["if", "you", "do"]);
+    assert_eq!(words[..3], ["when", "you", "do"]);
 }
 
 #[test]

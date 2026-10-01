@@ -1036,6 +1036,14 @@ pub(super) fn compile_cant_action(
                     inner.as_ref().clone(),
                 ))),
                 _ => None,
+            })
+            // "Target player can't cast spells this turn, and creatures that
+            // player controls can't attack this turn" (Oriss): "that player"
+            // reuses the target already declared.
+            .filter(|choice| {
+                !ctx.last_player_filter.as_ref().is_some_and(|player| {
+                    super::player_target_choice_matches_filter(choice, player)
+                })
             });
         let cant = Effect::new(
             crate::effects::CantEffect::starting(restriction, duration.clone(), start.clone())
@@ -2490,6 +2498,24 @@ pub(super) fn compile_subject_verb_middle(
                 && ctx.last_player_filter.is_none()
             {
                 ctx.last_player_filter = Some(PlayerFilter::AliasedOwnerOf(ObjectRef::Target));
+                // "up to four target ... cards from a player's graveyard":
+                // the player is chosen even when no card is (Lodestone
+                // Bauble), and "that player" then names them.
+                if spec.count().min == 0
+                    && matches!(spec.base(), ChooseSpec::Object(filter) if filter.single_graveyard)
+                {
+                    source_choice_prelude.push(Effect::conditional(
+                        crate::effect::Condition::Not(Box::new(
+                            crate::effect::Condition::TargetMatches(ObjectFilter::default()),
+                        )),
+                        vec![Effect::new(crate::effects::ChoosePlayerEffect::new(
+                            PlayerFilter::You,
+                            PlayerFilter::Any,
+                            crate::TagKey::from(ironsmith_core::tag::TARGET_GRAVEYARD_PLAYER_TAG),
+                        ))],
+                        Vec::new(),
+                    ));
+                }
             }
             source_choice_prelude.push(effect);
             Ok((source_choice_prelude, choices))
@@ -3555,6 +3581,27 @@ pub(super) fn compile_subject_verb_middle(
         }) => {
             let ObjectRefAst::Tagged(tag) = object;
             let tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
+            // "Create a token that's a copy of that creature" after an
+            // unmodified copy names the copied creature, not the earlier token.
+            let tag = ctx
+                .token_copy_sources
+                .iter()
+                .find(|(created, _)| created == &tag)
+                .map(|(_, source)| source.clone())
+                .unwrap_or(tag);
+            let copy_source_tag = tag.clone();
+            let unmodified_copy = !*half_power_toughness_round_up
+                && !*has_haste
+                && set_colors.is_none()
+                && set_card_types.is_none()
+                && set_subtypes.is_none()
+                && added_card_types.is_empty()
+                && added_subtypes.is_empty()
+                && removed_supertypes.is_empty()
+                && set_base_power_toughness.is_none()
+                && !*set_base_power_toughness_to_source_totals
+                && starting_loyalty.is_none()
+                && granted_abilities.is_empty();
             let subject = LoweredSubject::resolve_actor(*action_player, ctx, true, true, true)?;
             let count = subject.resolve_object_refs_and_bind_player_refs_in_value(count, ctx)?;
             let player_filter = subject.into_player_filter();
@@ -3659,6 +3706,9 @@ pub(super) fn compile_subject_verb_middle(
             if ctx.auto_tag_object_targets {
                 let tag = super::reserved_or_fresh_result_tag(ctx, "created");
                 ctx.last_object_tag = Some(tag.clone());
+                if unmodified_copy {
+                    ctx.token_copy_sources.push((tag.clone(), copy_source_tag));
+                }
                 effect = effect.tag(tag);
             }
             Ok((vec![effect], choices))
@@ -3716,6 +3766,44 @@ pub(super) fn compile_subject_verb_middle(
             {
                 source_spec = ChooseSpec::Tagged(last_tag.clone());
             }
+            // "Create a token that's a copy of that creature" after an
+            // unmodified copy names the copied creature, not the earlier token
+            // (Tempt with Reflections).
+            if let ChooseSpec::Tagged(tag) = source_spec.unhinted()
+                && let Some(copied) = ctx
+                    .token_copy_sources
+                    .iter()
+                    .find(|(created, _)| created == tag)
+                    .map(|(_, copied)| copied.clone())
+            {
+                // Keep the authored reference surface hints.
+                fn retag(spec: ChooseSpec, copied: TagKey) -> ChooseSpec {
+                    match spec {
+                        ChooseSpec::SurfaceHinted { spec, hints } => ChooseSpec::SurfaceHinted {
+                            spec: Box::new(retag(*spec, copied)),
+                            hints,
+                        },
+                        _ => ChooseSpec::Tagged(copied),
+                    }
+                }
+                source_spec = retag(source_spec, copied);
+            }
+            let copy_source_tag = match source_spec.unhinted() {
+                ChooseSpec::Tagged(tag) => Some(tag.clone()),
+                _ => None,
+            };
+            let unmodified_copy = !*half_power_toughness_round_up
+                && !*has_haste
+                && set_colors.is_none()
+                && set_card_types.is_none()
+                && set_subtypes.is_none()
+                && added_card_types.is_empty()
+                && added_subtypes.is_empty()
+                && removed_supertypes.is_empty()
+                && set_base_power_toughness.is_none()
+                && !*set_base_power_toughness_to_source_totals
+                && starting_loyalty.is_none()
+                && granted_abilities.is_empty();
             source_spec = with_target_reference_surface_hint(source_spec, source);
             let aggregate_source_filter = if *set_base_power_toughness_to_source_totals {
                 Some(
@@ -3823,6 +3911,9 @@ pub(super) fn compile_subject_verb_middle(
             if ctx.auto_tag_object_targets {
                 let tag = super::reserved_or_fresh_result_tag(ctx, "created");
                 ctx.last_object_tag = Some(tag.clone());
+                if unmodified_copy && let Some(copy_source_tag) = copy_source_tag {
+                    ctx.token_copy_sources.push((tag.clone(), copy_source_tag));
+                }
                 effect = effect.tag(tag);
             }
             Ok((vec![effect], choices))

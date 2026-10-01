@@ -1816,8 +1816,15 @@ fn resolve_owner_of(
             let target_id = match find_target_object(&ctx.targets) {
                 Ok(id) => id,
                 Err(error) => {
+                    // "Put up to four target cards from a player's graveyard
+                    // ... That player ...": with no card chosen, the player
+                    // whose graveyard was named was chosen on its own.
                     return delayed_captured_target_snapshot(ctx)
                         .map(|snapshot| snapshot.owner)
+                        .or_else(|| {
+                            ctx.get_tagged_players(crate::tag::TARGET_GRAVEYARD_PLAYER_TAG)
+                                .and_then(|players| players.first().copied())
+                        })
                         .ok_or(error);
                 }
             };

@@ -1232,6 +1232,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::ThisTransforms { destination_name } => {
             Trigger::transforms_with_destination(destination_name.clone())
         }
+        TriggerSpec::PermanentTransforms(filter) => Trigger::permanent_transforms(filter.clone()),
         TriggerSpec::ThisTransformsWithSurface {
             surface,
             destination_name,

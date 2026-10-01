@@ -93,7 +93,13 @@ pub fn parse_search_library_disjunction_filter(
             .map_while(|word| crate::util::parse_supertype_word(word))
             .collect::<Vec<_>>()
     };
-    let later_arms_share_head = segments.iter().skip(1).all(|segment| {
+    // "a basic land card or Gate card": a first arm with its own head noun
+    // is a complete noun phrase, so its supertype stays branch-local.
+    let first_arm_has_head_noun = token_word_refs(&segments[0]).iter().any(|word| {
+        matches!(*word, "card" | "cards") || crate::util::parse_card_type(word).is_some()
+    });
+    let later_arms_share_head = !first_arm_has_head_noun
+        && segments.iter().skip(1).all(|segment| {
         token_word_refs(segment)
             .first()
             .is_some_and(|word| !matches!(*word, "a" | "an"))

@@ -471,7 +471,8 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
                 }
             }
             SubjectVerbActionAst::Counters(CounterActionAst::MoveAllCounters { from, to })
-            | SubjectVerbActionAst::Counters(CounterActionAst::MoveOneCounter { from, to }) => {
+            | SubjectVerbActionAst::Counters(CounterActionAst::MoveOneCounter { from, to })
+                | SubjectVerbActionAst::Counters(CounterActionAst::MoveCounters { from, to, .. }) => {
                 visit(from);
                 visit(to);
             }
@@ -1602,6 +1603,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Stack(StackActionAst::CounterUnlessPays { .. })
         | SubjectVerbActionAst::Counters(CounterActionAst::MoveAllCounters { .. })
         | SubjectVerbActionAst::Counters(CounterActionAst::MoveOneCounter { .. })
+        | SubjectVerbActionAst::Counters(CounterActionAst::MoveCounters { .. })
         | SubjectVerbActionAst::Counters(CounterActionAst::ForEachCounterKindPutOrRemove {
             ..
         })

@@ -1948,7 +1948,8 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
                 ));
             }
         }
-        crate::continuous::Modification::DoesntUntap => {
+        crate::continuous::Modification::Restriction(restriction)
+            if restriction.kind() == crate::continuous::RestrictionKind::DoesntUntap => {
             clauses.push("can't untap".to_string());
         }
         _ => {}
@@ -2348,8 +2349,9 @@ pub(crate) fn describe_doesnt_untap_apply_continuous_effect(
     plural_target: bool,
 ) -> Option<String> {
     if !matches!(
-        effect.modification,
-        Some(crate::continuous::Modification::DoesntUntap)
+        effect.modification.as_ref(),
+        Some(crate::continuous::Modification::Restriction(restriction))
+                if restriction.kind() == crate::continuous::RestrictionKind::DoesntUntap
     ) || !effect.additional_modifications.is_empty()
         || !effect.runtime_modifications.is_empty()
     {

@@ -212,6 +212,13 @@ pub fn apply_keyword_action(
                 ),
             ))
         }
+        KeywordAction::ProtectionFromManaValuesOtherThanChosenNumber => {
+            builder.with_ability(crate::ability::Ability::static_ability(
+                crate::static_abilities::StaticAbility::protection(
+                    crate::ability::ProtectionFrom::ManaValuesOtherThanChosenNumber,
+                ),
+            ))
+        }
         KeywordAction::ProtectionFromFilter(filter) => builder.protection_from_filter(filter),
         KeywordAction::ProtectionFromEachManaValueAmong(filter) => {
             builder.with_ability(crate::ability::Ability::static_ability(

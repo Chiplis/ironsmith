@@ -4495,6 +4495,11 @@ pub fn runtime_static_ability_for_keyword_action(action: KeywordAction) -> Optio
         KeywordAction::ProtectionFromColorsOutsideCommanderIdentity => Some(StaticAbility::protection(
             crate::ability::ProtectionFrom::ColorsOutsideCommanderIdentity,
         )),
+        KeywordAction::ProtectionFromManaValuesOtherThanChosenNumber => {
+            Some(StaticAbility::protection(
+                crate::ability::ProtectionFrom::ManaValuesOtherThanChosenNumber,
+            ))
+        }
         KeywordAction::ProtectionFromFilter(filter) => Some(StaticAbility::protection(
             crate::ability::ProtectionFrom::Permanents(filter),
         )),
@@ -5463,6 +5468,7 @@ pub(crate) fn lower_compiler_static_ability_core(
                         conditional_additional_counters: spec
                             .conditional_additional_counters
                             .clone(),
+                        copy_followups: spec.copy_followups,
                     },
                     display,
                 },

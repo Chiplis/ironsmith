@@ -3988,6 +3988,31 @@ impl StaticAbilityKind for DraftRuleText {
     }
 }
 
+/// "If this enchantment leaves the battlefield, this effect continues until
+/// end of turn" (Titania's Song). Inert while its permanent is on the
+/// battlefield; as the permanent leaves, the game registers the continuous
+/// effects of its other static abilities for the rest of the turn.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StaticEffectsContinueUntilEndOfTurnAfterLeaving {
+    pub text: String,
+}
+
+impl StaticEffectsContinueUntilEndOfTurnAfterLeaving {
+    pub fn new(text: impl Into<String>) -> Self {
+        Self { text: text.into() }
+    }
+}
+
+impl StaticAbilityKind for StaticEffectsContinueUntilEndOfTurnAfterLeaving {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::StaticEffectsContinueUntilEndOfTurnAfterLeaving
+    }
+
+    fn display(&self) -> String {
+        self.text.clone()
+    }
+}
+
 /// Marker for CR 702.106 hidden agenda setup and reveal semantics.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HiddenAgenda;

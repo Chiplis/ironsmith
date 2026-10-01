@@ -4747,6 +4747,11 @@
     {
         return "Note the type of mana spent to pay this activation cost".to_string();
     }
+    if let Some(end_offer) =
+        effect.downcast_ref::<crate::effects::GrantEndThisEffectPaymentEffect>()
+    {
+        return format!("You may pay {} to end this effect", end_offer.cost.to_oracle());
+    }
     if let Some(add) = effect.downcast_ref::<crate::effects::AddManaOfNotedTypeEffect>() {
         return format!(
             "Add {} mana of this source's last noted type",
@@ -5707,7 +5712,7 @@
     }
     if let Some(move_counters) = effect.downcast_ref::<crate::effects::MoveCountersEffect>() {
         return format!(
-            "Move {} from {} to {}",
+            "Move {} from {} onto {}",
             describe_put_counter_phrase(&move_counters.count, move_counters.counter_type),
             describe_choose_spec(&move_counters.from),
             describe_choose_spec(&move_counters.to)

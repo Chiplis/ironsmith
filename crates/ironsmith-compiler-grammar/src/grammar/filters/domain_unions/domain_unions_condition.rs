@@ -41,8 +41,17 @@ pub(super) fn propagate_leading_shared_set_modifiers(
         }
     }
     // "basic Island, Mountain, or Plains card": a leading supertype
-    // adjective qualifies every bare arm of the list.
-    if let Some(first) = branches.first()
+    // adjective qualifies every bare arm of the list. A first arm with its
+    // own head noun ("basic land card or Gate card") is a complete noun
+    // phrase, so its supertype stays branch-local.
+    let first_arm_has_head_noun = leading_words.iter().any(|word| {
+        matches!(
+            *word,
+            "card" | "cards" | "permanent" | "permanents" | "spell" | "spells"
+        ) || crate::util::parse_card_type(word).is_some()
+    });
+    if !first_arm_has_head_noun
+        && let Some(first) = branches.first()
         && !first.supertypes.is_empty()
         && first.supertypes.iter().all(|supertype| {
             leading_words.iter().any(|word| {

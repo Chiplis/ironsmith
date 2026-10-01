@@ -2195,6 +2195,7 @@ where
         crate::effects::ExileEffect,
         crate::effects::ExileUntilEffect,
         crate::effects::GrantNextSpellCostReductionEffect,
+        crate::effects::GrantEndThisEffectPaymentEffect,
         crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect,
         crate::effects::GrantTaggedSpellLifeCostByManaValueEffect,
         crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect,

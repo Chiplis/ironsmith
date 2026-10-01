@@ -1738,6 +1738,7 @@ pub(super) fn try_compile_timing_and_control_effect(
         EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectLeavesBattlefield {
             filter,
             effects,
+            watched_object_is_source,
         }) => {
             let target_tag = ctx.last_object_tag.clone().ok_or_else(|| {
                 CardTextError::ParseError(
@@ -1750,7 +1751,23 @@ pub(super) fn try_compile_timing_and_control_effect(
                 Some((crate::tag::CompilerReferenceTag::Triggering.bind()).into());
             let compiled = compile_effects_preserving_last_effect(effects, ctx);
             ctx.last_object_tag = previous_last;
-            let (delayed_effects, choices) = compiled?;
+            let (mut delayed_effects, choices) = compiled?;
+            if *watched_object_is_source {
+                // "When it leaves the battlefield, it deals ...": the watched
+                // object, as it last existed, is the damage source
+                // (CR 608.2h); the delayed ability's controller is still the
+                // scheduling ability's controller.
+                let source_tag: crate::tag::TagKey = target_tag.clone().into();
+                delayed_effects = delayed_effects
+                    .into_iter()
+                    .map(|effect| {
+                        Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+                            ChooseSpec::Tagged(source_tag.clone()),
+                            effect,
+                        ))
+                    })
+                    .collect();
+            }
 
             let mut watched_filter = filter.clone();
             watched_filter

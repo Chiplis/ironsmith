@@ -2816,7 +2816,13 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction, face_u
                 .effect_store
                 .repeatable_mana_payment_actions
                 .get(*action_index)
-                .map(|action| format!("{}: Perform granted action", action.cost.to_oracle()))
+                .map(|action| {
+                    if action.ends_continuous_effects.is_empty() {
+                        format!("{}: Perform granted action", action.cost.to_oracle())
+                    } else {
+                        format!("{}: End this effect", action.cost.to_oracle())
+                    }
+                })
                 .unwrap_or_else(|| "Perform granted action".to_string()),
         },
     }

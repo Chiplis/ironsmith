@@ -334,7 +334,7 @@ fn push_target_player_filter_choices(filter: &PlayerFilter, choices: &mut Vec<Ch
         | PlayerFilter::MaxSpeed { base, .. } => {
             push_target_player_filter_choices(base, choices);
         }
-        PlayerFilter::OpponentWithMoreControlledObjectsThan { player, filter } => {
+        PlayerFilter::OpponentWithMoreControlledObjectsThan { player, filter, .. } => {
             push_target_player_filter_choices(player, choices);
             append_object_filter_target_player_choices(filter, choices);
         }

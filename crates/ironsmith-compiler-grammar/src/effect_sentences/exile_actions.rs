@@ -374,10 +374,64 @@ pub fn parse_exile_counted_target_players_graveyards(
     }))
 }
 
+/// "Exile Kaya or up to one target creature" (Kaya, Ghost Assassin): the
+/// optional creature target is declared as the ability is activated; as it
+/// resolves, its controller exiles exactly one object, either the source or
+/// that target. Exiling the chosen object through one tagged choice lets the
+/// following "that card" name whichever object was exiled.
+fn parse_exile_source_or_up_to_one_target(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let Some(or_index) = tokens.iter().position(|token| token.is_word("or")) else {
+        return Ok(None);
+    };
+    let (source_tokens, target_tokens) = (&tokens[..or_index], &tokens[or_index + 1..]);
+    if source_tokens.is_empty()
+        || target_tokens.len() < 5
+        || !(target_tokens[0].is_word("up")
+            && target_tokens[1].is_word("to")
+            && target_tokens[2].is_word("one")
+            && target_tokens[3].is_word("target"))
+    {
+        return Ok(None);
+    }
+    if !matches!(parse_target_phrase(source_tokens), Ok(TargetAst::Source(_))) {
+        return Ok(None);
+    }
+    let target = parse_target_phrase(target_tokens)?;
+    let mut declared_target = ObjectFilter::default();
+    declared_target.is_target_object = true;
+    let mut chosen = ObjectFilter::default();
+    chosen.zone = Some(Zone::Battlefield);
+    chosen.any_of = vec![ObjectFilter::source(), declared_target];
+    // A sentence-helper exile tag lets the following "Return that card"
+    // name whichever object this choice exiled.
+    let tag_tokens = trim_commas(tokens);
+    let tag = helper_tag_for_tokens(&tag_tokens, "exiled");
+    Ok(Some(EffectAst::Sequence {
+        effects: vec![
+            EffectAst::subject_verb_explicit_target_only(target),
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                filter: chosen,
+                count: crate::effect::ChoiceCount::exactly(1),
+                count_value: None,
+                player: PlayerAst::You,
+                tag: tag.clone(),
+            }),
+            EffectAst::subject_verb_exile(TargetAst::Tagged(tag, None), false),
+        ],
+    }))
+}
+
 pub fn parse_exile(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
+    if subject.is_none()
+        && let Some(effect) = parse_exile_source_or_up_to_one_target(tokens)?
+    {
+        return Ok(effect);
+    }
     if let Some((target_tokens, leave_watcher_tokens)) = split_until_target_leaves_tail(tokens) {
         let (target_tokens, face_down) = split_exile_face_down_suffix(target_tokens);
         let mut target =

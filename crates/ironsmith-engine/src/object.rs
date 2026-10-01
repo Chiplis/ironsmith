@@ -1,4 +1,5 @@
 use crate::filter::ObjectFilterExt as _;
+use crate::marker::CounterTypeExt as _;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -23,6 +24,219 @@ use crate::zone::Zone;
 pub const FACE_DOWN_DISPLAY_NAME: &str = "Face-down creature";
 
 pub use ironsmith_core::CounterType;
+
+/// Stable occurrence of a keyword counter. The serial is a little-endian
+/// integer with arbitrary precision, so removed registrations are never reused.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct CounterAbilityOrigin {
+    pub counter_type: CounterType,
+    pub serial: Vec<u32>,
+}
+
+/// Serializable registration facts; payloads are materialized once on import.
+/// Application keys use these typed origins rather than newly allocated IDs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CounterAbilityState {
+    pub next_serial: Vec<u32>,
+    pub origins: Vec<CounterAbilityOrigin>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct CounterAbilityOccurrence {
+    pub origin: CounterAbilityOrigin,
+    pub abilities: Vec<Ability>,
+}
+
+/// Counter counts and their registered ability payloads mutate together.
+/// Immutable map access is retained; mutable map access would bypass identity.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ObjectCounters {
+    counts: std::collections::BTreeMap<CounterType, u32>,
+    occurrences: std::collections::BTreeMap<CounterType, Vec<CounterAbilityOccurrence>>,
+    next_serial: Vec<u32>,
+}
+impl ObjectCounters {
+    pub fn counts(&self) -> &std::collections::BTreeMap<CounterType, u32> { &self.counts }
+
+    pub fn ability_state(&self) -> CounterAbilityState {
+        CounterAbilityState {
+            next_serial: self.next_serial.clone(),
+            origins: self.occurrences.values().flat_map(|entries|
+                entries.iter().map(|entry| entry.origin.clone())).collect(),
+        }
+    }
+
+    /// Import validates the complete count/origin relationship before publishing
+    /// a store. Legacy counts alone cannot recover surviving keyword identities.
+    pub fn from_checkpoint(
+        counts: std::collections::BTreeMap<CounterType, u32>,
+        state: Option<CounterAbilityState>,
+    ) -> Result<Self, String> {
+        let state = match state {
+            Some(state) => state,
+            None if counts.iter().all(|(kind, count)| *count == 0 || !kind.is_ability_counter()) =>
+                CounterAbilityState { next_serial: Vec::new(), origins: Vec::new() },
+            None => return Err("keyword counters require their registration state".into()),
+        };
+        fn canonical(serial: &[u32]) -> bool { serial.last().is_none_or(|last| *last != 0) }
+        fn compare(a: &[u32], b: &[u32]) -> std::cmp::Ordering {
+            a.len().cmp(&b.len()).then_with(|| a.iter().rev().cmp(b.iter().rev()))
+        }
+        if !canonical(&state.next_serial) {
+            return Err("counter registration allocator is not canonical".into());
+        }
+        let mut seen = std::collections::HashSet::new();
+        let mut occurrences: std::collections::BTreeMap<CounterType, Vec<CounterAbilityOccurrence>> =
+            std::collections::BTreeMap::new();
+        for origin in state.origins {
+            if !origin.counter_type.is_ability_counter()
+                || !canonical(&origin.serial)
+                || compare(&origin.serial, &state.next_serial) != std::cmp::Ordering::Less
+                || !seen.insert(origin.serial.clone())
+            {
+                return Err("invalid or reused counter ability origin".into());
+            }
+            let entries = occurrences.entry(origin.counter_type).or_default();
+            if entries.last().is_some_and(|previous|
+                compare(&previous.origin.serial, &origin.serial) != std::cmp::Ordering::Less)
+            {
+                return Err("counter ability registrations changed survivor order".into());
+            }
+            let abilities = counter_ability_payloads(origin.counter_type);
+            if abilities.is_empty() {
+                return Err("counter ability payload is unsupported".into());
+            }
+            entries.push(CounterAbilityOccurrence { origin, abilities });
+        }
+        for (kind, entries) in &occurrences {
+            if counts.get(kind).copied().map(|count| count as usize) != Some(entries.len()) {
+                return Err("counter origins do not match their count".into());
+            }
+        }
+        for (kind, count) in &counts {
+            if *count > 0 && kind.is_ability_counter() && !occurrences.contains_key(kind) {
+                return Err("keyword counter is missing its ability origins".into());
+            }
+        }
+        Ok(Self { counts, occurrences, next_serial: state.next_serial })
+    }
+
+
+    pub fn insert(&mut self, kind: CounterType, count: u32) -> Option<u32> {
+        let old = self.counts.insert(kind, count);
+        if kind.is_ability_counter() {
+            let mut occurrences = self.occurrences.remove(&kind).unwrap_or_default();
+            occurrences.truncate(count as usize);
+            while occurrences.len() < count as usize {
+                let serial = self.next_serial.clone();
+                let mut carry = true;
+                for digit in &mut self.next_serial {
+                    let (next, overflow) = digit.overflowing_add(1);
+                    *digit = next;
+                    carry = overflow;
+                    if !carry { break; }
+                }
+                if carry { self.next_serial.push(1); }
+                occurrences.push(CounterAbilityOccurrence {
+                    origin: CounterAbilityOrigin { counter_type: kind, serial },
+                    abilities: counter_ability_payloads(kind),
+                });
+            }
+            if !occurrences.is_empty() { self.occurrences.insert(kind, occurrences); }
+        }
+        old
+    }
+
+    pub fn add(&mut self, kind: CounterType, amount: u32) {
+        if amount > 0 {
+            let count = self.counts.get(&kind).copied().unwrap_or(0);
+            self.insert(kind, count + amount);
+        }
+    }
+
+    pub fn remove(&mut self, kind: &CounterType) -> Option<u32> {
+        self.occurrences.remove(kind);
+        self.counts.remove(kind)
+    }
+
+    pub fn clear(&mut self) {
+        self.counts.clear(); self.occurrences.clear();
+    }
+
+    pub(crate) fn ability_occurrences(&self, kind: CounterType) -> &[CounterAbilityOccurrence] {
+        self.occurrences.get(&kind).map(Vec::as_slice).unwrap_or(&[])
+    }
+}
+impl std::ops::Deref for ObjectCounters {
+    type Target = std::collections::BTreeMap<CounterType, u32>;
+    fn deref(&self) -> &Self::Target { &self.counts }
+}
+impl<'a> IntoIterator for &'a ObjectCounters {
+    type Item = (&'a CounterType, &'a u32);
+    type IntoIter = std::collections::btree_map::Iter<'a, CounterType, u32>;
+    fn into_iter(self) -> Self::IntoIter { self.counts.iter() }
+}
+impl IntoIterator for ObjectCounters {
+    type Item = (CounterType, u32);
+    type IntoIter = std::collections::btree_map::IntoIter<CounterType, u32>;
+    fn into_iter(self) -> Self::IntoIter { self.counts.into_iter() }
+}
+impl FromIterator<(CounterType, u32)> for ObjectCounters {
+    fn from_iter<T: IntoIterator<Item = (CounterType, u32)>>(iter: T) -> Self {
+        let mut counters = Self::default();
+        for (kind, count) in iter { counters.insert(kind, count); }
+        counters
+    }
+}
+
+/// Construct a payload only when a counter is registered, never during queries.
+fn counter_ability_payloads(kind: CounterType) -> Vec<Ability> {
+    let keyword = match kind {
+        CounterType::Deathtouch => Some(StaticAbility::deathtouch()),
+        CounterType::Flying => Some(StaticAbility::flying()),
+        CounterType::FirstStrike => Some(StaticAbility::first_strike()),
+        CounterType::DoubleStrike => Some(StaticAbility::double_strike()),
+        CounterType::Hexproof => Some(StaticAbility::hexproof()),
+        CounterType::Indestructible => Some(StaticAbility::indestructible()),
+        CounterType::Lifelink => Some(StaticAbility::lifelink()),
+        CounterType::Menace => Some(StaticAbility::menace()),
+        CounterType::Reach => Some(StaticAbility::reach()),
+        CounterType::Trample => Some(StaticAbility::trample()),
+        CounterType::Vigilance => Some(StaticAbility::vigilance()),
+        CounterType::Haste => Some(StaticAbility::haste()),
+        CounterType::Named(name) if name.eq_ignore_ascii_case("shadow") => Some(StaticAbility::shadow()),
+        _ => None,
+    };
+    if let Some(keyword) = keyword { return vec![Ability::static_ability(keyword)]; }
+    if kind == CounterType::Decayed {
+        return vec![
+            Ability::static_ability(StaticAbility::cant_block()),
+            Ability::triggered(
+                crate::triggers::Trigger::this_attacks(),
+                crate::resolution::ResolutionProgram::from_effects(vec![crate::effect::Effect::new(
+                    crate::effects::ScheduleDelayedTriggerEffect::new(
+                        crate::triggers::Trigger::end_of_combat(),
+                        vec![crate::effect::Effect::sacrifice_source()], true, Vec::new(),
+                        crate::target::PlayerFilter::You,
+                    ),
+                )]),
+            ),
+        ];
+    }
+    if matches!(kind, CounterType::Named(name) if name.eq_ignore_ascii_case("exalted")) {
+        let attacker_tag = "exalted_attacker";
+        return vec![Ability::triggered(
+            crate::triggers::Trigger::attacks_alone(crate::target::ObjectFilter::creature().you_control()),
+            crate::resolution::ResolutionProgram::from_effects(vec![
+                crate::effect::Effect::tag_triggering_object(attacker_tag),
+                crate::effect::Effect::pump(1, 1, crate::target::ChooseSpec::Tagged(attacker_tag.into()),
+                    crate::effect::Until::EndOfTurn),
+            ]),
+        )];
+    }
+    Vec::new()
+}
+
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SharedStr(Arc<str>);
@@ -264,7 +478,7 @@ pub(crate) struct CardSharedHandles {
     other_face_name: Option<SharedStr>,
     abilities: Arc<Vec<Ability>>,
     spell_effect: Option<SharedValue<crate::resolution::ResolutionProgram>>,
-    aura_attach_filter: Option<SharedValue<AuraAttachmentFilter>>,
+    aura_attach_filter: Option<AuraAttachmentMetadata>,
     alternative_casts: SharedVec<AlternativeCastingMethod>,
     optional_costs: SharedVec<OptionalCost>,
     additional_cost: SharedValue<TotalCost>,
@@ -306,7 +520,7 @@ impl CardSharedHandles {
             other_face_name: def.card.other_face_name.clone().map(Into::into),
             abilities: Arc::new(abilities),
             spell_effect: shared_optional_value(def.spell_effect.clone()),
-            aura_attach_filter: shared_optional_value(def.aura_attach_filter.clone()),
+            aura_attach_filter: def.aura_attach_filter.clone().map(Into::into),
             alternative_casts: def.alternative_casts.clone().into(),
             optional_costs: def.optional_costs.clone().into(),
             additional_cost: def.additional_cost.clone().into(),
@@ -377,6 +591,33 @@ impl AttachmentTarget {
 
 pub use ironsmith_core::AuraAttachmentFilter;
 
+/// Attachment metadata owns its legacy enchant ability occurrence. Creating
+/// the metadata registers the payload; repeated layer reads only clone it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AuraAttachmentMetadata {
+    filter: SharedValue<AuraAttachmentFilter>,
+    enchant_ability: StaticAbility,
+}
+
+impl From<AuraAttachmentFilter> for AuraAttachmentMetadata {
+    fn from(filter: AuraAttachmentFilter) -> Self {
+        Self {
+            enchant_ability: StaticAbility::enchant(filter.clone()),
+            filter: filter.into(),
+        }
+    }
+}
+
+impl std::ops::Deref for AuraAttachmentMetadata {
+    type Target = AuraAttachmentFilter;
+    fn deref(&self) -> &Self::Target { &self.filter }
+}
+
+impl AuraAttachmentMetadata {
+    pub fn to_owned_value(&self) -> AuraAttachmentFilter { self.filter.to_owned_value() }
+    pub(crate) fn enchant_ability(&self) -> StaticAbility { self.enchant_ability.clone() }
+}
+
 pub trait AuraAttachmentFilterRuntimeExt {
     fn matches_target(
         &self,
@@ -408,7 +649,7 @@ impl AuraAttachmentFilterRuntimeExt for AuraAttachmentFilter {
 pub struct BestowCastState {
     pub card_types: SharedVec<CardType>,
     pub subtypes: SharedVec<Subtype>,
-    pub aura_attach_filter: Option<SharedValue<AuraAttachmentFilter>>,
+    pub aura_attach_filter: Option<AuraAttachmentMetadata>,
     pub spell_effect: Option<SharedValue<crate::resolution::ResolutionProgram>>,
 }
 
@@ -447,7 +688,7 @@ pub struct FaceDownCastState {
     pub base_defense: Option<u32>,
     pub abilities: Arc<Vec<Ability>>,
     pub spell_effect: Option<SharedValue<crate::resolution::ResolutionProgram>>,
-    pub aura_attach_filter: Option<SharedValue<AuraAttachmentFilter>>,
+    pub aura_attach_filter: Option<AuraAttachmentMetadata>,
     /// Public face-down kind: this object was cast face down using disguise,
     /// so the face-down overlay carries ward {2} (CR 702.168a).
     ///
@@ -587,7 +828,7 @@ pub struct Object {
     pub abilities: Arc<Vec<Ability>>,
 
     // Non-copiable values (kept on Object)
-    pub counters: std::collections::BTreeMap<CounterType, u32>,
+    pub counters: ObjectCounters,
     pub attached_to: Option<AttachmentTarget>,
     pub attachments: Vec<ObjectId>,
 
@@ -597,7 +838,7 @@ pub struct Object {
     /// Pre-splice program while this object is a spell on the stack.
     pub splice_cast_state: Option<Box<SpliceCastState>>,
     /// For Auras: what this card can enchant (used for non-target attachments)
-    pub aura_attach_filter: Option<SharedValue<AuraAttachmentFilter>>,
+    pub aura_attach_filter: Option<AuraAttachmentMetadata>,
     /// Original copiable fields to restore if this permanent ends bestow.
     pub bestow_cast_state: Option<Box<BestowCastState>>,
     /// Original copiable fields to restore if this card was cast face down.
@@ -856,7 +1097,30 @@ impl Object {
     }
 
     pub fn aura_attach_filter_owned(&self) -> Option<AuraAttachmentFilter> {
-        owned_optional_value(&self.aura_attach_filter)
+        self.aura_attach_filter.as_ref().map(AuraAttachmentMetadata::to_owned_value)
+    }
+
+    fn abilities_with_enchant_metadata(&self, metadata: Option<&AuraAttachmentMetadata>) -> Arc<Vec<Ability>> {
+        let Some(metadata) = metadata else { return self.abilities.clone(); };
+        if self.abilities.iter().any(|ability| matches!(
+            &ability.kind, crate::ability::AbilityKind::Static(ability)
+                if ability.enchant_filter() == Some(&*metadata.filter)
+        )) {
+            return self.abilities.clone();
+        }
+        let mut abilities = self.abilities.as_ref().clone();
+        abilities.push(Ability::static_ability(metadata.enchant_ability.clone()));
+        Arc::new(abilities)
+    }
+
+    pub(crate) fn materialized_text_box_abilities(&self) -> Arc<Vec<Ability>> {
+        self.abilities_with_enchant_metadata(self.aura_attach_filter.as_ref())
+    }
+
+    pub(crate) fn materialized_copiable_abilities(&self) -> Arc<Vec<Ability>> {
+        let metadata = self.bestow_cast_state.as_ref()
+            .map_or(self.aura_attach_filter.as_ref(), |restore| restore.aura_attach_filter.as_ref());
+        self.abilities_with_enchant_metadata(metadata)
     }
 
     pub fn cast_alternative_method_owned(&self) -> Option<AlternativeCastingMethod> {
@@ -913,7 +1177,7 @@ impl Object {
             hand_modifier: card.hand_modifier,
             life_modifier: card.life_modifier,
             abilities: Arc::new(Vec::new()),
-            counters: std::collections::BTreeMap::new(),
+            counters: ObjectCounters::default(),
             attached_to: None,
             attachments: Vec::new(),
             spell_effect: None,
@@ -999,7 +1263,7 @@ impl Object {
             hand_modifier: 0,
             life_modifier: 0,
             abilities: Arc::new(Vec::new()),
-            counters: std::collections::BTreeMap::new(),
+            counters: ObjectCounters::default(),
             attached_to: None,
             attachments: Vec::new(),
             spell_effect: None,
@@ -1293,7 +1557,7 @@ impl Object {
             hand_modifier: 0,
             life_modifier: 0,
             abilities: Arc::new(Vec::new()),
-            counters: std::collections::BTreeMap::new(),
+            counters: ObjectCounters::default(),
             attached_to: None,
             attachments: Vec::new(),
             spell_effect: None,
@@ -1369,7 +1633,7 @@ impl Object {
             life_modifier: source.life_modifier,
             abilities: source.abilities.clone(),
             // Non-copiable values reset to defaults
-            counters: std::collections::BTreeMap::new(),
+            counters: ObjectCounters::default(),
             attached_to: None,
             attachments: Vec::new(),
             // Note: spell_effect is copiable for spell copies
@@ -1444,7 +1708,7 @@ impl Object {
             hand_modifier: source.hand_modifier,
             life_modifier: source.life_modifier,
             abilities: source.abilities.clone(),
-            counters: std::collections::BTreeMap::new(),
+            counters: ObjectCounters::default(),
             attached_to: None,
             attachments: Vec::new(),
             spell_effect: source.spell_effect.clone(),
@@ -1519,12 +1783,12 @@ impl Object {
             hand_modifier: 0,
             life_modifier: 0,
             abilities: copiable.abilities.clone(),
-            counters: std::collections::BTreeMap::new(),
+            counters: ObjectCounters::default(),
             attached_to: None,
             attachments: Vec::new(),
             spell_effect: None,
             splice_cast_state: None,
-            aura_attach_filter: shared_optional_value(copiable.aura_attach_filter.clone()),
+            aura_attach_filter: copiable.aura_attach_filter.clone().map(Into::into),
             bestow_cast_state: None,
             face_down_cast_state: None,
             prototype_cast_state: None,
@@ -1591,7 +1855,7 @@ impl Object {
             hand_modifier: 0,
             life_modifier: 0,
             abilities: Arc::new(abilities),
-            counters: std::collections::BTreeMap::new(),
+            counters: ObjectCounters::default(),
             attached_to: None,
             attachments: Vec::new(),
             spell_effect: None,
@@ -1666,7 +1930,7 @@ impl Object {
         self.base_toughness = values.toughness.map(PtValue::Fixed);
         self.base_loyalty = values.loyalty;
         self.abilities = values.abilities.clone();
-        self.aura_attach_filter = shared_optional_value(values.aura_attach_filter.clone());
+        self.aura_attach_filter = values.aura_attach_filter.clone().map(Into::into);
     }
 
     /// Apply the temporary "cast with bestow" Aura overlay.
@@ -2377,17 +2641,16 @@ impl Object {
 
     /// Adds counters of the specified type.
     pub fn add_counters(&mut self, counter_type: CounterType, amount: u32) {
-        *self.counters.entry(counter_type).or_insert(0) += amount;
+        self.counters.add(counter_type, amount);
     }
 
     /// Removes counters of the specified type. Returns the number actually removed.
     pub fn remove_counters(&mut self, counter_type: CounterType, amount: u32) -> u32 {
-        let current = self.counters.entry(counter_type).or_insert(0);
-        let removed = (*current).min(amount);
-        *current -= removed;
-        if *current == 0 {
-            self.counters.remove(&counter_type);
-        }
+        let current = self.counters.get(&counter_type).copied().unwrap_or(0);
+        let removed = current.min(amount);
+        let remaining = current - removed;
+        if remaining == 0 { self.counters.remove(&counter_type); }
+        else { self.counters.insert(counter_type, remaining); }
         removed
     }
 
@@ -2566,7 +2829,7 @@ impl Object {
             hand_modifier: def.card.hand_modifier,
             life_modifier: def.card.life_modifier,
             abilities: handles.abilities.clone(),
-            counters: std::collections::BTreeMap::new(),
+            counters: ObjectCounters::default(),
             attached_to: None,
             attachments: Vec::new(),
             spell_effect: handles.spell_effect.clone(),
@@ -3228,4 +3491,49 @@ mod temporary_ability_registration_tests {
         assert_eq!(rebuilt.origin(1), Some(&other_origin), "component origin survives reconstruction");
         assert_ne!(rebuilt.origin(0), rebuilt.origin(1));
     }
+    #[test]
+    fn counter_checkpoint_rejects_inconsistent_registration_state() {
+        let mut counters = ObjectCounters::default();
+        counters.add(CounterType::Flying, 2);
+        let counts = counters.counts().clone();
+        let state = counters.ability_state();
+        let restored = ObjectCounters::from_checkpoint(counts.clone(), Some(state.clone()))
+            .expect("valid counter registrations import");
+        assert_eq!(restored.ability_state(), state);
+        assert!(ObjectCounters::from_checkpoint(counts.clone(), None).is_err(),
+            "counts cannot recreate surviving keyword identities");
+        let mut invalid = Vec::new();
+        let mut missing = state.clone(); missing.origins.pop(); invalid.push(missing);
+        let mut duplicate = state.clone(); duplicate.origins[1] = duplicate.origins[0].clone(); invalid.push(duplicate);
+        let mut future = state.clone(); future.origins[0].serial = future.next_serial.clone(); invalid.push(future);
+        let mut wrong_kind = state.clone(); wrong_kind.origins[0].counter_type = CounterType::Charge; invalid.push(wrong_kind);
+        let mut noncanonical = state.clone(); noncanonical.origins[0].serial = vec![0]; invalid.push(noncanonical);
+        let mut reset_allocator = state.clone(); reset_allocator.next_serial.clear(); invalid.push(reset_allocator);
+        let mut noncanonical_allocator = state.clone(); noncanonical_allocator.next_serial.push(0); invalid.push(noncanonical_allocator);
+        for state in invalid {
+            assert!(ObjectCounters::from_checkpoint(counts.clone(), Some(state)).is_err(),
+                "malformed registration metadata must fail before store publication");
+        }
+        let ordinary = [(CounterType::Charge, 3)].into_iter().collect();
+        let ordinary = ObjectCounters::from_checkpoint(ordinary, None)
+            .expect("legacy ordinary counter counts require no ability identity");
+        assert_eq!(ordinary.get(&CounterType::Charge), Some(&3));
+    }
+
+    #[test]
+    fn empty_counter_checkpoint_preserves_removed_registration_allocator() {
+        let mut counters = ObjectCounters::default();
+        counters.add(CounterType::Flying, 2);
+        let removed = counters.ability_state().origins;
+        counters.clear();
+        let mut restored = ObjectCounters::from_checkpoint(
+            counters.counts().clone(), Some(counters.ability_state()),
+        ).expect("empty counter state retains its registration history");
+        counters.add(CounterType::Flying, 1);
+        restored.add(CounterType::Flying, 1);
+        assert_eq!(restored.ability_state(), counters.ability_state());
+        assert!(!removed.contains(&restored.ability_state().origins[0]),
+            "an empty checkpoint cannot recycle an old counter origin");
+    }
+
 }

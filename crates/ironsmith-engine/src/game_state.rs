@@ -636,6 +636,9 @@ struct AuxiliaryTrackingState {
     /// Colors selected during draft instructions, grouped by player and the
     /// named card family whose constructed-deck copies share those choices.
     draft_chosen_colors: HashMap<(PlayerId, String), crate::color::ColorSet>,
+    /// Card names a player noted while drafting, grouped by the named card
+    /// whose instruction noted them ("note its name", Noble Banneret).
+    draft_noted_names: HashMap<(PlayerId, String), Vec<String>>,
     /// Public cards a player removed from the draft, grouped by the card name
     /// they were placed with. Stored object identities retain complete printed
     /// characteristics and abilities for ordinary `ObjectFilter` matching.
@@ -1069,6 +1072,8 @@ impl Default for EffectStore {
 /// Persisted chosen values and modal selections keyed by source object.
 #[derive(Debug, Clone, Default)]
 pub struct ChoiceStore {
+    /// Display context scoped to the mode currently executing.
+    pub(crate) resolving_mode_context: Option<(ObjectId, String)>,
     /// Tracks modal choices that were already selected for an activated ability.
     /// Key is (source ObjectId, ability index), value is the set of chosen mode indices.
     pub chosen_modes_by_ability: HashMap<(ObjectId, usize), HashSet<usize>>,
@@ -1421,6 +1426,9 @@ struct WorkCounters {
     derived_view_rebuilds: Cell<u64>,
     dependency_sorts: Cell<u64>,
     dependency_pairs_probed: Cell<u64>,
+    shadow_dependency_sorts: Cell<u64>,
+    shadow_dependency_pairs_probed: Cell<u64>,
+    shadow_characteristic_evaluation: Cell<bool>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -1440,6 +1448,11 @@ pub struct WorkCounterSnapshot {
     pub derived_view_rebuilds: u64,
     pub dependency_sorts: u64,
     pub dependency_pairs_probed: u64,
+    /// Reference work is included in the totals above and also reported here.
+    #[cfg_attr(feature = "serialization", serde(default))]
+    pub shadow_dependency_sorts: u64,
+    #[cfg_attr(feature = "serialization", serde(default))]
+    pub shadow_dependency_pairs_probed: u64,
 }
 
 impl WorkCounters {
@@ -1456,17 +1469,25 @@ impl WorkCounters {
             derived_view_rebuilds: self.derived_view_rebuilds.get(),
             dependency_sorts: self.dependency_sorts.get(),
             dependency_pairs_probed: self.dependency_pairs_probed.get(),
+            shadow_dependency_sorts: self.shadow_dependency_sorts.get(),
+            shadow_dependency_pairs_probed: self.shadow_dependency_pairs_probed.get(),
         }
     }
 
     pub(crate) fn bump_dependency_sorts(&self) {
         self.dependency_sorts
             .set(self.dependency_sorts.get().saturating_add(1));
+        if self.shadow_characteristic_evaluation.get() {
+            self.shadow_dependency_sorts.set(self.shadow_dependency_sorts.get().saturating_add(1));
+        }
     }
 
     pub(crate) fn bump_dependency_pairs_probed(&self) {
         self.dependency_pairs_probed
             .set(self.dependency_pairs_probed.get().saturating_add(1));
+        if self.shadow_characteristic_evaluation.get() {
+            self.shadow_dependency_pairs_probed.set(self.shadow_dependency_pairs_probed.get().saturating_add(1));
+        }
     }
 
     fn bump_characteristics_full_recomputes(&self) {
@@ -2070,11 +2091,30 @@ pub struct RepeatableManaPaymentAction {
     pub tagged_objects: HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
     pub tagged_players: HashMap<crate::tag::TagKey, Vec<PlayerId>>,
     pub expires_end_of_turn: u32,
+    /// Nonempty for a one-shot "pay [cost] to end this effect" offer (CR
+    /// 116.2c): performing it removes these continuous effects instead of
+    /// executing `effects`, and the offer is then used up.
+    pub ends_continuous_effects: Vec<crate::continuous::ContinuousEffectId>,
 }
 
 impl RepeatableManaPaymentAction {
     pub fn is_expired(&self, current_turn: u32) -> bool {
         current_turn > self.expires_end_of_turn
+    }
+
+    /// An end-this-effect offer is live only while its source permanent and
+    /// at least one of the effects it ends still exist.
+    pub fn end_effect_offer_is_live(&self, game: &GameState) -> bool {
+        self.ends_continuous_effects.is_empty()
+            || (game
+                .object(self.source)
+                .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
+                && game
+                    .effect_store
+                    .continuous_effects
+                    .effects()
+                    .iter()
+                    .any(|effect| self.ends_continuous_effects.contains(&effect.id)))
     }
 }
 
@@ -4059,6 +4099,19 @@ impl GameState {
             .is_some_and(|sector| self.sector_designation(right) == Some(sector))
     }
 
+    pub(crate) fn resolving_mode_context(&self, source: ObjectId) -> Option<&str> {
+        self.choice_store.resolving_mode_context.as_ref()
+            .filter(|(id, _)| *id == source)
+            .map(|(_, text)| text.as_str())
+    }
+
+    pub(crate) fn replace_resolving_mode_context(
+        &mut self,
+        context: Option<(ObjectId, String)>,
+    ) -> Option<(ObjectId, String)> {
+        std::mem::replace(&mut self.choice_store_mut().resolving_mode_context, context)
+    }
+
     fn choice_store_mut(&mut self) -> &mut ChoiceStore {
         Arc::make_mut(&mut self.choice_store)
     }
@@ -4209,6 +4262,45 @@ impl GameState {
             .get(&(player, normalize_draft_note_card_name(card_name.as_ref())))
             .copied()
             .unwrap_or(0)
+    }
+
+    /// Record a card name `player` noted while drafting cards named
+    /// `card_name` ("As you draft a creature card, you may reveal it, note
+    /// its name").
+    pub fn record_draft_noted_name(
+        &mut self,
+        player: PlayerId,
+        card_name: impl AsRef<str>,
+        noted_name: impl Into<String>,
+    ) {
+        let noted_name = noted_name.into();
+        let names = self
+            .auxiliary_tracking_mut()
+            .draft_noted_names
+            .entry((player, normalize_draft_note_card_name(card_name.as_ref())))
+            .or_default();
+        if !names
+            .iter()
+            .any(|name| name.eq_ignore_ascii_case(&noted_name))
+        {
+            names.push(noted_name);
+        }
+        self.bump_mutation_revision();
+        self.mark_continuous_state_dirty();
+    }
+
+    /// Whether `name` is one `player` noted while drafting cards named
+    /// `card_name`. Outside a draft nothing is noted.
+    pub fn draft_noted_name_matches(
+        &self,
+        player: PlayerId,
+        card_name: impl AsRef<str>,
+        name: &str,
+    ) -> bool {
+        self.auxiliary_tracking
+            .draft_noted_names
+            .get(&(player, normalize_draft_note_card_name(card_name.as_ref())))
+            .is_some_and(|names| names.iter().any(|noted| noted.eq_ignore_ascii_case(name)))
     }
 
     pub fn set_draft_chosen_colors(
@@ -4569,6 +4661,19 @@ impl GameState {
         }
     }
 
+    /// Restores checkpoint chronology and invalidates derived characteristics together.
+    /// Invalid chronology leaves both the manager and runtime caches unchanged.
+    pub fn restore_continuous_timestamp_state(
+        &mut self,
+        state: crate::continuous::ContinuousTimestampState,
+    ) -> Result<(), String> {
+        self.effect_store
+            .continuous_effects
+            .restore_timestamp_state(state)?;
+        self.mark_continuous_state_dirty();
+        Ok(())
+    }
+
     pub(crate) fn mark_continuous_state_dirty(&self) {
         let counter = &self
             .runtime_cache
@@ -4728,6 +4833,25 @@ impl GameState {
 
     pub fn zone_revisions(&self) -> ZoneRevisionSnapshot {
         self.zone_revisions
+    }
+
+    #[cfg(feature = "shadow-continuous")]
+    pub(crate) fn with_shadow_characteristic_evaluation<T>(
+        &self,
+        evaluation: impl FnOnce() -> T,
+    ) -> T {
+        struct RestoreScope<'a> {
+            scope: &'a Cell<bool>,
+            previous: bool,
+        }
+        impl Drop for RestoreScope<'_> {
+            fn drop(&mut self) {
+                self.scope.set(self.previous);
+            }
+        }
+        let scope = &self.runtime_cache.work_counters.shadow_characteristic_evaluation;
+        let _restore = RestoreScope { scope, previous: scope.replace(true) };
+        evaluation()
     }
 
     pub fn work_counters(&self) -> WorkCounterSnapshot {
@@ -5090,6 +5214,8 @@ impl GameState {
             || filter.unblocked
             || filter.is_target_object
             || filter.in_combat_with_source
+            || filter.attacking_same_defender_as_source
+            || filter.could_be_enchanted_by_source
             || filter.in_combat_with.is_some()
             || filter.entered_since_your_last_turn_ended
             || filter.controlled_continuously_since_turn_began.is_some()
@@ -6355,9 +6481,18 @@ impl GameState {
 
     pub fn cleanup_repeatable_mana_payment_actions_end_of_turn(&mut self) {
         let current_turn = self.turn.turn_number;
+        let live = self
+            .effect_store
+            .repeatable_mana_payment_actions
+            .iter()
+            .map(|action| {
+                action.expires_end_of_turn > current_turn && action.end_effect_offer_is_live(self)
+            })
+            .collect::<Vec<_>>();
+        let mut live = live.into_iter();
         self.effect_store
             .repeatable_mana_payment_actions
-            .retain(|action| action.expires_end_of_turn > current_turn);
+            .retain(|_| live.next().unwrap_or(false));
     }
 
     pub fn cleanup_temporary_object_static_ability_grants_end_of_turn(&mut self) {

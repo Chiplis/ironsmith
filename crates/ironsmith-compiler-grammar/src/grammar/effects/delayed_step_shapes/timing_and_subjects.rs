@@ -346,6 +346,17 @@ pub fn parse_delayed_timing_marker_shape(
             DelayedTimingStepShape::Upkeep,
             PlayerAst::Any,
         ),
+        // "at the beginning of the next turn's upkeep" (Sapphire Charm).
+        (
+            &["at", "the", "beginning", "of", "the", "next", "turns", "upkeep"],
+            DelayedTimingStepShape::Upkeep,
+            PlayerAst::Any,
+        ),
+        (
+            &["at", "the", "beginning", "of", "the", "next", "turn's", "upkeep"],
+            DelayedTimingStepShape::Upkeep,
+            PlayerAst::Any,
+        ),
         (
             &[
                 "at",

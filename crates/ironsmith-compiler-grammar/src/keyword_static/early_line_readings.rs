@@ -287,7 +287,8 @@ fn read_static_effect_continues_until_end_of_turn_surface(
     let marker_text = render_token_slice(tokens);
     if document_grammar::parse_static_effect_continues_until_end_of_turn_surface(tokens).is_some() {
         return Ok(Some(vec![
-            StaticAbility::keyword_marker(marker_text).into(),
+            StaticAbility::static_effects_continue_until_end_of_turn_after_leaving(marker_text)
+                .into(),
         ]));
     }
     Ok(None)

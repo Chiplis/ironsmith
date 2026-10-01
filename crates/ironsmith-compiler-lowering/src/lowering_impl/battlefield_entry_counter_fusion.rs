@@ -811,6 +811,53 @@ fn fuse_source_bound_battlefield_entry_counters(effects: &mut Vec<Effect>) {
     }
 }
 
+/// "Return Cosima to the battlefield with X +1/+1 counters on it": the
+/// counters are part of the source's return event. As a separate put after
+/// the return, they would land on a new object and a value read from the
+/// returning card (its voyage counters) would already be gone. Only the
+/// typed inline-entry marker joins them; later counter sentences stay
+/// separate.
+fn fuse_source_return_entry_counters(effects: &mut Vec<Effect>) {
+    let mut index = 0usize;
+    while index + 1 < effects.len() {
+        let Some(returned) = effects[index]
+            .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
+            .cloned()
+        else {
+            index += 1;
+            continue;
+        };
+        if !matches!(returned.target.base(), ChooseSpec::Source) || returned.as_aura.is_some() {
+            index += 1;
+            continue;
+        }
+        let Some((counter_type, amount)) =
+            bound_put_counters(&effects[index + 1], &ChooseSpec::Source)
+        else {
+            index += 1;
+            continue;
+        };
+        if !amount.has_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
+        {
+            index += 1;
+            continue;
+        }
+        let mut fused = returned;
+        fused.enters_with_counters.push(BattlefieldEntryCounterSpec::new(
+            counter_type,
+            amount
+                .without_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
+                .without_surface_hint(
+                    ironsmith_core::ValueSurfaceHint::CounterFollowupSeparateSentence,
+                )
+                .without_surface_hint(ironsmith_core::ValueSurfaceHint::CounterFollowupThen),
+            BattlefieldEntryCounterSurface::Inline,
+        ));
+        effects[index] = Effect::new(fused);
+        effects.remove(index + 1);
+    }
+}
+
 fn fuse_effect_list(effects: &mut Vec<Effect>) {
     for effect in effects.iter_mut() {
         *effect = fuse_nested_effect(effect);
@@ -818,6 +865,7 @@ fn fuse_effect_list(effects: &mut Vec<Effect>) {
 
     fuse_source_zone_move_entry_counters(effects);
     fuse_source_bound_battlefield_entry_counters(effects);
+    fuse_source_return_entry_counters(effects);
 
     let mut index = 0usize;
     while index + 1 < effects.len() {

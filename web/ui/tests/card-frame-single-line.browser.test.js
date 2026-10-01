@@ -39,14 +39,24 @@ for(const reducedMotion of ['no-preference','reduce'])test(`name and type stay o
       for (const line of metrics.lines) {
         assert.equal(line.lines, 1, `${line.kind} is a single line`);
         assert.ok(line.size > 0, `${line.kind} stays visible`);
-        assert.ok(line.ink.width <= line.box.width + 0.05, JSON.stringify(line));
-        assert.ok(line.ink.right <= line.box.right + 0.05, `${line.kind} fits without clipping`);
+        assert.ok(line.size >= 14, 'overflow must not shrink labels');
+
       }
       assert.ok(metrics.lines[0].ink.left >= metrics.count.right + 5.9, 'count retains its space');
-      if (metrics.mana) assert.ok(metrics.lines[0].ink.right <= metrics.mana.left - 7.9, 'mana retains its space');
+      if (metrics.mana) assert.ok(metrics.lines[0].box.right <= metrics.mana.left - 7.9, 'mana retains its space');
       return metrics.lines.map(line => line.size);
     };
     const wide = await measure();
+    const statsSize=await page.locator('.interactive-card-frame__stats-text').evaluate(node=>({text:parseFloat(getComputedStyle(node).fontSize),box:parseFloat(getComputedStyle(node.parentElement).fontSize)}));
+    assert.equal(statsSize.text,statsSize.box,'P/T preserves its natural frame size');
+    const labelScroll=await page.locator('.interactive-card-frame__title').evaluate(node=>{
+      node.scrollLeft=node.scrollWidth;
+      const result={left:node.scrollLeft,overflow:getComputedStyle(node).overflowX};
+      node.scrollLeft=0;
+      return result;
+    });
+    assert.equal(labelScroll.overflow,'auto');
+    assert.ok(labelScroll.left>0,'long title can scroll to its end');
     // The enlarged preview animates from scale(.975) to scale(1). Font
     // readiness and ResizeObserver can refit P/T during that animation.
     const statsAlignment = await page.evaluate(async () => {
@@ -70,10 +80,10 @@ for(const reducedMotion of ['no-preference','reduce'])test(`name and type stay o
     }
     await page.locator('#panel-host').evaluate(el => { el.style.width = '240px'; });
     const narrow = await measure();
-    narrow.forEach((size, i) => assert.ok(size < wide[i], 'both lines shrink at narrow widths'));
+    assert.deepEqual(narrow,wide,'narrow labels scroll at natural size');
     await page.getByRole('button', { name: 'Toggle mana' }).click();
     const noMana = await measure();
-    assert.ok(noMana[0] > narrow[0], 'title grows into space released by mana');
+    assert.deepEqual(noMana,narrow,'mana changes do not change typography');
     await page.getByRole('button', { name: 'Toggle mana' }).click();
     await page.locator('#panel-host').evaluate(el => { el.style.width = '420px'; });
     const restored = await measure();

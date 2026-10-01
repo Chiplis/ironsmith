@@ -1061,6 +1061,120 @@ pub fn parse_equipped_creature_has_line(
     )
 }
 
+/// Whether the authored `has` tail opens with a quoted ability.
+fn attached_ability_tokens_open_with_quote(raw: &[OwnedLexToken]) -> bool {
+    raw.iter()
+        .find(|token| !matches!(token.kind, TokenKind::Comma | TokenKind::Period))
+        .is_some_and(OwnedLexToken::is_quote)
+}
+
+/// `"A" and "B"` (or `"A", "B", and "C"`) after edge trimming has stripped
+/// the outer quotes: split at each interior `Quote [,] [and] Quote` seam.
+/// Every item must be a whole quoted ability; anything else declines.
+fn split_attached_quoted_ability_list<'a>(
+    raw: &[OwnedLexToken],
+    tokens: &'a [OwnedLexToken],
+) -> Option<Vec<&'a [OwnedLexToken]>> {
+    if !attached_ability_tokens_open_with_quote(raw) {
+        return None;
+    }
+    let mut items = Vec::new();
+    let mut start = 0usize;
+    let mut index = 0usize;
+    while index < tokens.len() {
+        if !tokens[index].is_quote() {
+            index += 1;
+            continue;
+        }
+        let mut next = index + 1;
+        while tokens
+            .get(next)
+            .is_some_and(|token| matches!(token.kind, TokenKind::Comma | TokenKind::Period))
+        {
+            next += 1;
+        }
+        if tokens.get(next).is_some_and(|token| token.is_word("and")) {
+            next += 1;
+        }
+        if !tokens.get(next)?.is_quote() {
+            return None;
+        }
+        items.push(&tokens[start..index]);
+        start = next + 1;
+        index = next + 1;
+    }
+    if items.is_empty() {
+        return None;
+    }
+    items.push(&tokens[start..]);
+    items
+        .iter()
+        .all(|item| !trim_edge_punctuation(item).is_empty())
+        .then_some(items)
+}
+
+/// One whole quoted static ability granted to the attached object
+/// ("You have no maximum hand size"). The granted rule's `you` is the
+/// controller of the object that has it.
+fn parse_attached_quoted_static_grant(
+    subject: &str,
+    tokens: &[OwnedLexToken],
+    condition: &Option<PredicateAst>,
+) -> Option<StaticAbilityAst> {
+    let tokens = trim_edge_punctuation(tokens);
+    if tokens.is_empty() {
+        return None;
+    }
+    let mut with_period = tokens.clone();
+    with_period.push(OwnedLexToken::period(crate::TextSpan::synthetic()));
+    let abilities = match parse_static_ability_ast_line_lexed(&tokens) {
+        Ok(Some(abilities)) if !abilities.is_empty() => abilities,
+        _ => match parse_static_ability_ast_line_lexed(&with_period) {
+            Ok(Some(abilities)) if !abilities.is_empty() => abilities,
+            _ => return None,
+        },
+    };
+    let [ability]: [StaticAbilityAst; 1] = abilities.try_into().ok()?;
+    Some(StaticAbilityAst::AttachedStaticAbilityGrant {
+        ability: Box::new(ability),
+        display: format!(
+            "{subject} has \"{}\"",
+            display_text_for_tokens_in_mode(&tokens, true, true)
+        ),
+        condition: condition.clone(),
+    })
+}
+
+/// One item of a quoted grant list: activated, triggered, or static.
+fn parse_attached_quoted_ability_grant(
+    subject: &str,
+    item: &[OwnedLexToken],
+    condition: &Option<PredicateAst>,
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    let tokens = trim_edge_punctuation(item);
+    if tokens.is_empty() {
+        return Ok(None);
+    }
+    if let Some(parsed) = parse_attached_granted_activated_line(&tokens)? {
+        return Ok(Some(StaticAbilityAst::AttachedObjectAbilityGrant {
+            ability: parsed,
+            display: format!("{subject} has {}", display_text_for_tokens(&tokens, true)),
+            condition: condition.clone(),
+        }));
+    }
+    if let Some(parsed) = parse_attached_granted_triggered_line(&tokens)? {
+        return Ok(Some(StaticAbilityAst::AttachedObjectAbilityGrant {
+            ability: parsed,
+            display: format!(
+                "{subject} has {}",
+                display_text_for_tokens_in_mode(&tokens, false, true)
+            ),
+            condition: condition.clone(),
+        }));
+    }
+    Ok(parse_attached_quoted_static_grant(subject, &tokens, condition))
+}
+
 pub fn parse_enchanted_creature_has_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
@@ -1139,6 +1253,21 @@ pub fn parse_enchanted_creature_has_line(
         }]));
     }
 
+    // `"A" and "B"`: whole quoted abilities, each its own continuous
+    // attachment grant (Nerd Rage: a static "You have no maximum hand size"
+    // plus a triggered ability). Without this arm the line falls through to
+    // the one-shot `gains` grammar.
+    if let Some(items) = split_attached_quoted_ability_list(has.ability_tokens, &ability_tokens) {
+        let mut grants = Vec::with_capacity(items.len());
+        for item in items {
+            let Some(grant) = parse_attached_quoted_ability_grant(subject, item, &condition)? else {
+                return Ok(None);
+            };
+            grants.push(grant);
+        }
+        return Ok(Some(grants));
+    }
+
     // A single `has` clause may grant ordinary keywords followed by a quoted
     // activated ability. Parse those heterogeneous halves independently.
     for split in attached_grammar::parse_attached_ability_splits_tokens(&ability_tokens)
@@ -1203,6 +1332,15 @@ pub fn parse_enchanted_creature_has_line(
     }
 
     let Some(actions) = parse_attached_keyword_actions(&ability_tokens) else {
+        // One whole quoted static ability ("You have no maximum hand size.").
+        if attached_ability_tokens_open_with_quote(has.ability_tokens)
+            && !ability_tokens.iter().any(OwnedLexToken::is_quote)
+        {
+            return Ok(
+                parse_attached_quoted_static_grant(subject, &ability_tokens, &condition)
+                    .map(|grant| vec![grant]),
+            );
+        }
         return Ok(None);
     };
     let mut out = Vec::new();

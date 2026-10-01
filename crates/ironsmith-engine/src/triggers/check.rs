@@ -2687,7 +2687,7 @@ fn check_triggers_with_view_and_registry(
     collect_lookback_source_triggers(game, trigger_event, &mut triggered);
 
     #[cfg(feature = "shadow-continuous")]
-    assert_trigger_registry_matches_legacy_scan(game, trigger_event, view, registry);
+    game.with_shadow_characteristic_evaluation(|| assert_trigger_registry_matches_legacy_scan(game, trigger_event, view, registry));
 
     for subscriber in registry.subscribers_for(trigger_event.kind(), trigger_event.object_id()) {
 
@@ -5863,7 +5863,7 @@ mod tests {
                 crate::continuous::EffectTarget::AllPermanents,
                 crate::continuous::Modification::RemoveAbility(StaticAbility::flying()),
             ));
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("finite registry setup refresh succeeds");
 
         // Mana payment and similar action plumbing can invalidate continuous
         // state without changing the effect list. Registry construction must
@@ -5885,11 +5885,15 @@ mod tests {
         assert_eq!(triggered.len(), 1);
         assert_eq!(triggered[0].source, effect_source);
         assert!(!triggered[0].tagged_objects.contains_key(crate::tag::GRANTING_SOURCE_TAG));
-        assert_eq!(
-            after.dependency_sorts - before.dependency_sorts,
-            1,
-            "a dirty registry rebuild should sort the shared layer batch once"
-        );
+        let total_sorts = after.dependency_sorts - before.dependency_sorts;
+        let reference_sorts = after.shadow_dependency_sorts - before.shadow_dependency_sorts;
+        assert!(reference_sorts <= total_sorts, "reference work remains included in total work");
+        assert_eq!(total_sorts - reference_sorts, 1,
+            "a dirty registry rebuild should sort the production layer batch once");
+        #[cfg(feature = "shadow-continuous")]
+        assert!(reference_sorts > 0, "the reference calculations remain executed and observable");
+        #[cfg(not(feature = "shadow-continuous"))]
+        assert_eq!(reference_sorts, 0, "the production control has no reference work");
     }
 
     #[test]

@@ -1013,6 +1013,22 @@ pub struct EnterAsCopyAsEntersSpec<T, E, C, Cond, ICond = Condition> {
     /// it's a creature, … loyalty counter … if it's a planeswalker").
     #[cfg_attr(feature = "serde", serde(default))]
     pub conditional_additional_counters: Vec<ConditionalAdditionalCounters>,
+    /// What else happens once a copy was chosen ("When you do, exile that
+    /// card", "If you do, it gains haste until end of turn").
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub copy_followups: Vec<EnterAsCopyFollowup>,
+}
+
+/// A consequence of choosing a copy for an enter-as-copy replacement.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum EnterAsCopyFollowup {
+    /// "When you do, exile that card": a reflexive triggered ability
+    /// (CR 603.12) that exiles the copied object if it's still where it was.
+    ExileCopiedObject,
+    /// "If you do, it gains haste until end of turn": part of the
+    /// replacement, applied as the copy enters.
+    GainsHasteUntilEndOfTurn,
 }
 
 /// One conditional counter batch for an enter-as-copy replacement.

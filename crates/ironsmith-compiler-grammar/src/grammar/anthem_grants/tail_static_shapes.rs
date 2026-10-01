@@ -104,6 +104,44 @@ pub fn parse_base_power_toughness_grant_shape(
     })
 }
 
+/// "<subjects> have base power and toughness each equal to <value>"
+/// (Porcelain Gallery). Returns the subject and value token spans; the value
+/// is lowered by the characteristic value reader.
+pub fn parse_base_power_toughness_each_equal_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+    let tokens = super::trim_anthem_clause_tokens(tokens);
+    crate::grammar::primitives::probe_all(
+        tokens,
+        parse_base_power_toughness_each_equal_lexed,
+        "base power/toughness each equal",
+    )
+}
+
+fn parse_base_power_toughness_each_equal_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<(&'a [OwnedLexToken], &'a [OwnedLexToken])> {
+    let subject_tokens = take_until_have.parse_next(input)?;
+    parse_have.parse_next(input)?;
+    primitives::phrase(&[
+        "base", "power", "and", "toughness", "each", "equal", "to",
+    ])
+    .parse_next(input)?;
+    let value_tokens: &'a [OwnedLexToken] = rest.parse_next(input)?;
+    let subject_tokens = trim_lexed_commas(subject_tokens);
+    let value_tokens = trim_lexed_commas(value_tokens);
+    if subject_tokens.is_empty()
+        || value_tokens.is_empty()
+        || !persistent_anthem_subject_facts(subject_tokens).accepted
+    {
+        return Err(primitives::backtrack_err(
+            "base power/toughness each equal",
+            "persistent nontarget subject and value",
+        ));
+    }
+    Ok((subject_tokens, value_tokens))
+}
+
 pub fn parse_base_power_toughness_type_addition_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<BasePowerToughnessTypeAdditionShape<'_>> {

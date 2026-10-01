@@ -2756,11 +2756,22 @@ impl StaticAbilityKind for ChooseCreatureTypeAsEnters {
 pub struct ChooseNamedOptionAsEnters {
     pub options: Vec<String>,
     pub display: String,
+    pub at_random: bool,
 }
 
 impl ChooseNamedOptionAsEnters {
     pub fn new(options: Vec<String>, display: String) -> Self {
-        Self { options, display }
+        Self {
+            options,
+            display,
+            at_random: false,
+        }
+    }
+
+    /// "choose 2, 3, or 4 at random": the game picks the option.
+    pub fn at_random(mut self) -> Self {
+        self.at_random = true;
+        self
     }
 }
 
@@ -2776,6 +2787,7 @@ impl StaticAbilityKind for ChooseNamedOptionAsEnters {
     fn named_option_choice_as_enters(&self) -> Option<ChooseNamedOptionAsEntersSpec> {
         Some(ChooseNamedOptionAsEntersSpec {
             options: self.options.clone(),
+            at_random: self.at_random,
         })
     }
 }

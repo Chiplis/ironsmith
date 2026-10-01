@@ -595,17 +595,8 @@ pub(super) fn calculate_with_layers(
                     chars.static_abilities.clear();
                     abilities_removed = true;
                 }
-                Modification::CantBeBlocked => {
-                    push_static_ability_once(&mut chars, StaticAbility::unblockable());
-                }
-                Modification::CantAttack => {
-                    push_static_ability_once(&mut chars, StaticAbility::defender());
-                }
-                Modification::CantBlock => {
-                    push_static_ability_once(&mut chars, StaticAbility::cant_block());
-                }
-                Modification::DoesntUntap => {
-                    push_static_ability_once(&mut chars, StaticAbility::doesnt_untap());
+                Modification::Restriction(restriction) => {
+                    push_granted_static_ability(&mut chars, restriction.ability().clone());
                 }
 
                 // Layer 7: P/T changes are handled separately below.
@@ -989,10 +980,7 @@ pub(super) fn apply_layer_7_effects(
             | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
             | Modification::RemoveAllAbilitiesExceptMana
-            | Modification::CantBeBlocked
-            | Modification::CantAttack
-            | Modification::CantBlock
-            | Modification::DoesntUntap => {}
+            | Modification::Restriction(_) => {}
         }
 
         chars.power = power;
@@ -1758,87 +1746,14 @@ fn add_ability_from_counter(
     counter_type: CounterType,
     chars: &mut CalculatedCharacteristics,
 ) {
-    use crate::static_abilities::StaticAbilityId;
-
-    if object.counters.get(&counter_type).copied().unwrap_or(0) == 0 {
-        return;
-    }
-
-    if counter_type == CounterType::Decayed {
-        if !chars
-            .static_abilities
-            .iter()
-            .any(|a| a.id() == StaticAbilityId::CantBlock)
-        {
-            push_static_ability_once(chars, StaticAbility::cant_block());
-        }
-        chars.abilities.push(crate::ability::Ability::triggered(
-            crate::triggers::Trigger::this_attacks(),
-            crate::resolution::ResolutionProgram::from_effects(vec![crate::effect::Effect::new(
-                crate::effects::ScheduleDelayedTriggerEffect::new(
-                    crate::triggers::Trigger::end_of_combat(),
-                    vec![crate::effect::Effect::sacrifice_source()],
-                    true,
-                    Vec::new(),
-                    crate::target::PlayerFilter::You,
-                ),
-            )]),
-        ));
-        return;
-    }
-
-    // CR 122.1b: an exalted counter gives the permanent exalted
-    // (CR 702.83a: "Whenever a creature you control attacks alone, that
-    // creature gets +1/+1 until end of turn").
-    if is_exalted_counter(counter_type) {
-        let attacker_tag = "exalted_attacker";
-        chars.abilities.push(crate::ability::Ability::triggered(
-            crate::triggers::Trigger::attacks_alone(
-                crate::target::ObjectFilter::creature().you_control(),
-            ),
-            crate::resolution::ResolutionProgram::from_effects(vec![
-                crate::effect::Effect::tag_triggering_object(attacker_tag),
-                crate::effect::Effect::pump(
-                    1,
-                    1,
-                    crate::target::ChooseSpec::Tagged(attacker_tag.into()),
-                    crate::effect::Until::EndOfTurn,
-                ),
-            ]),
-        ));
-        return;
-    }
-
-    // Check if this counter grants an ability
-    if let Some(ability_id) = counter_type.granted_ability() {
-        // Check if we already have this ability (avoid duplicates)
-        let already_has = chars.static_abilities.iter().any(|a| a.id() == ability_id);
-        if already_has {
-            return;
-        }
-
-        // Add the appropriate static ability based on the counter type
-        let ability: Option<StaticAbility> = match ability_id {
-            StaticAbilityId::Deathtouch => Some(StaticAbility::deathtouch()),
-            StaticAbilityId::Flying => Some(StaticAbility::flying()),
-            StaticAbilityId::FirstStrike => Some(StaticAbility::first_strike()),
-            StaticAbilityId::DoubleStrike => Some(StaticAbility::double_strike()),
-            StaticAbilityId::Hexproof => Some(StaticAbility::hexproof()),
-            StaticAbilityId::Indestructible => Some(StaticAbility::indestructible()),
-            StaticAbilityId::Lifelink => Some(StaticAbility::lifelink()),
-            StaticAbilityId::Menace => Some(StaticAbility::menace()),
-            StaticAbilityId::Reach => Some(StaticAbility::reach()),
-            StaticAbilityId::Trample => Some(StaticAbility::trample()),
-            StaticAbilityId::TrampleOverPlaneswalkers => {
-                Some(StaticAbility::trample_over_planeswalkers())
+    for occurrence in object.counters.ability_occurrences(counter_type) {
+        for (slot, ability) in occurrence.abilities.iter().enumerate() {
+            if let crate::ability::AbilityKind::Static(static_ability) = &ability.kind {
+                chars.static_abilities.push(static_ability.clone());
             }
-            StaticAbilityId::Vigilance => Some(StaticAbility::vigilance()),
-            StaticAbilityId::Haste => Some(StaticAbility::haste()),
-            _ => None,
-        };
-
-        if let Some(sa) = ability {
-            push_static_ability_once(chars, sa);
+            chars.abilities.push_with_origin(ability.clone(), super::AbilityOrigin::Counter {
+                occurrence: occurrence.origin.clone(), slot,
+            });
         }
     }
 }

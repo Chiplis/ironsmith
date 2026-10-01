@@ -1541,7 +1541,7 @@ fn transformed_entry_face_does_not_overwrite_resolved_copy_or_characteristics() 
                     added_card_types: Vec::new(), removes_other_card_types: false,
                     added_supertypes: Vec::new(), removed_supertypes: Vec::new(),
                     added_subtypes: vec![crate::types::Subtype::Zombie], added_abilities: Vec::new(),
-                    set_base_power_toughness: Some((7, 8)),
+                    set_base_power_toughness: Some((7, 8)), copy_followups: Vec::new(),
                 }
             };
             let identity = game.effect_store.replacement_effects.add_one_shot_effect(

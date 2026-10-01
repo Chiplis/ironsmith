@@ -25,6 +25,7 @@ const COUNTER_ACTIVATED_OR_TRIGGERED_ABILITY_PREFIX: &[&str] =
 const COUNTER_TRIGGERED_OR_ACTIVATED_ABILITY_PREFIX: &[&str] =
     &["triggered", "or", "activated", "ability"];
 const COUNTER_ACTIVATED_ABILITY_PREFIX: &[&str] = &["activated", "ability"];
+const COUNTER_LOYALTY_ABILITY_PREFIX: &[&str] = &["loyalty", "ability"];
 const COUNTER_TRIGGERED_ABILITY_PREFIX: &[&str] = &["triggered", "ability"];
 const COUNTER_ABILITY_PREFIXES: &[&[&str]] = &[&["ability"], &["abilities"]];
 const COUNTER_ABILITY_MARKER_WORDS: &[&str] = &["ability", "abilities"];
@@ -218,12 +219,22 @@ fn parse_counter_ability_target_phrase(
 
     let mut term_filters: Vec<(ObjectFilter, CounterTargetTerm)> = Vec::new();
     let mut saw_and_or_connective = false;
+    let mut loyalty_ability_term = false;
     let mut list_end = clause_tokens.len();
     let mut scan = idx;
     while scan < clause_tokens.len() {
         if clause_tokens
             .get(scan)
             .is_some_and(|token| token.as_word() == Some(COUNTER_FROM_WORD))
+        {
+            list_end = scan;
+            break;
+        }
+        // "loyalty ability of a planeswalker" (Verdant Command): "of" names
+        // the ability's source the way "from" does.
+        if scan >= 2
+            && clause_tokens[scan].is_word("of")
+            && counter_token_prefix_at(&clause_tokens, scan - 2, COUNTER_LOYALTY_ABILITY_PREFIX)
         {
             list_end = scan;
             break;
@@ -275,6 +286,16 @@ fn parse_counter_ability_target_phrase(
                 CounterTargetTerm::Ability,
             ));
             idx += 4;
+            continue;
+        }
+
+        if counter_token_prefix_at(&clause_tokens, idx, COUNTER_LOYALTY_ABILITY_PREFIX) {
+            term_filters.push((
+                ObjectFilter::activated_ability(),
+                CounterTargetTerm::Ability,
+            ));
+            loyalty_ability_term = true;
+            idx += 2;
             continue;
         }
 
@@ -458,7 +479,7 @@ fn parse_counter_ability_target_phrase(
             idx = clause_tokens.len();
             continue;
         }
-        if word == COUNTER_FROM_WORD {
+        if word == COUNTER_FROM_WORD || (loyalty_ability_term && word == "of") {
             idx += 1;
             if clause_tokens.get(idx).is_some_and(|token| {
                 token

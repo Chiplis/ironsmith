@@ -21,6 +21,12 @@ pub struct CardRevealedEvent {
     pub source: Option<ObjectId>,
     /// Snapshot of the revealed card at reveal time.
     pub snapshot: Option<ObjectSnapshot>,
+    /// The numeric result of the event that triggered the revealing ability
+    /// (the die roll of "Whenever you roll a die, you may reveal the top
+    /// card of your library"), so a linked "Whenever you reveal a card with
+    /// mana value less than the result this way" trigger can compare against
+    /// it (Priority Boarding).
+    pub reveal_context_amount: Option<i32>,
 }
 
 impl CardRevealedEvent {
@@ -37,7 +43,13 @@ impl CardRevealedEvent {
             zone,
             source,
             snapshot,
+            reveal_context_amount: None,
         }
+    }
+
+    pub fn with_reveal_context_amount(mut self, amount: Option<i32>) -> Self {
+        self.reveal_context_amount = amount;
+        self
     }
 }
 

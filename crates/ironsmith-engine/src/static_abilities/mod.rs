@@ -1349,6 +1349,8 @@ pub struct ChooseCreatureTypeAsEntersSpec;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChooseNamedOptionAsEntersSpec {
     pub options: Vec<String>,
+    /// The option is picked uniformly at random, not by the controller.
+    pub at_random: bool,
 }
 
 /// One option for "as this enters or is turned face up, choose characteristics" abilities.
@@ -1411,6 +1413,8 @@ pub struct EnterAsCopyAsEntersSpec {
     pub set_base_power_toughness_from_self: bool,
     /// Counters placed only when the chosen copy source matches the entry's filter.
     pub conditional_additional_counters: Vec<ironsmith_core::ConditionalAdditionalCounters>,
+    /// What else happens once a copy was chosen.
+    pub copy_followups: Vec<ironsmith_core::EnterAsCopyFollowup>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -3768,6 +3772,10 @@ impl StaticAbility {
         Self::new(ChooseNamedOptionAsEnters::new(options, display))
     }
 
+    pub fn choose_named_option_at_random_as_enters(options: Vec<String>, display: String) -> Self {
+        Self::new(ChooseNamedOptionAsEnters::new(options, display).at_random())
+    }
+
     pub fn choose_power_toughness_as_enters_or_turns_face_up(
         options: Vec<(i32, i32)>,
         display: String,
@@ -4732,6 +4740,12 @@ impl StaticAbility {
 
     pub fn draft_rule_text(text: impl Into<String>) -> Self {
         Self::new(DraftRuleText::new(text))
+    }
+
+    pub fn static_effects_continue_until_end_of_turn_after_leaving(
+        text: impl Into<String>,
+    ) -> Self {
+        Self::new(StaticEffectsContinueUntilEndOfTurnAfterLeaving::new(text))
     }
 
     pub fn hidden_agenda() -> Self {

@@ -50,6 +50,10 @@ pub(super) fn parse_mana_spend_bonus_condition_prefix(
             ManaSpendBonusCondition::IfThatManaIsSpentOn,
         ),
         (
+            &["if", "any", "of", "that", "mana", "is", "spent", "on"] as &[&str],
+            ManaSpendBonusCondition::IfAnyOfThatManaIsSpentOn,
+        ),
+        (
             WHEN_MANA_SPENT_SPELL_PREFIXES[0],
             ManaSpendBonusCondition::WhenYouSpendThisManaToCast,
         ),

@@ -138,6 +138,19 @@ pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<TagKey> 
         if left_tag.is_none() || right_tag.is_none() {
             return None;
         }
+        // "When enchanted creature becomes tapped or is dealt damage, destroy
+        // it" (Cryoshatter): the arms' event objects differ (a damage event's
+        // object is its source, so the damage arm names the recipient), but
+        // both arms watch one permanent. That permanent is the reference.
+        match (watched_permanent(left), watched_permanent(right)) {
+            (Some(WatchedPermanent::Source), Some(WatchedPermanent::Source)) => return None,
+            (Some(WatchedPermanent::Attached(left)), Some(WatchedPermanent::Attached(right)))
+                if left == right =>
+            {
+                return Some(left);
+            }
+            _ => {}
+        }
     }
     // An expend event's object is the spell being cast; the trigger text
     // never refers back to it.
@@ -184,4 +197,41 @@ pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<TagKey> 
     } else {
         Some((crate::tag::CompilerReferenceTag::Triggering.bind()).into())
     }
+}
+
+enum WatchedPermanent {
+    Source,
+    Attached(TagKey),
+}
+
+/// The one permanent a tap/attack/block/damage trigger arm watches, when it is
+/// this source or the permanent this source is attached to.
+fn watched_permanent(trigger: &TriggerSpec) -> Option<WatchedPermanent> {
+    let filter = match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => return watched_permanent(trigger),
+        TriggerSpec::ThisBecomesTapped
+        | TriggerSpec::ThisBecomesUntapped
+        | TriggerSpec::ThisAttacks
+        | TriggerSpec::ThisBlocks
+        | TriggerSpec::ThisIsDealtDamage
+        | TriggerSpec::ThisIsDealtCombatDamage => return Some(WatchedPermanent::Source),
+        TriggerSpec::PermanentBecomesTapped(filter)
+        | TriggerSpec::Attacks(filter)
+        | TriggerSpec::Blocks(filter)
+        | TriggerSpec::IsDealtDamage(filter)
+        | TriggerSpec::IsDealtCombatDamage(filter) => filter,
+        _ => return None,
+    };
+    [
+        crate::tag::CompilerReferenceTag::Enchanted,
+        crate::tag::CompilerReferenceTag::Equipped,
+    ]
+    .into_iter()
+    .find(|tag| {
+        filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == tag.as_str()
+                && matches!(constraint.relation, crate::filter::TaggedOpbjectRelation::IsTaggedObject)
+        })
+    })
+    .map(|tag| WatchedPermanent::Attached(tag.bind().into()))
 }

@@ -3202,7 +3202,9 @@ fn describe_targeted_graveyard_cast_with_gated_replacement(effects: &[&Effect]) 
     let may = may_with_id
         .effect
         .downcast_ref::<crate::effects::MayEffect>()?;
-    if may.decider.is_some() || may.effects.len() != 1 {
+    // "you may cast target ... card": the grammar now records the explicit
+    // "you" chooser, which is the default decider.
+    if !matches!(may.decider, None | Some(PlayerFilter::You)) || may.effects.len() != 1 {
         return None;
     }
     let cast_effect = &may.effects[0];

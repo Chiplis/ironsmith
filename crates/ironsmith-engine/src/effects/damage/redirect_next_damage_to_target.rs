@@ -130,6 +130,18 @@ impl EffectExecutor for RedirectNextDamageToTargetEffect {
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
+        // "... to target A ... is dealt to another target B instead": A is
+        // declared by a preceding target declaration, so this instruction's
+        // own target is B.
+        if self.protected_target.is_some()
+            && self.destination == RedirectNextDamageDestination::TargetObject
+            && self
+                .destination_target
+                .as_ref()
+                .is_some_and(|destination| destination.is_target())
+        {
+            return self.destination_target.as_ref();
+        }
         self.protected_target
             .as_ref()
             .or(self.destination_target.as_ref())
@@ -145,6 +157,26 @@ fn resolve_damage_target_for_effect(
     ctx: &mut ExecutionContext,
     spec: &ChooseSpec,
 ) -> Result<DamageTarget, ExecutionError> {
+    // Two targets of one instruction (protected and destination) each come
+    // from the assignment declared for exactly that spec.
+    if let Some(target) = ctx
+        .target_assignments
+        .iter()
+        .find(|assignment| assignment.spec == *spec)
+        .and_then(|assignment| ctx.targets.get(assignment.range.clone()))
+        .and_then(|targets| targets.first())
+    {
+        return match target {
+            crate::effects::ResolvedTarget::Object(object) => {
+                if game.object(*object).is_some() {
+                    Ok(DamageTarget::Object(*object))
+                } else {
+                    Err(ExecutionError::InvalidTarget)
+                }
+            }
+            crate::effects::ResolvedTarget::Player(player) => Ok(DamageTarget::Player(*player)),
+        };
+    }
     if let Ok(objects) = resolve_objects_for_effect(game, ctx, spec)
         && let Some(object) = objects.into_iter().next()
     {

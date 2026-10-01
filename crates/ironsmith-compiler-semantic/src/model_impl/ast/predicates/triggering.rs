@@ -12,6 +12,14 @@ pub enum TriggeringPredicateAst {
     /// ability.
     TriggeringObjectHadCountersPutFirstTimeThisTurn,
     TriggeringObjectHadToAttackThisCombat,
+    /// "If you won" inside a "Whenever you clash" ability: the triggering
+    /// clash was won by this ability's controller.
+    YouWonTriggeringClash,
+    /// The triggering ability activation was paid with at least this much
+    /// mana.
+    TriggeringAbilityManaSpentToActivateAtLeast(u32),
+    /// The entering permanent entered transformed.
+    TriggeringObjectEnteredTransformed,
     TriggeringObjectHadNoCounter(CounterType),
     TriggeringObjectHadCounterAtLeast {
         counter_type: CounterType,

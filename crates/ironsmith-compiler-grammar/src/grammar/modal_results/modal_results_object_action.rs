@@ -24,6 +24,17 @@ pub fn parse_if_result_predicate_lexed_tokens(
     let normalized = normalized_word_tokens(tokens);
     let shape = parse_modal_result_shape(&normalized);
     let word_count = normalized.len();
+    // "Whenever you clash, ... If you won, ..." (Rebellion of the Flamekin,
+    // Entangling Trap): the past tense names a clash result. It is read as a
+    // clash-win follow-up; with no clash in the ability itself it refers to
+    // the triggering clash.
+    if starts_with_phrase(&normalized, &["you", "won"])
+        && (word_count == 2
+            || matches_phrase(&normalized, &["you", "won", "the", "clash"])
+            || matches_phrase(&normalized, &["you", "won", "that", "clash"]))
+    {
+        return Some(IfResultPredicate::WonClash);
+    }
     if (starts_with_phrase(&normalized, &["you", "win"])
         || starts_with_phrase(&normalized, &["you", "won"]))
         && (word_count == 2 || has_phrase(&normalized, &["clash"]))

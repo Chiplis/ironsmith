@@ -2310,6 +2310,7 @@ pub(super) fn lower_special_rewrite_triggered_oath(
                     PlayerFilter::OpponentWithMoreControlledObjectsThan {
                         player: Box::new(PlayerFilter::Active),
                         filter: Box::new(ObjectFilter::land()),
+                        fewer: false,
                     },
                     Some(crate::TextSpan::synthetic()),
                 ),
@@ -2368,6 +2369,7 @@ pub(super) fn lower_special_rewrite_triggered_oath(
                     PlayerFilter::OpponentWithMoreControlledObjectsThan {
                         player: Box::new(PlayerFilter::Active),
                         filter: Box::new(ObjectFilter::creature()),
+                        fewer: false,
                     },
                     Some(crate::TextSpan::synthetic()),
                 ),
@@ -2439,22 +2441,30 @@ pub(super) fn lower_special_rewrite_triggered_oath(
         graveyard_creature_filter.zone = Some(Zone::Graveyard);
 
         let mut return_filter = graveyard_creature_filter.clone();
-        return_filter.owner = Some(PlayerFilter::IteratedPlayer);
+        return_filter.owner = Some(PlayerFilter::Active);
 
-        let effects = vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-            predicate: PredicateAst::AnOpponentHasFewerThanPlayer {
-                player: PlayerAst::That,
-                filter: graveyard_creature_filter,
-            },
-            if_true: vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
-                player: PlayerAst::That,
+        // The upkeep player targets an opponent whose graveyard holds fewer
+        // creature cards (CR 115.1: a real target, rechecked on resolution).
+        let effects = vec![
+            EffectAst::subject_verb_explicit_target_only_for_chooser(
+                TargetAst::Player(
+                    PlayerFilter::OpponentWithMoreControlledObjectsThan {
+                        player: Box::new(PlayerFilter::Active),
+                        filter: Box::new(graveyard_creature_filter),
+                        fewer: true,
+                    },
+                    Some(crate::TextSpan::synthetic()),
+                ),
+                PlayerAst::Active,
+            ),
+            EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
+                player: PlayerAst::Active,
                 effects: vec![EffectAst::subject_verb_return_to_hand(
                     TargetAst::Object(return_filter, None, None),
                     false,
                 )],
-            })],
-            if_false: Vec::new(),
-        })];
+            }),
+        ];
         return Ok(Some(LineAst::Ability(assemble_parsed_triggered_ability(
             trigger.clone(),
             effects,

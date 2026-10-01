@@ -25,6 +25,8 @@ pub fn parse_move(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> 
     } else if let Some(rest) = grammar::strip_lexed_prefix_phrase(tokens, &["a", "counter", "from"])
     {
         (rest, false)
+    } else if let Some(effect) = parse_move_counted_counters(tokens)? {
+        return Ok(effect);
     } else {
         return Err(CardTextError::ParseError(format!(
             "unsupported move clause (clause: '{}')",
@@ -51,6 +53,53 @@ pub fn parse_move(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> 
     } else {
         EffectAst::subject_verb_move_one_counter(from, to)
     })
+}
+
+/// "<count> <kind> counters from <source> onto <destination>" (Blaster,
+/// Morale Booster: "Move X +1/+1 counters from Blaster onto another target
+/// artifact"). Only a named counter kind with an explicit count is read here.
+fn parse_move_counted_counters(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    use super::super::grammar::primitives as grammar;
+    use winnow::Parser as _;
+
+    let Some((count, used)) = crate::util::parse_value(tokens) else {
+        return Ok(None);
+    };
+    if used == 0 || used >= tokens.len() {
+        return Ok(None);
+    }
+    let rest = &tokens[used..];
+    let Some(noun_idx) = rest
+        .iter()
+        .position(|token| token.is_any_word(&["counter", "counters"]))
+    else {
+        return Ok(None);
+    };
+    if noun_idx == 0 || !rest.get(noun_idx + 1).is_some_and(|token| token.is_word("from")) {
+        return Ok(None);
+    }
+    let Some(counter_type) = crate::util::parse_counter_type_from_tokens(&rest[..noun_idx]) else {
+        return Ok(None);
+    };
+    let after_from = &rest[noun_idx + 2..];
+    let Some((from_tokens, to_tokens)) =
+        grammar::split_lexed_once_on_separator(after_from, || grammar::kw("onto").void())
+    else {
+        return Ok(None);
+    };
+    if from_tokens.is_empty() || to_tokens.is_empty() {
+        return Ok(None);
+    }
+    let from = parse_target_phrase(from_tokens)?;
+    let to = parse_target_phrase(to_tokens)?;
+    Ok(Some(EffectAst::subject_verb_move_counters(
+        counter_type,
+        count,
+        from,
+        to,
+    )))
 }
 
 fn draw_count_with_surface(count: Value, additional: bool) -> Value {

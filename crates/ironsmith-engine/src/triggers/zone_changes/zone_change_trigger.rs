@@ -1503,6 +1503,35 @@ impl TriggerMatcher for ZoneChangeTrigger {
                 })
                 .unwrap_or(ctx.controller);
 
+            // A cause source filter that names "this" object ("championed
+            // with this creature") binds the cause to the trigger's own
+            // source rather than to an object matched in a fresh context.
+            let source_bound = cause_filter
+                .source_filter
+                .as_ref()
+                .is_some_and(|filter| filter.source);
+            if source_bound {
+                let source_stable = ctx.game.object(ctx.source_id).map(|obj| obj.stable_id);
+                let caused_by_source = zc.cause.source.is_some_and(|cause_source| {
+                    cause_source == ctx.source_id
+                        || (source_stable.is_some()
+                            && ctx.game.object(cause_source).map(|obj| obj.stable_id)
+                                == source_stable)
+                });
+                if !caused_by_source {
+                    return false;
+                }
+            }
+            let unbound;
+            let cause_filter = if source_bound {
+                unbound = crate::events::cause::CauseFilter {
+                    source_filter: None,
+                    ..cause_filter.clone()
+                };
+                &unbound
+            } else {
+                cause_filter
+            };
             if !cause_filter.matches_with_context_controller(
                 &zc.cause,
                 ctx.game,
@@ -1686,6 +1715,29 @@ impl TriggerMatcher for ZoneChangeTrigger {
     }
 
     fn display(&self) -> String {
+        // A battlefield-to-exile move caused by this very object is the
+        // champion exile: "When a Faerie is championed with this creature".
+        if self.from == ZonePattern::Specific(Zone::Battlefield)
+            && self.to == ZonePattern::Specific(Zone::Exile)
+            && !self.this_object
+            && self
+                .cause_filter
+                .as_ref()
+                .and_then(|cause| cause.source_filter.as_ref())
+                .is_some_and(|source| source.source)
+        {
+            let noun = self.object_filter.description();
+            let article = if noun
+                .chars()
+                .next()
+                .is_some_and(|ch| matches!(ch.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u'))
+            {
+                "an"
+            } else {
+                "a"
+            };
+            return format!("When {article} {noun} is championed with this creature");
+        }
         self.generate_display()
     }
 }

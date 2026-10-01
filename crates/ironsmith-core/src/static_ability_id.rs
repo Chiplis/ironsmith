@@ -348,6 +348,11 @@ pub enum StaticAbilityId {
     DoubleAgenda,
     KeywordText,
     KeywordMarker,
+    /// "If this enchantment leaves the battlefield, this effect continues
+    /// until end of turn" (Titania's Song): when the permanent leaves the
+    /// battlefield, the continuous effects of its other static abilities keep
+    /// applying until end of turn.
+    StaticEffectsContinueUntilEndOfTurnAfterLeaving,
     SourceLineKeywordGroup,
     SourceLineStaticGroup,
     KeywordFallbackText,
@@ -699,6 +704,7 @@ impl StaticAbilityId {
             | DoubleAgenda
             | KeywordText
             | KeywordMarker
+            | StaticEffectsContinueUntilEndOfTurnAfterLeaving
             | SourceLineKeywordGroup
             | SourceLineStaticGroup
             | KeywordFallbackText

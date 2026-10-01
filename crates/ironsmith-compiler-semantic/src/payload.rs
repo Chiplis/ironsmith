@@ -163,6 +163,9 @@ pub enum KeywordAction {
     ProtectionFromChosenPlayer,
     ProtectionFromChosenColor,
     ProtectionFromColorsOutsideCommanderIdentity,
+    /// "protection from each mana value other than the chosen number"
+    /// (Haktos the Unscarred).
+    ProtectionFromManaValuesOtherThanChosenNumber,
     ProtectionFromFilter(ObjectFilter),
     ProtectionFromEachManaValueAmong(ObjectFilter),
     ProtectionFromCardType(CardType),
@@ -305,6 +308,7 @@ impl KeywordAction {
                 | Self::ProtectionFromChosenPlayer
                 | Self::ProtectionFromChosenColor
                 | Self::ProtectionFromColorsOutsideCommanderIdentity
+                | Self::ProtectionFromManaValuesOtherThanChosenNumber
                 | Self::ProtectionFromFilter(_)
                 | Self::ProtectionFromEachManaValueAmong(_)
                 | Self::ProtectionFromCardType(_)
@@ -504,6 +508,9 @@ impl KeywordAction {
             Self::ProtectionFromColorsOutsideCommanderIdentity => {
                 "Protection from each color that's not in your commander's color identity"
                     .to_string()
+            }
+            Self::ProtectionFromManaValuesOtherThanChosenNumber => {
+                "Protection from each mana value other than the chosen number".to_string()
             }
             Self::ProtectionFromFilter(filter) => {
                 if *filter == ObjectFilter::default().multicolored() {

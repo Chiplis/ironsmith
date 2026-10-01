@@ -84,7 +84,9 @@ pub use for_each_tagged::{
     ForEachControllerOfTaggedEffect, ForEachTaggedEffect, ForEachTaggedPlayerEffect,
 };
 pub use for_players::ForPlayersEffect;
-pub use grant_repeatable_mana_payment_action::GrantRepeatableManaPaymentActionUntilEndOfTurnEffect;
+pub use grant_repeatable_mana_payment_action::{
+    GrantEndThisEffectPaymentEffect, GrantRepeatableManaPaymentActionUntilEndOfTurnEffect,
+};
 pub use if_effect::IfEffect;
 pub use local_rewrite::LocalRewriteEffect;
 pub use mana_restricted::ManaRestrictedEffect;
@@ -97,7 +99,9 @@ pub use mechanic_actions::{
     OpenAttractionEffect, PopulateEffect, ResolvesDespiteIllegalTargetsEffect, SupportEffect,
 };
 pub use reflexive_trigger::ReflexiveTriggerEffect;
-pub(crate) use reflexive_trigger::{PendingReflexiveTrigger, reflexive_trigger_stack_entry};
+pub(crate) use reflexive_trigger::{
+    PendingReflexiveTrigger, queue_reflexive_trigger, reflexive_trigger_stack_entry,
+};
 pub use repeat_effects::RepeatEffectsEffect;
 pub use repeat_process::RepeatProcessEffect;
 pub use repeat_process_prompt::RepeatProcessPromptEffect;

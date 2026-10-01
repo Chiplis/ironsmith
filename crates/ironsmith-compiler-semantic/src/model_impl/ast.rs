@@ -619,6 +619,8 @@ pub enum TriggerSpec {
         surface: crate::target::SourceReferenceSurface,
         destination_name: Option<String>,
     },
+    /// "Whenever a permanent you control transforms".
+    PermanentTransforms(ObjectFilter),
     ThisDealsCombatDamageToPlayer {
         player: PlayerFilter,
         source_surface: Option<crate::target::SourceReferenceSurface>,

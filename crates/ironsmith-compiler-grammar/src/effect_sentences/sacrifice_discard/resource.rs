@@ -255,23 +255,28 @@ pub fn parse_sacrifice(
             )));
         }
         let mut filter = parse_object_filter_lexed(filter_tokens, false)?;
-        // A player can only sacrifice permanents they control (CR 701.21a):
-        // the choice of "any number of artifacts, creatures, and/or lands"
-        // ranges over the sacrificing player's permanents only.
-        if filter.controller.is_none()
-            && !opponent_chooses_object
-            && matches!(player, PlayerAst::You | PlayerAst::Implicit)
-        {
-            filter.controller = Some(crate::target::PlayerFilter::You);
-        }
-        let tag = crate::util::helper_tag_for_tokens(tokens, "sacrificed");
         // Fixed counts use the sacrifice effect's own controlled-permanent
         // selection; this keeps the chooser and sacrificing actor identical.
-        let mut effects = if !choice_count.dynamic_x
+        let fixed_count_sacrifice = !choice_count.dynamic_x
             && !choice_count.random
             && choice_count.max == Some(choice_count.min)
-            && !opponent_chooses_object
-        {
+            && !opponent_chooses_object;
+        // A player can only sacrifice permanents they control (CR 701.21a):
+        // the free choice of "any number of artifacts, creatures, and/or
+        // lands" ranges over the sacrificing player's permanents only. A
+        // fixed-count sacrifice binds its controller to the actual
+        // sacrificing player at lowering (an implicit actor may be the
+        // iterated or targeted player), so it stays unconstrained here.
+        // An implicit actor reads as "you" here; lowering rebinds it to the
+        // resolved chooser when the implicit actor is an iterated or targeted
+        // player ("each player who controls the most lands sacrifices any
+        // number of lands", "target opponent may sacrifice any number of
+        // creatures").
+        if !fixed_count_sacrifice && filter.controller.is_none() && !opponent_chooses_object {
+            filter.controller = controller_filter_for_token_player(player);
+        }
+        let tag = crate::util::helper_tag_for_tokens(tokens, "sacrificed");
+        let mut effects = if fixed_count_sacrifice {
             let count = u32::try_from(choice_count.min).map_err(|_| {
                 CardTextError::ParseError("sacrifice count exceeds the supported range".into())
             })?;

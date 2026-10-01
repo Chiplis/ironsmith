@@ -2131,7 +2131,7 @@ fn resolve_filter_comparison_rhs_value(
         Value::CountersOnSource(counter_type) => {
             let counters = game
                 .object(ctx.source?)
-                .map(|source| &source.counters)
+                .map(|source| source.counters.counts())
                 .or_else(|| {
                     ctx.source_snapshot
                         .as_ref()
@@ -2189,6 +2189,21 @@ fn resolve_filter_comparison_rhs_value(
             }
             ChooseSpec::Tagged(tag) => {
                 let snapshot = ctx.tagged_objects.get(tag)?.first()?;
+                Some(
+                    snapshot
+                        .mana_cost
+                        .as_ref()
+                        .map_or(0, |cost| cost.mana_value() as i32),
+                )
+            }
+            // "with greater mana value than that creature" (Evil's Thrall):
+            // a gate comparing against the announced target reads it from
+            // the resolving context's targets, as `resolve_pt_choose_spec`
+            // does for power and toughness.
+            ChooseSpec::Object(_) | ChooseSpec::AnyTarget | ChooseSpec::AnyOtherTarget
+                if spec.is_target() =>
+            {
+                let snapshot = ctx.target_objects.first()?;
                 Some(
                     snapshot
                         .mana_cost
@@ -2319,6 +2334,66 @@ fn creature_was_blocked_by_ref(
     blockers
         .iter()
         .any(|blocker| game.creature_was_blocked_by_this_turn(attacker, *blocker))
+}
+
+/// "another target creature attacking the same player or planeswalker"
+/// (Kitesail Skirmisher): both creatures are attacking, and their attack
+/// targets name the same player, planeswalker, or battle (CR 506.3).
+fn object_attacks_same_defender_as_source(
+    game: &GameState,
+    ctx: &FilterContext,
+    object_id: ObjectId,
+) -> bool {
+    let Some(combat) = &game.combat else {
+        return false;
+    };
+    let Some(subject_target) = crate::combat_state::get_attack_target(combat, object_id) else {
+        return false;
+    };
+    let source_ids = ctx.source.into_iter().chain(
+        ctx.source_snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.object_id),
+    );
+    source_ids.into_iter().any(|source_id| {
+        crate::combat_state::get_attack_target(combat, source_id)
+            .is_some_and(|source_target| source_target == subject_target)
+    })
+}
+
+/// "a creature at random this Aura can enchant" (Infectious Rage): the
+/// current source Aura's enchant restriction and protection (CR 303.4,
+/// 702.16c) allow it to be attached to the candidate. The Aura is usually
+/// no longer on the battlefield, so follow its stable identity to the card
+/// in its current zone.
+fn object_could_be_enchanted_by_source(
+    game: &GameState,
+    ctx: &FilterContext,
+    object_id: ObjectId,
+) -> bool {
+    let current_source = ctx
+        .source
+        .filter(|source_id| game.object(*source_id).is_some())
+        .or_else(|| {
+            ctx.source_snapshot
+                .as_ref()
+                .and_then(|snapshot| game.find_object_by_stable_id(snapshot.stable_id))
+        });
+    let Some(aura_id) = current_source else {
+        return false;
+    };
+    let Some(controller) = ctx
+        .you
+        .or_else(|| game.object(aura_id).map(|aura| aura.owner))
+    else {
+        return false;
+    };
+    crate::effects::permanents::aura_can_enter_attached_to(
+        game,
+        aura_id,
+        controller,
+        crate::object::AttachmentTarget::Object(object_id),
+    )
 }
 
 fn object_is_in_combat_with_source_lki(
@@ -2737,6 +2812,7 @@ pub(crate) fn player_filter_matches_game(
         PlayerFilter::OpponentWithMoreControlledObjectsThan {
             player: reference_filter,
             filter: object_filter,
+            fewer,
         } => {
             if ctx
                 .players_in_range
@@ -2753,14 +2829,18 @@ pub(crate) fn player_filter_matches_game(
                     player_filter_matches_game(reference_filter, candidate.id, game, ctx)
                 })
                 .any(|reference| {
-                    game.are_opponents(reference.id, player)
-                        && controlled_matching_object_count(game, player, object_filter, ctx)
-                            > controlled_matching_object_count(
-                                game,
-                                reference.id,
-                                object_filter,
-                                ctx,
-                            )
+                    if !game.are_opponents(reference.id, player) {
+                        return false;
+                    }
+                    let candidate_count =
+                        controlled_matching_object_count(game, player, object_filter, ctx);
+                    let reference_count =
+                        controlled_matching_object_count(game, reference.id, object_filter, ctx);
+                    if *fewer {
+                        candidate_count < reference_count
+                    } else {
+                        candidate_count > reference_count
+                    }
                 })
         }
         PlayerFilter::ControlsMost {
@@ -2846,6 +2926,18 @@ fn controlled_matching_object_count(
         .map(|player| player.commanders.clone())
         .unwrap_or_default();
 
+    // A non-battlefield zone counts the cards each player owns there ("whose
+    // graveyard has fewer creature cards in it", Oath of Ghouls).
+    if let Some(zone) = filter.zone
+        && zone != crate::zone::Zone::Battlefield
+    {
+        return game
+            .zone_ids(zone)
+            .filter_map(|object_id| game.object(object_id))
+            .filter(|object| object.owner == controller)
+            .filter(|object| filter.matches(object, &object_ctx, game))
+            .count();
+    }
     game.battlefield
         .iter()
         .filter_map(|object_id| game.object(*object_id))
@@ -4085,6 +4177,11 @@ impl ObjectFilterExt for ObjectFilter {
                 "that's one or more of the colors chosen as you drafted cards named {card_name}"
             ));
         }
+        if let Some(card_name) = &self.name_noted_while_drafting_named {
+            post_noun_qualifiers.push(format!(
+                "with a name you noted for cards named {card_name}"
+            ));
+        }
         if let Some(sticker) = self.sticker {
             let sticker = match sticker {
                 crate::events::KeywordActionKind::ArtSticker => "an art sticker",
@@ -4452,6 +4549,7 @@ impl ObjectFilterExt for ObjectFilter {
         } else {
             if self.attacking
                 && !self.attacking_alone
+                && !self.attacking_same_defender_as_source
                 && self
                     .attacking_player_or_planeswalker_controlled_by
                     .is_none()
@@ -4571,6 +4669,12 @@ impl ObjectFilterExt for ObjectFilter {
                 other => other.description(),
             };
             post_noun_qualifiers.push(format!("{player} protects"));
+        }
+        if self.attacking_same_defender_as_source {
+            post_noun_qualifiers.push("attacking the same player or planeswalker".to_string());
+        }
+        if self.could_be_enchanted_by_source {
+            post_noun_qualifiers.push("this Aura can enchant".to_string());
         }
         if self.in_combat_with_source {
             post_noun_qualifiers.push(if self.blocking {

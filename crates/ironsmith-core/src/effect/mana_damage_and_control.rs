@@ -4493,6 +4493,22 @@ pub struct RepeatProcessEffect<E> {
     pub predicate: EffectPredicate,
 }
 
+/// "You may pay [cost] to end this effect." (Licids): offers the player a
+/// one-shot special action (CR 116.2c) that ends the continuous
+/// effects this resolution created so far.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct GrantEndThisEffectPaymentEffect {
+    pub player: PlayerFilter,
+    pub cost: ManaCost,
+}
+
+impl GrantEndThisEffectPaymentEffect {
+    pub fn new(player: PlayerFilter, cost: ManaCost) -> Self {
+        Self { player, cost }
+    }
+}
+
 /// Grants a repeatable mana-payment special action through end of turn.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]

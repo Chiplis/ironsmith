@@ -448,9 +448,76 @@ fn parse_next_cast_single_opponent_or_permanent_copy_loop(
     })])
 }
 
+/// "When you next activate an ability that isn't a mana ability this turn by
+/// spending four or more mana to activate it, <effects>" (Dynaheir, Invoker
+/// Adept): a one-shot delayed trigger on your next qualifying non-mana
+/// activation. The mana requirement qualifies the activation event itself,
+/// so an activation paid with less mana neither fires nor uses up the
+/// trigger.
+pub fn parse_next_activation_with_mana_spent_delayed_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let trimmed = trim_edge_punctuation(tokens);
+    let Some(comma) = trimmed.iter().position(|token| token.is_comma()) else {
+        return Ok(None);
+    };
+    let words = crate::lexer::token_word_refs(&trimmed[..comma]);
+    let words = words
+        .iter()
+        .map(|word| word.replace('\'', "").replace('’', ""))
+        .collect::<Vec<_>>();
+    let words = words.iter().map(String::as_str).collect::<Vec<_>>();
+    const HEAD: &[&str] = &[
+        "when", "you", "next", "activate", "an", "ability", "that", "isnt", "a", "mana",
+        "ability", "this", "turn", "by", "spending",
+    ];
+    const TAIL: &[&str] = &["or", "more", "mana", "to", "activate", "it"];
+    if words.len() != HEAD.len() + 1 + TAIL.len()
+        || words[..HEAD.len()] != *HEAD
+        || words[HEAD.len() + 1..] != *TAIL
+    {
+        return Ok(None);
+    }
+    let Some(amount) = crate::util::parse_number_word_u32(words[HEAD.len()]) else {
+        return Ok(None);
+    };
+    let effect_tokens = trim_edge_punctuation(&trimmed[comma + 1..]);
+    if effect_tokens.is_empty() {
+        return Ok(None);
+    }
+    let delayed_effects = parse_effect_chain(&effect_tokens)?;
+    if delayed_effects.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
+        trigger: TriggerSpec::ConditionQualified {
+            trigger: Box::new(TriggerSpec::AbilityActivated {
+                activator: PlayerFilter::You,
+                filter: ObjectFilter::default(),
+                non_mana_only: true,
+                loyalty_only: false,
+                activation_cost_has_tap: None,
+            }),
+            condition: PredicateAst::Triggering(
+                crate::cards::builders::TriggeringPredicateAst::TriggeringAbilityManaSpentToActivateAtLeast(
+                    amount,
+                ),
+            ),
+            surface: format!("by spending {} or more mana to activate it", words[HEAD.len()]),
+        },
+        effects: delayed_effects,
+        one_shot: true,
+        until_end_of_combat: false,
+        attach_to_previous_ability: false,
+    })]))
+}
+
 pub fn parse_sentence_delayed_trigger_this_turn(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(effects) = parse_next_activation_with_mana_spent_delayed_sentence(tokens)? {
+        return Ok(Some(effects));
+    }
     let clause = LexedClause::new(tokens).trimmed();
     let clause_display = crate::lexer::render_token_slice(clause.tokens());
     if let Some(effects) = parse_next_cast_single_opponent_or_permanent_copy_loop(tokens) {
@@ -817,6 +884,7 @@ pub fn parse_delayed_when_that_leaves_battlefield_sentence(
         delayed_shapes::DelayedLeavesObjectKind::Creature => ObjectFilter::creature(),
         delayed_shapes::DelayedLeavesObjectKind::Permanent => ObjectFilter::permanent(),
         delayed_shapes::DelayedLeavesObjectKind::Token => ObjectFilter::default().token(),
+        delayed_shapes::DelayedLeavesObjectKind::Pronoun => ObjectFilter::default(),
     };
     let delayed_effects = parse_effect_chain(shape.effect_tokens)?;
     if delayed_effects.is_empty() {
@@ -829,6 +897,7 @@ pub fn parse_delayed_when_that_leaves_battlefield_sentence(
         EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectLeavesBattlefield {
             filter,
             effects: delayed_effects,
+            watched_object_is_source: shape.watched_object_deals,
         }),
     ]))
 }

@@ -124,6 +124,66 @@ pub fn parse_enter_as_copy_tokens(tokens: &[OwnedLexToken]) -> Option<EnterAsCop
     )
 }
 
+fn enter_as_copy_followup_sentence<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<ironsmith_core::EnterAsCopyFollowup> {
+    alt((
+        (
+            primitives::phrase(&["when", "you", "do"]),
+            opt(primitives::comma()),
+            primitives::kw("exile"),
+            alt((
+                primitives::phrase(&["that", "card"]).void(),
+                primitives::phrase(&["that", "creature", "card"]).void(),
+                primitives::phrase(&["the", "copied", "card"]).void(),
+            )),
+            primitives::sentence_end(),
+        )
+            .value(ironsmith_core::EnterAsCopyFollowup::ExileCopiedObject),
+        (
+            primitives::phrase(&["if", "you", "do"]),
+            opt(primitives::comma()),
+            primitives::phrase(&["it", "gains", "haste", "until", "end", "of", "turn"]),
+            primitives::sentence_end(),
+        )
+            .value(ironsmith_core::EnterAsCopyFollowup::GainsHasteUntilEndOfTurn),
+    ))
+    .parse_next(input)
+}
+
+/// Split a trailing "When you do, exile that card." / "If you do, it gains
+/// haste until end of turn." sentence off an enter-as-copy line. Returns the
+/// copy sentence (with its period) and the follow-up.
+pub fn split_enter_as_copy_followup_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], ironsmith_core::EnterAsCopyFollowup)> {
+    (1..tokens.len()).rev().find_map(|index| {
+        primitives::parse_prefix(&tokens[index..], primitives::period())?;
+        let followup = crate::grammar::primitives::probe_all(
+            &tokens[index + 1..],
+            enter_as_copy_followup_sentence,
+            "enter-as-copy follow-up",
+        )?;
+        Some((&tokens[..=index], followup))
+    })
+}
+
+/// Whether the line carries a "When you do, ..." / "If you do, ..." sentence
+/// after its enter-as-copy sentence.
+pub fn has_enter_as_copy_result_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
+    (1..tokens.len()).any(|index| {
+        primitives::parse_prefix(&tokens[index..], primitives::period()).is_some()
+            && primitives::parse_prefix(
+                &tokens[index + 1..],
+                alt((
+                    primitives::phrase(&["when", "you", "do"]),
+                    primitives::phrase(&["if", "you", "do"]),
+                )),
+            )
+            .is_some()
+    })
+}
+
 pub fn parse_copy_exception_tokens(tokens: &[OwnedLexToken]) -> Option<CopyExceptionShape<'_>> {
     crate::grammar::primitives::probe_all(
         tokens,
@@ -490,7 +550,11 @@ fn parse_copy_characteristic_remainder_start<'a>(input: &mut LexStream<'a>) -> W
         primitives::phrase(&[
             "in", "addition", "to", "its", "other", "colors", "and", "types",
         ]),
-        primitives::phrase(&["in", "addition", "to", "its", "other", "types"]),
+        alt((
+            primitives::phrase(&["in", "addition", "to", "its", "other", "types"]),
+            primitives::phrase(&["in", "addition", "to", "his", "other", "types"]),
+            primitives::phrase(&["in", "addition", "to", "her", "other", "types"]),
+        )),
         primitives::phrase(&["in", "addition", "to", "its", "other", "creature", "types"]),
         primitives::phrase(&["and", "its", "power", "and", "toughness"]),
         primitives::phrase(&["its", "power", "and", "toughness"]),
@@ -519,7 +583,11 @@ fn parse_copy_characteristic_remainder<'a>(
         primitives::phrase(&[
             "in", "addition", "to", "its", "other", "colors", "and", "types",
         ]),
-        primitives::phrase(&["in", "addition", "to", "its", "other", "types"]),
+        alt((
+            primitives::phrase(&["in", "addition", "to", "its", "other", "types"]),
+            primitives::phrase(&["in", "addition", "to", "his", "other", "types"]),
+            primitives::phrase(&["in", "addition", "to", "her", "other", "types"]),
+        )),
         primitives::phrase(&["in", "addition", "to", "its", "other", "creature", "types"]),
     )))
     .parse_next(input)?;

@@ -793,7 +793,7 @@ fn test_multiple_ability_counters() {
 }
 
 #[test]
-fn test_no_duplicate_abilities_from_counters() {
+fn test_counter_flying_preserves_independent_redundant_instances() {
     use crate::static_abilities::StaticAbilityId;
 
     // Create a creature token that already has flying
@@ -809,7 +809,10 @@ fn test_no_duplicate_abilities_from_counters() {
     );
     creature.add_counters(CounterType::Flying, 1);
 
-    // Start with flying ability already present
+    // CR 113.2c and 122.1b preserve both ability occurrences; 702.9c
+    // makes their evasion redundant without deleting either occurrence.
+    let printed_flying = StaticAbility::flying();
+    let printed_id = printed_flying.instance_id();
     let mut chars = CalculatedCharacteristics {
         name: creature.name.clone(),
         mana_cost: creature.mana_cost_owned(),
@@ -824,8 +827,8 @@ fn test_no_duplicate_abilities_from_counters() {
         world_supertype_since: None,
         colors: ColorSet::COLORLESS,
         loyalty: creature.base_loyalty,
-        abilities: Vec::new().into(),
-        static_abilities: vec![StaticAbility::flying()].into(), // Already has flying
+        abilities: vec![crate::ability::Ability::static_ability(printed_flying.clone())].into(),
+        static_abilities: vec![printed_flying].into(),
         ability_gain_prohibitions: Vec::new(),
         aura_attach_filter: creature.aura_attach_filter_owned(),
         controller: creature.owner,
@@ -833,13 +836,23 @@ fn test_no_duplicate_abilities_from_counters() {
 
     add_abilities_from_counters(&creature, &mut chars);
 
-    // Should still only have one flying ability (no duplicate)
+    // Redundancy of flying does not merge independent printed/counter origins.
     let flying_count = chars
         .static_abilities
         .iter()
         .filter(|a| a.id() == StaticAbilityId::Flying)
         .count();
-    assert_eq!(flying_count, 1, "Should not add duplicate flying ability");
+    assert_eq!(flying_count, 2, "printed flying and counter-granted flying remain independent");
+    let flying = chars.abilities.iter().enumerate().filter_map(|(slot, ability)| {
+        let crate::ability::AbilityKind::Static(ability) = &ability.kind else { return None; };
+        (ability.id() == StaticAbilityId::Flying).then(|| (
+            ability.instance_id(), chars.abilities.origin(slot).expect("every ability has its origin")))
+    }).collect::<Vec<_>>();
+    assert_eq!(flying.len(), 2);
+    assert_eq!(flying[0].0, printed_id, "counter addition preserves the printed instance");
+    assert_ne!(flying[0].0, flying[1].0);
+    assert!(matches!(flying[0].1, AbilityOrigin::Printed(0)));
+    assert!(matches!(flying[1].1, AbilityOrigin::Counter { .. }));
 }
 
 #[test]
@@ -1317,4 +1330,649 @@ fn temporary_copy_cost_selects_direct_exact_cost_filter() {
 #[test]
 fn temporary_copy_cost_selects_fallback_exact_cost_filter() {
     check_copy_cost_layer_filter(true, true);
+}
+
+
+#[test]
+fn legacy_enchant_materialization_keeps_identity_across_reads_and_copy() {
+    fn enchant_id(chars: &CalculatedCharacteristics) -> crate::static_abilities::StaticAbilityInstanceId {
+        let abilities: Vec<_> = chars.static_abilities.iter()
+            .filter(|ability| ability.enchant_filter().is_some()).collect();
+        assert_eq!(abilities.len(), 1, "exactly one enchant ability is present");
+        abilities[0].instance_id()
+    }
+
+    let alice = PlayerId::from_index(0);
+    let card = CardBuilder::new(CardId::from_raw(9891), "Legacy Aura")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura]).build();
+    let mut aura = Object::from_card(ObjectId::from_raw(9891), &card, alice, Zone::Hand);
+    let filter = crate::object::AuraAttachmentFilter::from(ObjectFilter::creature());
+    aura.aura_attach_filter = Some(filter.clone().into());
+    let checkpoint = aura.clone();
+    let first = initial_text_box_characteristics(&aura);
+    let repeated = initial_text_box_characteristics(&aura);
+    let restored = initial_text_box_characteristics(&checkpoint);
+
+    let values = CopiableValues::from_object(&aura);
+    let mut copy_first = initial_text_box_characteristics(&aura);
+    let mut copy_second = initial_text_box_characteristics(&aura);
+    copy_characteristics_from_copiable_values(
+        &values, &mut copy_first, false, &None, &None, &[], None);
+    copy_characteristics_from_copiable_values(
+        &values, &mut copy_second, false, &None, &None, &[], None);
+
+    let creature_card = CardBuilder::new(CardId::from_raw(9892), "Bestow Creature")
+        .card_types(vec![CardType::Enchantment, CardType::Creature]).build();
+    let mut bestow = Object::from_card(ObjectId::from_raw(9892), &creature_card, alice, Zone::Stack);
+    bestow.apply_bestow_cast_overlay();
+    let bestow_first = initial_text_box_characteristics(&bestow);
+    let bestow_second = initial_text_box_characteristics(&bestow.clone());
+    assert!(bestow.end_bestow_cast_overlay());
+    assert!(initial_text_box_characteristics(&bestow).static_abilities.iter()
+        .all(|ability| ability.enchant_filter().is_none()),
+        "ending bestow removes the overlay enchant ability");
+
+    let observations = [
+        ("legacy repeated read", enchant_id(&first), enchant_id(&repeated)),
+        ("checkpoint clone", enchant_id(&first), enchant_id(&restored)),
+        ("copy materialization", enchant_id(&copy_first), enchant_id(&copy_second)),
+        ("bestow overlay", enchant_id(&bestow_first), enchant_id(&bestow_second)),
+    ];
+    assert!(observations.iter().all(|(_, first, next)| first == next),
+        "reading the same ability occurrence must preserve its identity: {observations:?}");
+}
+
+
+#[test]
+fn synthesized_continuous_and_counter_abilities_keep_identity_across_reads() {
+    use crate::static_abilities::StaticAbilityId;
+    let mut observations = Vec::new();
+    for (modification, expected) in [
+        (Modification::restriction(RestrictionKind::CantBeBlocked), StaticAbilityId::Unblockable),
+        (Modification::restriction(RestrictionKind::CantAttack), StaticAbilityId::Defender),
+        (Modification::restriction(RestrictionKind::CantBlock), StaticAbilityId::CantBlock),
+        (Modification::restriction(RestrictionKind::DoesntUntap), StaticAbilityId::DoesntUntap),
+        (Modification::SetAuraAttachmentFilter(
+            crate::object::AuraAttachmentFilter::from(ObjectFilter::creature()).into()),
+            StaticAbilityId::Enchant),
+    ] {
+        let mut game = dynamic_value_test_game();
+        let alice = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::new(), "Restriction Recipient")
+            .card_types(vec![CardType::Creature]).build();
+        let object = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+            object, alice, EffectTarget::Specific(object), modification));
+        let effects = game.try_all_continuous_effects().expect("finite effect discovery");
+        let checkpoint = game.clone();
+        let first = game.calculated_characteristics_with_effects(object, &effects)
+            .expect("first calculation has recipient");
+        let repeated = game.calculated_characteristics_with_effects(object, &effects)
+            .expect("repeated calculation has recipient");
+        let restored = checkpoint.calculated_characteristics_with_effects(object, &effects)
+            .expect("checkpoint calculation has recipient");
+        let ids = [&first, &repeated, &restored].map(|chars| {
+            let abilities: Vec<_> = chars.static_abilities.iter()
+                .filter(|ability| ability.id() == expected).collect();
+            assert_eq!(abilities.len(), 1, "one synthesized {expected:?} ability");
+            abilities[0].instance_id()
+        });
+        observations.push((format!("{expected:?}"), ids));
+    }
+
+    let mut game = dynamic_value_test_game();
+    let alice = PlayerId::from_index(0);
+    let card = CardBuilder::new(CardId::new(), "Counter Recipient")
+        .card_types(vec![CardType::Creature]).build();
+    let object = game.create_object_from_card(&card, alice, Zone::Battlefield);
+    game.object_mut(object).expect("counter recipient exists").add_counters(CounterType::Flying, 1);
+    let checkpoint = game.clone();
+    let counter_ids = [&game, &game, &checkpoint].map(|state| {
+        let chars = state.calculated_characteristics_with_effects(object, &[])
+            .expect("counter calculation has recipient");
+        let abilities: Vec<_> = chars.static_abilities.iter()
+            .filter(|ability| ability.id() == StaticAbilityId::Flying).collect();
+        assert_eq!(abilities.len(), 1, "one flying ability from counter");
+        abilities[0].instance_id()
+    });
+    observations.push(("Flying counter".to_string(), counter_ids));
+    assert!(observations.iter().all(|(_, ids)| ids[0] == ids[1] && ids[0] == ids[2]),
+        "recalculating registered ability occurrences must preserve identity: {observations:?}");
+}
+
+
+#[test]
+fn enchant_metadata_preserves_explicit_abilities_independent_occurrences_and_bestow_copy() {
+    fn enchant_id(chars: &CalculatedCharacteristics) -> crate::static_abilities::StaticAbilityInstanceId {
+        let abilities: Vec<_> = chars.static_abilities.iter()
+            .filter(|a| a.enchant_filter().is_some()).collect();
+        assert_eq!(abilities.len(), 1, "one enchant occurrence");
+        abilities[0].instance_id()
+    }
+    let alice = PlayerId::from_index(0);
+    let card = CardBuilder::new(CardId::new(), "Metadata Aura")
+        .card_types(vec![CardType::Enchantment]).subtypes(vec![Subtype::Aura]).build();
+    let filter = crate::object::AuraAttachmentFilter::from(ObjectFilter::creature());
+    let mut first = Object::from_card(ObjectId::from_raw(9893), &card, alice, Zone::Hand);
+    let mut second = Object::from_card(ObjectId::from_raw(9894), &card, alice, Zone::Hand);
+    first.aura_attach_filter = Some(filter.clone().into());
+    second.aura_attach_filter = Some(filter.clone().into());
+    assert_ne!(enchant_id(&initial_text_box_characteristics(&first)),
+        enchant_id(&initial_text_box_characteristics(&second)),
+        "independent metadata registrations remain distinct");
+    let explicit = StaticAbility::enchant(filter);
+    first.abilities = std::sync::Arc::new(vec![crate::ability::Ability::static_ability(explicit.clone())]);
+    assert_eq!(enchant_id(&initial_text_box_characteristics(&first)), explicit.instance_id(),
+        "metadata does not replace an existing printed enchant ability");
+
+    let creature = CardBuilder::new(CardId::new(), "Bestow Copy Source")
+        .card_types(vec![CardType::Creature, CardType::Enchantment]).build();
+    let mut bestow = Object::from_card(ObjectId::from_raw(9895), &creature, alice, Zone::Stack);
+    bestow.apply_bestow_cast_overlay();
+    assert_eq!(initial_text_box_characteristics(&bestow).static_abilities.iter()
+        .filter(|a| a.enchant_filter().is_some()).count(), 1);
+    let underlying = CopiableValues::from_object(&bestow);
+    assert!(underlying.aura_attach_filter.is_none(), "temporary bestow filter is not copied");
+    assert!(underlying.abilities.iter().all(|ability| !matches!(
+        &ability.kind, crate::ability::AbilityKind::Static(a) if a.enchant_filter().is_some()
+    )), "underlying copiable abilities omit temporary bestow enchant");
+    assert!(underlying.card_types.contains(&CardType::Creature));
+    assert!(!underlying.subtypes.contains(&Subtype::Aura));
+}
+
+#[test]
+fn registered_restrictions_preserve_independent_occurrences_and_removal() {
+    for kind in [RestrictionKind::CantBeBlocked, RestrictionKind::CantAttack,
+        RestrictionKind::CantBlock, RestrictionKind::DoesntUntap] {
+        let mut game = dynamic_value_test_game();
+        let alice = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::new(), "Restriction Recipient")
+            .card_types(vec![CardType::Creature]).build();
+        let object = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let first = RegisteredRestriction::new(kind);
+        let second = RegisteredRestriction::new(kind);
+        let expected = first.ability().id();
+        let original_ids = [first.ability().instance_id(), second.ability().instance_id()];
+        assert_ne!(original_ids[0], original_ids[1], "independent registrations");
+        let first_effect = game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+            object, alice, EffectTarget::Specific(object), Modification::Restriction(first)));
+        let second_effect = game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+            object, alice, EffectTarget::Specific(object), Modification::Restriction(second)));
+        let read_ids = |state: &GameState| {
+            let effects = state.try_all_continuous_effects().expect("finite discovery");
+            let chars = state.calculated_characteristics_with_effects(object, &effects)
+                .expect("registered recipient exists");
+            chars.static_abilities.iter().filter(|ability| ability.id() == expected)
+                .map(|ability| ability.instance_id()).collect::<Vec<_>>()
+        };
+        let checkpoint = game.clone();
+        assert_eq!(read_ids(&game), original_ids, "both occurrences survive calculation");
+        assert_eq!(read_ids(&game), original_ids, "refresh preserves occurrences");
+        assert_eq!(read_ids(&checkpoint), original_ids, "checkpoint preserves occurrences");
+        game.effect_store.continuous_effects.remove_effect(first_effect);
+        assert_eq!(read_ids(&game), [original_ids[1]], "removal affects only its occurrence");
+        assert_eq!(read_ids(&checkpoint), original_ids, "snapshot is isolated from removal");
+        game.effect_store.continuous_effects.remove_effect(second_effect);
+        assert!(read_ids(&game).is_empty(), "no restriction remains after both removals");
+        let replacement = RegisteredRestriction::new(kind);
+        let new_id = replacement.ability().instance_id();
+        assert!(!original_ids.contains(&new_id), "new registration is a new occurrence");
+        game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+            object, alice, EffectTarget::Specific(object), Modification::Restriction(replacement)));
+        assert_eq!(read_ids(&game), [new_id]);
+    }
+}
+
+#[test]
+fn keyword_counter_occurrences_preserve_printed_abilities_and_lifetime() {
+    use crate::static_abilities::StaticAbilityId;
+    for printed in [false, true] {
+        let mut game = dynamic_value_test_game();
+        let alice = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::new(), "Counter Recipient")
+            .card_types(vec![CardType::Creature]).build();
+        let object = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let printed_flying = StaticAbility::flying();
+        let printed_id = printed_flying.instance_id();
+        if printed {
+            game.object_mut(object).expect("recipient exists").abilities = std::sync::Arc::new(
+                vec![crate::ability::Ability::static_ability(printed_flying)]);
+        }
+        game.object_mut(object).expect("recipient exists").counters.insert(CounterType::Flying, 2);
+        let read = |state: &GameState| {
+            let effects = state.try_all_continuous_effects().expect("finite counter discovery");
+            let chars = state.calculated_characteristics_with_effects(object, &effects)
+                .expect("counter recipient exists");
+            chars.abilities.iter().enumerate().filter_map(|(index, ability)| {
+                let AbilityKind::Static(ability) = &ability.kind else { return None; };
+                (ability.id() == StaticAbilityId::Flying).then(|| (
+                    ability.instance_id(), chars.abilities.origin(index)
+                        .expect("every calculated ability retains its origin").clone()))
+            }).collect::<Vec<_>>()
+        };
+        let original = read(&game);
+        assert_eq!(original.len(), 2 + usize::from(printed),
+            "each counter is independent of other counters and printed flying");
+        let counter_ids: Vec<_> = original.iter().filter(|(id, _)| !printed || *id != printed_id)
+            .map(|(id, _)| *id).collect();
+        assert_ne!(counter_ids[0], counter_ids[1], "independent counter payloads");
+        for (id, origin) in &original {
+            if printed && *id == printed_id {
+                assert!(matches!(origin, AbilityOrigin::Printed(0)), "printed origin is preserved");
+            } else {
+                assert!(!matches!(origin, AbilityOrigin::Printed(_) | AbilityOrigin::Effect { .. }),
+                    "counter occurrence cannot inherit a printed index or another effect: {origin:?}");
+                assert_eq!(origin.granting_source(), None, "a counter has no external grantor");
+            }
+        }
+        let checkpoint = game.clone();
+        assert_eq!(read(&game), original, "refresh preserves counter occurrences");
+        assert_eq!(read(&checkpoint), original, "checkpoint preserves counter occurrences");
+        assert_eq!(game.object_mut(object).expect("recipient exists")
+            .remove_counters(CounterType::Flying, 1), 1);
+        let remaining = read(&game);
+        assert_eq!(remaining.len(), 1 + usize::from(printed));
+        assert!(remaining.iter().all(|entry| original.contains(entry)),
+            "partial removal retains surviving identity and origin");
+        assert_eq!(read(&checkpoint), original, "removal does not mutate the checkpoint");
+        assert_eq!(game.object_mut(object).expect("recipient exists")
+            .remove_counters(CounterType::Flying, 1), 1);
+        assert_eq!(read(&game).len(), usize::from(printed));
+        game.object_mut(object).expect("recipient exists").add_counters(CounterType::Flying, 1);
+        let replacement = read(&game);
+        assert_eq!(replacement.len(), 1 + usize::from(printed));
+        for entry in replacement {
+            if printed && entry.0 == printed_id {
+                assert!(original.contains(&entry), "printed identity survives counter mutations");
+            } else {
+                assert!(!original.iter().any(|old| old.0 == entry.0 || old.1 == entry.1),
+                    "new counter must not reuse a removed occurrence or origin");
+            }
+        }
+    }
+}
+
+#[test]
+fn cloned_restriction_payload_keeps_each_registration_origin() {
+    for kind in [RestrictionKind::CantBeBlocked, RestrictionKind::CantAttack,
+        RestrictionKind::CantBlock, RestrictionKind::DoesntUntap] {
+        let mut game = dynamic_value_test_game();
+        let alice = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::new(), "Restriction Recipient")
+            .card_types(vec![CardType::Creature]).build();
+        let object = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let payload = RegisteredRestriction::new(kind);
+        let expected = payload.ability().id();
+        let template = Modification::Restriction(payload);
+        let first = game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+            object, alice, EffectTarget::Specific(object), template.clone()));
+        game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+            object, alice, EffectTarget::Specific(object), template));
+        let read = |state: &GameState| {
+            let effects = state.try_all_continuous_effects().expect("finite effect discovery");
+            let chars = state.calculated_characteristics_with_effects(object, &effects)
+                .expect("restriction recipient exists");
+            chars.abilities.iter().enumerate().filter_map(|(index, ability)| {
+                let AbilityKind::Static(ability) = &ability.kind else { return None; };
+                (ability.id() == expected).then(|| (ability.instance_id(),
+                    chars.abilities.origin(index).expect("registered grant has origin").clone()))
+            }).collect::<Vec<_>>()
+        };
+        let original = read(&game);
+        assert_eq!(original.len(), 2, "each registration survives a shared payload");
+        assert_ne!(original[0].1, original[1].1, "different effects have different origins");
+        assert_eq!(read(&game), original, "refresh preserves both registrations");
+        let checkpoint = game.clone();
+        assert_eq!(read(&checkpoint), original, "checkpoint retains both origins");
+        game.effect_store.continuous_effects.remove_effect(first);
+        assert_eq!(read(&game), [original[1].clone()], "only removed effect disappears");
+        assert_eq!(read(&checkpoint), original, "checkpoint retains removed registration");
+    }
+}
+
+#[test]
+fn ability_counter_timestamp_rebases_same_kind_without_merging_occurrences() {
+    for same_kind in [false, true] {
+        let mut game = dynamic_value_test_game();
+        let alice = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::new(), "Layer Counter Recipient")
+            .card_types(vec![CardType::Creature]).build();
+        let object = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let exalted = CounterType::Named("exalted".into());
+        let triggered_count = |state: &GameState| {
+            let effects = state.try_all_continuous_effects().expect("finite layer discovery");
+            let chars = state.calculated_characteristics_with_effects(object, &effects)
+                .expect("counter recipient exists");
+            chars.abilities.iter().filter(|ability| matches!(
+                ability.kind, AbilityKind::Triggered(_))).count()
+        };
+        game.add_counters(object, exalted, 1).expect("positive placement produces event");
+        assert_eq!(triggered_count(&game), 1);
+        let original_timestamp = game.effect_store.continuous_effects
+            .get_counter_timestamp(object, exalted).expect("placement records timestamp");
+        game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+            object, alice, EffectTarget::Specific(object), Modification::RemoveAllAbilities));
+        assert_eq!(triggered_count(&game), 0, "later ability loss removes older counter ability");
+        let later_kind = if same_kind { exalted } else { CounterType::Flying };
+        game.add_counters(object, later_kind, 1).expect("later positive placement produces event");
+        let updated_timestamp = game.effect_store.continuous_effects
+            .get_counter_timestamp(object, exalted).expect("original counter remains");
+        if same_kind {
+            assert!(updated_timestamp > original_timestamp,
+                "CR 613.7c rebases every counter of the same kind");
+            assert_eq!(triggered_count(&game), 2,
+                "both independent exalted counter abilities apply after older ability loss");
+        } else {
+            assert_eq!(updated_timestamp, original_timestamp,
+                "placing another kind does not rebase exalted counters");
+            assert_eq!(triggered_count(&game), 0,
+                "older exalted remains removed when only a different kind was placed later");
+        }
+    }
+}
+
+#[test]
+fn derived_ability_view_preserves_keyword_counters_without_continuous_effects() {
+    use crate::static_abilities::StaticAbilityId;
+    for (counter, expected) in [
+        (CounterType::Flying, StaticAbilityId::Flying),
+        (CounterType::Haste, StaticAbilityId::Haste),
+        (CounterType::Hexproof, StaticAbilityId::Hexproof),
+        (CounterType::Indestructible, StaticAbilityId::Indestructible),
+    ] {
+        let mut game = dynamic_value_test_game();
+        let alice = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::new(), "Counter Query Recipient")
+            .card_types(vec![CardType::Creature]).build();
+        let object = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.add_counters(object, counter, 1).expect("positive placement produces an event");
+        game.refresh_continuous_state().expect("finite complete refresh succeeds");
+        let effects = game.try_all_continuous_effects().expect("finite effect discovery");
+        assert!(effects.is_empty(), "counter ability must work without a continuous instruction");
+        let chars = game.calculated_characteristics_with_effects(object, &effects)
+            .expect("counter recipient exists");
+        assert!(chars.static_abilities.iter().any(|ability| ability.id() == expected),
+            "full layer calculation grants the keyword");
+        let view = crate::derived_view::DerivedGameView::new(&game);
+        assert!(view.object_has_static_ability_id(object, expected),
+            "derived ability queries must retain the calculated counter keyword {expected:?}");
+        let abilities = view.abilities_rc(object).expect("view recipient exists");
+        assert_eq!(abilities.iter().filter(|ability| matches!(&ability.kind,
+            AbilityKind::Static(ability) if ability.id() == expected)).count(), 1,
+            "derived ability list retains the counter keyword");
+    }
+}
+
+
+#[test]
+fn timestamp_checkpoint_restoration_is_atomic_and_keeps_future_order() {
+    let source = ObjectId::from_raw(10);
+    let attachment = ObjectId::from_raw(11);
+    let mut manager = ContinuousEffectManager::new();
+    manager.record_entry(source);
+    manager.record_counter_change(source, CounterType::Flying);
+    manager.record_attachment(attachment);
+    let original = manager.timestamp_state();
+    let mut restored = ContinuousEffectManager::new();
+    restored.restore_timestamp_state(original.clone()).expect("valid chronology restores");
+    assert_eq!(restored.timestamp_state(), original);
+    let before_revision = restored.revision();
+    let mut invalid = Vec::new();
+    let mut duplicate_entry = original.clone(); duplicate_entry.object_entries.push(duplicate_entry.object_entries[0]); invalid.push(duplicate_entry);
+    let mut duplicate_counter = original.clone(); duplicate_counter.counters.push(duplicate_counter.counters[0]); invalid.push(duplicate_counter);
+    let mut duplicate_attachment = original.clone(); duplicate_attachment.attachments.push(duplicate_attachment.attachments[0]); invalid.push(duplicate_attachment);
+    let mut future_entry = original.clone(); future_entry.object_entries[0].1 = original.current_timestamp + 1; invalid.push(future_entry);
+    let mut future_counter = original.clone(); future_counter.counters[0].1 = original.current_timestamp + 1; invalid.push(future_counter);
+    let mut future_attachment = original.clone(); future_attachment.attachments[0].1 = original.current_timestamp + 1; invalid.push(future_attachment);
+    let mut exhausted = original.clone(); exhausted.current_timestamp = u64::MAX; invalid.push(exhausted);
+    for state in invalid {
+        assert!(restored.restore_timestamp_state(state).is_err(), "malformed chronology fails explicitly");
+        assert_eq!(restored.timestamp_state(), original, "failure cannot publish partial maps or reset the clock");
+        assert_eq!(restored.revision(), before_revision, "failure does not invalidate unchanged state");
+    }
+    manager.record_counter_change(source, CounterType::Flying);
+    restored.record_counter_change(source, CounterType::Flying);
+    assert_eq!(restored.timestamp_state(), manager.timestamp_state());
+    assert!(restored.get_counter_timestamp(source, CounterType::Flying)
+        .expect("new counter placement has its timestamp") > original.current_timestamp);
+    assert_eq!(restored.get_attachment_timestamp(attachment), manager.get_attachment_timestamp(attachment),
+        "placing counters leaves attachment chronology intact");
+}
+
+#[test]
+fn keyword_counter_abilities_apply_in_every_card_zone() {
+    use crate::static_abilities::StaticAbilityId;
+    let cases = [
+        (
+            CounterType::Deathtouch,
+            Some(StaticAbilityId::Deathtouch),
+            0,
+        ),
+        (CounterType::Flying, Some(StaticAbilityId::Flying), 0),
+        (
+            CounterType::FirstStrike,
+            Some(StaticAbilityId::FirstStrike),
+            0,
+        ),
+        (
+            CounterType::DoubleStrike,
+            Some(StaticAbilityId::DoubleStrike),
+            0,
+        ),
+        (CounterType::Hexproof, Some(StaticAbilityId::Hexproof), 0),
+        (
+            CounterType::Indestructible,
+            Some(StaticAbilityId::Indestructible),
+            0,
+        ),
+        (CounterType::Lifelink, Some(StaticAbilityId::Lifelink), 0),
+        (CounterType::Menace, Some(StaticAbilityId::Menace), 0),
+        (CounterType::Reach, Some(StaticAbilityId::Reach), 0),
+        (CounterType::Trample, Some(StaticAbilityId::Trample), 0),
+        (CounterType::Vigilance, Some(StaticAbilityId::Vigilance), 0),
+        (CounterType::Haste, Some(StaticAbilityId::Haste), 0),
+        (CounterType::Decayed, Some(StaticAbilityId::CantBlock), 2),
+        (CounterType::Named("exalted".into()), None, 2),
+    ];
+    for zone in [
+        Zone::Battlefield,
+        Zone::Hand,
+        Zone::Library,
+        Zone::Graveyard,
+        Zone::Exile,
+        Zone::Command,
+        Zone::Stack,
+    ] {
+        for (kind, keyword, triggers) in cases {
+            let mut game = dynamic_value_test_game();
+            let alice = PlayerId::from_index(0);
+            let card = CardBuilder::new(CardId::new(), "Keyword Counter Recipient")
+                .card_types(vec![CardType::Creature])
+                .build();
+            let object = game.create_object_from_card(&card, alice, zone);
+            // Construct an existing counter-bearing card; moving a card between zones
+            // would remove its counters and would test a different rule.
+            game.object_mut(object)
+                .expect("recipient exists")
+                .counters
+                .insert(kind, 2);
+            let effects = game.try_all_continuous_effects().expect("finite discovery");
+            let chars = game
+                .calculated_characteristics_with_effects(object, &effects)
+                .expect("counter-bearing card exists");
+            let view = crate::derived_view::DerivedGameView::new(&game);
+            let abilities = view.abilities_rc(object).expect("derived card exists");
+            if let Some(keyword) = keyword {
+                assert_eq!(
+                    chars
+                        .static_abilities
+                        .iter()
+                        .filter(|a| a.id() == keyword)
+                        .count(),
+                    2,
+                    "two independent {kind:?} counters grant abilities in {zone:?}"
+                );
+                assert!(
+                    view.object_has_static_ability_id(object, keyword),
+                    "derived keyword query must agree in {zone:?}"
+                );
+                assert_eq!(
+                    abilities
+                        .iter()
+                        .filter(|a| matches!(&a.kind,
+                    AbilityKind::Static(a) if a.id() == keyword))
+                        .count(),
+                    2
+                );
+            }
+            assert_eq!(
+                abilities
+                    .iter()
+                    .filter(|a| matches!(&a.kind, AbilityKind::Triggered(_)))
+                    .count(),
+                triggers,
+                "{kind:?} in {zone:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn shadow_counters_affect_real_blocking_queries_and_counter_removal() {
+    let mut game = dynamic_value_test_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let card = CardBuilder::new(CardId::new(), "Shadow Counter Combatant")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let attacker = game.create_object_from_card(&card, alice, Zone::Battlefield);
+    let blocker = game.create_object_from_card(&card, bob, Zone::Battlefield);
+    let normal_attacker = game.create_object_from_card(&card, alice, Zone::Battlefield);
+    let shadow = CounterType::Named("shadow".into());
+    let legal = |state: &GameState, attacker, blocker| {
+        crate::rules::combat::can_block(
+            state.object(attacker).expect("attacker exists"),
+            state.object(blocker).expect("blocker exists"),
+            state,
+        )
+    };
+    assert!(
+        legal(&game, attacker, blocker),
+        "ordinary creatures can block"
+    );
+    game.add_counters(attacker, shadow, 2)
+        .expect("attacker counter placement");
+    assert!(
+        !legal(&game, attacker, blocker),
+        "normal cannot block shadow"
+    );
+    game.add_counters(blocker, shadow, 1)
+        .expect("blocker counter placement");
+    assert!(legal(&game, attacker, blocker), "shadow blocks shadow");
+    assert!(
+        !legal(&game, normal_attacker, blocker),
+        "shadow cannot block ordinary"
+    );
+    assert_eq!(
+        game.remove_counters(attacker, shadow, 1, None, None)
+            .expect("attacker counter removed")
+            .0,
+        1
+    );
+    assert!(
+        legal(&game, attacker, blocker),
+        "surviving shadow counter still grants ability"
+    );
+    assert_eq!(
+        game.remove_counters(attacker, shadow, 1, None, None)
+            .expect("attacker counter removed")
+            .0,
+        1
+    );
+    assert!(
+        !legal(&game, attacker, blocker),
+        "shadow blocker cannot block former shadow"
+    );
+    assert_eq!(
+        game.remove_counters(blocker, shadow, 1, None, None)
+            .expect("blocker counter removed")
+            .0,
+        1
+    );
+    assert!(legal(&game, attacker, blocker), "both keywords gone");
+}
+
+#[test]
+fn shadow_counter_abilities_apply_in_every_card_zone() {
+    use crate::static_abilities::StaticAbilityId;
+    for zone in [
+        Zone::Battlefield,
+        Zone::Hand,
+        Zone::Library,
+        Zone::Graveyard,
+        Zone::Exile,
+        Zone::Command,
+        Zone::Stack,
+    ] {
+        let mut game = dynamic_value_test_game();
+        let card = CardBuilder::new(CardId::new(), "Shadow Counter Recipient")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let object = game.create_object_from_card(&card, PlayerId::from_index(0), zone);
+        game.object_mut(object)
+            .expect("recipient exists")
+            .counters
+            .insert(CounterType::Named("shadow".into()), 2);
+        let effects = game.try_all_continuous_effects().expect("finite discovery");
+        let chars = game
+            .calculated_characteristics_with_effects(object, &effects)
+            .expect("counter-bearing card exists");
+        assert_eq!(
+            chars
+                .static_abilities
+                .iter()
+                .filter(|a| a.id() == StaticAbilityId::Shadow)
+                .count(),
+            2,
+            "shadow in {zone:?}"
+        );
+        let view = crate::derived_view::DerivedGameView::new(&game);
+        assert!(view.object_has_static_ability_id(object, StaticAbilityId::Shadow));
+        assert_eq!(
+            view.abilities_rc(object)
+                .expect("derived card exists")
+                .iter()
+                .filter(|a| matches!(&a.kind, AbilityKind::Static(a)
+                if a.id() == StaticAbilityId::Shadow))
+                .count(),
+            2
+        );
+    }
+}
+
+#[test]
+fn counter_timestamp_snapshots_order_equal_display_names_by_typed_identity() {
+    for object in [1, 2, 17, 32] {
+        let id = ObjectId::from_raw(object);
+        let expected = vec![
+            ((id, CounterType::Flying), 2),
+            ((id, CounterType::Named("flying".into())), 3),
+        ];
+        for reversed in [false, true] {
+            let mut counters = expected.clone();
+            if reversed { counters.reverse(); }
+            let mut manager = ContinuousEffectManager::new();
+            manager.restore_timestamp_state(ContinuousTimestampState {
+                current_timestamp: 3,
+                object_entries: Vec::new(),
+                counters,
+                attachments: Vec::new(),
+            }).expect("two distinct equal-display counter kinds are valid chronology");
+            assert_eq!(manager.counter_timestamps_snapshot(), expected,
+                "canonical snapshot order must distinguish exact counter identity");
+            assert_eq!(manager.timestamp_state().counters, expected,
+                "full state export must use the same complete ordering");
+        }
+    }
 }

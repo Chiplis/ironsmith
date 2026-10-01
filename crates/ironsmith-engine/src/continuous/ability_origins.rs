@@ -81,6 +81,7 @@ impl From<&ContinuousEffect> for AbilityEffectOrigin {
 pub enum AbilityOrigin {
     Printed(usize),
     Temporary(crate::object::TemporaryAbilityOrigin),
+    Counter { occurrence: crate::object::CounterAbilityOrigin, slot: usize },
     Level {
         printed_face: Option<CardId>,
         parent: Box<AbilityOrigin>,
@@ -103,7 +104,7 @@ impl AbilityOrigin {
     /// ability was granted by a continuous effect.
     pub(crate) fn effect_source(&self) -> Option<ObjectId> {
         match self {
-            Self::Printed(_) | Self::Temporary(_) | Self::Level { .. } => None,
+            Self::Printed(_) | Self::Temporary(_) | Self::Counter { .. } | Self::Level { .. } => None,
             Self::Effect { effect, .. } => Some(effect.source),
             Self::Borrowed { effect, .. } => Some(effect.source),
         }
@@ -114,7 +115,7 @@ impl AbilityOrigin {
     /// name. A borrowed ability keeps the grantor of the ability it copies.
     pub(crate) fn granting_source(&self) -> Option<ObjectId> {
         match self {
-            Self::Printed(_) | Self::Temporary(_) | Self::Level { .. } => None,
+            Self::Printed(_) | Self::Temporary(_) | Self::Counter { .. } | Self::Level { .. } => None,
             Self::Effect { effect, .. } => Some(effect.source),
             Self::Borrowed { origin, .. } => origin.granting_source(),
         }

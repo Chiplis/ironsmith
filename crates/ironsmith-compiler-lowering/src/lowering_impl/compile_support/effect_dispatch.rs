@@ -1268,6 +1268,15 @@ fn compile_effect_inner(
     if let EffectAst::NoteActivationManaType = effect {
         return Ok((vec![Effect::note_activation_mana_type()], Vec::new()));
     }
+    if let EffectAst::PayToEndThisEffect { cost } = effect {
+        return Ok((
+            vec![Effect::new(crate::effects::GrantEndThisEffectPaymentEffect::new(
+                PlayerFilter::You,
+                cost.clone(),
+            ))],
+            Vec::new(),
+        ));
+    }
     if let EffectAst::ResolvesDespiteIllegalTargets = effect {
         return Ok((
             vec![crate::effect::Effect::resolves_despite_illegal_targets()],

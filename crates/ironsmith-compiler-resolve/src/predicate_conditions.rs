@@ -624,6 +624,15 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::Triggering(TriggeringPredicateAst::TriggeringObjectHadToAttackThisCombat) => {
             Condition::TriggeringObjectHadToAttackThisCombat
         }
+        PredicateAst::Triggering(TriggeringPredicateAst::YouWonTriggeringClash) => {
+            Condition::YouWonTriggeringClash
+        }
+        PredicateAst::Triggering(
+            TriggeringPredicateAst::TriggeringAbilityManaSpentToActivateAtLeast(amount),
+        ) => Condition::TriggeringAbilityManaSpentToActivateAtLeast(*amount),
+        PredicateAst::Triggering(TriggeringPredicateAst::TriggeringObjectEnteredTransformed) => {
+            Condition::TriggeringObjectEnteredTransformed
+        }
         PredicateAst::Source(SourcePredicateAst::SourceHasNoCounter(counter_type)) => {
             Condition::SourceHasNoCounter(*counter_type)
         }

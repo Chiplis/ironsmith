@@ -881,12 +881,40 @@ fn bind_pronoun_damage_source(effects: &mut [EffectAst]) {
     }
 }
 
+fn object_filter_refers_to_iterated_player(filter: &ObjectFilter) -> bool {
+    let iterated = |player: Option<&PlayerFilter>| matches!(player, Some(PlayerFilter::IteratedPlayer));
+    iterated(filter.controller.as_ref())
+        || iterated(filter.owner.as_ref())
+        || iterated(filter.protected_by.as_ref())
+        || iterated(filter.attacking_player_or_planeswalker_controlled_by.as_ref())
+        || iterated(filter.attached_to_player.as_ref())
+        || filter.any_of.iter().any(object_filter_refers_to_iterated_player)
+}
+
 fn compound_damage_effects(
     amount: Value,
     left: CompoundDamagePart,
     right: CompoundDamagePart,
 ) -> Vec<EffectAst> {
     match left {
+        // "each player and each other creature" (Exocrine): an object set
+        // that never refers back to the iterated player is dealt damage
+        // once, beside the per-player loop, not once per player.
+        CompoundDamagePart::EachPlayer(filter)
+            if matches!(&right, CompoundDamagePart::EachObject(objects)
+                if !object_filter_refers_to_iterated_player(objects)) =>
+        {
+            vec![
+                damage_player_iteration_effect(
+                    filter,
+                    vec![EffectAst::subject_verb_damage(
+                        amount.clone(),
+                        TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+                    )],
+                ),
+                compound_damage_part_to_effect(right, amount),
+            ]
+        }
         CompoundDamagePart::EachPlayer(filter) => {
             let mut nested = vec![EffectAst::subject_verb_damage(
                 amount.clone(),

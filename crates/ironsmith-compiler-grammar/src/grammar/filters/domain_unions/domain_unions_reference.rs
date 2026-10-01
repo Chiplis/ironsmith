@@ -344,7 +344,10 @@ pub fn parse_branch_scoped_object_filter_union_lexed(
         .iter()
         .enumerate()
         .map(|(index, segment)| {
-            segments.get(index + 1).is_some_and(|next| {
+            // Arms already sharing the final arm's domain ("enchantment,
+            // instant, or sorcery card from an opponent's graveyard") keep it.
+            !elided_card_noun_arms.get(index).copied().unwrap_or(false)
+                && segments.get(index + 1).is_some_and(|next| {
                 is_elided_card_noun_type_arm(segment)
                     && TokenWordView::new(next)
                         .word_refs()

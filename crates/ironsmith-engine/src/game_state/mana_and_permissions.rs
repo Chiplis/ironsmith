@@ -935,10 +935,7 @@ impl GameState {
             | Modification::CopyActivatedAbilities { .. }
             | Modification::CopyTriggeredAbilities { .. }
             | Modification::AddCombatDamageDrawAbility
-            | Modification::CantBeBlocked
-            | Modification::CantAttack
-            | Modification::CantBlock
-            | Modification::DoesntUntap
+            | Modification::Restriction(_)
             | Modification::SetPower { .. }
             | Modification::SetToughness { .. }
             | Modification::SetPowerToughness { .. }
@@ -1035,7 +1032,6 @@ impl GameState {
         modification: &Modification,
         ability_id: crate::static_abilities::StaticAbilityId,
     ) -> bool {
-        use crate::static_abilities::StaticAbilityId;
         match modification {
             Modification::CopyOf { .. }
             | Modification::ChangeText { .. }
@@ -1049,10 +1045,7 @@ impl GameState {
                 .any(|ability| Self::ability_may_grant_static_ability_id(ability, ability_id)),
             // Restriction modifications materialize as static abilities in
             // calculated characteristics (see apply path in continuous.rs).
-            Modification::CantBeBlocked => ability_id == StaticAbilityId::Unblockable,
-            Modification::CantAttack => ability_id == StaticAbilityId::Defender,
-            Modification::CantBlock => ability_id == StaticAbilityId::CantBlock,
-            Modification::DoesntUntap => ability_id == StaticAbilityId::DoesntUntap,
+            Modification::Restriction(restriction) => restriction.ability().id() == ability_id,
             _ => false,
         }
     }
@@ -3450,10 +3443,7 @@ impl GameState {
             | Modification::RemoveColors(_)
             | Modification::SetColors(_)
             | Modification::MakeColorless
-            | Modification::CantBeBlocked
-            | Modification::CantAttack
-            | Modification::CantBlock
-            | Modification::DoesntUntap
+            | Modification::Restriction(_)
             | Modification::SetPower { .. }
             | Modification::SetToughness { .. }
             | Modification::SetPowerToughness { .. }

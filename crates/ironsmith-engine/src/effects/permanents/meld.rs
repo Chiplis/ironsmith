@@ -1081,7 +1081,7 @@ mod tests {
                         added_card_types: Vec::new(), removes_other_card_types: false,
                         added_supertypes: Vec::new(), removed_supertypes: Vec::new(),
                         added_subtypes: Vec::new(), added_abilities: Vec::new(),
-                        set_base_power_toughness: None,
+                        set_base_power_toughness: None, copy_followups: Vec::new(),
                     }),
             );
         }

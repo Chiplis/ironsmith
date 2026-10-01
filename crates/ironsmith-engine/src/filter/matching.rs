@@ -686,6 +686,18 @@ pub(super) fn matches_subject(
             return false;
         }
     }
+    if let Some(card_name) = &filter.name_noted_while_drafting_named {
+        let Some(player) = ctx.you else {
+            return false;
+        };
+        let subject_name = match subject {
+            ObjectSubject::Live(object) => object.name.to_string(),
+            ObjectSubject::Snapshot(snapshot) => snapshot.name.to_string(),
+        };
+        if !game.draft_noted_name_matches(player, card_name, &subject_name) {
+            return false;
+        }
+    }
 
     // Excluded colors check
     if !filter.excluded_colors.is_empty()
@@ -968,6 +980,16 @@ pub(super) fn matches_subject(
     }
     if filter.in_combat_with_source
         && !object_is_in_combat_with_source_lki(game, ctx, subject.object_id())
+    {
+        return false;
+    }
+    if filter.attacking_same_defender_as_source
+        && !object_attacks_same_defender_as_source(game, ctx, subject.object_id())
+    {
+        return false;
+    }
+    if filter.could_be_enchanted_by_source
+        && !object_could_be_enchanted_by_source(game, ctx, subject.object_id())
     {
         return false;
     }

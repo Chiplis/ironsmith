@@ -760,6 +760,13 @@ fn read_next_end_step_followups(
             sentence,
         )
         .is_some()
+        // "exile this permanent and return it ... at the beginning of the
+        // next end step" (Frenetic Sliver) coordinates an immediate action
+        // with the delayed one; the single delayed-action shape would read
+        // the second action as part of the exiled object's noun phrase.
+        && !crate::lexer::token_word_refs(sentence)
+            .windows(2)
+            .any(|window| window == ["and", "return"])
     {
         let clause = SubjectVerbPrimitiveClause::new(sentence);
         if let Some(effects) =

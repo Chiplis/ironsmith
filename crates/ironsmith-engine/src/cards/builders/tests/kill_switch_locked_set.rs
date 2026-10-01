@@ -80,7 +80,8 @@ fn kill_switch_locks_only_the_resolution_set_until_the_source_untaps() {
         .effects()
         .iter()
         .find(|effect| {
-            effect.modification == crate::continuous::Modification::DoesntUntap
+            matches!(&effect.modification, crate::continuous::Modification::Restriction(restriction)
+                if restriction.kind() == crate::continuous::RestrictionKind::DoesntUntap)
                 && effect.source == source
         })
         .expect("resolution must register the doesn't-untap continuous effect");

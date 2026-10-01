@@ -288,6 +288,23 @@ fn previous_object_target_assignments(
         .collect()
 }
 
+/// "The next N damage that would be dealt to target A ... is dealt to another
+/// target B instead": A was declared by the preceding target declaration and
+/// may be an object or a player.
+fn effect_references_prior_declared_targets(effect: &Effect) -> bool {
+    effect
+        .downcast_ref::<crate::effects::RedirectNextDamageToTargetEffect>()
+        .is_some_and(|redirect| {
+            redirect.protected_target.is_some()
+                && redirect.destination
+                    == crate::effects::RedirectNextDamageDestination::TargetObject
+                && redirect
+                    .destination_target
+                    .as_ref()
+                    .is_some_and(|destination| destination.is_target())
+        })
+}
+
 fn effect_references_prior_object_targets(effect: &Effect) -> bool {
     effect
         .downcast_ref::<crate::effects::FightEffect>()
@@ -822,8 +839,15 @@ fn execute_resolution_program_inner(
             } else if !effect_target_assignments.is_empty()
                 || effect_references_prior_target_player(effect)
                 || effect_references_prior_object_targets(effect)
+                || effect_references_prior_declared_targets(effect)
             {
-                let scope_assignments = if effect_references_prior_target_player(effect) {
+                let scope_assignments = if effect_references_prior_declared_targets(effect) {
+                    let mut assignments = valid_target_assignments
+                        [..assignment_start.min(valid_target_assignments.len())]
+                        .to_vec();
+                    assignments.extend(effect_target_assignments.clone());
+                    assignments
+                } else if effect_references_prior_target_player(effect) {
                     let previous_assignment_end =
                         if assignment_start == 0 && effect_target_assignments.is_empty() {
                             valid_target_assignments.len()

@@ -13,7 +13,7 @@ const position=b=>({left:`${b.x*100}%`,top:`${b.y*100}%`,width:`${b.width*100}%`
 const same=(a,b)=>String(a||'').normalize('NFKC').replace(/\s+/g,' ').trim()===String(b||'').normalize('NFKC').replace(/\s+/g,' ').trim();
 const flows=field=>['rule','flavor'].includes(field.kind);
 
-function RegisteredField({field,layout,flow,unit,scale=1,onFit,onMeasure,forceReplace,text,actions,group,imageUrl,typography,name,onActivate,highlighted}) {
+function RegisteredField({field,layout,flow,unit,scale=1,onFit,onMeasure,forceReplace,text,actions,group,imageUrl,typography,name,onActivate,highlighted,columnTop=0}) {
   const ui = useUiText();
   // Errata'd printings keep stale wording in the box: replace it even when the
   // live text already equals the current oracle text. A flowed column masks
@@ -39,13 +39,19 @@ function RegisteredField({field,layout,flow,unit,scale=1,onFit,onMeasure,forceRe
   if(flow&&showReplacement) {
     // Flowed paragraphs size themselves to their text; the column decides where
     // each one starts and how far the last may run before the type shrinks.
-    style.top=`${flow.top*100}%`;
+    style.top=`${(flow.top-columnTop)*100}%`;
     style.height='auto';
     style.maxHeight=`${Math.max(flow.limit-flow.top,flow.footprint)*100}%`;
-  } else if(flow) style.top=`${flow.top*100}%`;
+  } else if(flow) style.top=`${(flow.top-columnTop)*100}%`;
+  if(columnTop) {
+    const height=unit*680/488;
+    style.top=`${((flow?.top??layout.bounds.y)-columnTop)*height}px`;
+    if(style.height!=='auto')style.height=`${layout.bounds.height*height}px`;
+    delete style.maxHeight;
+  }
   if(showReplacement&&patch?.value?.ink)style['--registered-field-ink']=patch.value.ink;
   return <>
-    {showReplacement&&patch?.field===field&&<img className="registered-card-frame__patch" src={patch.value.image} alt="" style={position(patch.value.bounds)} />}
+    {showReplacement&&patch?.field===field&&<img className="registered-card-frame__patch" src={patch.value.image} alt="" style={{...position(patch.value.bounds),...(columnTop?{top:`${(patch.value.bounds.y-columnTop)*unit*680/488}px`,height:`${patch.value.bounds.height*unit*680/488}px`}:{})}} />}
     <div className="registered-card-frame__field" style={style} data-field-kind={field.kind}
       data-replaced={showReplacement?'true':'false'} data-live-text={text} data-printed-text={field.text} data-outlined={field.outlined?'true':undefined}
       data-stack-highlighted={highlighted?'true':undefined} data-unprinted={field.unprinted?'true':undefined}
@@ -96,26 +102,19 @@ export default function RegisteredCardFrame({registration,imageUrl,typography,ru
     return ()=>{active=false;};
   },[fields,registration,locale]);
   const translatedFaces=translated?.registration===registration&&translated.locale===locale?translated.faces:null;
-  const layouts=useMemo(()=>registeredFieldLayouts(fields,fieldMeasurer(typography)),[fields,typography]);
+  const layouts=useMemo(()=>{
+    const natural=registeredFieldLayouts(fields,fieldMeasurer(typography));
+    return natural.map((layout,index)=>{
+      if(!layout||!flows(fields[index]))return layout;
+      const sizes=fields.flatMap((field,i)=>field.face===fields[index].face&&field.kind==='rule'&&natural[i]?[natural[i].size]:[]).sort((a,b)=>a-b);
+      const size=sizes.length?sizes[Math.floor(sizes.length/2)]:layout.size;
+      return {...layout,size,span:layout.span*size/layout.size};
+    });
+  },[fields,typography]);
   const surfaceRef=useRef(null);
   const [unit,setUnit]=useState(0);
-  // A printed text box uses one type size. When the column cannot hold every
-  // translated paragraph even with the gaps between them closed up, every
-  // rules and flavor field follows the same smaller scale; the shared scale
-  // only ratchets down until the text changes, so the refits cannot oscillate.
-  const rulesKey=`${rulesView.lines.join('\n')}|${flavorText||''}`;
-  const [shared,setShared]=useState({key:rulesKey,scale:1});
-  const sharedScale=shared.key===rulesKey?shared.scale:1;
-  // Fields report the absolute scale their text needs (their own fit times the
-  // shared scale they were measured at), so several reports never compound.
-  const onRulesFit=absolute=>{
-    if(absolute>=1)return;
-    setShared(current=>{
-      const scale=current.key===rulesKey?current.scale:1;
-      const next=Math.max(.75,Math.round(absolute*1000)/1000);
-      return next<scale-.002?{key:rulesKey,scale:next}:current.key===rulesKey?current:{key:rulesKey,scale:1};
-    });
-  };
+  // Replacement paragraphs retain their natural typography while the column scrolls.
+  const sharedScale=1;
   useLayoutEffect(()=>{
     const node=surfaceRef.current;
     if(!node)return undefined;
@@ -165,10 +164,6 @@ export default function RegisteredCardFrame({registration,imageUrl,typography,ru
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- measureVersion invalidates the measurement ref
   const columns=useMemo(()=>registeredColumns(fields,layouts,texts,measured.current,{unit,scale:sharedScale}),[fields,layouts,texts,unit,sharedScale,measureVersion]);
-  useEffect(()=>{
-    if(columns&&columns.shrink<1)onRulesFit(sharedScale*columns.shrink);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- shrink requests follow the column computation
-  },[columns]);
   return <article className="registered-card-frame" aria-label={name} data-registration-id={registration.id} data-rules-scale={sharedScale} data-rules-shrink={columns?columns.shrink.toFixed(3):undefined}>
     <div className="registered-card-frame__surface" ref={surfaceRef}>
       <img className="registered-card-frame__scan" src={imageUrl} alt={name} referrerPolicy="no-referrer" />
@@ -177,17 +172,30 @@ export default function RegisteredCardFrame({registration,imageUrl,typography,ru
       <span className="registered-card-frame__corner-fill registered-card-frame__corner-fill--bl" aria-hidden="true" />
       <span className="registered-card-frame__corner-fill registered-card-frame__corner-fill--br" aria-hidden="true" />
       {fields.map((field,index)=>{
+        if(columns?.forced.has(field.face)&&flows(field))return null;
+        return renderField(field,index);
+      })}
+      {[...(columns?.forced||[])].map(face=>{
+        const indices=fields.map((field,index)=>index).filter(index=>fields[index].face===face&&flows(fields[index])&&columns.positions.has(index));
+        if(!indices.length)return null;
+        const top=Math.min(...indices.map(index=>columns.positions.get(index).top));
+        const limit=columns.positions.get(indices[0]).limit;
+        return <div key={face} className="registered-card-frame__column" style={{top:`${top*100}%`,height:`${(limit-top)*100}%`}}>
+          <div className="registered-card-frame__column-content">
+            {indices.map(index=>renderField(fields[index],index,top))}
+          </div>
+        </div>;
+      })}
+    </div>
+  </article>;
+  function renderField(field,index,columnTop=0) {
         const entry=entries[index];
         if(!entry)return null;
         const shares=flows(field);
         const flow=shares?columns?.positions.get(index)||null:null;
-        // Fields outside a flowing column fit themselves and share their scale
-        // the old way; flowed columns decide their own scale from the measures.
         return <RegisteredField key={index} field={field} layout={layouts[index]} flow={flow} unit={unit} scale={shares?sharedScale:1}
-          onFit={shares&&!flow?onRulesFit:undefined} onMeasure={shares?px=>reportMeasure(index,px,{unit,scale:sharedScale,text:entry.text}):undefined}
+          columnTop={columnTop} onMeasure={shares?px=>reportMeasure(index,px,{unit,scale:sharedScale,text:entry.text}):undefined}
           forceReplace={shares&&Boolean(columns?.forced.has(field.face))} text={entry.text} actions={entry.actions} group={entry.group} imageUrl={imageUrl}
           typography={typography} name={name} onActivate={onActivate} highlighted={entry.isHighlighted}/>;
-      })}
-    </div>
-  </article>;
+  }
 }

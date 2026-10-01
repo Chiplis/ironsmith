@@ -743,6 +743,9 @@ pub(crate) fn interpret_trigger_model(
             surface,
             destination_name,
         ),
+        TriggerKind::PermanentTransforms { filter } => {
+            crate::triggers::Trigger::permanent_transforms(filter)
+        }
         TriggerKind::YouCastThisSpell => crate::triggers::Trigger::you_cast_this_spell(),
         TriggerKind::KeywordActionMatchingObject {
             action,

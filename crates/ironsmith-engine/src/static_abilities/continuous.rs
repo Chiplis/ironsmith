@@ -4349,6 +4349,15 @@ fn describe_static_iterated_value(value: &Value, possessive: &str) -> String {
     {
         return format!("{possessive} mana value");
     }
+    // "each equal to the number of creatures you control" (Porcelain Gallery)
+    if let Value::Count(filter) = value.unhinted() {
+        return format!(
+            "the number of {}",
+            describe_anthem_count_expression(&AnthemCountExpression::MatchingFilter(
+                filter.clone()
+            ))
+        );
+    }
     crate::runtime_display::describe_value(value)
 }
 

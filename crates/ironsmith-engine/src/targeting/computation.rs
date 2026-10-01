@@ -819,6 +819,9 @@ pub(crate) fn protection_from_subject_with_view(
         crate::ability::ProtectionFrom::EachManaValueAmong(filter) => {
             mana_value_matches_scope(game, target_id, source.protection_mana_value(), filter)
         }
+        crate::ability::ProtectionFrom::ManaValuesOtherThanChosenNumber => {
+            game.chosen_number(target_id) != Some(source.protection_mana_value())
+        }
         crate::ability::ProtectionFrom::ColorsOutsideCommanderIdentity => {
             !colors_outside_commander_identity(game, game.controller_of(target))
                 .intersection(source.protection_colors(view))
@@ -917,6 +920,9 @@ fn subject_matches_protection(
             source.matches(filter, &filter_ctx, game)
         }
         ProtectionFrom::EachManaValueAmong(_) => false,
+        // Relative to the protected permanent's chosen number; handled by
+        // `protection_from_subject_with_view`.
+        ProtectionFrom::ManaValuesOtherThanChosenNumber => false,
         // Protection from everything
         ProtectionFrom::Everything => true,
         // Protection from colorless (sources with no colors)

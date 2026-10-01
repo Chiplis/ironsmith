@@ -443,6 +443,92 @@ impl EffectExecutor for ReflexiveTriggerEffect {
     }
 }
 
+/// Queue a reflexive triggered ability that a replacement effect's choice
+/// created rather than a resolving instruction ("You may have this enter as a
+/// copy of ... . When you do, exile that card.", CR 603.12). It triggers now
+/// and is put on the stack the next time a player would receive priority.
+pub(crate) fn queue_reflexive_trigger(
+    game: &mut GameState,
+    source: crate::ids::ObjectId,
+    controller: crate::ids::PlayerId,
+    effects: Vec<Effect>,
+    tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
+) {
+    let id = game.effect_store.next_reflexive_trigger_id;
+    game.effect_store.next_reflexive_trigger_id += 1;
+    let trigger_identity = {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        "reflexive_trigger".hash(&mut hasher);
+        id.hash(&mut hasher);
+        crate::triggers::TriggerIdentity(hasher.finish())
+    };
+    let (source_stable_id, source_name, source_snapshot) = match game.object(source) {
+        Some(object) => (
+            object.stable_id,
+            object.name.to_string(),
+            Some(ObjectSnapshot::from_object_with_calculated_characteristics(
+                object, game,
+            )),
+        ),
+        None => (
+            crate::ids::StableId::from(source),
+            "Reflexive trigger".to_string(),
+            None,
+        ),
+    };
+    game.effect_store
+        .pending_reflexive_triggers
+        .push(PendingReflexiveTrigger {
+            trigger_identity,
+            source,
+            controller,
+            effects: effects.clone(),
+            choices: Vec::new(),
+            tagged_objects: tagged_objects.clone(),
+            tagged_players: HashMap::new(),
+            effect_outcomes: HashMap::new(),
+            targets: Vec::new(),
+            x_value: None,
+            iteration: Default::default(),
+            combat: Default::default(),
+            triggering_event: None,
+            event_value_amount: None,
+            optional_costs_paid: Default::default(),
+            source_snapshot: source_snapshot.clone(),
+        });
+    let provenance = game
+        .provenance_graph_mut()
+        .alloc_root_event(crate::events::EventKind::StateTrigger);
+    let triggering_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::StateTriggerEvent::new(source),
+        provenance,
+    );
+    game.defer_trigger_entries([crate::triggers::TriggeredAbilityEntry {
+        source,
+        controller,
+        x_value: None,
+        event_value_amount: None,
+        ability: crate::ability::TriggeredAbility {
+            trigger: crate::triggers::Trigger::custom(
+                REFLEXIVE_TRIGGER_ID,
+                "When you do".to_string(),
+            ),
+            effects: crate::resolution::ResolutionProgram::from_effects(effects),
+            choices: Vec::new(),
+            intervening_if: None,
+            presentation_label: None,
+        },
+        triggering_event,
+        source_stable_id,
+        source_name,
+        source_snapshot,
+        tagged_objects,
+        source_kind: crate::triggers::TriggeredAbilitySourceKind::Object,
+        trigger_identity,
+    }]);
+}
+
 /// Custom trigger id for queued reflexive triggered abilities.
 pub(crate) const REFLEXIVE_TRIGGER_ID: &str = "reflexive_trigger";
 

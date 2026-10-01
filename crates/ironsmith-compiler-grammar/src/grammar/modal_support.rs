@@ -806,6 +806,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnTarget { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::MoveAllCounters { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::MoveOneCounter { .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::MoveCounters { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::ForEachCounterKindPutOrRemove {
                 ..
             })

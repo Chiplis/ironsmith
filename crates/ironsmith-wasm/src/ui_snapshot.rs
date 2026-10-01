@@ -5012,7 +5012,6 @@ mod tests {
         assert_eq!(snapshot.counter_signature, "Plus One Plus One:1");
     }
 
->>>>>>> 11127d9438826a9ad31c4af94d4fc6e66ed1cc74
     #[test]
     fn battlefield_grouping_splits_each_protected_legal_target() {
         let _id_counter_guard = crate::test_id_counter_guard();

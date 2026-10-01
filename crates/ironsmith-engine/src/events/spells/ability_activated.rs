@@ -35,6 +35,9 @@ pub struct AbilityActivatedEvent {
     /// preserved separately from the ability source so intervening-if clauses
     /// can test mana-source provenance after the source has left play.
     pub mana_sources_spent: Vec<ObjectSnapshot>,
+    /// Total mana spent to activate this ability ("by spending four or more
+    /// mana to activate it").
+    pub mana_spent_total: u32,
 }
 
 impl AbilityActivatedEvent {
@@ -52,6 +55,7 @@ impl AbilityActivatedEvent {
             snapshot: None,
             activated_ability: None,
             mana_sources_spent: Vec::new(),
+            mana_spent_total: 0,
         }
     }
 
@@ -98,6 +102,11 @@ impl AbilityActivatedEvent {
 
     pub fn with_mana_sources_spent(mut self, snapshots: Vec<ObjectSnapshot>) -> Self {
         self.mana_sources_spent = snapshots;
+        self
+    }
+
+    pub fn with_mana_spent_total(mut self, total: u32) -> Self {
+        self.mana_spent_total = total;
         self
     }
 }

@@ -2274,6 +2274,18 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("from", from)
                 .field("to", to)
                 .finish(),
+            Self::Counters(CounterActionAst::MoveCounters {
+                counter_type,
+                count,
+                from,
+                to,
+            }) => f
+                .debug_struct("MoveCounters")
+                .field("counter_type", counter_type)
+                .field("count", count)
+                .field("from", from)
+                .field("to", to)
+                .finish(),
             Self::Counters(CounterActionAst::ForEachCounterKindPutOrRemove {
                 target,
                 counter_source,

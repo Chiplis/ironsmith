@@ -696,7 +696,7 @@ pub(crate) fn check_state_based_actions_with_context(
     #[cfg(feature = "shadow-continuous")]
     assert_eq!(
         actions,
-        collect_state_based_actions(game, view, context, false),
+        game.with_shadow_characteristic_evaluation(|| collect_state_based_actions(game, view, context, false)),
         "incremental SBA candidates differ from full scan"
     );
     actions

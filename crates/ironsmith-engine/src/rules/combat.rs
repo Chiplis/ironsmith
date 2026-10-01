@@ -451,6 +451,13 @@ fn protection_prevents_blocking_with_view(
                         == blocker_mana_value
             })
         }
+        ProtectionFrom::ManaValuesOtherThanChosenNumber => {
+            let blocker_mana_value = blocker
+                .mana_cost
+                .as_ref()
+                .map_or(0, |cost| cost.mana_value() as i32);
+            game.chosen_number(attacker.id) != Some(blocker_mana_value)
+        }
         ProtectionFrom::Everything => true,
         ProtectionFrom::ColorsOf(_) => false,
         ProtectionFrom::Colorless => blocker_colors.is_empty(),
@@ -811,7 +818,7 @@ mod tests {
             hand_modifier: 0,
             life_modifier: 0,
             abilities: std::sync::Arc::new(vec![]),
-            counters: std::collections::BTreeMap::new(),
+            counters: crate::object::ObjectCounters::default(),
             attached_to: None,
             attachments: vec![],
             spell_effect: None,

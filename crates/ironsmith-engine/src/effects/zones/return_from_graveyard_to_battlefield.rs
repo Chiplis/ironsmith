@@ -108,7 +108,7 @@ fn returned_aura_modifications(options: &ReturnAsAuraOptions) -> Vec<Modificatio
     // The returned Aura loses its previous abilities, then gains the enchant
     // ability specified by this effect. Both are ability-layer operations.
     modifications.push(Modification::SetAuraAttachmentFilter(
-        options.attachment_filter.clone().into(),
+        crate::object::AuraAttachmentFilter::from(options.attachment_filter.clone()).into(),
     ));
 
     modifications

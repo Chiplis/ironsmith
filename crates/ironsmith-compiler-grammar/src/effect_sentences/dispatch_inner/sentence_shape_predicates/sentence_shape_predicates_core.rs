@@ -747,6 +747,12 @@ pub(crate) fn parse_effect_sentence_with_where_x_lexed(
             .controller
             .as_ref()
             .or(filter.owner.as_ref())
+        // Only a target named inside the where-X value itself; "those
+        // players" (Officious Interrogation) refers back to a target an
+        // earlier sentence already declared.
+        && primary_where_tokens.windows(2).any(|pair| {
+            pair[0].is_word("target") && pair[1].is_any_word(&["player", "opponent"])
+        })
         && !stripped.windows(2).any(|pair| {
             pair[0].is_word("target") && pair[1].is_any_word(&["player", "opponent"])
         })

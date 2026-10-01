@@ -601,12 +601,23 @@ pub(super) fn read_same_name_as_filter_predicate(
                     .all(|token| !token.is_word("or"))
         });
     let union_filter = union_split.and_then(|or_index| {
-        let mut left =
-            crate::grammar::primitives::probe_shape(parse_object_filter(&filter_tokens[..or_index], false))?;
-        let mut right = crate::grammar::primitives::probe_shape(parse_object_filter(
-            &filter_tokens[or_index + 1..],
-            false,
-        ))?;
+        // The filter grammar leaves a leading "another"/"other" to its
+        // caller; read it here so the arm excludes the referenced object
+        // (Guardian Project).
+        let parse_arm = |tokens: &[OwnedLexToken]| {
+            let authored_other = tokens
+                .first()
+                .is_some_and(|token| token.is_word("another") || token.is_word("other"));
+            let tokens = if authored_other { &tokens[1..] } else { tokens };
+            let mut arm = crate::grammar::primitives::probe_shape(parse_object_filter(
+                tokens,
+                authored_other,
+            ))?;
+            arm.other |= authored_other;
+            Some(arm)
+        };
+        let mut left = parse_arm(&filter_tokens[..or_index])?;
+        let mut right = parse_arm(&filter_tokens[or_index + 1..])?;
         if left.zone == right.zone {
             return None;
         }

@@ -1229,9 +1229,29 @@ pub fn bind_implicit_player_context(effect: &mut EffectAst, player: PlayerAst) {
         }
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             player: effect_player,
+            filter,
             ..
-        })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
+        }) => {
+            if matches!(*effect_player, PlayerAst::Implicit) {
+                *effect_player = player;
+                // "each player who controls the most lands sacrifices any
+                // number of lands", "target opponent may sacrifice any number
+                // of creatures": an implicit chooser's own permanents were
+                // read as "you control" (CR 701.21a); they belong to the
+                // player the implicit actor now names.
+                if filter.controller == Some(crate::target::PlayerFilter::You)
+                    && matches!(
+                        player,
+                        PlayerAst::That | PlayerAst::Target | PlayerAst::TargetOpponent
+                    )
+                    && let Some(controller) =
+                        crate::activation_and_restrictions::trigger_subject_filters::controller_filter_for_token_player(player)
+                {
+                    filter.controller = Some(controller);
+                }
+            }
+        }
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
             player: effect_player,
             ..
         })

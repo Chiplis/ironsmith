@@ -144,6 +144,47 @@ enum SyncAttachmentTarget {
 struct SyncCounter {
     kind: String,
     amount: u32,
+    /// Exact identity; display names cannot distinguish named and built-in kinds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    counter_type: Option<ironsmith::CounterType>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncCounterAbilityOrigin {
+    kind: String,
+    serial: Vec<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    counter_type: Option<ironsmith::CounterType>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncCounterAbilityState {
+    next_serial: Vec<u32>,
+    origins: Vec<SyncCounterAbilityOrigin>,
+}
+impl SyncCounterAbilityState {
+    fn from_object(object: &Object) -> Self {
+        let state = object.counters.ability_state();
+        Self {
+            next_serial: state.next_serial,
+            origins: state.origins.into_iter().map(|origin| SyncCounterAbilityOrigin {
+                kind: sync_counter_kind(origin.counter_type), serial: origin.serial,
+                counter_type: Some(origin.counter_type),
+            }).collect(),
+        }
+    }
+    fn into_runtime(self) -> Result<ironsmith::object::CounterAbilityState, String> {
+        Ok(ironsmith::object::CounterAbilityState {
+            next_serial: self.next_serial,
+            origins: self.origins.into_iter().map(|origin| {
+                Ok(ironsmith::object::CounterAbilityOrigin {
+                    counter_type: sync_counter_from_wire(&origin.kind, origin.counter_type)?,
+                    serial: origin.serial,
+                })
+            }).collect::<Result<Vec<_>, String>>()?,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -172,6 +213,8 @@ struct SyncObject {
     life_modifier: i32,
     oracle_text: String,
     counters: Vec<SyncCounter>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    counter_ability_state: Option<SyncCounterAbilityState>,
     attached_to: Option<SyncAttachmentTarget>,
     attachments: Vec<u64>,
     tapped: bool,
@@ -421,10 +464,62 @@ enum SyncTarget {
     Object { object: u64 },
 }
 
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncContinuousTimestamps {
+    current_timestamp: u64,
+    object_entries: Vec<(u64, u64)>,
+    counters: Vec<(u64, String, u64)>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    typed_counters: Option<Vec<(u64, ironsmith::CounterType, u64)>>,
+    attachments: Vec<(u64, u64)>,
+}
+impl SyncContinuousTimestamps {
+    fn from_game(game: &GameState) -> Self {
+        let state = game.effect_store.continuous_effects.timestamp_state();
+        Self {
+            current_timestamp: state.current_timestamp,
+            object_entries: state.object_entries.into_iter().map(|(object, time)| (object.0, time)).collect(),
+            counters: state.counters.iter().map(|((object, kind), time)|
+                (object.0, sync_counter_kind(*kind), *time)).collect(),
+            typed_counters: Some(state.counters.into_iter().map(|((object, kind), time)|
+                (object.0, kind, time)).collect()),
+            attachments: state.attachments.into_iter().map(|(object, time)| (object.0, time)).collect(),
+        }
+    }
+    fn into_runtime(self) -> Result<ironsmith::continuous::ContinuousTimestampState, String> {
+        let counters = match self.typed_counters {
+            Some(typed) => {
+                let descriptive: Vec<_> = typed.iter().map(|(object, kind, time)|
+                    (*object, sync_counter_kind(*kind), *time)).collect();
+                if descriptive != self.counters {
+                    return Err("typed counter chronology disagrees with display records".into());
+                }
+                typed.into_iter().map(|(object, kind, time)|
+                    ((ObjectId::from_raw(object), kind), time)).collect()
+            }
+            None => self.counters.into_iter().map(|(object, kind, time)|
+                ((ObjectId::from_raw(object), sync_counter_from_name(&kind)), time)).collect(),
+        };
+        Ok(ironsmith::continuous::ContinuousTimestampState {
+            current_timestamp: self.current_timestamp,
+            object_entries: self.object_entries.into_iter().map(|(object, time)|
+                (ObjectId::from_raw(object), time)).collect(),
+            counters,
+            attachments: self.attachments.into_iter().map(|(object, time)|
+                (ObjectId::from_raw(object), time)).collect(),
+        })
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SyncCheckpoint {
     version: u32,
+    /// Absent only in legacy checkpoints that did not preserve chronology.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    continuous_timestamps: Option<SyncContinuousTimestamps>,
     format: MatchFormatInput,
     perspective: u8,
     snapshot_serial: u64,
@@ -1283,7 +1378,7 @@ fn sync_zone_name(zone: Zone) -> &'static str {
     }
 }
 
-fn sync_zone_from_name(raw: &str) -> Result<Zone, JsValue> {
+fn sync_zone_from_name(raw: &str) -> Result<Zone, String> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "library" => Ok(Zone::Library),
         "hand" => Ok(Zone::Hand),
@@ -1294,9 +1389,9 @@ fn sync_zone_from_name(raw: &str) -> Result<Zone, JsValue> {
         "command" => Ok(Zone::Command),
         "ante" => Ok(Zone::Ante),
         "sideboard" | "outside_game" | "outside game" | "outside the game" => Ok(Zone::OutsideGame),
-        other => Err(JsValue::from_str(&format!(
+        other => Err(format!(
             "unknown checkpoint zone: {other}"
-        ))),
+        )),
     }
 }
 
@@ -1310,16 +1405,16 @@ fn sync_phase_name(phase: Phase) -> &'static str {
     }
 }
 
-fn sync_phase_from_name(raw: &str) -> Result<Phase, JsValue> {
+fn sync_phase_from_name(raw: &str) -> Result<Phase, String> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "beginning" | "beginning_phase" => Ok(Phase::Beginning),
         "first_main" | "first main" | "precombat_main" => Ok(Phase::FirstMain),
         "combat" | "combat_phase" => Ok(Phase::Combat),
         "next_main" | "second_main" | "postcombat_main" => Ok(Phase::NextMain),
         "ending" | "ending_phase" => Ok(Phase::Ending),
-        other => Err(JsValue::from_str(&format!(
+        other => Err(format!(
             "unknown checkpoint phase: {other}"
-        ))),
+        )),
     }
 }
 
@@ -1338,7 +1433,7 @@ fn sync_step_name(step: Step) -> &'static str {
     }
 }
 
-fn sync_step_from_name(raw: &str) -> Result<Step, JsValue> {
+fn sync_step_from_name(raw: &str) -> Result<Step, String> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "untap" | "untap_step" => Ok(Step::Untap),
         "upkeep" | "upkeep_step" => Ok(Step::Upkeep),
@@ -1350,9 +1445,9 @@ fn sync_step_from_name(raw: &str) -> Result<Step, JsValue> {
         "end_combat" | "end_of_combat" => Ok(Step::EndCombat),
         "end" | "end_step" => Ok(Step::End),
         "cleanup" | "cleanup_step" => Ok(Step::Cleanup),
-        other => Err(JsValue::from_str(&format!(
+        other => Err(format!(
             "unknown checkpoint step: {other}"
-        ))),
+        )),
     }
 }
 
@@ -1400,6 +1495,19 @@ fn sync_counter_kind(counter: ironsmith::object::CounterType) -> String {
     counter.description().to_string()
 }
 
+fn sync_counter_from_wire(
+    display: &str,
+    identity: Option<ironsmith::CounterType>,
+) -> Result<ironsmith::CounterType, String> {
+    match identity {
+        Some(kind) if sync_counter_kind(kind) == display => Ok(kind),
+        Some(_) => Err("counter identity disagrees with its display name".into()),
+        // Legacy snapshots carry only names. Preserve their existing decoding
+        // contract; new exports always include exact typed identity.
+        None => Ok(sync_counter_from_name(display)),
+    }
+}
+
 fn sync_counter_from_name(raw: &str) -> ironsmith::object::CounterType {
     use ironsmith::object::CounterType;
 
@@ -1413,8 +1521,11 @@ fn sync_counter_from_name(raw: &str) -> ironsmith::object::CounterType {
         "+2/+2" => CounterType::PlusTwoPlusTwo,
         "-0/-1" => CounterType::MinusZeroMinusOne,
         "-0/-2" => CounterType::MinusZeroMinusTwo,
+        "-2/-1" => CounterType::MinusTwoMinusOne,
         "-2/-2" => CounterType::MinusTwoMinusTwo,
         "deathtouch" => CounterType::Deathtouch,
+        "decayed" => CounterType::Decayed,
+        "defense" => CounterType::Defense,
         "double strike" => CounterType::DoubleStrike,
         "first strike" => CounterType::FirstStrike,
         "flying" => CounterType::Flying,
@@ -1910,7 +2021,7 @@ fn sync_grand_melee_state(host: &WasmGame) -> Option<SyncGrandMelee> {
 
 fn grand_melee_restore_from_sync(
     sync: &SyncGrandMelee,
-) -> Result<ironsmith::GrandMeleeRestore, JsValue> {
+) -> Result<ironsmith::GrandMeleeRestore, String> {
     Ok(ironsmith::GrandMeleeRestore {
         seats: sync
             .seats
@@ -1928,9 +2039,9 @@ fn grand_melee_restore_from_sync(
                     "active" => ironsmith::GrandMeleeMarkerStatus::Active,
                     "waiting" => ironsmith::GrandMeleeMarkerStatus::Waiting,
                     other => {
-                        return Err(JsValue::from_str(&format!(
+                        return Err(format!(
                             "unknown Grand Melee marker status: {other}"
-                        )));
+                        ));
                     }
                 };
                 let mut turn_store = ironsmith::game_state::TurnStore::default();
@@ -1995,12 +2106,11 @@ fn grand_melee_restore_from_sync(
                                     )
                                 })
                                 .collect(),
-                        )
-                        .map_err(|error| JsValue::from_str(&error))?)
+                        )?)
                     },
                 })
             })
-            .collect::<Result<Vec<_>, JsValue>>()?,
+            .collect::<Result<Vec<_>, String>>()?,
         deferred_extra_turns: sync
             .deferred_extra_turns
             .iter()
@@ -2255,15 +2365,15 @@ fn vanguard_state_from_sync(sync: &SyncVanguard) -> VanguardState {
     }
 }
 
-fn archenemy_state_from_sync(sync: &SyncArchenemy) -> Result<ArchenemyState, JsValue> {
+fn archenemy_state_from_sync(sync: &SyncArchenemy) -> Result<ArchenemyState, String> {
     let variant = match sync.variant.as_str() {
         "default" => ArchenemyVariant::Default,
         "supervillain_rumble" => ArchenemyVariant::SupervillainRumble,
         "commander" => ArchenemyVariant::Commander,
         other => {
-            return Err(JsValue::from_str(&format!(
+            return Err(format!(
                 "unknown Archenemy variant in checkpoint: {other}"
-            )));
+            ));
         }
     };
     Ok(ArchenemyState {
@@ -2302,16 +2412,16 @@ fn conspiracy_state_from_sync(sync: &SyncConspiracy) -> ConspiracyState {
     }
 }
 
-fn planechase_state_from_sync(sync: &SyncPlanechase) -> Result<PlanechaseState, JsValue> {
+fn planechase_state_from_sync(sync: &SyncPlanechase) -> Result<PlanechaseState, String> {
     let mut card_kinds = std::collections::BTreeMap::new();
     for (object, kind) in &sync.card_kinds {
         let kind = match kind.as_str() {
             "plane" => PlanarCardKind::Plane,
             "phenomenon" => PlanarCardKind::Phenomenon,
             other => {
-                return Err(JsValue::from_str(&format!(
+                return Err(format!(
                     "unknown planar card kind in checkpoint: {other}"
-                )));
+                ));
             }
         };
         card_kinds.insert(ObjectId::from_raw(*object), kind);
@@ -2430,6 +2540,7 @@ impl WasmGame {
                 .iter()
                 .map(|(kind, amount)| SyncCounter {
                     kind: sync_counter_kind(*kind),
+                    counter_type: Some(*kind),
                     amount: *amount,
                 })
                 .collect::<Vec<_>>(),
@@ -2582,9 +2693,11 @@ impl WasmGame {
                         .iter()
                         .map(|(kind, amount)| SyncCounter {
                             kind: sync_counter_kind(*kind),
+                            counter_type: Some(*kind),
                             amount: *amount,
                         })
                         .collect(),
+                    counter_ability_state: Some(SyncCounterAbilityState::from_object(object)),
                     attached_to: object.attached_to.map(sync_attachment_target),
                     attachments: raw_ids(&object.attachments),
                     tapped: self.game.is_tapped(id),
@@ -2632,6 +2745,7 @@ impl WasmGame {
 
         Ok(SyncCheckpoint {
             version: SYNC_CHECKPOINT_VERSION,
+            continuous_timestamps: Some(SyncContinuousTimestamps::from_game(&self.game)),
             format: self.match_format,
             perspective: self.perspective.0,
             snapshot_serial: self.snapshot_serial,
@@ -3089,7 +3203,7 @@ impl WasmGame {
     /// engine's own savepoint or another peer's (redacted, hash-checked)
     /// checkpoint: nothing held in memory is merged back in. An entry that
     /// does not decode is an error, never dropped.
-    fn restore_hidden_claim_state(&mut self, rules: &SyncRulesState) -> Result<(), JsValue> {
+    fn restore_hidden_claim_state(&mut self, rules: &SyncRulesState) -> Result<(), String> {
         let face_down_claims = rules
             .hidden_face_down_cast_claims
             .iter()
@@ -3097,10 +3211,10 @@ impl WasmGame {
                 face_down_kind_from_sync(&claim.kind, claim.permission_source)
                     .map(|kind| (ObjectId::from_raw(claim.object), kind))
                     .ok_or_else(|| {
-                        JsValue::from_str(&format!(
+                        format!(
                             "face-down cast claim of object {} has an unknown kind {}",
                             claim.object, claim.kind
-                        ))
+                        )
                     })
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -3110,10 +3224,10 @@ impl WasmGame {
             .iter()
             .map(|permission| {
                 let undecodable = |what: &str| {
-                    JsValue::from_str(&format!(
+                    format!(
                         "face-down cast permission \"{}\" has an undecodable {what}",
                         permission.description
-                    ))
+                    )
                 };
                 Ok(ironsmith::game_state::FaceDownCastPermission {
                     source: ObjectId::from_raw(permission.source),
@@ -3127,7 +3241,7 @@ impl WasmGame {
                     single_use: permission.single_use,
                 })
             })
-            .collect::<Result<Vec<_>, JsValue>>()?;
+            .collect::<Result<Vec<_>, String>>()?;
         self.game.restore_face_down_cast_permissions(permissions);
         self.game.restore_hidden_claim_subjects(
             rules
@@ -3155,16 +3269,15 @@ impl WasmGame {
         let departed: Vec<_> = rules
             .departed_hidden_cards
             .iter()
-            .filter_map(|departed| self.departed_hidden_card_from_sync(departed))
-            .collect();
+            .map(|departed| self.departed_hidden_card_from_sync(departed))
+            .collect::<Result<Vec<_>, String>>()?;
         self.game.restore_departed_hidden_cards(departed);
 
         let ledger = rules
             .hidden_identity_obligations
             .iter()
             .map(hidden_identity_obligation_from_sync)
-            .collect::<Result<Vec<_>, String>>()
-            .map_err(|error| JsValue::from_str(&error))?;
+            .collect::<Result<Vec<_>, String>>()?;
         self.game.restore_hidden_identity_obligations(ledger);
         Ok(())
     }
@@ -3172,21 +3285,22 @@ impl WasmGame {
     fn departed_hidden_card_from_sync(
         &mut self,
         departed: &SyncDepartedHiddenCard,
-    ) -> Option<ironsmith::game_state::DepartedHiddenCard> {
+    ) -> Result<ironsmith::game_state::DepartedHiddenCard, String> {
         let id = ObjectId::from_raw(departed.id);
         let owner = PlayerId::from_index(departed.owner);
-        let zone = sync_zone_from_name(&departed.zone).ok()?;
-        let known = departed.name.as_deref().and_then(|name| {
-            self.ensure_card_definitions_loaded([name]);
-            self.load_compilable_card_definition(name).ok()
-        });
+        let zone = sync_zone_from_name(&departed.zone)
+            .map_err(|error| format!("invalid departed hidden-card {}: {error}", departed.id))?;
+        let known = departed.name.as_deref()
+            .map(|name| self.load_compilable_card_definition_result(name)
+                .map_err(|error| format!("invalid departed hidden-card identity: {error}")))
+            .transpose()?;
         let mut object = match known {
             Some(definition) => Object::from_card_definition(id, &definition, owner, zone),
             None => Object::new_hidden_card(id, owner, zone),
         };
         object.zone = zone;
         object.stable_id = StableId::from_raw(departed.stable_id);
-        Some(ironsmith::game_state::DepartedHiddenCard {
+        Ok(ironsmith::game_state::DepartedHiddenCard {
             object,
             info: HiddenCardInfo {
                 owner: PlayerId::from_index(departed.hidden.owner),
@@ -3452,6 +3566,7 @@ impl WasmGame {
                         .iter()
                         .map(|(kind, amount)| SyncCounter {
                             kind: sync_counter_kind(*kind),
+                            counter_type: Some(*kind),
                             amount: *amount,
                         })
                         .collect(),
@@ -3874,9 +3989,12 @@ impl WasmGame {
         self.last_replay_execution_perf = None;
         self.last_advance_until_decision_perf = None;
         self.last_dispatch_perf = None;
+        self.dispatch_advance_until_decision_perfs.clear();
+        self.cached_snapshot = None;
+        *self.mana_activation_inventory_cache.get_mut() = None;
     }
 
-    fn sync_object_from_checkpoint(&mut self, object: &SyncObject) -> Result<Object, JsValue> {
+    fn sync_object_from_checkpoint(&mut self, object: &SyncObject) -> Result<Object, String> {
         let id = ObjectId::from_raw(object.id);
         let owner = PlayerId::from_index(object.owner);
         let zone = sync_zone_from_name(&object.zone)?;
@@ -3911,7 +4029,7 @@ impl WasmGame {
             )
         } else {
             self.ensure_card_definitions_loaded([object.name.as_str()]);
-            let definition = self.load_compilable_card_definition(&object.name)?;
+            let definition = self.load_compilable_card_definition_result(&object.name)?;
             self.game
                 .register_linked_face_family_from_catalog(&definition, &self.registry);
             Object::from_card_definition(id, &definition, owner, zone)
@@ -3924,7 +4042,7 @@ impl WasmGame {
             && let Some(original_name) = object.original_card_name.as_deref()
         {
             self.ensure_card_definitions_loaded([original_name]);
-            let definition = self.load_compilable_card_definition(original_name)?;
+            let definition = self.load_compilable_card_definition_result(original_name)?;
             self.game
                 .register_linked_face_family_from_catalog(&definition, &self.registry);
             restored.card = Some(definition.card.id);
@@ -3939,26 +4057,37 @@ impl WasmGame {
             restored.base_loyalty = object.loyalty;
             restored.base_defense = object.defense;
         }
-        restored.counters = object
-            .counters
-            .iter()
-            .map(|counter| (sync_counter_from_name(&counter.kind), counter.amount))
-            .collect();
+        let mut counts = std::collections::BTreeMap::new();
+        for counter in &object.counters {
+            let kind = sync_counter_from_wire(&counter.kind, counter.counter_type)?;
+            if counts.insert(kind, counter.amount).is_some() {
+                return Err("duplicate counter kind in checkpoint".into());
+            }
+        }
+        let registrations = object.counter_ability_state.clone()
+            .map(SyncCounterAbilityState::into_runtime).transpose()?;
+        restored.counters = ironsmith::object::ObjectCounters::from_checkpoint(
+            counts, registrations,
+        ).map_err(|error| format!("invalid counter registrations: {error}"))?;
         restored.attached_to = object.attached_to.clone().map(attachment_target_from_sync);
         restored.attachments = object_ids(object.attachments.clone());
 
         Ok(restored)
     }
 
-    fn apply_sync_checkpoint(&mut self, checkpoint: SyncCheckpoint) -> Result<(), JsValue> {
+    fn apply_sync_checkpoint(&mut self, checkpoint: SyncCheckpoint) -> Result<(), String> {
+        self.with_runtime_transaction(|candidate| candidate.apply_sync_checkpoint_in_branch(checkpoint))
+    }
+
+    fn apply_sync_checkpoint_in_branch(&mut self, checkpoint: SyncCheckpoint) -> Result<(), String> {
         if checkpoint.version != SYNC_CHECKPOINT_VERSION {
-            return Err(JsValue::from_str(&format!(
+            return Err(format!(
                 "unsupported checkpoint version: {}",
                 checkpoint.version
-            )));
+            ));
         }
         if checkpoint.players.is_empty() {
-            return Err(JsValue::from_str("checkpoint has no players"));
+            return Err("checkpoint has no players".to_string());
         }
 
         self.reset_runtime_for_sync_checkpoint(&checkpoint);
@@ -4102,8 +4231,7 @@ impl WasmGame {
                         .collect(),
                     attack,
                     free_for_all.range_of_influence,
-                )
-                .map_err(|error| JsValue::from_str(&error))?;
+                )?;
         }
         if let Some(team_vs_team) = checkpoint.team_vs_team.as_ref() {
             self.game
@@ -4121,8 +4249,7 @@ impl WasmGame {
                         .collect(),
                     team_vs_team.starting_team,
                     PlayerId::from_index(team_vs_team.starting_player),
-                )
-                .map_err(|error| JsValue::from_str(&error))?;
+                )?;
         }
         if let Some(emperor) = checkpoint.emperor.as_ref() {
             self.game
@@ -4141,8 +4268,7 @@ impl WasmGame {
                     emperor.starting_team,
                     PlayerId::from_index(emperor.starting_emperor),
                     emperor.ranges.clone(),
-                )
-                .map_err(|error| JsValue::from_str(&error))?;
+                )?;
         }
         if let Some(two_headed_giant) = checkpoint.two_headed_giant.as_ref() {
             self.game
@@ -4154,8 +4280,7 @@ impl WasmGame {
                         .collect(),
                     two_headed_giant.starting_team,
                     PlayerId::from_index(two_headed_giant.starting_player),
-                )
-                .map_err(|error| JsValue::from_str(&error))?;
+                )?;
             let profile = self
                 .game
                 .two_headed_giant()
@@ -4169,9 +4294,7 @@ impl WasmGame {
                 || profile.starting_life() != two_headed_giant.starting_life
                 || profile.poison_threshold() != two_headed_giant.poison_threshold
             {
-                return Err(JsValue::from_str(
-                    "Two-Headed Giant checkpoint profile does not match its team size",
-                ));
+                return Err("Two-Headed Giant checkpoint profile does not match its team size".to_string());
             }
         }
         if let Some(alternating_teams) = checkpoint.alternating_teams.as_ref() {
@@ -4199,8 +4322,7 @@ impl WasmGame {
                     attack,
                     alternating_teams.range_of_influence,
                     alternating_teams.deploy_creatures,
-                )
-                .map_err(|error| JsValue::from_str(&error))?;
+                )?;
         }
 
         self.game.turn = TurnState {
@@ -4260,13 +4382,11 @@ impl WasmGame {
                             )
                         })
                         .collect(),
-                )
-                .map_err(|error| JsValue::from_str(&error))?;
+                )?;
         }
         if let Some(grand_melee) = checkpoint.grand_melee.as_ref() {
             self.game
-                .restore_grand_melee_snapshot(grand_melee_restore_from_sync(grand_melee)?)
-                .map_err(|error| JsValue::from_str(&error))?;
+                .restore_grand_melee_snapshot(grand_melee_restore_from_sync(grand_melee)?)?;
             self.grand_melee_host_lanes.clear();
             for marker in &grand_melee.markers {
                 if marker.number == grand_melee.focused_marker {
@@ -4317,22 +4437,19 @@ impl WasmGame {
                         .iter()
                         .map(|team| team.iter().copied().map(PlayerId::from_index).collect())
                         .collect(),
-                )
-                .map_err(|error| JsValue::from_str(&error))?;
+                )?;
         }
         if checkpoint.shared_team_turns {
             if checkpoint.two_headed_giant.is_none() {
                 self.game
-                    .enable_shared_team_turns()
-                    .map_err(|error| JsValue::from_str(&error))?;
+                    .enable_shared_team_turns()?;
             }
             for (team, order) in checkpoint.shared_team_member_orders.iter().enumerate() {
                 self.game
                     .set_shared_team_member_order(
                         team,
                         order.iter().copied().map(PlayerId::from_index).collect(),
-                    )
-                    .map_err(|error| JsValue::from_str(&error))?;
+                    )?;
             }
         }
         self.game.set_deploy_creatures(checkpoint.deploy_creatures);
@@ -4421,7 +4538,16 @@ impl WasmGame {
             }
         }
 
-        let id_counters = IdCountersSnapshot::from(checkpoint.id_counters.clone());
+        if let Some(timestamps) = checkpoint.continuous_timestamps {
+            self.game
+                .restore_continuous_timestamp_state(timestamps.into_runtime()?)
+                .map_err(|error| format!("invalid continuous chronology: {error}"))?;
+        }
+
+        let mut id_counters = IdCountersSnapshot::from(checkpoint.id_counters.clone());
+        // Retained session definitions include allocations made before and
+        // during import. Their identity allocator must remain monotonic.
+        id_counters.card = id_counters.card.max(snapshot_id_counters().card);
         restore_id_counters(id_counters);
         self.game.set_next_object_id_counter(id_counters.object);
         self.game
@@ -4469,9 +4595,12 @@ impl WasmGame {
     ) -> Result<JsValue, JsValue> {
         let checkpoint: SyncCheckpoint = serde_wasm_bindgen::from_value(checkpoint)
             .map_err(|e| JsValue::from_str(&format!("invalid sync checkpoint: {e}")))?;
-        self.apply_sync_checkpoint(checkpoint)?;
-        self.set_perspective(perspective_index)?;
-        self.snapshot()
+        self.with_runtime_transaction(|candidate| {
+            candidate.apply_sync_checkpoint_in_branch(checkpoint)
+                .map_err(|error| JsValue::from_str(&error))?;
+            candidate.set_perspective(perspective_index)?;
+            candidate.snapshot()
+        })
     }
 
     /// Import a checkpoint another peer exported for this engine's
@@ -4530,9 +4659,12 @@ impl WasmGame {
                 checkpoint.perspective
             )));
         }
-        self.apply_sync_checkpoint(checkpoint)?;
-        self.set_perspective(perspective_index)?;
-        self.export_public_audit_checkpoint()
+        self.with_runtime_transaction(|candidate| {
+            candidate.apply_sync_checkpoint_in_branch(checkpoint)
+                .map_err(|error| JsValue::from_str(&error))?;
+            candidate.set_perspective(perspective_index)?;
+            candidate.export_public_audit_checkpoint()
+        })
     }
 }
 
@@ -7270,5 +7402,891 @@ mod sync_checkpoint_tests {
         assert_eq!(queue.entries.len(), 1);
 
     }
+
+    #[test]
+    fn sync_checkpoint_preserves_counter_ability_occurrences_and_allocator() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let definition = CardDefinition::new(
+            ironsmith::CardBuilder::new(CardId::new(), "Counter Checkpoint Fixture")
+                .card_types(vec![CardType::Creature]).build(),
+        );
+        host.registry.register(definition.clone());
+        let source = host.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        for kind in [ironsmith::CounterType::Flying, ironsmith::CounterType::Named("exalted".into()), ironsmith::CounterType::Named("shadow".into())] {
+            let object = host.game.object_mut(source).expect("counter recipient exists");
+            object.add_counters(kind, 2);
+            assert_eq!(object.remove_counters(kind, 1), 1);
+            object.add_counters(kind, 1);
+        }
+        let origins = |state: &ironsmith::GameState| {
+            let chars = state.calculated_characteristics(source).expect("counter recipient exists");
+            chars.abilities.iter().enumerate().filter_map(|(slot, _)| {
+                let origin = chars.abilities.origin(slot).expect("ability origin is paired");
+                matches!(origin, ironsmith::continuous::AbilityOrigin::Counter { .. }).then(|| origin.clone())
+            }).collect::<Vec<_>>()
+        };
+        let before = origins(&host.game);
+        assert_eq!(before.len(), 6, "two flying, two shadow abilities and two exalted triggers survive");
+        let encoded = serde_json::to_vec(&host.build_sync_checkpoint()).expect("checkpoint serializes");
+        let checkpoint: SyncCheckpoint = serde_json::from_slice(&encoded).expect("checkpoint deserializes");
+        let mut guest = WasmGame::new();
+        guest.registry.register(definition.clone());
+        guest.apply_sync_checkpoint(checkpoint).expect("checkpoint imports");
+        assert_eq!(origins(&guest.game), before, "import preserves surviving and newly registered occurrences");
+        for kind in [ironsmith::CounterType::Flying, ironsmith::CounterType::Named("exalted".into()), ironsmith::CounterType::Named("shadow".into())] {
+            for state in [&mut host.game, &mut guest.game] {
+                let object = state.object_mut(source).expect("counter recipient exists");
+                assert_eq!(object.remove_counters(kind, 2), 2);
+                object.add_counters(kind, 1);
+            }
+        }
+        let after = origins(&host.game);
+        assert_eq!(after.len(), 3);
+        assert!(after.iter().all(|origin| !before.contains(origin)), "re-additions never reuse removed occurrences");
+        assert_eq!(origins(&guest.game), after, "import also retains the next registration identity");
+    }
+
+    #[test]
+    fn sync_checkpoint_preserves_counter_timestamps_against_printed_ability_loss() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        for same_kind in [false, true] {
+            let alice = PlayerId::from_index(0);
+            let mut host = WasmGame::new();
+            host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+            let recipient_definition = CardDefinition::new(
+                ironsmith::CardBuilder::new(CardId::new(), "Timestamp Counter Recipient")
+                    .card_types(vec![CardType::Creature]).build(),
+            );
+            let mut loss_definition = CardDefinition::new(
+                ironsmith::CardBuilder::new(CardId::new(), "Timestamp Ability Loss")
+                    .card_types(vec![CardType::Enchantment]).build(),
+            );
+            loss_definition.abilities.push(ironsmith::Ability::static_ability(
+                ironsmith::static_abilities::StaticAbility::remove_all_abilities(
+                    ironsmith::target::ObjectFilter::creature(),
+                ),
+            ));
+            host.registry.register(recipient_definition.clone());
+            host.registry.register(loss_definition.clone());
+            let source = host.game.create_object_from_definition(&recipient_definition, alice, Zone::Battlefield);
+            let ability_counts = |state: &GameState| {
+                let chars = state.calculated_characteristics(source).expect("recipient has current characteristics");
+                let flying = chars.static_abilities.iter().filter(|ability|
+                    ability.id() == ironsmith::static_abilities::StaticAbilityId::Flying).count();
+                let triggered = chars.abilities.iter().filter(|ability|
+                    matches!(ability.kind, ironsmith::ability::AbilityKind::Triggered(_))).count();
+                (flying, triggered)
+            };
+            host.game.add_counters(source, ironsmith::CounterType::Flying, 1)
+                .expect("positive flying placement records event and timestamp");
+            assert_eq!(ability_counts(&host.game), (1, 0));
+            let loss = host.game.create_object_from_definition(&loss_definition, alice, Zone::Battlefield);
+            assert_eq!(ability_counts(&host.game), (0, 0), "later printed ability loss removes older counter ability");
+            let later_kind = if same_kind { ironsmith::CounterType::Flying }
+                else { ironsmith::CounterType::Named("exalted".into()) };
+            host.game.add_counters(source, later_kind, 1)
+                .expect("later placement rebases only that counter kind");
+            let expected = if same_kind { (2, 0) } else { (0, 1) };
+            assert_eq!(ability_counts(&host.game), expected, "live game establishes shared-kind ordering");
+            let timestamps = host.game.effect_store.continuous_effects.counter_timestamps_snapshot();
+            let entries = host.game.effect_store.continuous_effects.object_entry_timestamps_snapshot();
+            let clock = host.game.effect_store.continuous_effects.current_timestamp();
+            let encoded = serde_json::to_vec(&host.build_sync_checkpoint()).expect("timestamp checkpoint serializes");
+            let checkpoint: SyncCheckpoint = serde_json::from_slice(&encoded).expect("timestamp checkpoint deserializes");
+            let mut guest = WasmGame::new();
+            guest.registry.register(recipient_definition.clone());
+            guest.registry.register(loss_definition.clone());
+            guest.apply_sync_checkpoint(checkpoint).expect("timestamp checkpoint imports");
+            assert!(guest.game.object(loss).is_some(), "the printed loss source survives import");
+            assert_eq!(ability_counts(&guest.game), expected,
+                "counter timestamp ordering against a surviving printed source must survive JSON import");
+            assert_eq!(guest.game.effect_store.continuous_effects.counter_timestamps_snapshot(), timestamps);
+            assert_eq!(guest.game.effect_store.continuous_effects.object_entry_timestamps_snapshot(), entries);
+            assert_eq!(guest.game.effect_store.continuous_effects.current_timestamp(), clock,
+                "the timestamp allocator cannot reset behind imported effects");
+            for state in [&mut host.game, &mut guest.game] {
+                state.add_counters(source, ironsmith::CounterType::Flying, 1)
+                    .expect("future placement gets a new shared-kind timestamp");
+            }
+            assert_eq!(ability_counts(&host.game), ability_counts(&guest.game));
+            assert_eq!(guest.game.effect_store.continuous_effects.counter_timestamps_snapshot(),
+                host.game.effect_store.continuous_effects.counter_timestamps_snapshot());
+        }
+    }
+
+
+fn assert_failed_checkpoint_import_preserves_live_runtime(late_chronology_error: bool) {
+    let _id_counter_guard = crate::test_id_counter_guard();
+    let alice = PlayerId::from_index(0);
+    let mut host = WasmGame::new();
+    host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 9);
+    let definition = CardDefinition::new(
+        ironsmith::CardBuilder::new(CardId::new(), "Import Transaction Recipient")
+            .card_types(vec![CardType::Creature])
+            .build(),
+    );
+    host.registry.register(definition.clone());
+    let source = host
+        .game
+        .create_object_from_definition(&definition, alice, Zone::Battlefield);
+    host.game
+        .player_mut(alice)
+        .expect("live player exists")
+        .life = 27;
+    host.game
+        .add_counters(source, ironsmith::CounterType::Flying, 2)
+        .expect("counter placement succeeds");
+    let effect = host.game.effect_store.continuous_effects.add_effect(
+        ironsmith::continuous::ContinuousEffect::new(
+            source,
+            alice,
+            ironsmith::continuous::EffectTarget::Specific(source),
+            ironsmith::continuous::Modification::RemoveAllAbilities,
+        ),
+    );
+    assert!(
+        host.game
+            .calculated_characteristics(source)
+            .expect("live source exists")
+            .abilities
+            .is_empty(),
+        "live resolution effect really removes counter abilities"
+    );
+    host.snapshot_serial = 88;
+    host.loaded_decks = vec![vec!["Original Deck Entry".into()]];
+    host.pending_action_checkpoint = Some(host.capture_replay_checkpoint());
+    host.pending_replay_action = Some(PendingReplayAction {
+        checkpoint: host.capture_replay_checkpoint(),
+        root: ReplayRoot::Advance,
+        nested_answers: vec![ReplayDecisionAnswer::Number(7)],
+    });
+    host.last_snapshot_perf = Some(SnapshotPerfMetrics {
+        snapshot_id: 88,
+        ..Default::default()
+    });
+    let savepoint = host
+        .create_runtime_savepoint()
+        .expect("retained branch created");
+    let before =
+        serde_json::to_value(host.build_sync_checkpoint()).expect("live checkpoint encodes");
+    let before_ids = snapshot_id_counters();
+    let answers = format!(
+        "{:?}",
+        host.pending_replay_action
+            .as_ref()
+            .expect("pending replay exists")
+            .nested_answers
+    );
+    let mut incoming: SyncCheckpoint =
+        serde_json::from_value(before.clone()).expect("checkpoint decodes");
+    incoming.players[0].life = 3;
+    incoming.snapshot_serial = 500;
+    let valid_incoming = incoming.clone();
+    let expected_error = if late_chronology_error {
+        incoming
+            .continuous_timestamps
+            .as_mut()
+            .expect("chronology exported")
+            .current_timestamp = u64::MAX;
+        "invalid continuous chronology"
+    } else {
+        let object = incoming
+            .objects
+            .iter_mut()
+            .find(|object| object.id == source.0)
+            .expect("source exported");
+        object
+            .counter_ability_state
+            .as_mut()
+            .expect("counter identity exported")
+            .next_serial
+            .push(0);
+        "invalid counter registrations"
+    };
+    let error = host
+        .apply_sync_checkpoint(incoming)
+        .expect_err("malformed import fails");
+    assert!(
+        error.contains(expected_error),
+        "specific validation failure: {error}"
+    );
+    assert_eq!(
+        host.game.player(alice).expect("live player retained").life,
+        27,
+        "failed import must not replace live player state"
+    );
+    assert_eq!(
+        serde_json::to_value(host.build_sync_checkpoint()).expect("live checkpoint encodes"),
+        before,
+        "failed import must leave all exported state intact"
+    );
+    assert!(
+        host.game
+            .effect_store
+            .continuous_effects
+            .effects()
+            .iter()
+            .any(|e| e.id == effect),
+        "runtime-only resolution effects must survive failure"
+    );
+    assert!(
+        host.game
+            .calculated_characteristics(source)
+            .expect("original source retained")
+            .abilities
+            .is_empty()
+    );
+    assert_eq!(
+        host.loaded_decks,
+        vec![vec!["Original Deck Entry".to_string()]]
+    );
+    assert!(
+        host.pending_action_checkpoint.is_some(),
+        "live action rollback point retained"
+    );
+    assert_eq!(
+        format!(
+            "{:?}",
+            host.pending_replay_action
+                .as_ref()
+                .expect("pending replay retained")
+                .nested_answers
+        ),
+        answers
+    );
+    assert_eq!(
+        host.last_snapshot_perf
+            .as_ref()
+            .expect("branch diagnostic retained")
+            .snapshot_id,
+        88
+    );
+    assert!(
+        host.runtime_savepoints.contains_key(&savepoint),
+        "existing branch handle retained"
+    );
+    let after_ids = snapshot_id_counters();
+    assert_eq!(
+        (after_ids.player, after_ids.object, after_ids.card),
+        (before_ids.player, before_ids.object, before_ids.card),
+        "no IDs consumed on failed import"
+    );
+    host.apply_sync_checkpoint(valid_incoming)
+        .expect("corrected checkpoint imports");
+    assert_eq!(
+        host.game
+            .player(alice)
+            .expect("imported player exists")
+            .life,
+        3
+    );
+    assert_eq!(host.snapshot_serial, 500);
+    assert!(
+        host.pending_action_checkpoint.is_none(),
+        "successful import installs incoming runtime"
+    );
+    assert!(host.pending_replay_action.is_none());
+    assert_eq!(
+        host.game
+            .counter_count(source, ironsmith::CounterType::Flying),
+        2
+    );
+}
+
+#[test]
+fn sync_checkpoint_counter_validation_failure_preserves_live_runtime() {
+    assert_failed_checkpoint_import_preserves_live_runtime(false);
+}
+
+#[test]
+fn sync_checkpoint_late_chronology_failure_preserves_live_runtime() {
+    assert_failed_checkpoint_import_preserves_live_runtime(true);
+}
+
+
+fn actual_departed_hidden_card_checkpoint() -> (SyncCheckpoint, CardDefinition) {
+    let mut host = WasmGame::new();
+    host.initialize_empty_match(vec!["Alice".into(), "Bob".into(), "Carol".into()], 20, 17);
+    let bob = PlayerId::from_index(1);
+    let definition = CardDefinition::new(
+        ironsmith::CardBuilder::new(CardId::new(), "Departing Hidden Import Fixture")
+            .card_types(vec![CardType::Creature])
+            .build(),
+    );
+    host.registry.register(definition.clone());
+    let card = host
+        .game
+        .create_object_from_definition(&definition, bob, Zone::Hand);
+    host.game.set_hidden_card_info(
+        card,
+        HiddenCardInfo {
+            owner: bob,
+            zone: Zone::Hand,
+            slot: 17,
+            commitment: "departed-commitment".into(),
+            origin_slot: Some(2),
+            origin_commitment: Some("original-commitment".into()),
+            public_slot: Some(5),
+            public_commitment: Some("public-commitment".into()),
+        },
+    );
+    assert!(host.game.leave_game(bob), "real departure completes");
+    assert!(
+        host.game.object(card).is_none(),
+        "departed card is no longer live"
+    );
+    assert_eq!(
+        host.game.departed_hidden_cards().len(),
+        1,
+        "departure records disclosure history"
+    );
+    let checkpoint = host.build_sync_checkpoint();
+    assert_eq!(checkpoint.rules.departed_hidden_cards.len(), 1);
+    assert_eq!(
+        checkpoint.rules.departed_hidden_cards[0].name.as_deref(),
+        Some("Departing Hidden Import Fixture")
+    );
+    (checkpoint, definition)
+}
+
+#[test]
+fn sync_checkpoint_invalid_departed_hidden_zone_is_an_error_not_a_dropped_record() {
+    let _id_counter_guard = crate::test_id_counter_guard();
+    let (mut checkpoint, definition) = actual_departed_hidden_card_checkpoint();
+    checkpoint.rules.departed_hidden_cards[0].zone = "unrecognized-hidden-zone".into();
+    let mut guest = WasmGame::new();
+    guest.initialize_empty_match(vec!["Original Alice".into(), "Original Bob".into()], 27, 99);
+    guest.registry.register(definition);
+    let before =
+        serde_json::to_value(guest.build_sync_checkpoint()).expect("existing game encodes");
+    let error = guest
+        .apply_sync_checkpoint(checkpoint)
+        .expect_err("invalid record must fail import");
+    assert!(
+        error.contains("unknown checkpoint zone"),
+        "specific decode error: {error}"
+    );
+    assert_eq!(
+        serde_json::to_value(guest.build_sync_checkpoint()).expect("retained game encodes"),
+        before,
+        "malformed hidden history must not replace the existing runtime"
+    );
+}
+
+#[test]
+fn sync_checkpoint_departed_hidden_known_and_redacted_records_preserve_disclosure_history() {
+    let _id_counter_guard = crate::test_id_counter_guard();
+    let (checkpoint, definition) = actual_departed_hidden_card_checkpoint();
+    for redacted in [false, true] {
+        let mut incoming = checkpoint.clone();
+        if redacted {
+            incoming.rules.departed_hidden_cards[0].name = None;
+        }
+        let expected = serde_json::to_value(&incoming.rules.departed_hidden_cards)
+            .expect("incoming history encodes");
+        let mut guest = WasmGame::new();
+        guest.registry.register(definition.clone());
+        guest
+            .apply_sync_checkpoint(incoming)
+            .expect("valid history imports");
+        let history = guest.game.departed_hidden_cards();
+        assert_eq!(
+            history.len(),
+            1,
+            "disclosure record retained for either visibility"
+        );
+        assert_eq!(
+            history[0].object.card.is_none(),
+            redacted,
+            "only redaction creates an anonymous card"
+        );
+        let exported = guest.build_sync_checkpoint();
+        assert_eq!(
+            serde_json::to_value(exported.rules.departed_hidden_cards)
+                .expect("restored history encodes"),
+            expected,
+            "all identity and commitment metadata retained"
+        );
+    }
+}
+
+    #[test]
+    fn sync_checkpoint_unknown_departed_hidden_identity_is_an_error_not_anonymous() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let (mut checkpoint, definition) = actual_departed_hidden_card_checkpoint();
+        checkpoint.rules.departed_hidden_cards[0].name = Some("Unknown Departed Checkpoint Identity".into());
+        let mut guest = WasmGame::new();
+        guest.initialize_empty_match(vec!["Original Alice".into(), "Original Bob".into()], 27, 99);
+        guest.registry.register(definition);
+        let before = serde_json::to_value(guest.build_sync_checkpoint()).expect("existing game encodes");
+        let error = guest.apply_sync_checkpoint(checkpoint).expect_err("named card must not become anonymous");
+        assert!(error.contains("invalid departed hidden-card identity"), "specific identity failure: {error}");
+        assert_eq!(serde_json::to_value(guest.build_sync_checkpoint()).expect("retained game encodes"), before);
+    }
+
+
+#[test]
+fn sync_checkpoint_import_preserves_session_catalog_allocator_and_restores_gameplay_cursor() {
+    let _id_counter_guard = crate::test_id_counter_guard();
+    let alice = PlayerId::from_index(0);
+    let mut host = WasmGame::new();
+    host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 21);
+    let original = CardDefinition::new(
+        ironsmith::CardBuilder::new(CardId::new(), "Original Catalog Entry")
+            .card_types(vec![CardType::Land])
+            .build(),
+    );
+    host.registry.register(original.clone());
+    host.game
+        .create_object_from_definition(&original, alice, Zone::Hand);
+    let checkpoint = host.build_sync_checkpoint();
+    let expected_gameplay_cursor = checkpoint.id_counters.object;
+    let retained = CardDefinition::new(
+        ironsmith::CardBuilder::new(CardId::new(), "Retained Catalog Entry")
+            .card_types(vec![CardType::Land])
+            .build(),
+    );
+    let retained_id = retained.card.id;
+    host.registry.register(retained);
+    let discarded = host
+        .game
+        .create_object_from_definition(&original, alice, Zone::Hand);
+    assert!(host.game.next_object_id_counter() > expected_gameplay_cursor);
+    host.apply_sync_checkpoint(checkpoint)
+        .expect("valid checkpoint imports");
+    assert_eq!(
+        host.find_card_definition("Retained Catalog Entry")
+            .expect("session catalog entry survives import")
+            .card
+            .id,
+        retained_id
+    );
+    assert!(
+        host.game.object(discarded).is_none(),
+        "incoming game replaces the discarded branch"
+    );
+    assert_eq!(
+        host.game.next_object_id_counter(),
+        expected_gameplay_cursor,
+        "game-local cursor follows the authoritative checkpoint"
+    );
+    assert_eq!(snapshot_id_counters().object, expected_gameplay_cursor,
+        "global compatibility cursor also reflects the imported checkpoint");
+    assert!(
+        CardId::new().0 > retained_id.0,
+        "new definitions must not reuse identities already retained by the session catalog"
+    );
+}
+
+fn assert_sync_checkpoint_preserves_counter_kind_identity(kinds: &[(ironsmith::CounterType, u32)]) {
+    let _id_counter_guard = crate::test_id_counter_guard();
+    let alice = PlayerId::from_index(0);
+    let mut host = WasmGame::new();
+    host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+    let definition = CardDefinition::new(
+        ironsmith::CardBuilder::new(CardId::new(), "Counter Kind Wire Fixture")
+            .card_types(vec![CardType::Creature])
+            .build(),
+    );
+    host.registry.register(definition.clone());
+    let source = host
+        .game
+        .create_object_from_definition(&definition, alice, Zone::Battlefield);
+    for &(kind, amount) in kinds {
+        host.game
+            .add_counters(source, kind, amount)
+            .expect("authored counter placement succeeds");
+    }
+    let expected_counts = host
+        .game
+        .object(source)
+        .expect("host object")
+        .counters
+        .counts()
+        .clone();
+    let expected_origins = host
+        .game
+        .object(source)
+        .expect("host object")
+        .counters
+        .ability_state();
+    let expected_timestamps = host
+        .game
+        .effect_store
+        .continuous_effects
+        .counter_timestamps_snapshot();
+    let checkpoint =
+        serde_json::to_value(host.build_sync_checkpoint()).expect("checkpoint encodes");
+    let checkpoint: SyncCheckpoint =
+        serde_json::from_value(checkpoint).expect("checkpoint decodes");
+    let mut guest = WasmGame::new();
+    guest.registry.register(definition);
+    guest
+        .apply_sync_checkpoint(checkpoint)
+        .expect("valid authored counter identities must import");
+    let restored = guest.game.object(source).expect("restored source");
+    assert_eq!(
+        restored.counters.counts(),
+        &expected_counts,
+        "wire transport must preserve exact counter kinds and counts"
+    );
+    assert_eq!(
+        restored.counters.ability_state(),
+        expected_origins,
+        "wire transport must preserve registration origins"
+    );
+    assert_eq!(
+        guest
+            .game
+            .effect_store
+            .continuous_effects
+            .counter_timestamps_snapshot(),
+        expected_timestamps,
+        "counter chronology keys must retain the same counter identity"
+    );
+}
+
+#[test]
+fn sync_checkpoint_preserves_named_keyword_counter_case_identity() {
+    assert_sync_checkpoint_preserves_counter_kind_identity(&[
+        (ironsmith::CounterType::Named("Exalted".into()), 2),
+        (ironsmith::CounterType::Named("SHADOW".into()), 1),
+    ]);
+}
+
+#[test]
+fn sync_checkpoint_preserves_named_counter_distinct_from_builtin_description() {
+    assert_sync_checkpoint_preserves_counter_kind_identity(&[
+        (ironsmith::CounterType::Flying, 2),
+        (ironsmith::CounterType::Named("flying".into()), 4),
+    ]);
+}
+
+#[test]
+fn sync_checkpoint_preserves_custom_counter_case_and_whitespace_identity() {
+    assert_sync_checkpoint_preserves_counter_kind_identity(&[(
+        ironsmith::CounterType::Named(" Mixed Custom ".into()),
+        3,
+    )]);
+}
+
+#[test]
+fn sync_checkpoint_counter_codec_preserves_every_builtin_kind() {
+    use ironsmith::CounterType;
+    let kinds = [
+        CounterType::PlusOnePlusOne,
+        CounterType::MinusOneMinusOne,
+        CounterType::PlusOnePlusZero,
+        CounterType::PlusZeroPlusOne,
+        CounterType::PlusOnePlusTwo,
+        CounterType::PlusTwoPlusTwo,
+        CounterType::MinusZeroMinusOne,
+        CounterType::MinusZeroMinusTwo,
+        CounterType::MinusTwoMinusOne,
+        CounterType::MinusTwoMinusTwo,
+        CounterType::Deathtouch,
+        CounterType::Decayed,
+        CounterType::DoubleStrike,
+        CounterType::FirstStrike,
+        CounterType::Flying,
+        CounterType::Haste,
+        CounterType::Hexproof,
+        CounterType::Indestructible,
+        CounterType::Lifelink,
+        CounterType::Menace,
+        CounterType::Reach,
+        CounterType::Trample,
+        CounterType::Vigilance,
+        CounterType::Loyalty,
+        CounterType::Charge,
+        CounterType::Age,
+        CounterType::Aim,
+        CounterType::Arrow,
+        CounterType::Awakening,
+        CounterType::Blood,
+        CounterType::Brain,
+        CounterType::Bounty,
+        CounterType::Brick,
+        CounterType::Corpse,
+        CounterType::Credit,
+        CounterType::Crystal,
+        CounterType::Cube,
+        CounterType::Currency,
+        CounterType::Death,
+        CounterType::Defense,
+        CounterType::Depletion,
+        CounterType::Despair,
+        CounterType::Devotion,
+        CounterType::Divinity,
+        CounterType::Doom,
+        CounterType::Dream,
+        CounterType::Echo,
+        CounterType::Egg,
+        CounterType::Energy,
+        CounterType::Enlightened,
+        CounterType::Eon,
+        CounterType::Experience,
+        CounterType::Eyeball,
+        CounterType::Fade,
+        CounterType::Fate,
+        CounterType::Feather,
+        CounterType::Filibuster,
+        CounterType::Finality,
+        CounterType::Flame,
+        CounterType::Flood,
+        CounterType::Foreshadow,
+        CounterType::Fungus,
+        CounterType::Fuse,
+        CounterType::Gem,
+        CounterType::Glyph,
+        CounterType::Gold,
+        CounterType::Growth,
+        CounterType::Hatchling,
+        CounterType::Healing,
+        CounterType::Hit,
+        CounterType::Hoofprint,
+        CounterType::Hour,
+        CounterType::Hunger,
+        CounterType::Ice,
+        CounterType::Incarnation,
+        CounterType::Infection,
+        CounterType::Intervention,
+        CounterType::Isolation,
+        CounterType::Javelin,
+        CounterType::Ki,
+        CounterType::Keyword,
+        CounterType::Knowledge,
+        CounterType::Level,
+        CounterType::Lore,
+        CounterType::Luck,
+        CounterType::Magnet,
+        CounterType::Manifestation,
+        CounterType::Mannequin,
+        CounterType::Matrix,
+        CounterType::Mine,
+        CounterType::Mining,
+        CounterType::Mire,
+        CounterType::Music,
+        CounterType::Muster,
+        CounterType::Net,
+        CounterType::Night,
+        CounterType::Oil,
+        CounterType::Omen,
+        CounterType::Ore,
+        CounterType::Page,
+        CounterType::Pain,
+        CounterType::Paralyzation,
+        CounterType::Petal,
+        CounterType::Petrification,
+        CounterType::Phylactery,
+        CounterType::Pin,
+        CounterType::Plague,
+        CounterType::Plot,
+        CounterType::Polyp,
+        CounterType::Poison,
+        CounterType::Pressure,
+        CounterType::Prey,
+        CounterType::Pupa,
+        CounterType::Quest,
+        CounterType::Rad,
+        CounterType::Scream,
+        CounterType::Shield,
+        CounterType::Silver,
+        CounterType::Sleep,
+        CounterType::Slime,
+        CounterType::Slumber,
+        CounterType::Soot,
+        CounterType::Soul,
+        CounterType::Spore,
+        CounterType::Storage,
+        CounterType::Strife,
+        CounterType::Study,
+        CounterType::Stun,
+        CounterType::Void,
+        CounterType::Task,
+        CounterType::Theft,
+        CounterType::Tide,
+        CounterType::Time,
+        CounterType::Tower,
+        CounterType::Training,
+        CounterType::Trap,
+        CounterType::Treasure,
+        CounterType::Unity,
+        CounterType::Velocity,
+        CounterType::Verse,
+        CounterType::Vitality,
+        CounterType::Volatile,
+        CounterType::Voyage,
+        CounterType::Wage,
+        CounterType::Winch,
+        CounterType::Wind,
+        CounterType::Wish,
+    ];
+    let mismatches: Vec<_> = kinds
+        .into_iter()
+        .filter_map(|kind| {
+            let decoded = sync_counter_from_name(&sync_counter_kind(kind));
+            (decoded != kind).then_some((kind, decoded))
+        })
+        .collect();
+    assert!(
+        mismatches.is_empty(),
+        "builtin counter kinds changed during wire decoding: {mismatches:?}"
+    );
+}
+
+#[test]
+fn sync_checkpoint_preserves_additional_builtin_counter_identities() {
+    assert_sync_checkpoint_preserves_counter_kind_identity(&[
+        (ironsmith::CounterType::MinusTwoMinusOne, 1),
+        (ironsmith::CounterType::Decayed, 2),
+        (ironsmith::CounterType::Defense, 3),
+    ]);
+}
+
+fn assert_invalid_counter_identity_import_is_atomic(case: &str) {
+    let _id_counter_guard = crate::test_id_counter_guard();
+    let alice = PlayerId::from_index(0);
+    let mut host = WasmGame::new();
+    host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+    let definition = CardDefinition::new(
+        ironsmith::CardBuilder::new(CardId::new(), "Counter Wire Validation Fixture")
+            .card_types(vec![CardType::Creature])
+            .build(),
+    );
+    host.registry.register(definition.clone());
+    let source = host
+        .game
+        .create_object_from_definition(&definition, alice, Zone::Battlefield);
+    host.game
+        .add_counters(source, ironsmith::CounterType::Flying, 2)
+        .expect("counter placement succeeds");
+    host.game.player_mut(alice).expect("live player").life = 27;
+    let before = serde_json::to_value(host.build_sync_checkpoint()).expect("live state encodes");
+    let mut incoming: SyncCheckpoint =
+        serde_json::from_value(before.clone()).expect("incoming decodes");
+    incoming.players[0].life = 3;
+    let object = incoming
+        .objects
+        .iter_mut()
+        .find(|object| object.id == source.0)
+        .expect("counter object exported");
+    let expected = match case {
+        "count" => {
+            object.counters[0].counter_type = Some(ironsmith::CounterType::Reach);
+            "counter identity disagrees"
+        }
+        "origin" => {
+            object
+                .counter_ability_state
+                .as_mut()
+                .expect("registrations exported")
+                .origins[0]
+                .counter_type = Some(ironsmith::CounterType::Reach);
+            "counter identity disagrees"
+        }
+        "duplicate" => {
+            object.counters.push(object.counters[0].clone());
+            "duplicate counter kind"
+        }
+        "chronology" => {
+            incoming
+                .continuous_timestamps
+                .as_mut()
+                .expect("chronology exported")
+                .typed_counters
+                .as_mut()
+                .expect("typed chronology exported")[0]
+                .1 = ironsmith::CounterType::Reach;
+            "typed counter chronology disagrees"
+        }
+        _ => panic!("unknown fixture case"),
+    };
+    let error = host
+        .apply_sync_checkpoint(incoming)
+        .expect_err("malformed identity must reject import");
+    assert!(error.contains(expected), "wrong error for {case}: {error}");
+    assert_eq!(
+        serde_json::to_value(host.build_sync_checkpoint()).expect("retained state encodes"),
+        before,
+        "malformed {case} must preserve the whole live checkpoint"
+    );
+}
+
+#[test]
+fn sync_checkpoint_rejects_mismatched_counter_identity_without_mutation() {
+    assert_invalid_counter_identity_import_is_atomic("count");
+}
+#[test]
+fn sync_checkpoint_rejects_mismatched_counter_origin_identity_without_mutation() {
+    assert_invalid_counter_identity_import_is_atomic("origin");
+}
+#[test]
+fn sync_checkpoint_rejects_duplicate_counter_kinds_without_mutation() {
+    assert_invalid_counter_identity_import_is_atomic("duplicate");
+}
+#[test]
+fn sync_checkpoint_rejects_mismatched_typed_counter_chronology_without_mutation() {
+    assert_invalid_counter_identity_import_is_atomic("chronology");
+}
+
+#[test]
+fn sync_checkpoint_accepts_legacy_canonical_ordinary_counter_counts_and_chronology() {
+    let _id_counter_guard = crate::test_id_counter_guard();
+    let alice = PlayerId::from_index(0);
+    let mut host = WasmGame::new();
+    host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+    let definition = CardDefinition::new(
+        ironsmith::CardBuilder::new(CardId::new(), "Legacy Counter Kind Fixture")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+    );
+    host.registry.register(definition.clone());
+    let source = host
+        .game
+        .create_object_from_definition(&definition, alice, Zone::Battlefield);
+    host.game
+        .add_counters(source, ironsmith::CounterType::Charge, 3)
+        .expect("ordinary counters placed");
+    let expected = host
+        .game
+        .effect_store
+        .continuous_effects
+        .counter_timestamps_snapshot();
+    let mut checkpoint = host.build_sync_checkpoint();
+    for object in &mut checkpoint.objects {
+        for counter in &mut object.counters {
+            counter.counter_type = None;
+        }
+        object.counter_ability_state = None;
+    }
+    checkpoint
+        .continuous_timestamps
+        .as_mut()
+        .expect("chronology exported")
+        .typed_counters = None;
+    let mut guest = WasmGame::new();
+    guest.registry.register(definition);
+    guest
+        .apply_sync_checkpoint(checkpoint)
+        .expect("canonical ordinary legacy kind imports");
+    assert_eq!(
+        guest
+            .game
+            .counter_count(source, ironsmith::CounterType::Charge),
+        3
+    );
+    assert_eq!(
+        guest
+            .game
+            .effect_store
+            .continuous_effects
+            .counter_timestamps_snapshot(),
+        expected
+    );
+}
 
 }

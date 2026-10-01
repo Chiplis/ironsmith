@@ -1615,6 +1615,11 @@ impl Trigger {
         Self::transforms_with_destination(None)
     }
 
+    /// "Whenever a permanent you control transforms": any matching permanent.
+    pub fn permanent_transforms(filter: crate::target::ObjectFilter) -> Self {
+        Self::new(TransformsTrigger::new().permanent_filter(filter))
+    }
+
     /// Create a transform trigger that may require the destination face name.
     pub fn transforms_with_destination(destination_name: Option<String>) -> Self {
         Self::new(TransformsTrigger::new().destination_name(destination_name))

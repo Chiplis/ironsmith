@@ -30,6 +30,8 @@ pub struct EnterBattlefieldEvent {
     pub linked_exile_with_entering: Vec<ObjectId>,
     /// If set, the object enters as a copy of this source object.
     pub enters_as_copy_of: Option<ObjectId>,
+    /// Consequences of the copy choice, applied as the copy enters.
+    pub copy_followups: Vec<ironsmith_core::EnterAsCopyFollowup>,
     /// If set, the copied characteristics expire at this duration.
     pub copy_duration: Option<crate::effect::Until>,
     /// If set, overrides the copied object's name as it enters.
@@ -69,6 +71,7 @@ impl EnterBattlefieldEvent {
             enters_with_counters: Vec::new(),
             linked_exile_with_entering: Vec::new(),
             enters_as_copy_of: None,
+            copy_followups: Vec::new(),
             copy_duration: None,
             copy_name_override: None,
             added_colors: ColorSet::new(),
@@ -95,6 +98,7 @@ impl EnterBattlefieldEvent {
             enters_with_counters: Vec::new(),
             linked_exile_with_entering: Vec::new(),
             enters_as_copy_of: None,
+            copy_followups: Vec::new(),
             copy_duration: None,
             copy_name_override: None,
             added_colors: ColorSet::new(),
@@ -154,6 +158,13 @@ impl EnterBattlefieldEvent {
     pub fn with_copy_of(&self, source_id: ObjectId) -> Self {
         Self {
             enters_as_copy_of: Some(source_id),
+            ..self.clone()
+        }
+    }
+
+    pub fn with_copy_followups(&self, followups: &[ironsmith_core::EnterAsCopyFollowup]) -> Self {
+        Self {
+            copy_followups: followups.to_vec(),
             ..self.clone()
         }
     }

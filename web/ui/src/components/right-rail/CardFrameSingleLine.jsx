@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef } from "react";
 import { cardFrameFitKey, measureCardFrameLayout } from '@/lib/card-frame-measurement';
 import "@/styles/card-frame-text-fit.css";
 
-// Keep the printing's preferred typography unless the complete line won't fit.
+// Preserve the printing's typography; long live labels scroll within their section.
 export default function CardFrameSingleLine({ as = "span", className, children }) {
   const textRef = useRef(null);
   const fitRef = useRef(null);
@@ -10,7 +10,6 @@ export default function CardFrameSingleLine({ as = "span", className, children }
 
   useLayoutEffect(() => {
     const text = textRef.current;
-    const range = document.createRange();
     let frame = 0;
     let active = true;
     const metricsContext=document.createElement('canvas').getContext('2d');
@@ -46,20 +45,8 @@ export default function CardFrameSingleLine({ as = "span", className, children }
       // Reset before measuring so shorter text, new fonts, and wider cards can
       // recover their original size. Flex layout reserves mana/count space.
       text.style.removeProperty("font-size");
-      const preferred = parseFloat(getComputedStyle(text).fontSize);
-      range.selectNodeContents(text);
-      const fits=()=>range.getBoundingClientRect().width<=text.getBoundingClientRect().width;
-      if (fits()) {alignBaseline();return;}
-
-      let low = 0;
-      let high = preferred;
-      for (let i = 0; i < 12; i++) {
-        const size = (low + high) / 2;
-        text.style.fontSize = `${size}px`;
-        if (fits()) low = size;
-        else high = size;
-      }
-      text.style.fontSize = `${Math.floor(low * 100) / 100}px`;
+      text.style.overflow = "auto";
+      text.style.textOverflow = "clip";
       alignBaseline();
     });
     const scheduleFit = () => {

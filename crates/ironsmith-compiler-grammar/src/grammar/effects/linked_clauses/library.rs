@@ -76,6 +76,9 @@ pub enum RevealTopRemainder {
 pub struct RevealTopMatchingFollowupShape {
     pub filter: Range<usize>,
     pub chosen_type_reference: bool,
+    /// Where the matching revealed cards go: "into your hand" or, as for The
+    /// Fourteenth Doctor, "into your graveyard".
+    pub matched_zone: crate::zone::Zone,
     pub remainder: RevealTopRemainder,
 }
 

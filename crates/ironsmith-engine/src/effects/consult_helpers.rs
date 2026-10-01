@@ -118,6 +118,13 @@ pub fn execute_library_consult(
 
     match mode {
         LibraryConsultMode::Reveal => {
+            let reveal_context_amount = ctx
+                .triggering_event
+                .as_ref()
+                .and_then(|event| event.downcast::<crate::events::other::DieRolledEvent>())
+                .filter(|roll| !roll.is_planar)
+                .and_then(|roll| i32::try_from(roll.result).ok())
+                .or(ctx.event_value_amount);
             let top_to_bottom: Vec<_> = game
                 .player(player)
                 .map(|library_owner| library_owner.library.iter().rev().copied().collect())
@@ -143,7 +150,8 @@ pub fn execute_library_consult(
                         Zone::Library,
                         Some(ctx.source),
                         Some(snapshot.clone()),
-                    ),
+                    )
+                    .with_reveal_context_amount(reveal_context_amount),
                     ctx.provenance,
                 ));
                 if matched {

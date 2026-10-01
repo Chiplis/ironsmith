@@ -42,7 +42,7 @@ fn player_filter_references_identity(
         | PlayerFilter::MaxSpeed { base: inner, .. } => {
             player_filter_references_identity(inner, identity)
         }
-        PlayerFilter::OpponentWithMoreControlledObjectsThan { player, filter } => {
+        PlayerFilter::OpponentWithMoreControlledObjectsThan { player, filter, .. } => {
             player_filter_references_identity(player, identity)
                 || object_filter_references_identity(filter, identity)
         }

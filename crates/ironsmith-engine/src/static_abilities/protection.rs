@@ -123,6 +123,9 @@ impl StaticAbilityKind for Protection {
                 "Protection from each mana value among {}",
                 describe_protection_mana_value_scope(filter)
             ),
+            ProtectionFrom::ManaValuesOtherThanChosenNumber => {
+                "Protection from each mana value other than the chosen number".to_string()
+            }
         }
     }
 

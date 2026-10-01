@@ -2585,6 +2585,13 @@ impl GameState {
         }
     }
 
+    /// The number chosen for a permanent as it entered ("choose 2, 3, or 4
+    /// at random"), stored as its named option.
+    pub fn chosen_number(&self, permanent_id: ObjectId) -> Option<i32> {
+        self.chosen_named_option(permanent_id)
+            .and_then(|option| option.trim().parse::<i32>().ok())
+    }
+
     /// Get a chosen named option for a permanent, if any.
     pub fn chosen_named_option(&self, permanent_id: ObjectId) -> Option<&str> {
         self.choice_store
