@@ -267,6 +267,8 @@ pub fn execute_effect(
     {
         return Ok(EffectOutcome::resolved());
     }
+    game.try_update_static_ability_effects(Default::default())
+        .map_err(ExecutionError::ContinuousDiscovery)?;
     if !settle_hidden_hand_all_matching_specs(game, effect, ctx) {
         return Ok(EffectOutcome::count(0));
     }

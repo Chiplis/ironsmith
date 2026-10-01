@@ -259,7 +259,7 @@ fn typed_choose_opponent_as_enters_static_excludes_its_controller() {
         saw_choice: false,
     };
     let entered = game
-        .move_object_with_etb_processing_with_dm(source, Zone::Battlefield, &mut chooser)
+        .move_object_with_etb_processing_with_dm(source, Zone::Battlefield, &mut chooser).expect("replacement operation must execute successfully in this scenario")
         .expect("opponent-choice probe should enter")
         .new_id;
 
@@ -294,7 +294,7 @@ fn black_vise_chooses_only_an_opponent_then_uses_that_players_upkeep_and_hand() 
         saw_choice: false,
     };
     let vise = game
-        .move_object_with_etb_processing_with_dm(vise_in_hand, Zone::Battlefield, &mut chooser)
+        .move_object_with_etb_processing_with_dm(vise_in_hand, Zone::Battlefield, &mut chooser).expect("replacement operation must execute successfully in this scenario")
         .expect("Black Vise should enter after choosing an opponent")
         .new_id;
     assert!(chooser.saw_choice);
@@ -356,7 +356,7 @@ fn cephalid_broker_draws_and_discards_for_the_same_target_player() {
         .iter()
         .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
         .expect("Cephalid Broker has an activated ability");
-    let action = crate::decision::compute_legal_actions(&game, alice)
+    let action = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(

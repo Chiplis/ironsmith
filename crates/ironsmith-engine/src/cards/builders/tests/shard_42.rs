@@ -50,7 +50,7 @@ pub(super) fn cursed_mirror_temporary_copy_reverts_to_its_underlying_artifact() 
     let mirror_id = game.create_object_from_definition(&mirror, alice, Zone::Hand);
     let mut decisions = ChooseLastReplacementDecisionMaker;
     let entered = game
-        .move_object_with_etb_processing_with_dm(mirror_id, Zone::Battlefield, &mut decisions)
+        .move_object_with_etb_processing_with_dm(mirror_id, Zone::Battlefield, &mut decisions).expect("replacement operation must execute successfully in this scenario")
         .expect("Cursed Mirror should enter");
 
     assert_eq!(

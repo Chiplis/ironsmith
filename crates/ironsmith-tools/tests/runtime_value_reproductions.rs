@@ -76,7 +76,7 @@ fn suffer(definition: &CardDefinition, x: u32) -> Result<(Value, Value), String>
         .unwrap()
         .mana_pool
         .add(ManaSymbol::Black, x + 1);
-    let action = compute_legal_actions(&game, PlayerId(0))
+    let action = compute_legal_actions(&game, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == source))
         .ok_or("fixture has no legal cast")?;

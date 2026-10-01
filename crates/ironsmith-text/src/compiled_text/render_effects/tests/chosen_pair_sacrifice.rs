@@ -267,3 +267,73 @@ fn offering_uses_independent_opponents_for_sacrifices_and_returns() {
         }
     }
 }
+
+#[test]
+fn compiled_optional_sacrifice_keeps_apnap_choices_and_pause_replay() {
+    use std::{cell::{Cell, RefCell}, rc::Rc};
+    struct Answers {
+        accepted: [bool; 2], pause: Option<usize>, ready: Rc<Cell<bool>>,
+        pending: bool, calls: Rc<RefCell<Vec<(crate::ids::PlayerId, &'static str)>>>,
+    }
+    impl crate::decision::DecisionMaker for Answers {
+        fn decide_boolean(&mut self, game: &crate::game_state::GameState,
+            choice: &crate::decisions::context::BooleanContext) -> bool {
+            assert_eq!(game.battlefield.len(), 4, "all first-action choices precede commits");
+            let index = self.calls.borrow().len();
+            self.calls.borrow_mut().push((choice.player, "accept"));
+            self.pending = !self.ready.get() && self.pause == Some(index);
+            !self.pending && self.accepted[game.players.iter().position(|p| p.id == choice.player).unwrap()]
+        }
+        fn decide_objects(&mut self, game: &crate::game_state::GameState,
+            choice: &crate::decisions::context::SelectObjectsContext) -> Vec<crate::ids::ObjectId> {
+            assert_eq!(game.battlefield.len(), 4, "both sacrifice choices use the complete battlefield");
+            assert_eq!(choice.candidates.len(), 2);
+            let index = self.calls.borrow().len();
+            self.calls.borrow_mut().push((choice.player, "sacrifice"));
+            self.pending = !self.ready.get() && self.pause == Some(index);
+            if self.pending {vec![]} else {vec![choice.candidates[0].id]}
+        }
+        fn awaiting_choice(&self) -> bool {self.pending && !self.ready.get()}
+    }
+    let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Optional offering")
+        .card_types(vec![CardType::Sorcery]).parse_text("Each player may sacrifice a creature.").unwrap();
+    for accepted in [[false, false], [true, false], [false, true], [true, true]] {
+        for pause in [None, Some(0), Some(1), Some(2), Some(3)] {
+            let mut game = crate::game_state::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = game.players[0].id;let bob = game.players[1].id;
+            game.turn.active_player = bob;game.turn_store.turn_order = vec![alice, bob];
+            let source = game.create_object_from_definition(&definition, alice, Zone::Stack);
+            let creature = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Offering candidate")
+                .card_types(vec![CardType::Creature]).power_toughness(crate::card::PowerToughness::fixed(2, 2)).build();
+            for owner in [alice, bob] {for _ in 0..2 {game.create_object_from_card(&creature, owner, Zone::Battlefield);}}
+            game.take_pending_trigger_events();
+            let expected = [bob, alice].into_iter().flat_map(|player| {
+                let mut choices = vec![(player, "accept")];
+                if accepted[usize::from(player == bob)] {choices.push((player, "sacrifice"));}
+                choices
+            }).collect::<Vec<_>>();
+            let ready = Rc::new(Cell::new(pause.is_none()));let calls = Rc::new(RefCell::new(vec![]));
+            let mut answers = Answers {accepted, pause, ready: ready.clone(), pending: false, calls: calls.clone()};
+            let mut ctx = crate::effects::EffectContext::new_default(source, alice).with_decision_maker(&mut answers);
+            for effect in definition.spell_effect.as_ref().unwrap() {
+                let outcome = crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
+                if ctx.decision_maker.awaiting_choice() {
+                    assert!(outcome.events.is_empty());assert!(outcome.execution_facts.is_empty());break;
+                }
+            }
+            if ctx.decision_maker.awaiting_choice() {
+                let pause = pause.unwrap();assert_eq!(*calls.borrow(), expected[..=pause]);
+                assert_eq!(game.battlefield.len(), 4);assert!(game.players.iter().all(|player| player.graveyard.is_empty()));
+                assert!(game.take_pending_trigger_events().is_empty());
+                ready.set(true);calls.borrow_mut().clear();
+                for effect in definition.spell_effect.as_ref().unwrap() {
+                    crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
+                }
+            }
+            assert_eq!(*calls.borrow(), expected, "accepted={accepted:?}, pause={pause:?}");
+            assert_eq!(game.battlefield.len(), 4 - accepted.iter().filter(|value| **value).count());
+            for (index, player) in game.players.iter().enumerate() {assert_eq!(player.graveyard.len(), usize::from(accepted[index]));}
+            assert_eq!(game.object(source).unwrap().zone, Zone::Stack);
+        }
+    }
+}

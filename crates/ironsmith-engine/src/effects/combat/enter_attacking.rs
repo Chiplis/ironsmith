@@ -1,6 +1,6 @@
 //! Enter attacking effect implementation.
 
-use crate::combat_state::{AttackTarget, AttackerInfo};
+use crate::combat_state::AttackTarget;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_single_object_for_effect;
@@ -221,6 +221,9 @@ pub(crate) fn choose_enters_attacking_target(
         Some(source),
         crate::decisions::ChoiceSpec::single(source, options),
     );
+    if ctx.decision_maker.awaiting_choice() {
+        return None;
+    }
     let selected_index = selected.into_iter().next().unwrap_or(0);
     targets
         .get(selected_index)
@@ -234,16 +237,19 @@ impl EffectExecutor for EnterAttackingEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         let creature_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
 
         // CR 508.4: the controller chooses what it attacks; whether the
         // source of the effect is itself attacking doesn't matter.
-        if let Some(target) = choose_enters_attacking_target(game, ctx, creature_id) {
-            let combat = game.combat.get_or_insert_with(Default::default);
-            combat.attackers.push(AttackerInfo {
-                creature: creature_id,
-                target,
-            });
+        let target = choose_enters_attacking_target(game, ctx, creature_id);
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+        if let Some(target) = target {
+            game.add_entering_attacker(creature_id, target);
         }
 
         Ok(EffectOutcome::resolved())

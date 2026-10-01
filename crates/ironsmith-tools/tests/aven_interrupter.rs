@@ -22,7 +22,7 @@ fn plotted_designation_grants_cast_permission_without_a_printed_plot_ability() {
     let exiled = game.create_object_from_definition(&definition, alice, Zone::Exile);
     game.set_plotted(exiled, alice);
     let can_cast = |game: &GameState, player| {
-        compute_legal_actions(game, player).iter().any(|action| {
+        compute_legal_actions(game, player).expect("fixture has complete replacement state").iter().any(|action| {
             matches!(action, LegalAction::CastSpell { spell_id, from_zone: Zone::Exile, .. } if *spell_id == exiled)
         })
     };
@@ -46,7 +46,7 @@ fn plotted_designation_grants_cast_permission_without_a_printed_plot_ability() {
         "plotted casting requires sorcery timing"
     );
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
-    let action = compute_legal_actions(&game, alice).into_iter().find(|action|
+    let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state").into_iter().find(|action|
         matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == exiled)
     ).unwrap();
     let mut queue = ironsmith::triggers::TriggerQueue::new();
@@ -245,7 +245,7 @@ fn enters_exiles_uncounterable_spell_and_plots_it_for_its_owner() {
     game.turn.priority_player = Some(bob);
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
     let action = |game: &GameState| {
-        compute_legal_actions(game, bob).into_iter().find(|action|
+        compute_legal_actions(game, bob).expect("fixture has complete replacement state").into_iter().find(|action|
         matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == exiled))
     };
     assert!(

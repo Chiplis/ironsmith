@@ -25,6 +25,7 @@ impl EffectExecutor for IncreaseSpeedEffect {
             value: crate::effect::OutcomeValue::Count(changed as i32),
             events: Vec::new(),
             execution_facts: Vec::new(),
+            instruction_result: None,
         })
     }
 }
@@ -48,6 +49,7 @@ impl EffectExecutor for ReduceSpeedEffect {
             value: crate::effect::OutcomeValue::Count(changed as i32),
             events: Vec::new(),
             execution_facts: Vec::new(),
+            instruction_result: None,
         })
     }
 }

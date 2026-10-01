@@ -396,7 +396,9 @@ impl ReplacementSpec {
 }
 
 impl DecisionSpec for ReplacementSpec {
-    type Response = usize;
+    // Preserve the raw answer so an empty, duplicate or multiple selection
+    // cannot turn into an implicit choice of the first effect.
+    type Response = Vec<usize>;
 
     fn description(&self) -> String {
         "Choose which replacement effect to apply".to_string()
@@ -406,8 +408,8 @@ impl DecisionSpec for ReplacementSpec {
         DecisionPrimitive::SelectOptions { min: 1, max: 1 }
     }
 
-    fn default_response(&self, _strategy: FallbackStrategy) -> usize {
-        0 // Default to first replacement effect
+    fn default_response(&self, _strategy: FallbackStrategy) -> Vec<usize> {
+        Vec::new()
     }
 
     fn build_context(
@@ -644,13 +646,13 @@ impl DecisionSpec for CastingMethodSpec {
 #[derive(Debug, Clone)]
 pub struct PrioritySpec {
     /// All legal actions available (including command-zone casts).
-    pub actions: Vec<LegalAction>,
+    pub actions: crate::decisions::context::PreparedPriorityActions,
 }
 
 impl PrioritySpec {
     /// Create a new PrioritySpec.
-    pub fn new(actions: Vec<LegalAction>) -> Self {
-        Self { actions }
+    pub fn new(game: &GameState, actions: Vec<LegalAction>) -> Result<Self, crate::static_ability_processor::StaticEffectDiscoveryError> {
+        Ok(Self { actions: crate::decisions::context::PreparedPriorityActions::new(game, actions)? })
     }
 }
 
@@ -673,16 +675,13 @@ impl DecisionSpec for PrioritySpec {
         &self,
         player: PlayerId,
         _source: Option<ObjectId>,
-        game: &GameState,
+        _game: &GameState,
     ) -> DecisionContext {
         let options: Vec<SelectableOption> = self
             .actions
-            .iter()
+            .iter_with_labels()
             .enumerate()
-            .map(|(i, action)| {
-                let description = crate::decision::format_action_short(game, action);
-                SelectableOption::new(i, description)
-            })
+            .map(|(i, (_, description))| SelectableOption::new(i, description))
             .collect();
 
         DecisionContext::SelectOptions(SelectOptionsContext::new(
@@ -861,7 +860,8 @@ mod tests {
 
     #[test]
     fn test_priority_spec() {
-        let spec = PrioritySpec::new(vec![LegalAction::PassPriority]);
+        let game = crate::tests::test_helpers::setup_two_player_game();
+        let spec = PrioritySpec::new(&game, vec![LegalAction::PassPriority]).expect("fixture has complete replacement state");
 
         assert!(matches!(
             spec.default_response(FallbackStrategy::Decline),

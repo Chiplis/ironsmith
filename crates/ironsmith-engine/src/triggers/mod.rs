@@ -847,6 +847,11 @@ impl Trigger {
         Self::new(BlocksObjectWithLesserPowerTrigger::new(blocker, blocked))
     }
 
+    /// Create a per-pair "whenever [blocker] blocks [object]" trigger.
+    pub fn blocks_object(blocker: ObjectFilter, blocked: ObjectFilter) -> Self {
+        Self::new(BlocksObjectWithLesserPowerTrigger::any_power(blocker, blocked))
+    }
+
     /// Create a "when this creature becomes blocked" trigger.
     pub fn this_becomes_blocked() -> Self {
         Self::new(ThisBecomesBlockedTrigger)

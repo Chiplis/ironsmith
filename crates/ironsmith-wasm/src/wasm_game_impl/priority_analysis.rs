@@ -9,26 +9,30 @@ pub(super) struct PriorityAnalysisJob {
 }
 
 impl WasmGame {
-    fn advance_priority_analysis(&mut self, token: &str, budget: usize) -> Option<bool> {
+    fn advance_priority_analysis(&mut self, token: &str, budget: usize) -> Result<Option<bool>, ironsmith::game_loop::GameLoopError> {
         let Some(mut job) = self.priority_analysis_job.take() else {
-            return None;
+            return Ok(None);
         };
         if job.token != token || job.key != self.priority_analysis_key() {
-            return None;
+            return Ok(None);
         }
         let id_counters = snapshot_id_counters();
         let (ctx, complete) = job.session.run(budget.clamp(1, 4096), || {
             ironsmith::game_loop::analyze_priority_context(&job.game, job.player)
         });
         restore_id_counters(id_counters);
+        let ctx = match ctx {
+            Ok(ctx) => ctx,
+            Err(error) => { self.priority_analysis_job = Some(job); return Err(error); }
+        };
         self.last_analysis_slice_nodes = job.session.last_slice_nodes();
         if !complete {
             self.priority_analysis_job = Some(job);
-            return Some(false);
+            return Ok(Some(false));
         }
         self.pending_decision = Some(DecisionContext::Priority(ctx));
         self.cached_snapshot = None;
-        Some(true)
+        Ok(Some(true))
     }
 
     fn priority_analysis_key(&self) -> SnapshotCacheKey {
@@ -89,7 +93,8 @@ impl WasmGame {
         token: String,
         budget: usize,
     ) -> Result<JsValue, JsValue> {
-        match self.advance_priority_analysis(&token, budget) {
+        match self.advance_priority_analysis(&token, budget)
+            .map_err(|error| JsValue::from_str(&format!("priority action analysis failed: {error}")))? {
             None => return Ok(JsValue::FALSE),
             Some(false) => return Ok(JsValue::NULL),
             Some(true) => {}
@@ -123,7 +128,7 @@ mod priority_analysis_tests {
         let alice = PlayerId::from_index(0);
         wasm.game.turn.priority_player = Some(alice);
         wasm.pending_decision = Some(DecisionContext::Priority(
-            ironsmith::game_loop::priority_context(&wasm.game, alice),
+            ironsmith::game_loop::priority_context(&wasm.game, alice).expect("fixture has complete replacement state"),
         ));
         (wasm, restore)
     }
@@ -144,9 +149,9 @@ mod priority_analysis_tests {
             let (mut wasm, _restore) = fixture();
             let alice = PlayerId::from_index(0);
             let expected =
-                ironsmith::game_loop::analyze_priority_context(&wasm.game, alice).actions;
+                ironsmith::game_loop::analyze_priority_context(&wasm.game, alice).expect("fixture has complete replacement state").actions;
             assert!(wasm.begin_priority_analysis("one".into()));
-            assert_eq!(wasm.advance_priority_analysis("one", 1), Some(true));
+            assert_eq!(wasm.advance_priority_analysis("one", 1).expect("fixture has complete replacement state"), Some(true));
             let Some(DecisionContext::Priority(ctx)) = wasm.pending_decision.as_ref() else {
                 panic!("missing priority");
             };
@@ -162,13 +167,13 @@ mod priority_analysis_tests {
             let (mut wasm, _restore) = fixture();
             assert!(wasm.begin_priority_analysis("one".into()));
             wasm.game.player_mut(PlayerId::from_index(0)).unwrap().life -= 1;
-            assert_eq!(wasm.advance_priority_analysis("one", 128), None);
+            assert_eq!(wasm.advance_priority_analysis("one", 128).expect("fixture has complete replacement state"), None);
             assert!(wasm.begin_priority_analysis("two".into()));
             wasm.perspective = PlayerId::from_index(1);
-            assert_eq!(wasm.advance_priority_analysis("two", 128), None);
+            assert_eq!(wasm.advance_priority_analysis("two", 128).expect("fixture has complete replacement state"), None);
             assert!(wasm.begin_priority_analysis("three".into()));
             wasm.cancel_priority_analysis();
-            assert_eq!(wasm.advance_priority_analysis("three", 128), None);
+            assert_eq!(wasm.advance_priority_analysis("three", 128).expect("fixture has complete replacement state"), None);
         });
     }
 }
@@ -180,6 +185,8 @@ impl WasmGame {
         requested_ability: Option<usize>,
         planner: &mut impl FnMut(&ironsmith::mana_payment::ManaPaymentRequest) -> Option<bool>,
     ) -> Result<JsValue, JsValue> {
+        let checked = self.game.continuous_query_snapshot().map_err(|error|
+            JsValue::from_str(&format!("inspector action analysis failed: {error}")))?;
         let mut actions = Vec::new();
         if let Some(DecisionContext::Priority(priority)) = self.pending_decision.as_ref() {
             for (index, action) in priority.actions.iter().enumerate() {
@@ -200,15 +207,16 @@ impl WasmGame {
                     continue;
                 }
                 let mut view = build_action_view(
-                    &self.game,
+                    &checked,
                     self.perspective,
                     self.active_viewed_cards.as_ref(),
                     index,
                     action,
+                    None,
                 );
                 if view.object_id.is_some() {
                     view.mana_payment_available = activation_mana_payment_available(
-                        &self.game,
+                        &checked,
                         priority.player,
                         action,
                         planner,

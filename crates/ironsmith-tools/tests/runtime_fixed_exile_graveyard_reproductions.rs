@@ -199,7 +199,7 @@ fn cast_announce(
 ) -> Result<(), String> {
     g.turn.priority_player = Some(dm.actor);
     let id = g.create_object_from_definition(d, dm.actor, Zone::Hand);
-    let a = compute_legal_actions(g, dm.actor)
+    let a = compute_legal_actions(g, dm.actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or("fixture source cast absent")?;
@@ -266,7 +266,7 @@ fn sacrifice(
     dm.chosen = vec![current(g, subject)];
     dm.targets = vec![Target::Player(PlayerId(2))];
     dm.stage = "actual_paid_altar_sacrifice".into();
-    let a=compute_legal_actions(g,dm.actor).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index:0,..}if *source==current(g,altar))).ok_or("actual sacrifice action absent")?;
+    let a=compute_legal_actions(g,dm.actor).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index:0,..}if *source==current(g,altar))).ok_or("actual sacrifice action absent")?;
     announce(g, a, q, dm)?;
     finish(g, q, dm)?;
     assert_eq!(g.object(current(g, subject)).unwrap().zone, Zone::Graveyard);
@@ -348,7 +348,7 @@ fn run(
     } else {
         None
     };
-    let actions = compute_legal_actions(&g, alice());
+    let actions = compute_legal_actions(&g, alice()).expect("fixture has complete replacement state");
     let action=actions.iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index,..}if *source==source_id&&*ability_index==index)).cloned();
     let ability = match &defs[n].0.abilities[index].kind {
         ironsmith::ability::AbilityKind::Activated(a) => a,
@@ -412,8 +412,8 @@ fn run(
             if total > req {
                 let id = current(&g, *materials.last().unwrap());
                 g.turn.priority_player = Some(alice());
-                dm.trace.push(json!({"stage":"post_kethis_grant","active_player":g.turn.active_player.0,"priority_player":format!("{:?}",g.turn.priority_player),"phase":format!("{:?}",g.turn.phase),"stack_len":g.stack.len(),"mana_pool":format!("{:?}",g.player(alice()).unwrap().mana_pool),"remaining_id":id.0,"current_abilities":format!("{:?}",g.current_abilities(id)),"legal_actions":format!("{:?}",compute_legal_actions(&g,alice()))}));
-                let a=compute_legal_actions(&g,alice()).into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,from_zone:Zone::Graveyard,..}if *spell_id==id));
+                dm.trace.push(json!({"stage":"post_kethis_grant","active_player":g.turn.active_player.0,"priority_player":format!("{:?}",g.turn.priority_player),"phase":format!("{:?}",g.turn.phase),"stack_len":g.stack.len(),"mana_pool":format!("{:?}",g.player(alice()).unwrap().mana_pool),"remaining_id":id.0,"current_abilities":format!("{:?}",g.current_abilities(id)),"legal_actions":format!("{:?}",compute_legal_actions(&g,alice()).expect("fixture has complete replacement state"))}));
+                let a=compute_legal_actions(&g,alice()).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,from_zone:Zone::Graveyard,..}if *spell_id==id));
                 expected["graveyard_cast_available"] = json!(true);
                 actual["graveyard_cast_available"] = json!(a.is_some());
                 if let Some(a) = a {

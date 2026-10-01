@@ -106,7 +106,7 @@ fn after_chapter_one() -> (GameState, [ObjectId; 3]) {
 }
 
 fn cast_action(game: &GameState, spell: ObjectId) -> Option<LegalAction> {
-    compute_legal_actions(game, PlayerId::from_index(0))
+    compute_legal_actions(game, PlayerId::from_index(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))
 }
@@ -161,7 +161,7 @@ fn casting_a_matching_spell_normally_uses_up_the_permission() {
         .add(ManaSymbol::Red, 4);
     // The mana pays for the red creature; the grant is still available too,
     // so pick the paid method explicitly.
-    let paid = compute_legal_actions(&game, PlayerId::from_index(0))
+    let paid = compute_legal_actions(&game, PlayerId::from_index(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| {
             matches!(a, LegalAction::CastSpell { spell_id, casting_method, .. }

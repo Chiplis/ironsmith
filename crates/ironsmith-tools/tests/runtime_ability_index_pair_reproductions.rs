@@ -76,7 +76,7 @@ fn cast(
     eprintln!("AUDIT_STAGE cast {}", def.name());
     g.turn.priority_player = Some(actor);
     let id = g.create_object_from_definition(def, actor, Zone::Hand);
-    let action = compute_legal_actions(g, actor)
+    let action = compute_legal_actions(g, actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or_else(|| format!("{} normal cast unavailable", def.name()))?;
@@ -250,7 +250,7 @@ fn run(def: &CardDefinition, companion: &CardDefinition, paired: bool, _: usize)
     let mut announcement_error=None;let mut resolution_error=None;
     for id in ids.iter().copied() {
         eprintln!("AUDIT_STAGE legal_equip {id:?}");g.turn.priority_player=Some(PlayerId(0));
-        let action=compute_legal_actions(&g,PlayerId(0)).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,..}if *source==id)).ok_or("normal equip unavailable")?;
+        let action=compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,..}if *source==id)).ok_or("normal equip unavailable")?;
         let before=g.player(PlayerId(0)).unwrap().mana_pool.total();
         announcement_error=announce(&mut g,&mut q,&mut dm,action).err();
         if announcement_error.is_some(){break;}

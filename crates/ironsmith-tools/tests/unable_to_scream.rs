@@ -92,12 +92,12 @@ fn aura_adds_types_removes_abilities_and_sets_base_stats_until_it_leaves() {
 fn face_up_prohibition_applies_only_while_attached_source_remains() {
     let (mut game, target, aura) = setup(true);
     assert!(!game.can_turn_face_up_permanent(target));
-    assert!(!game.set_face_up(target));
+    assert!(!game.set_face_up(target).expect("fixture has complete replacement state"));
     assert!(game.is_face_down(target));
     game.move_object_by_effect(aura, Zone::Graveyard).unwrap();
     game.refresh_continuous_state();
     assert!(game.can_turn_face_up_permanent(target));
-    assert!(game.set_face_up(target));
+    assert!(game.set_face_up(target).expect("fixture has complete replacement state"));
     assert!(!game.is_face_down(target));
 }
 
@@ -126,10 +126,10 @@ fn generic_filtered_face_up_prohibition_blocks_mutation_and_expires_with_source(
     game.refresh_continuous_state();
     assert!(!game.can_turn_face_up_permanent(yours));
     assert!(game.can_turn_face_up_permanent(theirs));
-    assert!(!game.set_face_up(yours));
-    assert!(game.set_face_up(theirs));
+    assert!(!game.set_face_up(yours).expect("fixture has complete replacement state"));
+    assert!(game.set_face_up(theirs).expect("fixture has complete replacement state"));
     game.move_object_by_effect(source, Zone::Graveyard).unwrap();
-    assert!(game.set_face_up(yours));
+    assert!(game.set_face_up(yours).expect("fixture has complete replacement state"));
 }
 
 #[test]
@@ -147,7 +147,7 @@ fn manifested_face_up_special_action_is_unavailable_until_aura_leaves() {
         .add(ironsmith::mana::ManaSymbol::Blue, 1);
     game.refresh_continuous_state();
     let available = |game: &GameState| {
-        compute_legal_actions(game, bob).iter().any(|action|
+        compute_legal_actions(game, bob).expect("fixture has complete replacement state").iter().any(|action|
         matches!(action, LegalAction::TurnFaceUp { creature_id, .. } if *creature_id == target))
     };
     assert!(!available(&game));

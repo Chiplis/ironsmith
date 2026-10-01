@@ -166,7 +166,7 @@ fn u070_each_active_teammate_draws_and_has_an_independent_land_play() {
     let mut queue = TriggerQueue::new();
     let mut priority = PriorityLoopState::new(game.teams_in_game());
     for (player, land) in [(alice, alice_land), (bob, bob_land)] {
-        let action = compute_legal_actions(&game, player)
+        let action = compute_legal_actions(&game, player).expect("fixture has complete replacement state")
             .into_iter()
             .find(|action| matches!(action, LegalAction::PlayLand { land_id } if *land_id == land))
             .expect("each teammate has their own legal land play");

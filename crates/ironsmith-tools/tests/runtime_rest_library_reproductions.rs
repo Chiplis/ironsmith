@@ -236,7 +236,7 @@ fn cast_announce(
 ) -> Result<(), String> {
     g.turn.priority_player = Some(alice());
     let id = g.create_object_from_definition(d, alice(), Zone::Hand);
-    let a = compute_legal_actions(g, alice())
+    let a = compute_legal_actions(g, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or("fixture source cast absent")?;
@@ -311,7 +311,7 @@ fn run(
         finish(&mut g, &mut q, dm)?;
         let source = find(&g, n)?;
         g.remove_summoning_sickness(source);
-        let a = compute_legal_actions(&g, alice())
+        let a = compute_legal_actions(&g, alice()).expect("fixture has complete replacement state")
             .into_iter()
             .find(|a| matches!(a,LegalAction::ActivateAbility{source:s,..}if *s==source))
             .ok_or("Loot actual activation absent")?;

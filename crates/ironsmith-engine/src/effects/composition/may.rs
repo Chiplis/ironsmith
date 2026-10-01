@@ -14,7 +14,7 @@ use crate::target::PlayerFilter;
 // payload must not erase that action's numeric result (for example, how many
 // permanents were sacrificed). Keep all choice facts and retain a standalone
 // choice's result when the optional program contains only choices.
-fn is_object_selection(effect: &Effect) -> bool {
+pub(super) fn is_object_selection(effect: &Effect) -> bool {
     effect
         .downcast_ref::<crate::effects::ChooseObjectsEffect>()
         .is_some()
@@ -41,6 +41,9 @@ fn execute_optional_effects(
             outcome.set_value(OutcomeValue::None);
         }
         outcomes.push(outcome);
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         if let Some(next) = effects.get(index + 1) {
             crate::effects::match_triggers_at_instruction_boundary(
                 game,
@@ -122,6 +125,49 @@ impl MayEffect {
         self
     }
 
+    /// Choose an optional action without executing its children. Simultaneous
+    /// owners retain this answer while scheduling the children's action units.
+    pub(super) fn prepare_optional_choice(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<bool, ExecutionError> {
+        if self.should_auto_decline_without_prompt(game, ctx)? {
+            return Ok(false);
+        }
+        let description = self
+            .effects
+            .first()
+            .and_then(|effect| {
+                let choose = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+                if !choose.is_search {
+                    return None;
+                }
+                let max = choose.count.max.unwrap_or(choose.count.min);
+                super::choose_objects_runtime::friendly_same_name_search_prompt(
+                    game,
+                    ctx,
+                    &choose.filter,
+                    choose.count.min,
+                    max,
+                )
+            })
+            .unwrap_or_else(|| self.prompt_description(game, ctx));
+        let deciding_player = if let Some(decider) = &self.decider {
+            crate::effects::helpers::resolve_player_filter_as_chooser(game, decider, ctx)?
+        } else {
+            ctx.iteration.iterated_player.unwrap_or(ctx.controller)
+        };
+        Ok(ask_may_choice(
+            game,
+            &mut ctx.decision_maker,
+            deciding_player,
+            ctx.source,
+            description,
+            self.fallback,
+        ))
+    }
+
     /// Outside any per-player iteration, an explicit non-controller decider
     /// ("any opponent may ...") is the player the accepted effects' "they" /
     /// "that player" name.
@@ -168,77 +214,96 @@ impl EffectExecutor for MayEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        // "Do this only once each turn" governs the ability's first optional
-        // instruction. Once it has been performed the limit's number of times
-        // this turn, it is no longer offered; declining doesn't count.
-        let do_this_limit = ctx.do_this_limit.take();
-        if do_this_limit.is_some_and(|limit| limit.reached(game)) {
-            return Ok(EffectOutcome::declined());
-        }
-        if self.should_auto_decline_without_prompt(game, ctx)? {
-            return Ok(EffectOutcome::declined());
-        }
+        // The complete optional instruction owns all of its child actions.
+        // Pending answers cannot become a decline or publish earlier partial
+        // actions; retry must retain the original context and one-shot state.
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = (|| -> Result<EffectOutcome, ExecutionError> {
+            // "Do this only once each turn" governs the ability's first optional
+            // instruction. Once it has been performed the limit's number of times
+            // this turn, it is no longer offered; declining doesn't count.
+            let do_this_limit = ctx.do_this_limit.take();
+            if do_this_limit.is_some_and(|limit| limit.reached(game)) {
+                return Ok(EffectOutcome::declined());
+            }
+            if self.should_auto_decline_without_prompt(game, ctx)? {
+                return Ok(EffectOutcome::declined());
+            }
 
-        // Prefer a friendly search prompt over the raw compiled lowering text
-        // for same-name library searches like Doubling Chant.
-        let description = self
-            .effects
-            .first()
-            .and_then(|effect| {
-                let choose = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-                if !choose.is_search {
-                    return None;
+            // Prefer a friendly search prompt over the raw compiled lowering text
+            // for same-name library searches like Doubling Chant.
+            let description = self
+                .effects
+                .first()
+                .and_then(|effect| {
+                    let choose = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+                    if !choose.is_search {
+                        return None;
+                    }
+                    let max = choose.count.max.unwrap_or(choose.count.min);
+                    super::choose_objects_runtime::friendly_same_name_search_prompt(
+                        game,
+                        ctx,
+                        &choose.filter,
+                        choose.count.min,
+                        max,
+                    )
+                })
+                .unwrap_or_else(|| self.prompt_description(game, ctx));
+
+            // Use explicit decider when present ("that player may ..."), otherwise
+            // preserve established behavior: iterated player if set, then controller.
+            let deciding_player = if let Some(decider) = &self.decider {
+                crate::effects::helpers::resolve_player_filter_as_chooser(game, decider, ctx)?
+            } else {
+                ctx.iteration.iterated_player.unwrap_or(ctx.controller)
+            };
+
+            let should_do = ask_may_choice(
+                game,
+                &mut ctx.decision_maker,
+                deciding_player,
+                ctx.source,
+                description,
+                self.fallback,
+            );
+
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            if should_do {
+                if let Some(limit) = do_this_limit
+                    && !ctx.decision_maker.awaiting_choice()
+                {
+                    game.record_do_this_action(limit.source, limit.trigger_identity);
                 }
-                let max = choose.count.max.unwrap_or(choose.count.min);
-                super::choose_objects_runtime::friendly_same_name_search_prompt(
-                    game,
-                    ctx,
-                    &choose.filter,
-                    choose.count.min,
-                    max,
-                )
-            })
-            .unwrap_or_else(|| self.prompt_description(game, ctx));
-
-        // Use explicit decider when present ("that player may ..."), otherwise
-        // preserve established behavior: iterated player if set, then controller.
-        let deciding_player = if let Some(decider) = &self.decider {
-            crate::effects::helpers::resolve_player_filter_as_chooser(game, decider, ctx)?
-        } else {
-            ctx.iteration.iterated_player.unwrap_or(ctx.controller)
-        };
-
-        let should_do = ask_may_choice(
-            game,
-            &mut ctx.decision_maker,
-            deciding_player,
-            ctx.source,
-            description,
-            self.fallback,
-        );
-
-        if should_do {
-            if let Some(limit) = do_this_limit
-                && !ctx.decision_maker.awaiting_choice()
-            {
-                game.record_do_this_action(limit.source, limit.trigger_identity);
+                // "Any opponent may tap an untapped creature they control": the
+                // accepted effects are performed by the deciding player, whom
+                // their "they"/"that player" references name.
+                let bind_decider = self.decider_binds_iterated_player(ctx);
+                let previous_iterated_player = ctx.iteration.iterated_player;
+                if bind_decider {
+                    ctx.iteration.iterated_player = Some(deciding_player);
+                }
+                let result = execute_optional_effects(&self.effects, game, ctx);
+                if bind_decider {
+                    ctx.iteration.iterated_player = previous_iterated_player;
+                }
+                result
+            } else {
+                Ok(EffectOutcome::declined())
             }
-            // "Any opponent may tap an untapped creature they control": the
-            // accepted effects are performed by the deciding player, whom
-            // their "they"/"that player" references name.
-            let bind_decider = self.decider_binds_iterated_player(ctx);
-            let previous_iterated_player = ctx.iteration.iterated_player;
-            if bind_decider {
-                ctx.iteration.iterated_player = Some(deciding_player);
-            }
-            let result = execute_optional_effects(&self.effects, game, ctx);
-            if bind_decider {
-                ctx.iteration.iterated_player = previous_iterated_player;
-            }
-            result
-        } else {
-            Ok(EffectOutcome::declined())
+        })();
+        let pending = ctx.decision_maker.awaiting_choice();
+        if result.is_err() || pending {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
         }
+        if pending {
+            return result.map(|_| EffectOutcome::count(0));
+        }
+        result
     }
 
     fn supports_simultaneous_player_action(&self) -> bool {

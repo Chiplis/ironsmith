@@ -252,6 +252,10 @@ const READINGS: &[Reading] = &[
             !input.read_by("counters-on-reference")
                 && !input.read_by("same-name-as-triggering-spell-graveyard-count")
                 && !input.read_by("your-hand-count")
+                // "the number of cards you removed from the draft with cards
+                // named X" (Cogwork Grinder) is a draft count, not a count of
+                // objects named X.
+                && !input.read_by("where-x-known-value")
         },
         read: |input| input.outcome(read_where_x_is_number_of_filter_value(input)),
     },
@@ -385,6 +389,12 @@ fn read_where_x_known_value(input: &BindingClause<'_>) -> Option<Value> {
             ),
             WhereXKnownValue::DraftNotedHighestNumber { card_name_tokens } => {
                 Value::DraftNotedHighestNumber {
+                    card_name: parser_token_word_refs(card_name_tokens).join(" "),
+                }
+                .with_surface_hint(ValueSurfaceHint::WhereXIs)
+            }
+            WhereXKnownValue::DraftRemovedCardCount { card_name_tokens } => {
+                Value::DraftRemovedCardCount {
                     card_name: parser_token_word_refs(card_name_tokens).join(" "),
                 }
                 .with_surface_hint(ValueSurfaceHint::WhereXIs)

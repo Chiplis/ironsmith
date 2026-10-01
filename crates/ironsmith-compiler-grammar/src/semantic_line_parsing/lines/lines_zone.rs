@@ -35,11 +35,15 @@ pub fn exact_atomic_return_as_aura_bundle(
     // outside-quote ability loss before the preceding Aura animation. Split
     // only the exact authored conjunction after the balanced quoted grant,
     // then feed both typed leaves to the normal AST fusion pass.
+    // "It's an Aura enchantment with enchant Forest you control and
+    // "<rule>."" with no ability loss (Old-Growth Troll): the returned
+    // permanent keeps its other abilities.
+    let mut removes_other_abilities = true;
     let loss_start = if separate_loss {
         aura_sentence.len()
     } else {
         let mut in_quote = false;
-        aura_sentence.iter().enumerate().find_map(|(idx, token)| {
+        let found = aura_sentence.iter().enumerate().find_map(|(idx, token)| {
             if token.kind == TokenKind::Quote {
                 in_quote = !in_quote;
                 return None;
@@ -51,7 +55,14 @@ pub fn exact_atomic_return_as_aura_bundle(
                     ["it", "loses", "all", "other", "abilities"]
                 ))
             .then_some(idx)
-        })?
+        });
+        match found {
+            Some(idx) => idx,
+            None => {
+                removes_other_abilities = false;
+                aura_sentence.len()
+            }
+        }
     };
     let aura_prefix = trim_lexed_commas(&aura_sentence[..loss_start]);
     let quote_positions = aura_prefix
@@ -130,7 +141,7 @@ pub fn exact_atomic_return_as_aura_bundle(
     }
     *as_aura = Some(crate::model::ast::ReturnAsAuraAst {
         attachment_filter: attachment_filter.clone(),
-        remove_all_abilities: true,
+        remove_all_abilities: removes_other_abilities,
         granted_abilities: aura_grants,
     });
     Some(effects)

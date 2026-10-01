@@ -217,10 +217,28 @@ impl DiscardEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = self.execute_in_simultaneous_batch_inner(game, ctx);
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+        }
+        result
+    }
+
+    fn execute_in_simultaneous_batch_inner(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
         use crate::decisions::context::SelectionRevealPolicy;
         use crate::decisions::make_decision;
         use crate::decisions::specs::ChooseObjectsSpec;
-        use crate::events::processing::execute_discard;
+        use crate::events::processing::execute_discard_with_scope;
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let resolved_count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
         let one_or_more = self
@@ -238,7 +256,8 @@ impl DiscardEffect {
 
         let mut hand_cards: Vec<_> = game
             .player(player_id)
-            .map(|p| p.hand.to_vec())
+            .map(|p| p.hand.iter().copied()
+                .filter(|id| !ctx.replacement.entry_reserved_objects.contains(id)).collect::<Vec<_>>())
             .unwrap_or_default();
         // A filtered discard from a hand holding hidden cards depends on
         // identities only the owner knows. Peers keep their placeholders
@@ -485,12 +504,13 @@ impl DiscardEffect {
             .filter_map(|id| OutcomeObjectMemory::from_object_id(game, *id))
             .collect();
         let mut affected_memory = Vec::new();
+        let mut receipts = Vec::new();
         for card_id in cards_to_discard {
             let pre_memory = OutcomeObjectMemory::from_object_id(game, card_id);
             let pre_discard_snapshot = game
                 .object(card_id)
                 .map(|obj| ObjectSnapshot::from_object(obj, game));
-            let result = execute_discard(
+            let receipt = execute_discard_with_scope(
                 game,
                 card_id,
                 player_id,
@@ -498,7 +518,11 @@ impl DiscardEffect {
                 false,
                 ctx.provenance,
                 &mut *ctx.decision_maker,
-            );
+                &ctx.replacement,
+                ctx.source_snapshot.as_ref(),
+            )?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            let result = &receipt.result;
             if !result.prevented {
                 if card_id == ctx.source
                     && let Some(x) = ctx.x_value
@@ -510,6 +534,11 @@ impl DiscardEffect {
                     // still evaluate references like "mana value equal to X".
                     obj.x_value = Some(x);
                 }
+                if let Some(event) = &receipt.resolved_event {
+                    if event.player != player_id || event.card != card_id || event.cause != cause {
+                        return Err(ExecutionError::InternalError("discard receipt changed an unsupported batch identity".into()));
+                    }
+                } else { return Err(ExecutionError::InternalError("completed discard has no resolved event".into())); }
                 discarded += 1;
                 discarded_cards.push(card_id);
                 if let Some(memory) = pre_memory {
@@ -521,6 +550,7 @@ impl DiscardEffect {
                     discarded_snapshots.push(ObjectSnapshot::from_object(obj, game));
                 }
             }
+            receipts.push(receipt);
         }
 
         let discard_events = completed_discard_events(
@@ -542,7 +572,7 @@ impl DiscardEffect {
             outcome = outcome.with_affected_object_memory(affected_memory);
         }
 
-        Ok(outcome)
+        finish_discard_receipts(game, ctx, outcome, receipts)
     }
 }
 
@@ -1426,4 +1456,46 @@ pub(crate) fn completed_discard_events(
     }
 
     discard_events
+}
+
+/// Finish programs captured by completed discards. The original batch's
+/// observations and primary value are already supplied by the owning caller.
+/// Selection, movement, all earlier cards and this phase share its checkpoint.
+pub(crate) fn finish_discard_receipts(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    mut outcome: EffectOutcome,
+    receipts: Vec<crate::events::processing::DiscardExecutionReceipt>,
+) -> Result<EffectOutcome, ExecutionError> {
+    let primary = outcome.value.clone();
+    for receipt in receipts {
+        if let Some(payload) = receipt.payload_outcome {
+            outcome = EffectOutcome::aggregate_replacement_outcomes(outcome, [payload]);
+        }
+        let original_id = receipt.discarded_snapshot.as_ref().map(|snapshot| snapshot.object_id);
+        let moved_id = receipt.result.new_id;
+        let lki = receipt.discarded_snapshot;
+        outcome = crate::effects::replacement::execute_deferred_replacement_programs_with_bindings(
+            game, ctx, outcome, receipt.programs, |game, context, _| {
+                let discarded = crate::events::downcast_event::<DiscardEvent>(context.event.inner())
+                    .ok_or_else(|| ExecutionError::InternalError("discard addition lost its discard event".into()))?;
+                let object = if original_id == Some(discarded.card) {
+                    moved_id.unwrap_or(discarded.card)
+                } else { discarded.card };
+                let snapshot = game.object(object)
+                    .map(|object| ObjectSnapshot::from_object(object, game))
+                    .or_else(|| lki.as_ref().filter(|snapshot| snapshot.object_id == discarded.card).cloned());
+                let tags = snapshot.map_or_else(Vec::new, |snapshot| vec![
+                    ("it".to_owned(), vec![snapshot.clone()]),
+                    ("__it__".to_owned(), vec![snapshot]),
+                ]);
+                Ok(crate::effects::replacement::ReplacementProgramBindings {
+                    targets: Some(vec![crate::effects::ResolvedTarget::Object(object)]), object_tags: tags,
+                })
+            },
+        )?;
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+    }
+    outcome.value = primary;
+    Ok(outcome)
 }

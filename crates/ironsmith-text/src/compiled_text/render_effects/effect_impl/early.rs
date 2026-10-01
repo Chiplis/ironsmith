@@ -7314,7 +7314,13 @@
                 inner = inner["you may ".len()..].to_string();
             }
             let prefix = format!("{who} ");
-            if inner.starts_with(&prefix) {
+            // The inner sentence renders its own subject capitalized
+            // ("That player gains control ..."); compare case-insensitively.
+            if inner.starts_with(&prefix)
+                || (inner.len() >= prefix.len()
+                    && inner.is_char_boundary(prefix.len())
+                    && inner[..prefix.len()].eq_ignore_ascii_case(&prefix))
+            {
                 inner = inner[prefix.len()..].to_string();
             } else if who == "you" && inner.starts_with("you ") {
                 inner = inner["you ".len()..].to_string();

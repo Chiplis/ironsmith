@@ -66,6 +66,12 @@ pub(crate) use draw_cards::{
     AutomaticDrawRevealCandidate, HiddenDrawRevealMode, automatic_draw_reveal_boolean_context,
     automatic_draw_reveal_candidate_for_pending, automatic_reveal_events_for_draw,
     collect_automatic_draw_reveal_candidates, emit_automatic_draw_reveal_event,
-    execute_draw_replacement_effects, hidden_automatic_draw_reveal_description,
+    execute_scoped_draw_replacement_effects, hidden_automatic_draw_reveal_description,
     pending_hidden_automatic_draw_reveal,
 };
+
+// Internal receipt consumers share the same discard observation/commit boundary.
+pub(crate) use discard::{completed_discard_events,finish_discard_receipts};
+pub(crate) use discard_hand::discard_hand_cards;
+
+pub(crate) use draw_cards::execute_turn_draw_proposal;

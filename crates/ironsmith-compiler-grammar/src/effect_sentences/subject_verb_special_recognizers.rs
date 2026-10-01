@@ -256,6 +256,8 @@ pub(super) fn parse_sacrifice_any_number_then_draw_that_many_rule_lexed(
         filter
     } else {
         match parse_object_filter(shape.filter_tokens, false) {
+            // You can sacrifice only permanents you control.
+            Ok(filter) if filter.controller.is_none() => filter.you_control(),
             Ok(filter) => filter,
             Err(error) => {
                 return ParseOutcome::Error(

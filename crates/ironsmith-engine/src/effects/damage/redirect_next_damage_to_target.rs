@@ -94,11 +94,13 @@ impl EffectExecutor for RedirectNextDamageToTargetEffect {
                     .destination_target
                     .as_ref()
                     .ok_or(ExecutionError::InvalidTarget)?;
-                let target = resolve_objects_for_effect(game, ctx, target)?
-                    .into_iter()
-                    .next()
-                    .ok_or(ExecutionError::InvalidTarget)?;
-                RedirectTarget::ToObject(target)
+                // "... is dealt to another target creature, planeswalker, or
+                // player instead" (Captain's Maneuver): the destination may be
+                // a player.
+                match resolve_damage_target_for_effect(game, ctx, target)? {
+                    DamageTarget::Object(object) => RedirectTarget::ToObject(object),
+                    DamageTarget::Player(player) => RedirectTarget::ToPlayer(player),
+                }
             }
         };
 
@@ -222,7 +224,7 @@ mod tests {
             3,
             false,
             EventCause::effect(),
-        );
+        ).expect("damage test proposal must process successfully");
 
         let protected_damage: u32 = processed
             .assignments
@@ -247,7 +249,7 @@ mod tests {
             2,
             false,
             EventCause::effect(),
-        );
+        ).expect("damage test proposal must process successfully");
         let second_controller_damage: u32 = second
             .assignments
             .iter()
@@ -290,7 +292,7 @@ mod tests {
             3,
             false,
             EventCause::effect(),
-        );
+        ).expect("damage test proposal must process successfully");
         let other_damage: u32 = processed
             .assignments
             .iter()

@@ -70,7 +70,7 @@ fn cast_and_resolve(instant_speed: bool, graveyard_owner: PlayerId) -> Resolved 
         .add(ironsmith::mana::ManaSymbol::Black, 3);
     let hand = game.create_object_from_definition(&def, alice, Zone::Hand);
     let necro = game.object(hand).unwrap().stable_id;
-    let action = ironsmith::decision::compute_legal_actions(&game, alice)
+    let action = ironsmith::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(action, ironsmith::decision::LegalAction::CastSpell { spell_id, .. } if *spell_id == hand)

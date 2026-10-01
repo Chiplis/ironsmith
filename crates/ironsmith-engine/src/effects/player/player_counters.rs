@@ -47,6 +47,8 @@ impl EffectExecutor for PlayerCountersEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        game.clear_pending_decision_controllers();
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let result = (|| {
@@ -65,7 +67,7 @@ impl EffectExecutor for PlayerCountersEffect {
             crate::effects::counters::execute_player_counter_placement(game, ctx, event)
         })();
         if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            *game = checkpoint;
+            game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
             context_checkpoint.restore(ctx);
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));

@@ -70,11 +70,11 @@ mod tests {
             .expect("entry replacement should register");
 
         let first = game
-            .move_object_with_etb_processing(first, Zone::Battlefield)
-            .unwrap();
+            .move_object_with_etb_processing(first, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
+            .assert_completed_without_additions().unwrap();
         let second = game
-            .move_object_with_etb_processing(second, Zone::Battlefield)
-            .unwrap();
+            .move_object_with_etb_processing(second, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
+            .assert_completed_without_additions().unwrap();
         assert!(first.enters_tapped && game.is_tapped(first.new_id));
         assert!(second.enters_tapped && game.is_tapped(second.new_id));
 
@@ -82,8 +82,8 @@ mod tests {
             .replacement_effects
             .clear_until_end_of_turn_effects();
         let after = game
-            .move_object_with_etb_processing(after, Zone::Battlefield)
-            .unwrap();
+            .move_object_with_etb_processing(after, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
+            .assert_completed_without_additions().unwrap();
         assert!(!after.enters_tapped && !game.is_tapped(after.new_id));
     }
 }

@@ -1,5 +1,6 @@
 //! Return from graveyard to hand effect implementation.
 
+use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_objects_for_effect;
@@ -12,7 +13,7 @@ use crate::target::ChooseSpec;
 use crate::zone::Zone;
 pub use ironsmith_core::ReturnFromGraveyardToHandEffect;
 
-use super::apply_zone_change_with_additional_effects;
+type ReturnZoneReceipts = Vec<(ObjectId, crate::events::processing::PreparedEventOutcome<super::AppliedZoneChange>)>;
 
 /// Effect that returns a target card from a graveyard to its owner's hand.
 ///
@@ -32,27 +33,32 @@ fn return_object(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     object_id: ObjectId,
-) -> Option<ObjectId> {
+    receipts: &mut ReturnZoneReceipts,
+) -> Result<Option<ObjectId>, ExecutionError> {
     let Some(obj) = game.object(object_id) else {
-        return None;
+        return Ok(None);
     };
     if obj.zone != Zone::Graveyard {
-        return None;
+        return Ok(None);
     }
     let additional_effects = ctx.additional_replacement_effects_snapshot();
 
-    match apply_zone_change_with_additional_effects(
-        game,
-        object_id,
-        Zone::Graveyard,
-        Zone::Hand,
-        ctx.cause.clone(),
-        &mut ctx.decision_maker,
-        &additional_effects,
-    ) {
+    let receipt = apply_zone_change_with_context_and_additional_effects(
+    game,
+    object_id,
+    Zone::Graveyard,
+    Zone::Hand,
+    ctx.cause.clone(),
+    ctx,
+    &additional_effects
+)?;
+    let original = receipt.original.clone();
+    receipts.push((object_id, receipt));
+    if ctx.decision_maker.awaiting_choice() { return Ok(None); }
+    Ok(match original {
         EventOutcome::Proceed(result) => result.new_object_id,
         EventOutcome::Prevented | EventOutcome::Replaced | EventOutcome::NotApplicable => None,
-    }
+    })
 }
 
 impl EffectExecutor for ReturnFromGraveyardToHandEffect {
@@ -78,6 +84,11 @@ impl EffectExecutor for ReturnFromGraveyardToHandEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let mut receipts: ReturnZoneReceipts = Vec::new();
+        let result = (|| -> Result<EffectOutcome, ExecutionError> {
+        let original = (|| -> Result<EffectOutcome, ExecutionError> {
         let mut returned = Vec::new();
 
         if self.random {
@@ -112,9 +123,10 @@ impl EffectExecutor for ReturnFromGraveyardToHandEffect {
 
             game.shuffle_slice(&mut candidates);
             for id in candidates.into_iter().take(requested) {
-                if let Some(new_id) = return_object(game, ctx, id) {
+                if let Some(new_id) = return_object(game, ctx, id, &mut receipts)? {
                     returned.push(new_id);
                 }
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
             }
 
             return Ok(EffectOutcome::with_objects(returned.clone())
@@ -124,12 +136,15 @@ impl EffectExecutor for ReturnFromGraveyardToHandEffect {
         // Non-random: return all resolved object targets that are still in a graveyard.
         let resolved_targets = match resolve_objects_for_effect(game, ctx, &self.target) {
             Ok(targets) => targets,
-            Err(_) => return Ok(EffectOutcome::target_invalid()),
+            Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::target_invalid()),
+            Err(error) => return Err(error),
         };
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
         for target_id in resolved_targets {
-            if let Some(new_id) = return_object(game, ctx, target_id) {
+            if let Some(new_id) = return_object(game, ctx, target_id, &mut receipts)? {
                 returned.push(new_id);
             }
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
         }
 
         if returned.is_empty() {
@@ -138,6 +153,16 @@ impl EffectExecutor for ReturnFromGraveyardToHandEffect {
             Ok(EffectOutcome::with_objects(returned.clone())
                 .with_affected_objects_from_game(game, returned))
         }
+        })()?;
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        super::finish_zone_change_receipts(game, ctx, original, receipts)
+        })();
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
+        }
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        result
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

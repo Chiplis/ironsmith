@@ -70,7 +70,7 @@ fn target_creature_loses_every_landwalk_ability_until_end_of_turn() {
         "Bog Wraith has swampwalk"
     );
 
-    let action = compute_legal_actions(&game, alice)
+    let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| {
             matches!(a, LegalAction::ActivateAbility { source, .. } if *source == hammerheim)

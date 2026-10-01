@@ -26,6 +26,9 @@ pub enum WhereXKnownValue<'a> {
     DraftNotedHighestNumber {
         card_name_tokens: &'a [OwnedLexToken],
     },
+    DraftRemovedCardCount {
+        card_name_tokens: &'a [OwnedLexToken],
+    },
 }
 
 pub fn parse_where_x_known_value_tokens(tokens: &[OwnedLexToken]) -> Option<WhereXKnownValue<'_>> {
@@ -44,6 +47,7 @@ fn parse_where_x_known_value_lexed<'a>(input: &mut LexStream<'a>) -> WResult<Whe
         parse_event_and_attack_value,
         parse_tagged_card_value,
         parse_draft_noted_value,
+        parse_draft_removed_count_value,
     ))
     .parse_next(input)?;
     semantic_finish(input)?;
@@ -165,6 +169,19 @@ fn parse_draft_noted_value<'a>(input: &mut LexStream<'a>) -> WResult<WhereXKnown
         .parse_next(input)?;
     let card_name_tokens = take_nonempty_semantic_body(input)?;
     Ok(WhereXKnownValue::DraftNotedHighestNumber { card_name_tokens })
+}
+
+fn parse_draft_removed_count_value<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<WhereXKnownValue<'a>> {
+    opt(semantic_kw("the")).parse_next(input)?;
+    semantic_phrase(&[
+        "number", "of", "cards", "you", "removed", "from", "the", "draft", "with", "cards",
+        "named",
+    ])
+    .parse_next(input)?;
+    let card_name_tokens = take_nonempty_semantic_body(input)?;
+    Ok(WhereXKnownValue::DraftRemovedCardCount { card_name_tokens })
 }
 
 fn semantic_kw<'a>(

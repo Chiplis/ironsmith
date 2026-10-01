@@ -1512,7 +1512,7 @@ pub(super) fn test_generated_phlage_is_castable_with_pool_mana_for_generic_compo
         player.mana_pool.add(ManaSymbol::Red, 1);
     }
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action,
@@ -1798,7 +1798,7 @@ pub(super) fn test_zilortha_strength_incarnate_power_sets_lethal_damage_for_your
     let high_power_creature =
         create_creature(&mut game, "Alice's High-Power Creature", alice, 5, 2);
     game.mark_damage(high_power_creature, 4);
-    crate::rules::state_based::apply_state_based_actions(&mut game);
+    crate::rules::state_based::apply_state_based_actions(&mut game).expect("replacement operation must finish without execution error");
 
     assert!(
         game.battlefield.contains(&high_power_creature),
@@ -1817,7 +1817,7 @@ pub(super) fn test_zilortha_strength_incarnate_power_sets_lethal_damage_for_your
         ),
         "Zilortha should make 5 damage lethal to Alice's 5-power creature"
     );
-    crate::rules::state_based::apply_state_based_actions(&mut game);
+    crate::rules::state_based::apply_state_based_actions(&mut game).expect("replacement operation must finish without execution error");
 
     assert!(
         game.current_object_id_after_zone_change(high_power_creature)
@@ -1860,7 +1860,7 @@ pub(super) fn test_zilortha_strength_incarnate_only_changes_lethal_damage_for_co
         ),
         "Zilortha should make 2 damage lethal to Alice's 2-power creature"
     );
-    crate::rules::state_based::apply_state_based_actions(&mut game);
+    crate::rules::state_based::apply_state_based_actions(&mut game).expect("replacement operation must finish without execution error");
 
     assert!(
         game.current_object_id_after_zone_change(alice_low_power_creature)
@@ -1894,7 +1894,7 @@ pub(super) fn test_zilortha_strength_incarnate_lethal_damage_interacts_with_deat
     let deathtouch_victim = create_creature(&mut game, "Alice's Zero-Power Creature", alice, 0, 5);
     game.mark_damage(deathtouch_victim, 1);
     game.mark_deathtouch_damage_since_sba(deathtouch_victim);
-    crate::rules::state_based::apply_state_based_actions(&mut game);
+    crate::rules::state_based::apply_state_based_actions(&mut game).expect("replacement operation must finish without execution error");
 
     assert!(
         game.current_object_id_after_zone_change(deathtouch_victim)
@@ -1911,7 +1911,7 @@ pub(super) fn test_zilortha_strength_incarnate_lethal_damage_interacts_with_deat
         5,
     );
     game.mark_damage(zero_power_victim, 1);
-    crate::rules::state_based::apply_state_based_actions(&mut game);
+    crate::rules::state_based::apply_state_based_actions(&mut game).expect("replacement operation must finish without execution error");
 
     assert!(
         game.current_object_id_after_zone_change(zero_power_victim)

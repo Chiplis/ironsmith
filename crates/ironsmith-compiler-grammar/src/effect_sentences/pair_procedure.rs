@@ -686,6 +686,18 @@ const PAIR_SHAPES: &[Shape] = &[
         },
     },
     Shape {
+        id: RuleId::new("copy-next-spell-kicked-retarget"),
+        head: HeadDiscriminator::words(&["copy"]),
+        consumed: 3,
+        read: |sentences, sentence_idx| {
+            statements(
+                sentences,
+                sentence_idx,
+                kinds::copy_next_spell_kicked_retarget(sentences, sentence_idx),
+            )
+        },
+    },
+    Shape {
         id: RuleId::new("destroy-then-search-shuffle"),
         head: HeadDiscriminator::words(&["destroy"]),
         consumed: 2,

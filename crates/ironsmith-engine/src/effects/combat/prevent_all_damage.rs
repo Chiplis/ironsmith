@@ -62,6 +62,14 @@ impl EffectExecutor for PreventAllDamageEffect {
         if self.source_of_your_choice {
             let selection = if self.source_choice_shares_activation_mana_color {
                 choose_source_sharing_activation_payment_color(game, ctx)
+            } else if let Some(source_filter) = self.damage_filter.from_source.as_ref() {
+                // "a creature of your choice": the choice is limited to the
+                // sources the shield describes.
+                super::prevention_helpers::choose_source_of_your_choice_matching_filter(
+                    game,
+                    ctx,
+                    source_filter,
+                )
             } else {
                 choose_source_of_your_choice(game, ctx)
             };

@@ -105,7 +105,7 @@ fn cast(
     eprintln!("AUDIT_STAGE cast {}", def.name());
     g.turn.priority_player = Some(actor);
     let id = g.create_object_from_definition(def, actor, Zone::Hand);
-    let action = compute_legal_actions(g, actor)
+    let action = compute_legal_actions(g, actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or_else(|| format!("{} normal cast unavailable", def.name()))?;
@@ -291,7 +291,7 @@ fn activation(
     source: ObjectId,
 ) -> Result<Value, String> {
     g.turn.priority_player = Some(PlayerId(0));
-    let a = compute_legal_actions(g, PlayerId(0))
+    let a = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::ActivateAbility{source:s,..}|LegalAction::ActivateManaAbility{source:s,..}if *s==source) && dm.activation_hint.is_none_or(|hint| match a { LegalAction::ActivateAbility{ability_index,..}|LegalAction::ActivateManaAbility{ability_index,..} => g.current_abilities(source).is_some_and(|abilities|abilities.get(*ability_index).is_some_and(|a|format!("{a:?}").contains(hint))), _=>false }));
     let before = g.player(PlayerId(0)).unwrap().mana_pool.total() as i64;
@@ -313,7 +313,7 @@ fn activation(
     )
 }
 fn play_land(g:&mut GameState,def:&CardDefinition,actor:PlayerId,q:&mut TriggerQueue,dm:&mut Choices)->Result<ObjectId,String>{
- if g.turn.active_player!=actor{return Err("land producer wrong turn".into());}let id=g.create_object_from_definition(def,actor,Zone::Hand);g.turn.priority_player=Some(actor);let action=compute_legal_actions(g,actor).into_iter().find(|a|matches!(a,LegalAction::PlayLand{land_id}if *land_id==id)).ok_or("land producer unavailable")?;let mut state=PriorityLoopState::new(g.players_in_game());apply_priority_response_with_dm(g,q,&mut state,&PriorityResponse::PriorityAction(action),dm).map_err(|e|e.to_string())?;resolve_all(g,q,dm)?;g.battlefield.iter().copied().find(|id|g.object(*id).is_some_and(|o|o.name==def.name())&&g.current_controller(*id)==Some(actor)).ok_or("land producer absent".into())
+ if g.turn.active_player!=actor{return Err("land producer wrong turn".into());}let id=g.create_object_from_definition(def,actor,Zone::Hand);g.turn.priority_player=Some(actor);let action=compute_legal_actions(g,actor).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::PlayLand{land_id}if *land_id==id)).ok_or("land producer unavailable")?;let mut state=PriorityLoopState::new(g.players_in_game());apply_priority_response_with_dm(g,q,&mut state,&PriorityResponse::PriorityAction(action),dm).map_err(|e|e.to_string())?;resolve_all(g,q,dm)?;g.battlefield.iter().copied().find(|id|g.object(*id).is_some_and(|o|o.name==def.name())&&g.current_controller(*id)==Some(actor)).ok_or("land producer absent".into())
 }
 fn attack_probe(g:&mut GameState,q:&mut TriggerQueue,_dm:&mut Choices,source:ObjectId,preferred:PlayerId)->Result<Value,String>{
  use ironsmith::turn_runner::{TurnAction,TurnRunner,TurnState};

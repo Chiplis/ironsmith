@@ -34,12 +34,13 @@ impl EffectExecutor for AddManaOfColorsAmongEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        let symbols = credit_mana_symbols_from_context(game, player_id, symbols, ctx);
+        let symbols = credit_mana_symbols_from_context(game, player_id, symbols, ctx)?;
+        let count = symbols.mana_count();
         Ok(mana_added_count_outcome(
             ctx,
             player_id,
-            symbols.clone(),
-            symbols.len() as i32,
+            symbols,
+            count,
         ))
     }
 

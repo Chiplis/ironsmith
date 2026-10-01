@@ -930,12 +930,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                     duration,
                     source_filter,
                     excluded_source_target,
+                    source_of_your_choice,
                 },
             ) => f
                 .debug_struct("PreventAllCombatDamageFromSourceFilter")
                 .field("duration", duration)
                 .field("source_filter", source_filter)
                 .field("excluded_source_target", excluded_source_target)
+                .field("source_of_your_choice", source_of_your_choice)
                 .finish(),
             Self::DamagePrevention(
                 DamagePreventionActionAst::PreventAllCombatDamageToPlayers { duration },

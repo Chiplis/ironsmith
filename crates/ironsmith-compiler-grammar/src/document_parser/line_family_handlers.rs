@@ -1272,7 +1272,17 @@ fn alternative_cost_parse_tokens(
 ) -> Vec<OwnedLexToken> {
     let mut tokens = synthetic_word_tokens(condition_words);
     tokens.push(OwnedLexToken::comma(TextSpan::synthetic()));
-    push_synthetic_words(&mut tokens, &["you", "may", "pay"]);
+    // A non-mana cost reads as its own instruction ("you may return a blue
+    // creature you control to its owner's hand rather than pay ..."), the
+    // Daze-style surface, while a mana cost is paid ("you may pay {2}{R}").
+    if cost_tokens
+        .first()
+        .is_some_and(|token| token.kind == TokenKind::ManaGroup)
+    {
+        push_synthetic_words(&mut tokens, &["you", "may", "pay"]);
+    } else {
+        push_synthetic_words(&mut tokens, &["you", "may"]);
+    }
     tokens.extend(cost_tokens.iter().map(|token| {
         if token.kind == TokenKind::ManaGroup {
             OwnedLexToken::new(token.kind, token.slice.to_ascii_uppercase(), token.span)

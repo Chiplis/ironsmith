@@ -215,7 +215,16 @@ pub fn parse_nonpermanent_statement_surface(
         || permission_shapes::prefix_words(&words, &["all"])
     {
         Some(NonpermanentStatementSurface::Quantified)
-    } else if permission_shapes::find_words(&words, &["until", "end", "of", "turn"]).is_some() {
+    } else if permission_shapes::find_words(&words, &["until", "end", "of", "turn"]).is_some()
+        // "The next instant or sorcery spell you cast this turn can't be
+        // countered" (Overmaster): a resolving one-shot grant, not a static.
+        || (permission_shapes::prefix_words(&words, &["the", "next"])
+            && permission_shapes::find_words(&words, &["this", "turn"]).is_some())
+        // "Prevent all damage that would be dealt to target creature this
+        // turn" (Shielded Passage): a resolving prevention shield.
+        || (permission_shapes::prefix_words(&words, &["prevent"])
+            && permission_shapes::find_words(&words, &["this", "turn"]).is_some())
+    {
         Some(NonpermanentStatementSurface::UntilEndOfTurn)
     } else if matches!(
         super::semantic_lowering::parse_statement_effect_preference_tokens(tokens),

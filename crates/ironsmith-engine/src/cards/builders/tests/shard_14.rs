@@ -1886,7 +1886,7 @@ pub(super) fn chandras_regulator_game_loop_copies_chandra_loyalty_after_paying_o
             _ => false,
         })
         .expect("test Chandra should have a loyalty ability");
-    let activate_action = crate::decision::compute_legal_actions(&game, alice)
+    let activate_action = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -1989,7 +1989,7 @@ pub(super) fn chandras_regulator_activate_draw_with_discard(
         .iter()
         .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
         .expect("Chandra's Regulator should have an activated draw ability");
-    let activate_action = crate::decision::compute_legal_actions(&game, alice)
+    let activate_action = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -2086,7 +2086,7 @@ pub(super) fn chandras_regulator_draw_activation_rejects_nonred_nonmountain_disc
     game.create_object_from_card(&blue_card, alice, Zone::Hand);
 
     assert!(
-        !crate::decision::compute_legal_actions(&game, alice)
+        !crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .into_iter()
             .any(|action| matches!(
                 action,

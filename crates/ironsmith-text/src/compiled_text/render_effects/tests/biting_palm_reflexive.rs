@@ -88,6 +88,8 @@ fn biting_palm_reflexive_requires_counter_removal_and_uses_damaged_hand() {
             choices: 0,
         };
         crate::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+        assert!(game.stack.is_empty(), "reflexive triggers wait for placement after parent resolution");
+        crate::game_loop::put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut dm).unwrap();
         let succeeds = initial > 0 && accept;
         assert_eq!(
             game.stack.len(),

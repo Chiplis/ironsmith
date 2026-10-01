@@ -64,7 +64,21 @@ fn madness_total_cost_discard_pays_all_components_or_none() {
             false,
             crate::provenance::ProvNodeId::default(),
             &mut decision,
-        );
+        ).expect("root discard should execute").expect("root discard should finish without a pending choice");
+        assert_eq!(game.player(alice).unwrap().life, life,
+            "discard exiles the card; its linked trigger has not paid costs yet");
+        assert_eq!(game.player(alice).unwrap().mana_pool.total(), mana);
+        assert!(game.stack.is_empty(), "the madness trigger is not put on the stack during discard");
+        let exiled = _result.new_id.expect("madness replacement must exile the discarded card");
+        assert_eq!(game.object(exiled).unwrap().zone, Zone::Exile);
+        assert!(game.is_madness_exiled(exiled));
+        let mut triggers = crate::triggers::TriggerQueue::new();
+        crate::game_loop::drain_pending_trigger_events(&mut game, &mut triggers);
+        crate::game_loop::put_triggers_on_stack(&mut game, &mut triggers)
+            .expect("madness trigger must go on the stack");
+        assert_eq!(game.stack.len(), 1, "exactly one linked madness trigger must be created");
+        crate::game_loop::resolve_stack_entry_with(&mut game, &mut decision)
+            .expect("madness trigger must resolve");
         let succeeds = accept && life >= 8 && mana >= 3;
         assert_eq!(
             game.player(alice).unwrap().life,
@@ -74,6 +88,15 @@ fn madness_total_cost_discard_pays_all_components_or_none() {
             game.player(alice).unwrap().mana_pool.total(),
             if succeeds { mana - 3 } else { mana }
         );
+        assert_eq!(game.stack.len(), usize::from(succeeds),
+            "a successful madness cast waits on the stack as a real spell");
+        if succeeds {
+            crate::game_loop::resolve_stack_entry(&mut game)
+                .expect("the spell cast for its madness cost must resolve");
+        } else {
+            assert!(game.exile.is_empty(), "declined or unpayable madness must finish its graveyard fallback");
+            assert_eq!(game.player(alice).unwrap().graveyard.len(), 1);
+        }
         assert_eq!(
             game.battlefield
                 .iter()

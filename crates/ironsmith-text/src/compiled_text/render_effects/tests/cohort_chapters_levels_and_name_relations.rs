@@ -154,7 +154,7 @@ fn cohort_level_bands_gate_mana_and_grant_only_to_current_controllers_elves() {
                 4
             })
         );
-        let actions = crate::decision::compute_legal_actions(&game, alice);
+        let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
         for (id, expected) in [(source, level >= 1), (elf, level >= 5), (human, false)] {
             assert_eq!(actions.iter().any(|a|matches!(a,crate::decision::LegalAction::ActivateManaAbility{source,..} if *source==id)),expected,"level={level} id={id:?}");
         }

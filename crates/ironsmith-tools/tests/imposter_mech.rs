@@ -124,7 +124,7 @@ fn enter(copy: bool) -> (GameState, ObjectId, ObjectId) {
         pick: vec!["Wind Drake"],
     };
     let mech = game
-        .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm)
+        .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .expect("enters")
         .new_id;
     (game, mech, ogre)
@@ -168,7 +168,7 @@ fn copies_an_opponents_creature_as_a_noncreature_vehicle_artifact_with_crew() {
 fn crewing_the_copy_makes_it_an_artifact_creature() {
     let (mut game, mech, ogre) = enter(true);
     let alice = PlayerId::from_index(0);
-    let action = compute_legal_actions(&game, alice)
+    let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::ActivateAbility { source, .. } if *source == mech))
         .expect("crew is activatable");
@@ -212,4 +212,13 @@ fn declining_the_copy_leaves_the_printed_vehicle() {
     let chars = game.current_characteristics(mech).unwrap();
     assert!(chars.subtypes.contains(&Subtype::Vehicle));
     assert!(has_crew(&game, mech));
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: ironsmith::game_state::EntryCommitResult)
+    -> Option<ironsmith::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

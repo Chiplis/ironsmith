@@ -1021,6 +1021,17 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             // shares the left arm's subject, not the ability's source.
             trigger_atom_token(left_tokens, TriggerClauseAtom::Block)
                 .or_else(|| trigger_atom_token(left_tokens, TriggerClauseAtom::Attack))
+        } else if right_words.len() > 1
+            && right_words
+                .first()
+                .is_some_and(|word| matches!(*word, "is" | "are"))
+            && right_words.get(1).is_some_and(|word| *word == "dealt")
+        {
+            // "enchanted creature becomes tapped or is dealt damage": the
+            // damage arm shares the left arm's subject.
+            trigger_atom_token(left_tokens, TriggerClauseAtom::Becomes)
+                .or_else(|| trigger_atom_token(left_tokens, TriggerClauseAtom::Attack))
+                .or_else(|| trigger_atom_token(left_tokens, TriggerClauseAtom::Block))
         } else if crate::word_primitives::parse_choice_sequence_complete(
             &right_words,
             &[&["dies", "die"]],
@@ -1189,6 +1200,51 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     }
 
     if trigger_pattern_accepts(&words, YOU_CAST_THIS_SPELL_TRIGGER_PATTERN) {
+        // "When you cast this spell from your hand" (Banish into Fable) and
+        // "from anywhere other than exile" (Rory Williams) qualify the cast
+        // event by the spell's origin zone.
+        let spell_idx = words
+            .windows(3)
+            .position(|window| matches!(window, ["cast" | "casts", "this", "spell"]))
+            .map(|idx| idx + 3);
+        let origin = spell_idx.and_then(|idx| {
+            let tail = &words[idx..];
+            let zone_of = |words: &[&str]| -> Option<Zone> {
+                match words {
+                    ["your", "hand"] | ["a", "hand"] | ["hand"] => Some(Zone::Hand),
+                    ["your", "graveyard"] | ["a", "graveyard"] | ["graveyard"] => {
+                        Some(Zone::Graveyard)
+                    }
+                    ["exile"] => Some(Zone::Exile),
+                    ["your", "library"] | ["the", "top", "of", "your", "library"] => {
+                        Some(Zone::Library)
+                    }
+                    ["the", "command", "zone"] => Some(Zone::Command),
+                    _ => None,
+                }
+            };
+            match tail {
+                ["from", "anywhere", "other", "than", rest @ ..] => {
+                    zone_of(rest).map(|zone| (zone, true))
+                }
+                ["from", rest @ ..] => zone_of(rest).map(|zone| (zone, false)),
+                _ => None,
+            }
+        });
+        if let Some((zone, excluded)) = origin {
+            let cast_from = crate::cards::builders::PredicateAst::ThisSpellWasCastFromZone(zone);
+            let condition = if excluded {
+                crate::cards::builders::PredicateAst::Not(Box::new(cast_from))
+            } else {
+                cast_from
+            };
+            let surface = words[spell_idx.unwrap_or(words.len())..].join(" ");
+            return Ok(TriggerSpec::ConditionQualified {
+                trigger: Box::new(TriggerSpec::YouCastThisSpell),
+                condition,
+                surface,
+            });
+        }
         return Ok(TriggerSpec::YouCastThisSpell);
     }
 
@@ -1371,6 +1427,20 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 split_activation_cost_tap_condition_tail_lexed(tail_tokens, raw_tail_words);
             let ability_tail_tokens = ability_tail_tokens.as_slice();
             let tail_words = ability_tail_words.as_slice();
+            // "Whenever an opponent activates a loyalty ability" (Gideon the
+            // Oathless): any loyalty ability, whatever its source.
+            if matches!(
+                tail_words,
+                ["a", "loyalty", "ability"] | ["loyalty", "abilities"]
+            ) {
+                return Ok(TriggerSpec::AbilityActivated {
+                    activator,
+                    filter: ObjectFilter::default(),
+                    non_mana_only: false,
+                    loyalty_only: true,
+                    activation_cost_has_tap,
+                });
+            }
             if let Some(filter) =
                 parse_loyalty_ability_trigger_tail_lexed(ability_tail_tokens, tail_words)?
             {
@@ -1629,7 +1699,10 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     ))
                 },
             );
-        if let Some(filter) = parsed_filter {
+        if let Some(mut filter) = parsed_filter {
+            if has_leading_one_or_more(subject_tokens) {
+                filter.set_union_one_or_more(true);
+            }
             return Ok(TriggerSpec::LeavesBattlefield(filter));
         }
     }
@@ -1684,9 +1757,17 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             }
         }
 
-        let enters_origin =
-            trigger_grammar::parse_enters_origin_clause_words(&words[enters_word_idx + 1..])
-                .map(|origin| (origin.zone, origin.owner));
+        let parsed_enters_origin =
+            trigger_grammar::parse_enters_origin_clause_words(&words[enters_word_idx + 1..]);
+        // "enters from anywhere other than your hand" (The Lost and the
+        // Damned): an excluded origin, kept apart from the positive origins.
+        let excluded_enters_origin = parsed_enters_origin
+            .as_ref()
+            .filter(|origin| origin.excluded)
+            .map(|origin| origin.zone);
+        let enters_origin = parsed_enters_origin
+            .filter(|origin| !origin.excluded)
+            .map(|origin| (origin.zone, origin.owner));
         if enters_word_idx == 0 {
             return Ok(if let Some((from, owner)) = enters_origin.clone() {
                 TriggerSpec::ThisEntersBattlefieldFromZone {
@@ -1775,6 +1856,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                         owner,
                         one_or_more: true,
                         cause_filter,
+                        excluded: false,
                     }),
                 ));
             }
@@ -1854,6 +1936,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                                     owner,
                                     one_or_more: false,
                                     cause_filter,
+                                    excluded: false,
                                 }),
                             ));
                         }
@@ -2015,6 +2098,16 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     owner,
                     one_or_more,
                     cause_filter,
+                    excluded: false,
+                }
+            } else if let Some(from) = excluded_enters_origin {
+                TriggerSpec::EntersBattlefieldFromZone {
+                    filter,
+                    from,
+                    owner: None,
+                    one_or_more,
+                    cause_filter,
+                    excluded: true,
                 }
             } else if one_or_more {
                 TriggerSpec::EntersBattlefieldOneOrMore {
@@ -2689,7 +2782,15 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 ))
             })?;
         filter.zone = None;
-        filter.owner = None;
+        // An authored ownership relation ("a permanent owned by another
+        // player", Kothophed) is part of the subject, not an artifact of the
+        // destination graveyard.
+        if !subject_words
+            .iter()
+            .any(|word| matches!(*word, "owned" | "own" | "owns"))
+        {
+            filter.owner = None;
+        }
         if subject_mentions_card(&subject_words) {
             filter.nontoken = true;
             filter.set_explicit_card_noun(true);
@@ -3978,6 +4079,29 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         let subject_words = &words[..sacrifice_word_idx];
         if let Some(player) = parse_trigger_subject_player_filter(subject_words) {
             let mut filter_tokens = &tokens[sacrifice_token_idx + 1..];
+            // "Whenever you sacrifice a permanent during your turn" (Tolls of
+            // War): the turn restriction qualifies the event.
+            let during_your_turn = if let Some(without_turn) =
+                crate::grammar::primitives::strip_lexed_suffix_phrase(
+                    filter_tokens,
+                    &["during", "your", "turn"],
+                ) {
+                filter_tokens = without_turn;
+                true
+            } else {
+                false
+            };
+            let qualify = |trigger: TriggerSpec| -> TriggerSpec {
+                if during_your_turn {
+                    TriggerSpec::ConditionQualified {
+                        trigger: Box::new(trigger),
+                        condition: crate::cards::builders::PredicateAst::YourTurn,
+                        surface: "during your turn".to_string(),
+                    }
+                } else {
+                    trigger
+                }
+            };
             let filter_word_view = ActivationRestrictionCompatWords::new(filter_tokens);
             let filter_words = filter_word_view.to_word_refs();
             let one_or_more = trigger_grammar::find_trigger_surface_window(
@@ -4000,7 +4124,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 && let Some((source_filter, other_filter)) =
                     parse_source_or_another_trigger_subject_filters(filter_tokens)
             {
-                return Ok(TriggerSpec::Either(
+                return Ok(qualify(TriggerSpec::Either(
                     Box::new(TriggerSpec::PlayerSacrifices {
                         player: player.clone(),
                         filter: source_filter,
@@ -4011,7 +4135,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                         filter: other_filter,
                         one_or_more,
                     }),
-                ));
+                )));
             }
             let filter = if filter_tokens.is_empty() {
                 let mut filter = ObjectFilter::permanent();
@@ -4055,11 +4179,11 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     ))
                 })?
             };
-            return Ok(TriggerSpec::PlayerSacrifices {
+            return Ok(qualify(TriggerSpec::PlayerSacrifices {
                 player,
                 filter,
                 one_or_more,
-            });
+            }));
         }
     }
 
@@ -4513,6 +4637,54 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         }
     }
 
+    // "Whenever equipped creature becomes blocked by one or more colorless
+    // creatures" (Hedron Blade): the aggregate "becomes blocked" event for a
+    // non-source subject, gated on at least one matching blocker. ("this
+    // creature becomes blocked by ..." is handled above; per-blocker "a
+    // creature" wording and "N or more" counts are not claimed here.)
+    if let Some(becomes_word) =
+        crate::word_primitives::parse_sequence_start(&words, &["becomes", "blocked", "by"])
+        && becomes_word > 0
+        && !words[..becomes_word]
+            .iter()
+            .any(|word| matches!(*word, "block" | "blocks" | "or" | "and"))
+    {
+        let subject_end = trigger_word_token_start(tokens, becomes_word).unwrap_or(tokens.len());
+        let blocker_start =
+            trigger_word_token_start(tokens, becomes_word + 3).unwrap_or(tokens.len());
+        if subject_end > 0 && blocker_start < tokens.len() {
+            let raw_blocker_tokens = trim_commas(&tokens[blocker_start..]);
+            if has_leading_one_or_more(&raw_blocker_tokens)
+                && let Some(subject_filter) =
+                    parse_attack_trigger_subject_filter_lexed(&tokens[..subject_end])?
+            {
+                let blocker_tokens = strip_leading_one_or_more_lexed(&raw_blocker_tokens);
+                if !blocker_tokens.is_empty()
+                    && let Ok(blocker_filter) = parse_object_filter_lexed(blocker_tokens, false)
+                {
+                    let blocker_words = crate::lexer::token_word_refs(blocker_tokens);
+                    // No blocker is excluded: blockers are on the battlefield,
+                    // never in a library.
+                    let no_blocker = ObjectFilter::default().in_zone(Zone::Library);
+                    return Ok(TriggerSpec::ConditionQualified {
+                        trigger: Box::new(TriggerSpec::BecomesBlocked(subject_filter)),
+                        condition: crate::cards::builders::PredicateAst::TurnHistory(
+                            crate::cards::builders::TurnHistoryPredicateAst::TriggeringAttackerBlockers {
+                                required: blocker_filter,
+                                required_count: 1,
+                                prohibited: no_blocker,
+                            },
+                        ),
+                        surface: format!(
+                            "it's blocked by one or more {}",
+                            blocker_words.join(" ")
+                        ),
+                    });
+                }
+            }
+        }
+    }
+
     if trigger_pattern_accepts(&words, THIS_BLOCKS_PREFIX_PATTERN)
         && let Some(blocks_idx) = trigger_atom_token(tokens, TriggerClauseAtom::Block)
     {
@@ -4533,6 +4705,38 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 filter: blocked_filter,
                 min_blocked_objects,
             });
+        }
+    }
+
+    // "Whenever equipped creature blocks a creature" (Shield of the
+    // Righteous): one trigger per blocking pair, binding the blocked creature
+    // as "that creature".
+    if let Some(blocks_word_idx) = trigger_atom_word(&words, TriggerClauseAtom::Block)
+        && words.get(blocks_word_idx) == Some(&"blocks")
+        && blocks_word_idx > 0
+        && blocks_word_idx + 1 < words.len()
+        && !matches!(words.get(blocks_word_idx + 1), Some(&"or"))
+        && !words[blocks_word_idx + 1..]
+            .iter()
+            .any(|word| matches!(*word, "or" | "power" | "turn" | "combat"))
+    {
+        let subject_end = trigger_word_token_start(tokens, blocks_word_idx).unwrap_or(tokens.len());
+        let blocked_start =
+            trigger_word_token_start(tokens, blocks_word_idx + 1).unwrap_or(tokens.len());
+        if subject_end > 0
+            && blocked_start < tokens.len()
+            && !has_leading_one_or_more(&tokens[..subject_end])
+            && let Some(blocker) =
+                parse_attack_trigger_subject_filter_lexed(&tokens[..subject_end])?
+            && blocker.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                    && matches!(constraint.tag.as_str(), "equipped" | "enchanted")
+            })
+        {
+            let blocked_tokens = trim_edge_punctuation(&tokens[blocked_start..]);
+            if let Ok(blocked) = parse_object_filter_lexed(&blocked_tokens, false) {
+                return Ok(TriggerSpec::BlocksObject { blocker, blocked });
+            }
         }
     }
 
@@ -4714,6 +4918,29 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 parse_leading_or_more_quantifier(subject_tokens)
                     .map(|(count, stripped)| (Some(count), stripped))
                     .unwrap_or((None, subject_tokens));
+            // "Whenever all non-Wall creatures you control attack" (Mob
+            // Mentality): one trigger per declaration, and only when no
+            // matching creature you control was left out of the attack.
+            if attacked_player_filter.is_none()
+                && minimum_attackers.is_none()
+                && subject_tokens
+                    .first()
+                    .is_some_and(|token| token.is_word("all"))
+                && let Some(filter) =
+                    parse_attack_trigger_subject_filter_lexed(&subject_tokens[1..])?
+                && filter.controller == Some(PlayerFilter::You)
+            {
+                let mut left_out = filter.clone();
+                left_out.nonattacking = true;
+                left_out.zone = Some(Zone::Battlefield);
+                return Ok(TriggerSpec::ConditionQualified {
+                    trigger: Box::new(TriggerSpec::AttacksOneOrMore(filter)),
+                    condition: crate::cards::builders::PredicateAst::Not(Box::new(
+                        crate::cards::builders::PredicateAst::YouControl(left_out),
+                    )),
+                    surface: "all of them attack".to_string(),
+                });
+            }
             let player_subject = trigger_subject_player_selector_lexed(subject_tokens).is_some();
             let one_or_more = minimum_attackers.is_some() || player_subject;
             Ok(
@@ -4738,6 +4965,23 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                         } else {
                             TriggerSpec::Attacks(filter)
                         }
+                    }
+                    // "Whenever this creature attacks a player": keep the
+                    // attacked-player restriction on the source filter so a
+                    // planeswalker or battle attack does not trigger it.
+                    None if attacked_player_filter.is_some() && minimum_attackers.is_none() => {
+                        let player_filter =
+                            attacked_player_filter.clone().expect("checked is_some");
+                        let mut source =
+                            source_reference_surface_for_trigger_subject(subject_tokens)
+                                .map(ObjectFilter::source_with_surface)
+                                .unwrap_or_else(ObjectFilter::source);
+                        source.attacking_player_or_planeswalker_controlled_by =
+                            Some(player_filter.clone());
+                        if attacked_target_must_be_player {
+                            source.targets_only_player = Some(player_filter);
+                        }
+                        TriggerSpec::Attacks(source)
                     }
                     None => source_reference_surface_for_trigger_subject(subject_tokens)
                         .filter(|surface| {

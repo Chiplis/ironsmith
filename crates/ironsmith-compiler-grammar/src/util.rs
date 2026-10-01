@@ -2329,6 +2329,7 @@ pub fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTe
                     restore_distinct_combat_damage_controller_target(&mut target, tokens);
                     restore_drafted_color_qualifier_target(&mut target, tokens);
                     restore_authored_named_filter_target(&mut target, tokens);
+                    release_outer_scope_of_zoned_union(&mut target);
                     return Ok(with_leading_object_set_quantifier(
                         target,
                         leading_set_quantifier,
@@ -2341,10 +2342,39 @@ pub fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTe
     restore_distinct_combat_damage_controller_target(&mut target, tokens);
     restore_drafted_color_qualifier_target(&mut target, tokens);
     restore_authored_named_filter_target(&mut target, tokens);
+    release_outer_scope_of_zoned_union(&mut target);
     Ok(with_leading_object_set_quantifier(
         target,
         leading_set_quantifier,
     ))
+}
+
+/// A union whose every arm names its own zone ("instant or sorcery card from
+/// your graveyard or exiled card with flashback you own") is scoped by those
+/// arms; a conflicting outer zone/owner would make some arms unreachable.
+fn release_outer_scope_of_zoned_union(target: &mut TargetAst) {
+    match target {
+        TargetAst::Object(filter, ..) | TargetAst::ObjectOrPlayer(filter, ..) => {
+            if filter.any_of.len() >= 2
+                && filter.zone.is_some()
+                && filter.any_of.iter().all(|branch| branch.zone.is_some())
+                && filter.any_of.iter().any(|branch| branch.zone != filter.zone)
+            {
+                filter.zone = None;
+                if let Some(owner) = filter.owner.take() {
+                    for branch in &mut filter.any_of {
+                        if branch.owner.is_none() {
+                            branch.owner = Some(owner.clone());
+                        }
+                    }
+                }
+            }
+        }
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, ..) => {
+            release_outer_scope_of_zoned_union(inner);
+        }
+        _ => {}
+    }
 }
 
 fn restore_drafted_color_qualifier_target(target: &mut TargetAst, tokens: &[OwnedLexToken]) {
@@ -2378,29 +2408,53 @@ fn restore_authored_named_filter_target(target: &mut TargetAst, tokens: &[OwnedL
     else {
         return;
     };
-    let authored_name = render_token_slice(&tokens[named_index + 1..])
-        .trim()
-        .trim_end_matches('.')
-        .to_string();
-    if authored_name.is_empty() {
-        return;
+    let name_tokens = &tokens[named_index + 1..];
+
+    // Restore the authored surface (punctuation, capitalization) of the name
+    // the filter parser already delimited. The parser stops the name at a
+    // clause boundary ("named Groffskithur from your graveyard"), so the
+    // authored rendering covers exactly as many words as the parsed name and
+    // never re-absorbs a trailing zone or relative clause.
+    fn authored_name_for(name_tokens: &[OwnedLexToken], parsed_name: &str) -> Option<String> {
+        let parsed_words = parsed_name.split_whitespace().count();
+        if parsed_words == 0 {
+            return None;
+        }
+        let mut seen_words = 0usize;
+        let mut end = name_tokens.len();
+        for (idx, token) in name_tokens.iter().enumerate() {
+            if token.as_word().is_some() {
+                seen_words += 1;
+                if seen_words == parsed_words {
+                    end = idx + 1;
+                    break;
+                }
+            }
+        }
+        let authored = render_token_slice(&name_tokens[..end])
+            .trim()
+            .trim_end_matches(['.', ','])
+            .to_string();
+        (!authored.is_empty()).then_some(authored)
     }
 
-    fn apply(target: &mut TargetAst, authored_name: &str) {
+    fn apply(target: &mut TargetAst, name_tokens: &[OwnedLexToken]) {
         match target {
-            TargetAst::Object(filter, ..) | TargetAst::ObjectOrPlayer(filter, ..)
-                if filter.name.is_some() =>
-            {
-                filter.name = Some(authored_name.to_string());
+            TargetAst::Object(filter, ..) | TargetAst::ObjectOrPlayer(filter, ..) => {
+                if let Some(parsed_name) = filter.name.clone()
+                    && let Some(authored) = authored_name_for(name_tokens, &parsed_name)
+                {
+                    filter.name = Some(authored);
+                }
             }
             TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, ..) => {
-                apply(inner, authored_name);
+                apply(inner, name_tokens);
             }
             _ => {}
         }
     }
 
-    apply(target, &authored_name);
+    apply(target, name_tokens);
 }
 
 pub fn normalize_source_reference_tokens_with_context(
@@ -3226,4 +3280,162 @@ fn demonstrative_union_targets_reference_the_prior_recipient() {
             "{text}: {target:?}"
         );
     }
+}
+
+/// One adjective arm of a two-arm "X or Y <noun>" selector.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DisjunctionAdjective {
+    NonType(CardType),
+    Type(CardType),
+    Supertype(Supertype),
+    Subtype(Subtype),
+}
+
+impl DisjunctionAdjective {
+    fn read(word: &str) -> Option<Self> {
+        if let Some(card_type) = parse_non_type(word) {
+            return Some(Self::NonType(card_type));
+        }
+        if let Some(card_type) = parse_card_type(word) {
+            return Some(Self::Type(card_type));
+        }
+        if let Some(supertype) = parse_supertype_word(word) {
+            return Some(Self::Supertype(supertype));
+        }
+        parse_subtype_word(word).map(Self::Subtype)
+    }
+
+    /// Removes this arm's fact from a flattened filter, reporting whether the
+    /// flattening had stored it.
+    fn take_from(self, filter: &mut ObjectFilter) -> bool {
+        fn take<T: PartialEq>(values: &mut Vec<T>, value: &T) -> bool {
+            let before = values.len();
+            values.retain(|candidate| candidate != value);
+            values.len() != before
+        }
+        match self {
+            Self::NonType(card_type) => take(&mut filter.excluded_card_types, &card_type),
+            Self::Type(card_type) => take(&mut filter.card_types, &card_type),
+            Self::Supertype(supertype) => take(&mut filter.supertypes, &supertype),
+            Self::Subtype(subtype) => take(&mut filter.subtypes, &subtype),
+        }
+    }
+
+    fn branch(self) -> ObjectFilter {
+        let mut branch = ObjectFilter::default();
+        match self {
+            Self::NonType(card_type) => branch.excluded_card_types.push(card_type),
+            Self::Type(card_type) => branch.card_types.push(card_type),
+            Self::Supertype(supertype) => branch.supertypes.push(supertype),
+            Self::Subtype(subtype) => branch.subtypes.push(subtype),
+        }
+        branch
+    }
+}
+
+/// "noncreature or Dragon spell", "a noncreature spell or a Dragon spell",
+/// "creature or legendary spell": two adjectives of different selector
+/// dimensions joined by "or" are alternatives. The flat atom scan stores both
+/// facts on one filter, which demands a noncreature Dragon (or a legendary
+/// creature); rebuild them as an `any_of` over the shared remainder.
+pub(crate) fn split_cross_dimension_adjective_disjunction(
+    filter: &mut ObjectFilter,
+    words: &[&str],
+) {
+    mark_has_subtype_list_arm_union(filter, words);
+    if !filter.any_of.is_empty() || filter.type_or_subtype_union {
+        return;
+    }
+    let words = words
+        .iter()
+        .copied()
+        .filter(|word| !matches!(*word, "a" | "an" | "the"))
+        .collect::<Vec<_>>();
+    if words
+        .iter()
+        .any(|word| matches!(*word, "and" | "and/or" | "nor"))
+    {
+        return;
+    }
+    let mut ors = words.iter().enumerate().filter(|(_, word)| **word == "or");
+    let Some((or_idx, _)) = ors.next() else {
+        return;
+    };
+    if ors.next().is_some() {
+        return;
+    }
+    let (left, right) = (&words[..or_idx], &words[or_idx + 1..]);
+    let is_head_noun = |word: &str| {
+        matches!(
+            word,
+            "spell" | "spells" | "card" | "cards" | "permanent" | "permanents"
+        )
+    };
+    match left {
+        [_] => {}
+        [_, noun] if is_head_noun(noun) && right.contains(noun) => {}
+        _ => return,
+    }
+    let (Some(left_word), Some(right_word)) = (left.first(), right.first()) else {
+        return;
+    };
+    if right.len() < 2 {
+        return;
+    }
+    let (Some(left_arm), Some(right_arm)) = (
+        DisjunctionAdjective::read(left_word),
+        DisjunctionAdjective::read(right_word),
+    ) else {
+        return;
+    };
+    use DisjunctionAdjective as A;
+    let supported = matches!(
+        (left_arm, right_arm),
+        (A::NonType(_), A::Subtype(_))
+            | (A::Subtype(_), A::NonType(_))
+            | (A::NonType(_), A::Supertype(_))
+            | (A::Supertype(_), A::NonType(_))
+            | (A::Type(_), A::Supertype(_))
+    );
+    if !supported {
+        return;
+    }
+    let mut base = filter.clone();
+    if !left_arm.take_from(&mut base) || !right_arm.take_from(&mut base) {
+        return;
+    }
+    base.any_of = vec![left_arm.branch(), right_arm.branch()];
+    *filter = base;
+}
+
+/// "an instant card, a sorcery card, or a card that has an Adventure": the
+/// "has an <subtype>" arm is an alternative to the listed card types, not an
+/// extra requirement on them.
+fn mark_has_subtype_list_arm_union(filter: &mut ObjectFilter, words: &[&str]) {
+    if filter.type_or_subtype_union || filter.card_types.is_empty() || filter.subtypes.len() != 1
+    {
+        return;
+    }
+    let Some(has_idx) = words.windows(3).position(|window| {
+        matches!(window[0], "has" | "have")
+            && matches!(window[1], "a" | "an")
+            && parse_subtype_word(window[2]).is_some_and(|subtype| filter.subtypes[0] == subtype)
+    }) else {
+        return;
+    };
+    let before = &words[..has_idx];
+    let Some(connector_idx) = before
+        .iter()
+        .rposition(|word| matches!(*word, "or" | "and/or"))
+    else {
+        return;
+    };
+    // The connector must join list arms that name the card types.
+    if !before[..connector_idx]
+        .iter()
+        .any(|word| parse_card_type(word).is_some())
+    {
+        return;
+    }
+    filter.type_or_subtype_union = true;
 }

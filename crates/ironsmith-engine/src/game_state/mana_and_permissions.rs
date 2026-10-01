@@ -36,28 +36,31 @@ impl GameState {
     /// ContinuousEffectManager with these effects.
     ///
     /// Per Rule 611.3a, static ability effects apply dynamically.
-    pub fn update_static_ability_effects(&mut self) {
-        #[cfg(feature = "shadow-continuous")]
-        use crate::static_ability_processor::generate_continuous_effects_from_static_abilities;
-        use crate::static_ability_processor::generate_continuous_effects_from_static_abilities_cached;
+    pub fn update_static_ability_effects(&mut self)
+        -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
+        self.try_update_static_ability_effects(Default::default())
+    }
 
-        self.count_static_ability_regen();
-        let effects = {
-            let mut cache = self.runtime_cache.static_effects_cache.borrow_mut();
-            generate_continuous_effects_from_static_abilities_cached(self, &mut cache)
-        };
-        #[cfg(feature = "shadow-continuous")]
+    /// Establish a complete static snapshot before a fallible operation.
+    /// An error leaves registered/static effects untouched and never marks
+    /// incomplete discovery clean. Existing legacy snapshots require validation.
+    pub fn try_update_static_ability_effects(
+        &mut self,
+        limits: crate::static_ability_processor::StaticEffectDiscoveryLimits,
+    ) -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
+        let revision = self.effect_store.continuous_effects.revision();
+        if self.continuous_state_is_clean()
+            && self.runtime_cache.static_effects_cache.borrow().has_checked_snapshot(revision)
         {
-            let expected = generate_continuous_effects_from_static_abilities(self);
-            assert_eq!(
-                effects, expected,
-                "incremental static-ability effect generation diverged from wholesale generation"
-            );
+            return Ok(());
         }
-        self.effect_store
-            .continuous_effects
-            .set_static_ability_effects(effects);
+        self.count_static_ability_regen();
+        let effects = crate::static_ability_processor::try_generate_continuous_effects_from_static_abilities(self, limits)?;
+        self.effect_store.continuous_effects.set_static_ability_effects(effects);
         self.mark_continuous_state_clean();
+        let revision = self.effect_store.continuous_effects.revision();
+        self.runtime_cache.static_effects_cache.borrow_mut().mark_checked_snapshot(revision);
+        Ok(())
     }
 
     /// Update replacement effects from static abilities on the battlefield.
@@ -65,8 +68,11 @@ impl GameState {
     /// This scans all permanents with static abilities that generate replacement
     /// effects (enters tapped, enters with counters, etc.) and updates the
     /// ReplacementEffectManager with these effects.
-    pub fn update_replacement_effects(&mut self) {
+    pub fn update_replacement_effects(&mut self)
+        -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
         use crate::replacement_ability_processor::generate_replacement_effects_from_abilities;
+        // Establish completeness before clearing the previously published set.
+        let effects = generate_replacement_effects_from_abilities(self)?;
 
         // Clear existing static ability replacement effects
         self.effect_store
@@ -76,7 +82,6 @@ impl GameState {
         // Generate and register new ones from current battlefield state
         // using current battlefield abilities, including grants and ability loss.
         // Other zones retain their printed/granted source abilities.
-        let effects = generate_replacement_effects_from_abilities(self);
         for effect in effects {
             let decline = effect.optional_decline_effect();
             self.effect_store
@@ -88,6 +93,17 @@ impl GameState {
                     .add_static_ability_effect(decline);
             }
         }
+        Ok(())
+    }
+
+    /// Prepare a complete read-only query view without performing game rules
+    /// procedures such as day/night transformations, ascend or zone changes.
+    pub fn continuous_query_snapshot(&self)
+        -> Result<Self, crate::static_ability_processor::StaticEffectDiscoveryError> {
+        let mut snapshot = self.clone();
+        snapshot.update_static_ability_effects()?;
+        snapshot.update_cant_effects();
+        Ok(snapshot)
     }
 
     /// Perform a full refresh of all dynamic game state that depends on continuous effects.
@@ -101,33 +117,38 @@ impl GameState {
     /// - Static ability continuous effects (anthems, etc.)
     /// - Replacement effects from static abilities
     /// - "Can't" effect tracking
-    pub fn refresh_continuous_state(&mut self) {
-        if self.continuous_state_is_clean() {
-            return;
+    pub fn refresh_continuous_state(&mut self)
+        -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
+        let revision = self.effect_store.continuous_effects.revision();
+        if self.continuous_state_is_clean()
+            && self.runtime_cache.static_effects_cache.borrow().has_refreshed_snapshot(revision)
+        {
+            return Ok(());
         }
-
+        let checkpoint = self.clone();
+        let result = (|| {
         // Update continuous effects from static abilities
-        self.update_static_ability_effects();
+        self.update_static_ability_effects()?;
         self.reconcile_continuous_control_changes();
 
         // A continuous effect may itself inspect summoning-sickness state.
         // Rebuild once after a controller transition so those predicates see
         // the newly sick permanent in this same refresh transaction.
         if !self.continuous_state_is_clean() {
-            self.update_static_ability_effects();
+            self.update_static_ability_effects()?;
             self.reconcile_continuous_control_changes();
         }
 
         // Update replacement effects from static abilities
-        self.update_replacement_effects();
+        self.update_replacement_effects()?;
 
         // Update "can't" effect tracking
         self.update_cant_effects();
 
         if self.apply_day_nightbound_transformations_with_current_restrictions() {
-            self.update_static_ability_effects();
+            self.update_static_ability_effects()?;
             self.reconcile_continuous_control_changes();
-            self.update_replacement_effects();
+            self.update_replacement_effects()?;
             self.update_cant_effects();
         }
 
@@ -138,9 +159,9 @@ impl GameState {
         if self.grant_citys_blessings_from_permanent_ascend()
             | self.grant_enduring_stories_from_permanent_storied()
         {
-            self.update_static_ability_effects();
+            self.update_static_ability_effects()?;
             self.reconcile_continuous_control_changes();
-            self.update_replacement_effects();
+            self.update_replacement_effects()?;
             self.update_cant_effects();
         }
 
@@ -151,8 +172,16 @@ impl GameState {
             && !self.turn_store.leave_game_in_progress
             && self.exile_permanents_controlled_by_departed_players()
         {
-            self.refresh_continuous_state();
+            self.refresh_continuous_state()?;
         }
+            let revision = self.effect_store.continuous_effects.revision();
+            self.runtime_cache.static_effects_cache.borrow_mut().mark_refreshed_snapshot(revision);
+            Ok(())
+        })();
+        if result.is_err() {
+            self.restore_execution_checkpoint(checkpoint, false);
+        }
+        result
     }
 
     /// Exile every permanent whose current controller has left the game.

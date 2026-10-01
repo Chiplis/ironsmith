@@ -118,7 +118,7 @@ impl EffectExecutor for AddManaOfLandProducedTypesEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        let chosen_symbols = credit_mana_symbols_from_context(game, player_id, chosen_symbols, ctx);
+        let chosen_symbols = credit_mana_symbols_from_context(game, player_id, chosen_symbols, ctx)?;
 
         Ok(mana_added_count_outcome(
             ctx,

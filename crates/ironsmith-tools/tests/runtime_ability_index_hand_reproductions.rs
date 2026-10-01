@@ -76,7 +76,7 @@ fn cast(
     eprintln!("AUDIT_STAGE cast {}", def.name());
     g.turn.priority_player = Some(actor);
     let id = g.create_object_from_definition(def, actor, Zone::Hand);
-    let action = compute_legal_actions(g, actor)
+    let action = compute_legal_actions(g, actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or_else(|| format!("{} normal cast unavailable", def.name()))?;
@@ -234,7 +234,7 @@ fn run(def: &CardDefinition, opponent_turn: bool, _: usize) -> Result<Value,Stri
     for _ in 0..3{g.create_object_from_definition(&basic("Neutral library card",CardType::Artifact),PlayerId(0),Zone::Library);}
     let source=g.create_object_from_definition(def,PlayerId(0),Zone::Hand);
     let mut q=TriggerQueue::new();let mut dm=Choices{accept:true,target:Some(Target::Object(witness)),trace:vec![]};
-    let actions=compute_legal_actions(&g,PlayerId(0));
+    let actions=compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state");
     let action=actions.iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:s,..}if *s==source)).cloned();
     let offered=action.is_some();let mut announcement_error=None;let mut resolution_error=None;
     let before=g.player(PlayerId(0)).unwrap().mana_pool.total();

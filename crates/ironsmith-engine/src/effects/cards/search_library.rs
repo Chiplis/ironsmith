@@ -28,6 +28,11 @@ impl EffectExecutor for SearchLibraryEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        game.clear_pending_decision_controllers();
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
         let chooser_id =
             crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.chooser, ctx)?;
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
@@ -182,66 +187,41 @@ impl EffectExecutor for SearchLibraryEffect {
                         return Ok(outcome);
                     }
 
-                    // For other destinations, move then shuffle
-                    let (new_id, move_events, move_facts) = if search_override.is_some() {
-                        let exiled = exile_found_cards_for_opposition_agent(
-                            game,
-                            ctx,
-                            &[card_id],
-                            chooser_id,
-                        );
-                        if ctx.decision_maker.awaiting_choice() {
-                            return Ok(EffectOutcome::count(0));
+                    // Complete the found-card instruction and all permission
+                    // links before additions; shuffle only after it resolves.
+                    let mut movement = if search_override.is_some() {
+                        let found = exile_found_cards_for_opposition_agent(game, ctx, &[card_id], chooser_id)?;
+                        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                        let mut original = if found.moved_ids.is_empty() { EffectOutcome::count(0) }
+                            else { EffectOutcome::with_objects(found.moved_ids.clone())
+                                .with_affected_objects(found.moved_ids) };
+                        if let Some(memory) = chosen_memory.clone() {
+                            original = original.with_chosen_object_memory(vec![memory]);
                         }
-                        exiled
-                            .first()
-                            .copied()
-                            .map(|id| (Some(id), Vec::new(), Vec::new()))
-                            .unwrap_or((None, Vec::new(), Vec::new()))
+                        crate::effects::zones::finish_zone_change_receipts(game, ctx, original, found.receipts)?
                     } else {
-                        // Search destinations can be locally rewritten by
-                        // self-replacements (for example, Library -> Hand can
-                        // become Library -> Battlefield). Route the move
-                        // through the normal effect path so the execution
-                        // context's decision maker and temporary replacement
-                        // effects participate in that zone change.
                         let move_effect = crate::effect::Effect::move_to_zone(
-                            crate::target::ChooseSpec::SpecificObject(card_id),
-                            self.destination,
-                            false,
+                            crate::target::ChooseSpec::SpecificObject(card_id), self.destination, false,
                         );
-                        let stable_id = game.object(card_id).map(|object| object.stable_id);
-                        let move_outcome = crate::effects::execute_effect(game, &move_effect, ctx)?;
-                        let moved = match &move_outcome.value {
-                            crate::effect::OutcomeValue::Objects(ids) => ids.first().copied(),
-                            _ => None,
-                        }
-                        .or_else(|| {
-                            stable_id
-                                .and_then(|stable| game.find_object_by_stable_id(stable))
-                                .filter(|current| *current != card_id)
-                        });
-                        (moved, move_outcome.events, move_outcome.execution_facts)
+                        crate::effects::execute_effect(game, &move_effect, ctx)?
                     };
-
-                    if let Some(new_id) = new_id {
-                        // Shuffle the library after searching
-                        game.shuffle_player_library(player_id);
-                        let mut outcome = EffectOutcome::with_objects(vec![new_id])
-                            .with_affected_objects(vec![new_id])
-                            .with_events(
-                                [search_event.clone(), shuffle_event.clone()]
-                                    .into_iter()
-                                    .chain(move_events),
-                            );
-                        outcome.execution_facts.extend(move_facts);
-                        if let Some(memory) = chosen_memory {
-                            outcome = outcome
-                                .with_chosen_object_memory(vec![memory.clone()])
-                                .with_affected_object_memory(vec![memory]);
-                        }
-                        return Ok(outcome);
+                    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                    // Only actual arrivals belong to this move. A later
+                    // movement by an addition is a different object/event.
+                    // Added actions may report affected objects even when the
+                    // original move was prevented. They are not search arrivals.
+                    let ids = movement.objects().unwrap_or(&[]).to_vec();
+                    let mut outcome = if ids.is_empty() { EffectOutcome::count(0) }
+                        else { EffectOutcome::with_objects(ids.clone()).with_affected_objects(ids) };
+                    outcome.events.push(search_event);
+                    outcome.events.append(&mut movement.events);
+                    outcome.execution_facts.append(&mut movement.execution_facts);
+                    if let Some(memory) = chosen_memory {
+                        outcome = outcome.with_chosen_object_memory(vec![memory]);
                     }
+                    game.shuffle_player_library(player_id);
+                    outcome.events.push(shuffle_event);
+                    return Ok(outcome);
                 }
             }
 
@@ -251,10 +231,17 @@ impl EffectExecutor for SearchLibraryEffect {
             Ok(EffectOutcome::count(0).with_events([search_event, shuffle_event]))
         })();
 
-        if result.is_err() || !ctx.decision_maker.awaiting_choice() {
-            finish_opposition_agent_search_control(game, search_control);
+        if result.is_ok() && ctx.decision_maker.awaiting_choice() {
+            game.capture_pending_decision_controllers();
         }
+        // Active scopes always unwind. Only the pending routing view survives.
+        finish_opposition_agent_search_control(game, search_control);
         result
+        })();
+        let pending = ctx.decision_maker.awaiting_choice();
+        if pending || instruction.is_err() { game.restore_execution_checkpoint(checkpoint, pending && instruction.is_ok()); context_checkpoint.restore(ctx); }
+        if pending { return instruction.map(|_| EffectOutcome::count(0)); }
+        instruction
     }
 }
 
@@ -590,4 +577,149 @@ mod tests {
             Zone::Library
         );
     }
+}
+
+#[cfg(test)]
+mod replacement_search_owner_contract_tests {
+    use super::*;
+    use crate::ability::Ability;
+    use crate::card::CardBuilder;
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::decision::DecisionMaker;
+    use crate::effect::{Effect, Value};
+    use crate::ids::{CardId, PlayerId, StableId};
+    use crate::object::CounterType;
+    use crate::replacement::{ReplacementAction, ReplacementEffect};
+    use crate::snapshot::ObjectSnapshot;
+    use crate::static_abilities::StaticAbility;
+    use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
+    use crate::types::CardType;
+
+    struct Answers { found: StableId, agent: Option<ObjectId>, pause: bool, pending: bool, calls: usize, binding: bool, searching_player: PlayerId, prompt_controller: Option<PlayerId> }
+    impl DecisionMaker for Answers {
+        fn decide_objects(&mut self, game: &GameState, c: &crate::decisions::context::SelectObjectsContext) -> Vec<ObjectId> {
+            c.candidates.iter().filter(|candidate| candidate.legal && game.object(candidate.id)
+                .is_some_and(|card| card.stable_id == self.found)).map(|candidate| candidate.id).collect()
+        }
+        fn decide_boolean(&mut self, game: &GameState, _: &crate::decisions::context::BooleanContext) -> bool {
+            self.calls += 1;
+            self.prompt_controller = Some(game.controlling_player_for(self.searching_player));
+            let id = game.find_object_by_stable_id(self.found).unwrap();
+            assert_eq!(game.object(id).unwrap().zone, if self.agent.is_some() {Zone::Exile} else {Zone::Hand});
+            if let Some(agent) = self.agent {
+                assert!(game.effect_store.grant_registry.card_can_play_from_zone(game, id, Zone::Exile,
+                    game.controller_of(game.object(agent).unwrap())), "found-card permission precedes additions");
+            }
+            if self.binding { assert_eq!(game.counter_count(id, CounterType::PlusOnePlusOne), 1); }
+            self.pending = self.pause;
+            !self.pending
+        }
+        fn awaiting_choice(&self) -> bool { self.pending }
+    }
+    fn card(game: &mut GameState, name: &str, owner: PlayerId, zone: Zone) -> ObjectId {
+        game.create_object_from_card(&CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature]).build(), owner, zone)
+    }
+    fn search(kind: u8, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<EffectOutcome, ExecutionError> {
+        if kind == 2 {
+            crate::effects::ChooseObjectsEffect::new(ObjectFilter::default().in_zone(Zone::Library)
+                .owned_by(PlayerFilter::You), 1, PlayerFilter::You, "found")
+                .in_zone(Zone::Library).as_search().execute(game, ctx)
+        } else {
+            SearchLibraryEffect::to_hand(ObjectFilter::default().with_type(CardType::Creature),
+                PlayerFilter::You, false).execute(game, ctx)
+        }
+    }
+    fn check(kind: u8, mode: u8) {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let parent = card(&mut game, "Search parent", alice, Zone::Battlefield);
+        let replacement_source = card(&mut game, "Search addition source", bob, Zone::Battlefield);
+        let agent = if kind == 0 {None} else {
+            let definition = CardDefinitionBuilder::new(CardId::new(), "Search controller")
+                .card_types(vec![CardType::Creature])
+                .with_ability(Ability::static_ability(StaticAbility::control_opponents_while_searching_libraries()))
+                .with_ability(Ability::static_ability(StaticAbility::opponent_search_exile_found_cards())).build();
+            Some(game.create_object_from_definition(&definition, bob, Zone::Battlefield))
+        };
+        let found = card(&mut game, "Search found", alice, Zone::Library);
+        let stable = game.object(found).unwrap().stable_id;
+        let sentinel = ObjectSnapshot::from_object(game.object(parent).unwrap(), &game);
+        let effects = match mode {
+            1 => vec![Effect::gain_life(3), Effect::lose_life(Value::X)],
+            3 => vec![Effect::new(crate::effects::PutCountersEffect::new(CounterType::PlusOnePlusOne, 1,
+                ChooseSpec::tagged("it"))), Effect::may(vec![Effect::gain_life(0)])],
+            _ => vec![Effect::gain_life(3), Effect::may(vec![Effect::gain_life(4)])],
+        };
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(
+            replacement_source, bob, crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+                ObjectFilter::specific(found), Some(Zone::Library), Some(if agent.is_some() {Zone::Exile} else {Zone::Hand})),
+            ReplacementAction::Additionally(effects)));
+        game.take_pending_trigger_events();
+        let before_ids = game.next_object_id_counter();
+        let library = game.player(alice).unwrap().library.clone();
+        let mut dm = Answers { found: stable, agent, pause: mode == 2, pending: false, calls: 0, binding: mode == 3, searching_player: alice, prompt_controller: None };
+        let mut ctx = ExecutionContext::new(parent, alice, &mut dm);
+        ctx.set_tagged_objects("it", vec![sentinel.clone()]);
+        ctx.set_tagged_objects("found", vec![sentinel.clone()]);
+        let result = search(kind, &mut game, &mut ctx);
+        if mode == 1 { assert!(matches!(result, Err(ExecutionError::UnresolvableValue(_)))); }
+        else if mode == 2 {
+            assert!(ctx.decision_maker.awaiting_choice());
+            assert!(result.unwrap().events.is_empty(), "pending search must publish no completed search or shuffle");
+        } else {
+            let outcome = result.unwrap(); assert_eq!(outcome.output_objects().len(), 1);
+            let arrival = outcome.output_objects()[0];
+            assert_eq!(game.object(arrival).unwrap().zone, if agent.is_some() {Zone::Exile} else {Zone::Hand});
+            assert_eq!(game.player(alice).unwrap().life, 20);
+            assert_eq!(game.player(bob).unwrap().life, if mode == 3 {20} else {27});
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+            assert!(!outcome.events.is_empty());
+            if mode == 3 { assert_eq!(game.counter_count(arrival, CounterType::PlusOnePlusOne), 1); }
+        }
+        if mode != 2 {
+            assert_eq!(game.controlling_player_for(alice), alice, "completed or failed search must release control");
+        }
+        assert_eq!(ctx.get_tagged_all("it").unwrap()[0].object_id, sentinel.object_id);
+        assert_eq!(game.counter_count(parent, CounterType::PlusOnePlusOne), 0);
+        if mode == 1 || mode == 2 {
+            assert_eq!(game.next_object_id_counter(), before_ids);
+            assert_eq!(game.player(alice).unwrap().library, library);
+            assert_eq!(game.object(found).unwrap().zone, Zone::Library);
+            assert_eq!(game.player(bob).unwrap().life, 20);
+            assert_eq!(ctx.get_tagged_all("found").unwrap()[0].object_id, sentinel.object_id);
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_some());
+            assert!(game.take_pending_trigger_events().is_empty());
+        }
+        drop(ctx);
+        if mode == 2 {
+            // A pending routing view must describe the actual prompt, even
+            // though physical state and active scopes roll back. Completion
+            // below separately proves that no control survives the resume.
+            assert_eq!(game.controlling_player_for(alice), dm.prompt_controller.expect("actual added-instruction prompt"));
+        }
+        if mode == 0 || mode == 3 { assert_eq!(dm.calls, 1, "arrival inspection must run"); }
+        if mode == 2 {
+            assert_eq!(dm.calls, 1); dm.pause = false; dm.pending = false;
+            let mut ctx = ExecutionContext::new(parent, alice, &mut dm);
+            let outcome = search(kind, &mut game, &mut ctx).unwrap();
+            assert_eq!(outcome.output_objects().len(), 1);
+            assert_eq!(game.player(bob).unwrap().life, 27);
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+            assert!(!ctx.decision_maker.awaiting_choice()); drop(ctx); assert_eq!(dm.calls, 2);
+            assert_eq!(game.controlling_player_for(alice), alice);
+        }
+    }
+    #[test] fn ordinary_addition_executes_before_shuffle() { check(0,0); }
+    #[test] fn ordinary_error_restores_search_owner() { check(0,1); }
+    #[test] fn ordinary_pending_replays_search_owner() { check(0,2); }
+    #[test] fn ordinary_addition_binds_arrival() { check(0,3); }
+    #[test] fn agent_addition_executes_after_permission() { check(1,0); }
+    #[test] fn agent_error_restores_search_owner() { check(1,1); }
+    #[test] fn agent_pending_replays_search_owner() { check(1,2); }
+    #[test] fn agent_addition_binds_arrival() { check(1,3); }
+    #[test] fn choice_addition_executes_after_permission() { check(2,0); }
+    #[test] fn choice_error_restores_search_owner() { check(2,1); }
+    #[test] fn choice_pending_replays_search_owner() { check(2,2); }
+    #[test] fn choice_addition_binds_arrival() { check(2,3); }
 }

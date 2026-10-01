@@ -484,7 +484,11 @@ fn lower_materialization_costs(
     let mut exile_tag_id = 0usize;
     let mut return_tag_id = 0usize;
     let mut library_tag_id = 0usize;
-    for segment in segments {
+    // "Sacrifice this creature and any number of other ... : ... for each
+    // creature sacrificed this way" (Emrakul's Evangel): the source joins the
+    // chosen set, so the count of permanents sacrificed this way includes it.
+    let mut source_joins_next_chosen_sacrifice = false;
+    for (segment_index, segment) in segments.iter().enumerate() {
         match segment {
             MaterializationCost::Mana(cost) => {
                 pending_mana_pips.extend(cost.pips().to_vec());
@@ -626,6 +630,16 @@ fn lower_materialization_costs(
             }
             MaterializationCost::SacrificeSelf { surface } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                if surface.is_none()
+                    && matches!(
+                        segments.get(segment_index + 1),
+                        Some(MaterializationCost::SacrificeChosen { count, .. })
+                            if count.dynamic_x || count.max != Some(count.min)
+                    )
+                {
+                    source_joins_next_chosen_sacrifice = true;
+                    continue;
+                }
                 if let Some(surface) = surface {
                     costs.push(Cost::validated_effect(Effect::new(
                         crate::effects::SacrificeTargetEffect::new(
@@ -662,6 +676,18 @@ fn lower_materialization_costs(
                         "sacrifice_cost_{sacrifice_tag_id}"
                     ));
                     sacrifice_tag_id += 1;
+                    if std::mem::take(&mut source_joins_next_chosen_sacrifice) {
+                        let mut source = ObjectFilter::source();
+                        source.zone = Some(crate::zone::Zone::Battlefield);
+                        costs.push(Cost::validated_effect(Effect::new(
+                            crate::effects::ChooseObjectsEffect::new(
+                                source,
+                                ChoiceCount::exactly(1),
+                                PlayerFilter::You,
+                                tag.clone(),
+                            ),
+                        )));
+                    }
                     let aggregate_constraint = filter.target_set_aggregate_constraint.take();
                     let mut choose = crate::effects::ChooseObjectsEffect::new(
                         filter,

@@ -530,6 +530,18 @@ fn parse_one_or_more_planeswalker_attack_target(
         ["one", "or", "more", "planeswalkers", "you", "control"] => Some(
             ironsmith_core::AttackTargetRestriction::PlaneswalkerControlledBy(PlayerFilter::You),
         ),
+        // "an opponent attacks you and/or one or more planeswalkers you
+        // control" (Cunning Rhetoric): one trigger per attack declaration
+        // against you or your planeswalkers.
+        ["you", "and/or", "one", "or", "more", "planeswalkers", "you", "control"]
+        | ["you", "and", "or", "one", "or", "more", "planeswalkers", "you", "control"]
+        | ["you", "and", "/", "or", "one", "or", "more", "planeswalkers", "you", "control"] => {
+            Some(
+                ironsmith_core::AttackTargetRestriction::PlayerOrPlaneswalkerControlledBy(
+                    PlayerFilter::You,
+                ),
+            )
+        }
         [
             "one",
             "or",
@@ -917,6 +929,16 @@ fn parse_damage_source_trigger_filter_lexed(
         // "Source" is a game-object domain, not a synonym for a battlefield
         // permanent. Keep parsed qualities such as color and controller while
         // allowing damage sources from any appropriate zone.
+        filter.zone = None;
+    }
+    // "a red creature or spell": a union whose arms live in different zones
+    // (battlefield creature, stack spell) cannot carry one outer zone.
+    if !filter.any_of.is_empty()
+        && filter
+            .any_of
+            .iter()
+            .any(|branch| branch.zone.is_some() && branch.zone != filter.zone)
+    {
         filter.zone = None;
     }
     if ActivationRestrictionCompatWords::new(subject_tokens)
@@ -1906,10 +1928,19 @@ fn trigger_destination_name_from_tokens(tokens: &[OwnedLexToken]) -> Option<Stri
     if trigger_pattern_accepts(&destination_words, THIS_DESTINATION_TRIGGER_NAME_PATTERN) {
         return None;
     }
+    // "transforms into Ashling, Rekindled": the self-name rewrite turns the
+    // short name into "this creature" and leaves the epithet behind
+    // ("this creature, rekindled"). Any destination spelled from a self
+    // reference names the face that has this ability, so keep only the self
+    // reference ("this creature").
+    let self_reference = destination_words.first().is_some_and(|word| *word == "this");
 
     let mut out = String::new();
     for token in tokens {
         if token.is_comma() {
+            if self_reference {
+                break;
+            }
             out.push(',');
             continue;
         }
@@ -2063,7 +2094,11 @@ fn parse_moved_or_cast_origin_condition(
         return None;
     };
     let cast_origin = trigger_grammar::parse_enters_origin_clause_words(cast_origin_words)?;
-    (moved_origin.zone == cast_origin.zone && moved_origin.owner == cast_origin.owner).then_some(
+    (moved_origin.zone == cast_origin.zone
+        && moved_origin.owner == cast_origin.owner
+        && !moved_origin.excluded
+        && !cast_origin.excluded)
+        .then_some(
         ironsmith_core::trigger_model::ZoneChangeOriginCondition::MovedFromOrCastFrom {
             zone: moved_origin.zone,
             zone_owner: moved_origin.owner,

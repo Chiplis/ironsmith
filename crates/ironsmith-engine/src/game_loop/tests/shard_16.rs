@@ -398,7 +398,7 @@ pub(super) fn unlucky_witness_playing_one_exiled_card_exhausts_the_shared_permis
     assert_eq!(game.object(first_exiled).unwrap().zone, Zone::Exile);
     assert_eq!(game.object(second_exiled).unwrap().zone, Zone::Exile);
 
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let first_method = actions
         .iter()
         .find_map(|action| match action {
@@ -428,7 +428,7 @@ pub(super) fn unlucky_witness_playing_one_exiled_card_exhausts_the_shared_permis
     )
     .expect("first exiled card should be proposed through the grant");
 
-    let after_first = crate::decision::compute_legal_actions(&game, alice);
+    let after_first = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !after_first.iter().any(|action| matches!(
             action,
@@ -643,7 +643,7 @@ pub(super) fn yawgmoths_will_plays_a_land_and_casts_a_spell_from_graveyard_then_
         "Yawgmoth's Will must exile itself through its own replacement effect"
     );
 
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(actions.iter().any(|action| matches!(
         action,
         LegalAction::PlayLand { land_id } if *land_id == replay_land
@@ -830,7 +830,7 @@ pub(super) fn varolz_grants_recipient_specific_scavenge_costs_and_the_ability_re
         player.mana_pool.add(ManaSymbol::Colorless, 2);
         player.mana_pool.add(ManaSymbol::Green, 1);
     }
-    let legal = compute_legal_actions(&game, alice);
+    let legal = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         legal.iter().any(|action| matches!(
             action,
@@ -2025,7 +2025,7 @@ pub(super) fn splinters_technique_sneak_cast_is_legal_only_with_unblocked_attack
 
     let (game, alice, spell_id, _) =
         set_up_splinters_technique_sneak_game(Step::DeclareBlockers, true);
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action,
@@ -2040,7 +2040,7 @@ pub(super) fn splinters_technique_sneak_cast_is_legal_only_with_unblocked_attack
 
     let (game, alice, spell_id, _) =
         set_up_splinters_technique_sneak_game(Step::DeclareBlockers, false);
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !actions.iter().any(|action| matches!(
             action,
@@ -2055,7 +2055,7 @@ pub(super) fn splinters_technique_sneak_cast_is_legal_only_with_unblocked_attack
 
     let (game, alice, spell_id, _) =
         set_up_splinters_technique_sneak_game(Step::CombatDamage, true);
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !actions.iter().any(|action| matches!(
             action,
@@ -2236,7 +2236,7 @@ pub(super) fn kitsunes_technique_sneak_cast_is_legal_only_with_unblocked_attacke
 
     let (game, alice, _, spell_id, _) =
         set_up_kitsunes_technique_sneak_game(Step::DeclareBlockers, true);
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action,
@@ -2251,7 +2251,7 @@ pub(super) fn kitsunes_technique_sneak_cast_is_legal_only_with_unblocked_attacke
 
     let (game, alice, _, spell_id, _) =
         set_up_kitsunes_technique_sneak_game(Step::DeclareBlockers, false);
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !actions.iter().any(|action| matches!(
             action,
@@ -2266,7 +2266,7 @@ pub(super) fn kitsunes_technique_sneak_cast_is_legal_only_with_unblocked_attacke
 
     let (game, alice, _, spell_id, _) =
         set_up_kitsunes_technique_sneak_game(Step::CombatDamage, true);
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !actions.iter().any(|action| matches!(
             action,
@@ -2525,7 +2525,7 @@ pub(super) fn elektra_sneak_cast_is_legal_during_declare_blockers_with_unblocked
         .build();
     game.create_object_from_card(&target, bob, Zone::Battlefield);
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action,
@@ -2547,7 +2547,7 @@ pub(super) fn permanent_sneak_cast_returns_attacker_and_enters_tapped_and_attack
 
     let definition = sneak_permanent_probe_definition();
     let (mut game, alice, bob, spell_id, attacker_id) = set_up_permanent_sneak_game(&definition);
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let cast_action = actions
         .into_iter()
         .find(|action| {
@@ -4048,7 +4048,7 @@ pub(super) fn test_read_ahead_enters_with_choice_and_skips_lower_chapters() {
     let hand_id = game.create_object_from_definition(&saga_def, alice, Zone::Hand);
     let mut dm = ChooseSecondOption;
     let enters = game
-        .move_object_with_etb_processing_with_dm(hand_id, Zone::Battlefield, &mut dm)
+        .move_object_with_etb_processing_with_dm(hand_id, Zone::Battlefield, &mut dm).expect("replacement operation must execute successfully in this scenario")
         .expect("Saga should enter");
     handle_saga_enters_battlefield(&mut game, enters.new_id, &mut trigger_queue, &mut dm).unwrap();
 

@@ -155,7 +155,7 @@ mod tests {
             Zone::Battlefield,
         );
 
-        let actions = compute_legal_actions(&game, alice);
+        let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
         assert!(
             !actions.iter().any(|action| matches!(
                 action,

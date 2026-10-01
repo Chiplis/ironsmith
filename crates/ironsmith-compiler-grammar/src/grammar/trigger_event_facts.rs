@@ -299,6 +299,12 @@ fn trigger_zone_transition(trigger: &TriggerSpec) -> Option<TriggerZoneTransitio
             from: None,
             to: Some(Zone::Exile),
         }),
+        TriggerSpec::EntersBattlefieldFromZone {
+            excluded: true, ..
+        } => Some(TriggerZoneTransitionAst {
+            from: None,
+            to: Some(Zone::Battlefield),
+        }),
         TriggerSpec::EntersBattlefieldFromZone { from, .. }
         | TriggerSpec::ThisEntersBattlefieldFromZone { from, .. } => {
             Some(TriggerZoneTransitionAst {

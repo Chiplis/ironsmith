@@ -37,6 +37,8 @@ impl EffectExecutor for GainLifeEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        game.try_update_static_ability_effects(Default::default())
+            .map_err(ExecutionError::ContinuousDiscovery)?;
         let player_id = resolve_player_from_spec(game, &self.player, ctx)?;
         let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
 
@@ -218,5 +220,135 @@ mod tests {
             outcome.events.is_empty(),
             "prevented life gain should not emit a LifeGainEvent"
         );
+    }
+}
+
+#[cfg(test)]
+mod replacement_life_observation_identity_contract_tests {
+    use super::*;
+    use crate::events::{EventKind, life::matchers::WouldGainLifeMatcher};
+    use crate::ids::{CardId, PlayerId};
+    use crate::replacement::{ReplacementAction, ReplacementEffect};
+
+    fn three_gains() -> (GameState, EffectOutcome, PlayerId) {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.create_object_from_card(
+            &crate::card::CardBuilder::new(CardId::new(), "Observation source")
+                .card_types(vec![crate::types::CardType::Enchantment]).build(),
+            alice, crate::zone::Zone::Battlefield,
+        );
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::with_matcher(source, alice, WouldGainLifeMatcher::you(),
+                ReplacementAction::Additionally(vec![
+                    crate::effect::Effect::new(GainLifeEffect::you(2)),
+                    crate::effect::Effect::new(GainLifeEffect::you(3)),
+                ])),
+        );
+        let proposal = game.alloc_child_event_provenance(
+            crate::provenance::ProvNodeId::default(), EventKind::LifeGain,
+        );
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.provenance = proposal;
+        let outcome = crate::effects::execute_effect(&mut game, &crate::effect::Effect::new(GainLifeEffect::you(5)), &mut ctx).expect("all three life changes execute");
+        assert_eq!(game.player(alice).unwrap().life, 30);
+        assert_eq!(outcome.as_count(), Some(5), "the original amount stays separate from additions");
+        let mut amounts = outcome.events.iter().filter_map(|event|
+            event.downcast::<LifeGainEvent>().map(|gain| gain.amount)).collect::<Vec<_>>();
+        amounts.sort_unstable();
+        assert_eq!(amounts, vec![2, 3, 5]);
+        (game, outcome, alice)
+    }
+
+    #[test]
+    fn physical_gains_have_distinct_observation_identities() {
+        let (_, outcome, _) = three_gains();
+        let identities = outcome.events.iter().filter(|event| event.kind() == EventKind::LifeGain)
+            .map(|event| event.provenance()).collect::<std::collections::HashSet<_>>();
+        assert_eq!(identities.len(), 3, "three physical gains must not share one publication identity");
+    }
+
+    #[test]
+    fn history_counts_all_physical_gains_from_one_replacement_payload() {
+        let (game, _, alice) = three_gains();
+        assert_eq!(game.turn_store.turn_history.total_life_gained_for_players(&[alice]), 10,
+            "history must retain the original gain and both added gains");
+    }
+
+    #[test]
+    fn republishing_same_physical_gain_does_not_duplicate_history() {
+        let (mut game, outcome, alice) = three_gains();
+        for _ in 0..2 {
+            for event in &outcome.events {
+                game.turn_store.turn_history.stage_event(event, None, None);
+            }
+        }
+        assert_eq!(game.turn_store.turn_history.total_life_gained_for_players(&[alice]), 10);
+    }
+}
+
+#[cfg(test)]
+mod replacement_life_loss_observation_identity_contract_tests {
+    use super::*;
+    use crate::effects::LoseLifeEffect;
+    use crate::events::LifeLossEvent;
+    use crate::events::{EventKind, life::matchers::WouldLoseLifeMatcher};
+    use crate::ids::{CardId, PlayerId};
+    use crate::replacement::{ReplacementAction, ReplacementEffect};
+
+    fn three_losses() -> (GameState, EffectOutcome, PlayerId) {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.create_object_from_card(
+            &crate::card::CardBuilder::new(CardId::new(), "Observation source")
+                .card_types(vec![crate::types::CardType::Enchantment]).build(),
+            alice, crate::zone::Zone::Battlefield,
+        );
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::with_matcher(source, alice, WouldLoseLifeMatcher::you(),
+                ReplacementAction::Additionally(vec![
+                    crate::effect::Effect::new(LoseLifeEffect::you(2)),
+                    crate::effect::Effect::new(LoseLifeEffect::you(3)),
+                ])),
+        );
+        let proposal = game.alloc_child_event_provenance(
+            crate::provenance::ProvNodeId::default(), EventKind::LifeLoss,
+        );
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.provenance = proposal;
+        let outcome = crate::effects::execute_effect(&mut game, &crate::effect::Effect::new(LoseLifeEffect::you(5)), &mut ctx).expect("all three life changes execute");
+        assert_eq!(game.player(alice).unwrap().life, 10);
+        assert_eq!(outcome.as_count(), Some(5), "the original amount stays separate from additions");
+        let mut amounts = outcome.events.iter().filter_map(|event|
+            event.downcast::<LifeLossEvent>().map(|gain| gain.amount)).collect::<Vec<_>>();
+        amounts.sort_unstable();
+        assert_eq!(amounts, vec![2, 3, 5]);
+        (game, outcome, alice)
+    }
+
+    #[test]
+    fn physical_losses_have_distinct_observation_identities() {
+        let (_, outcome, _) = three_losses();
+        let identities = outcome.events.iter().filter(|event| event.kind() == EventKind::LifeLoss)
+            .map(|event| event.provenance()).collect::<std::collections::HashSet<_>>();
+        assert_eq!(identities.len(), 3, "three physical losses must not share one publication identity");
+    }
+
+    #[test]
+    fn history_counts_all_physical_losses_from_one_replacement_payload() {
+        let (game, _, alice) = three_losses();
+        assert_eq!(game.turn_store.turn_history.total_life_lost_for_players(&[alice]), 10,
+            "history must retain the original loss and both added losses");
+    }
+
+    #[test]
+    fn republishing_same_physical_loss_does_not_duplicate_history() {
+        let (mut game, outcome, alice) = three_losses();
+        for _ in 0..2 {
+            for event in &outcome.events {
+                game.turn_store.turn_history.stage_event(event, None, None);
+            }
+        }
+        assert_eq!(game.turn_store.turn_history.total_life_lost_for_players(&[alice]), 10);
     }
 }

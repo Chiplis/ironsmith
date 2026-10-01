@@ -85,7 +85,7 @@ fn mana_exhaust() {
     let mut q = TriggerQueue::new();
     let mut s = PriorityLoopState::new(2);
     for i in 0..2 {
-        let action = compute_legal_actions(&g, A)
+        let action = compute_legal_actions(&g, A).expect("fixture has complete replacement state")
             .into_iter()
             .find(|a| matches!(a,LegalAction::ActivateManaAbility{source,..} if *source==id));
         println!(
@@ -134,7 +134,7 @@ fn granted_exhaust() {
     let mut q = TriggerQueue::new();
     let mut s = PriorityLoopState::new(2);
     for i in 0..2 {
-        let action = compute_legal_actions(&g, A)
+        let action = compute_legal_actions(&g, A).expect("fixture has complete replacement state")
             .into_iter()
             .find(|a| matches!(a,LegalAction::ActivateAbility{source,..} if *source==id));
         println!(
@@ -612,7 +612,7 @@ fn independent_granted_exhaust_instances_have_independent_limits() {
     g.record_ability_activation(source, 0);
     assert!(g.exhaust_ability_activated(source, 0));
     assert!(!g.exhaust_ability_activated(source, 1));
-    let actions = compute_legal_actions(&g, A);
+    let actions = compute_legal_actions(&g, A).expect("fixture has complete replacement state");
     assert!(!actions.iter().any(
         |a| matches!(a,LegalAction::ActivateAbility{source:id, ability_index:0} if *id==source)
     ));
@@ -626,7 +626,7 @@ fn independent_granted_exhaust_instances_have_independent_limits() {
         !g.exhaust_ability_activated(source, 0),
         "the unused second grant moved into slot zero"
     );
-    assert!(compute_legal_actions(&g, A).iter().any(
+    assert!(compute_legal_actions(&g, A).expect("fixture has complete replacement state").iter().any(
         |a| matches!(a,LegalAction::ActivateAbility{source:id, ability_index:0} if *id==source)
     ));
 }
@@ -718,7 +718,7 @@ fn madness_and_graveyard_exile_are_independently_selectable_replacements() {
             false,
             Default::default(),
             &mut dm,
-        );
+        ).expect("root discard should execute").expect("root discard should finish without a pending choice");
         assert_eq!(dm.ordering_prompts, 1);
         assert_eq!(out.final_zone, Zone::Exile);
         let exiled = out.new_id.unwrap();
@@ -772,7 +772,7 @@ fn madness_and_library_destination_recheck_after_each_choice() {
             false,
             Default::default(),
             &mut dm,
-        );
+        ).expect("root discard should execute").expect("root discard should finish without a pending choice");
         assert_eq!(dm.ordering_prompts, 1);
         assert_eq!(dm.destination_prompts, destination_prompts);
         assert_eq!(out.final_zone, expected_zone);
@@ -838,7 +838,7 @@ fn discard_waits_for_the_replacement_destination_without_moving_the_card() {
         false,
         Default::default(),
         &mut dm,
-    );
+    ).expect("root discard should execute").expect("root discard should finish without a pending choice");
     assert!(dm.waiting);
     assert!(out.new_id.is_none());
     assert_eq!(g.object(card).unwrap().zone, Zone::Hand);

@@ -145,7 +145,7 @@ fn airbend_nonland_selection_excludes_source_and_lands_and_can_decline() {
         let land = game.create_object_from_definition(&land, bob, Zone::Battlefield);
         let hand = game.create_object_from_definition(&def, alice, Zone::Hand);
         let source = game
-            .move_object_with_etb_processing(hand, Zone::Battlefield)
+            .move_object_with_etb_processing(hand, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
             .unwrap()
             .new_id;
         let mut queue = TriggerQueue::new();
@@ -237,4 +237,13 @@ fn lifelink_follows_damage_controller_after_source_control_changes() {
         23,
         "lifelink benefits damage source's current controller"
     );
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: ironsmith::game_state::EntryCommitResult)
+    -> Option<ironsmith::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

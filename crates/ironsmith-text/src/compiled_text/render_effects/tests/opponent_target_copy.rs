@@ -146,7 +146,7 @@ fn opponent_target_copy_activates_with_delegated_target_and_exiles_only_its_toke
             .unwrap()
             .mana_pool
             .add(crate::mana::ManaSymbol::Colorless, 4);
-        let action=crate::decision::compute_legal_actions(&game,alice).into_iter().find(|action| matches!(action,crate::decision::LegalAction::ActivateAbility {source:id,..} if *id==source)).expect("legal activation");
+        let action=crate::decision::compute_legal_actions(&game,alice).expect("fixture has complete replacement state").into_iter().find(|action| matches!(action,crate::decision::LegalAction::ActivateAbility {source:id,..} if *id==source)).expect("legal activation");
         let mut state = crate::game_loop::PriorityLoopState::new(game.players_in_game());
         let mut queue = crate::triggers::TriggerQueue::new();
         let mut dm = CopyChoice {

@@ -617,6 +617,8 @@ pub struct Object {
     /// to the proposed spell through total-cost calculation and payment.
     pub cast_play_from_constraints:
         Option<Box<(ObjectId, Zone, crate::grant_registry::PlayFromConstraints)>>,
+    /// Once-turn permission captured before movement and retained through payment.
+    pub cast_grant_usage_identity: Option<Box<crate::grant_registry::GrantPermissionIdentity>>,
     /// True if this split card can be cast fused from hand.
     pub has_fuse: bool,
     /// Optional costs (kicker, buyback, etc.)
@@ -631,7 +633,7 @@ pub struct Object {
     /// Non-copiable static abilities granted until end of turn while this object is a spell or
     /// permanent. Stack-to-battlefield movement preserves these grants for the permanent that
     /// spell becomes; other zone changes clear them.
-    pub temporary_static_ability_grants: Vec<TemporaryStaticAbilityGrant>,
+    pub temporary_static_ability_grants: TemporaryStaticAbilityGrants,
     /// X value chosen for this object when it was cast (if any).
     /// Used by ETB and other triggered abilities that reference X from the mana cost.
     pub x_value: Option<u32>,
@@ -657,6 +659,63 @@ pub struct Object {
     // - regeneration_shields -> GameState::regeneration_shields
     // - madness_exiled -> GameState::madness_exiled
     // - is_commander -> GameState::commanders
+}
+
+/// Deterministic registration identity, independent of refresh order.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TemporaryAbilityOrigin { source: ObjectId, serial: u64 }
+
+/// Temporary grants paired with stable origins. Read access cannot detach
+/// a grant from its identity; push always registers a new occurrence.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TemporaryStaticAbilityGrants {
+    source: ObjectId, next_serial: u64,
+    grants: Vec<TemporaryStaticAbilityGrant>,
+    origins: Vec<TemporaryAbilityOrigin>,
+}
+impl TemporaryStaticAbilityGrants {
+    pub fn new(source: ObjectId) -> Self {
+        Self { source, next_serial: 0, grants: Vec::new(), origins: Vec::new() }
+    }
+    pub fn origin(&self, index: usize) -> Option<&TemporaryAbilityOrigin> { self.origins.get(index) }
+    pub fn push(&mut self, grant: TemporaryStaticAbilityGrant) {
+        let serial = self.next_serial;
+        self.next_serial = serial.checked_add(1).expect("temporary ability identity exhausted");
+        self.grants.push(grant);
+        self.origins.push(TemporaryAbilityOrigin { source: self.source, serial });
+    }
+    pub fn clear(&mut self) { self.grants.clear(); self.origins.clear(); }
+    pub fn retain(&mut self, mut keep: impl FnMut(&TemporaryStaticAbilityGrant) -> bool) {
+        let mut retained = Vec::new(); let mut index = 0;
+        self.grants.retain(|grant| {
+            let retain = keep(grant);
+            if retain { retained.push(self.origins[index].clone()); }
+            index += 1; retain
+        });
+        self.origins = retained;
+    }
+    pub(crate) fn empty_with_allocator(&self) -> Self {
+        Self { grants: Vec::new(), origins: Vec::new(), ..self.clone() }
+    }
+    /// Merge reconstruction retains component registrations, not new grants.
+    pub(crate) fn extend_existing(&mut self, other: &Self) {
+        for (grant, origin) in other.grants.iter().zip(&other.origins) {
+            if origin.source == self.source {
+                self.next_serial = self.next_serial.max(origin.serial.checked_add(1)
+                    .expect("temporary ability identity exhausted"));
+            }
+            self.grants.push(grant.clone()); self.origins.push(origin.clone());
+        }
+    }
+}
+impl std::ops::Deref for TemporaryStaticAbilityGrants {
+    type Target = [TemporaryStaticAbilityGrant];
+    fn deref(&self) -> &Self::Target { &self.grants }
+}
+impl<'a> IntoIterator for &'a TemporaryStaticAbilityGrants {
+    type Item = &'a TemporaryStaticAbilityGrant;
+    type IntoIter = std::slice::Iter<'a, TemporaryStaticAbilityGrant>;
+    fn into_iter(self) -> Self::IntoIter { self.grants.iter() }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -861,12 +920,13 @@ impl Object {
             alternative_casts: Vec::new().into(),
             cast_alternative_method: None,
             cast_play_from_constraints: None,
+            cast_grant_usage_identity: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             snow_mana_spent_to_cast: ManaPool::default(),
-            temporary_static_ability_grants: Vec::new(),
+            temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             cast_tagged_objects: HashMap::new(),
@@ -946,12 +1006,13 @@ impl Object {
             alternative_casts: Vec::new().into(),
             cast_alternative_method: None,
             cast_play_from_constraints: None,
+            cast_grant_usage_identity: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             snow_mana_spent_to_cast: ManaPool::default(),
-            temporary_static_ability_grants: Vec::new(),
+            temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             cast_tagged_objects: HashMap::new(),
@@ -1239,12 +1300,13 @@ impl Object {
             alternative_casts: Vec::new().into(),
             cast_alternative_method: None,
             cast_play_from_constraints: None,
+            cast_grant_usage_identity: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             snow_mana_spent_to_cast: ManaPool::default(),
-            temporary_static_ability_grants: Vec::new(),
+            temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             cast_tagged_objects: HashMap::new(),
@@ -1316,6 +1378,7 @@ impl Object {
             alternative_casts: source.alternative_casts.clone(),
             cast_alternative_method: None,
             cast_play_from_constraints: None,
+            cast_grant_usage_identity: None,
             has_fuse: source.has_fuse,
             // Optional costs are copiable
             optional_costs: source.optional_costs.clone(),
@@ -1324,7 +1387,7 @@ impl Object {
             // Tokens are never cast.
             mana_spent_to_cast: ManaPool::default(),
             snow_mana_spent_to_cast: ManaPool::default(),
-            temporary_static_ability_grants: Vec::new(),
+            temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             cast_tagged_objects: HashMap::new(),
@@ -1388,6 +1451,7 @@ impl Object {
             alternative_casts: source.alternative_casts.clone(),
             cast_alternative_method: source.cast_alternative_method.clone(),
             cast_play_from_constraints: None,
+            cast_grant_usage_identity: None,
             has_fuse: source.has_fuse,
             optional_costs: source.optional_costs.clone(),
             optional_costs_paid: source.optional_costs_paid.clone(),
@@ -1462,12 +1526,13 @@ impl Object {
             alternative_casts: Vec::new().into(),
             cast_alternative_method: None,
             cast_play_from_constraints: None,
+            cast_grant_usage_identity: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             snow_mana_spent_to_cast: ManaPool::default(),
-            temporary_static_ability_grants: Vec::new(),
+            temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             cast_tagged_objects: HashMap::new(),
@@ -1533,12 +1598,13 @@ impl Object {
             alternative_casts: Vec::new().into(),
             cast_alternative_method: None,
             cast_play_from_constraints: None,
+            cast_grant_usage_identity: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             snow_mana_spent_to_cast: ManaPool::default(),
-            temporary_static_ability_grants: Vec::new(),
+            temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             cast_tagged_objects: HashMap::new(),
@@ -1581,6 +1647,9 @@ impl Object {
     pub fn copy_copiable_values_from_values(&mut self, values: &CopiableValues) {
         self.name = values.name.clone().into();
         self.mana_cost = shared_optional_value(values.mana_cost.clone());
+        // A permanent copy receives the copied face's cost rather than the
+        // source card's noncopiable linked-face mana-value contribution.
+        self.linked_face_mana_cost = None;
         self.color_override = Some(values.colors);
         self.supertypes = values.supertypes.clone().into();
         self.card_types = values.card_types.clone().into();
@@ -2504,12 +2573,13 @@ impl Object {
             alternative_casts: handles.alternative_casts.clone(),
             cast_alternative_method: None,
             cast_play_from_constraints: None,
+            cast_grant_usage_identity: None,
             has_fuse: def.has_fuse,
             optional_costs: handles.optional_costs.clone(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             snow_mana_spent_to_cast: ManaPool::default(),
-            temporary_static_ability_grants: Vec::new(),
+            temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             cast_tagged_objects: HashMap::new(),
@@ -3092,5 +3162,32 @@ mod tests {
                 0
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod temporary_ability_registration_tests {
+    use super::*;
+    #[test]
+    fn temporary_ability_origins_survive_expiry_checkpoint_and_reconstruction() {
+        let source = ObjectId::from_raw(90001);
+        let ability = crate::static_abilities::StaticAbility::haste();
+        let grant = |expiry| TemporaryStaticAbilityGrant { ability: ability.id(),
+            ability_payload: Some(ability.clone()), expires_end_of_turn: expiry };
+        let mut grants = TemporaryStaticAbilityGrants::new(source);
+        grants.push(grant(1)); grants.push(grant(2));
+        let first = grants.origin(0).unwrap().clone(); let second = grants.origin(1).unwrap().clone();
+        assert_ne!(first, second, "cloned payloads register independently");
+        grants.retain(|grant| grant.expires_end_of_turn > 1);
+        assert_eq!(grants.origin(0), Some(&second), "expiry must not renumber survivor");
+        assert_eq!(grants.clone(), grants);
+        let mut rebuilt = grants.empty_with_allocator(); rebuilt.extend_existing(&grants);
+        assert_eq!(rebuilt.origin(0), Some(&second));
+        rebuilt.clear(); rebuilt.push(grant(3));
+        assert_ne!(rebuilt.origin(0), Some(&first)); assert_ne!(rebuilt.origin(0), Some(&second));
+        let mut other = TemporaryStaticAbilityGrants::new(ObjectId::from_raw(90002)); other.push(grant(2));
+        let other_origin = other.origin(0).unwrap().clone(); rebuilt.extend_existing(&other);
+        assert_eq!(rebuilt.origin(1), Some(&other_origin), "component origin survives reconstruction");
+        assert_ne!(rebuilt.origin(0), rebuilt.origin(1));
     }
 }

@@ -153,6 +153,7 @@ fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
         | crate::effect::Value::ColorsAmong(filter)
         | crate::effect::Value::DistinctNames(filter)
         | crate::effect::Value::DistinctManaValues(filter)
+        | crate::effect::Value::UnlockedDoorsAmong(filter)
         | crate::effect::Value::DistinctPowers(filter) => {
             object_filter_mentions_iterated_player(filter)
         }
@@ -726,9 +727,32 @@ fn collect_candidates(
     chooser_id: PlayerId,
 ) -> Result<Vec<ObjectId>, ExecutionError> {
     let mut candidates = Vec::new();
-    for zone in effective_search_zones(effect, game, chooser_id)? {
+    let zones = effective_search_zones(effect, game, chooser_id)?;
+    for zone in zones.iter().copied() {
         for id in collect_candidates_in_zone(effect, game, ctx, chooser_id, zone)? {
             if !candidates.contains(&id) {
+                candidates.push(id);
+            }
+        }
+    }
+    // A choice among an already-tagged pool ("An opponent chooses two of
+    // them", Turtles Forever) names those exact cards wherever they are. Cards
+    // revealed from outside the game stay there until moved, so the pool
+    // includes tagged cards outside the game as well.
+    let chooses_tagged_pool = !effect.is_search
+        && effect.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        });
+    if chooses_tagged_pool && !zones.contains(&Zone::OutsideGame) {
+        let filter_ctx = choice_filter_context(effect, game, ctx, chooser_id);
+        for id in game.objects_in_zone(Zone::OutsideGame) {
+            if candidates.contains(&id) {
+                continue;
+            }
+            if game
+                .object(id)
+                .is_some_and(|obj| effect.filter.matches(obj, &filter_ctx, game))
+            {
                 candidates.push(id);
             }
         }
@@ -1352,6 +1376,12 @@ pub(crate) fn run_choose_objects(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
 ) -> Result<EffectOutcome, ExecutionError> {
+    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+    game.clear_pending_decision_controllers();
+    let checkpoint = game.clone();
+    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+    let mut pending_selection_cleared_tag = false;
+    let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
     let chooser_id =
         crate::effects::helpers::resolve_player_filter_as_chooser(game, &effect.chooser, ctx)?;
 
@@ -1679,6 +1709,7 @@ pub(crate) fn run_choose_objects(
             make_decision(game, ctx.decision_maker, chooser_id, Some(ctx.source), spec)
         };
         if !effect.count.is_random() && ctx.decision_maker.awaiting_choice() {
+            pending_selection_cleared_tag = true;
             ctx.clear_object_tag(effect.tag.as_str());
             let outcome = EffectOutcome::count(0);
             return Ok(if let Some(search_event) = search_event {
@@ -1929,14 +1960,14 @@ pub(crate) fn run_choose_objects(
             ctx.remember_face_down_exile_viewers(&chosen, chooser_id);
         }
 
-        let (objects_for_tags, outcome_objects) = if search_override.is_some() {
-            let exiled = exile_found_cards_for_opposition_agent(game, ctx, &chosen, chooser_id);
+        let (objects_for_tags, outcome_objects, receipts) = if search_override.is_some() {
+            let found = exile_found_cards_for_opposition_agent(game, ctx, &chosen, chooser_id)?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
             }
-            (Vec::new(), exiled)
+            (Vec::new(), found.moved_ids, found.receipts)
         } else {
-            (chosen.clone(), chosen.clone())
+            (chosen.clone(), chosen.clone(), Vec::new())
         };
 
         let snapshots = snapshot_chosen_objects(game, &objects_for_tags);
@@ -1961,17 +1992,28 @@ pub(crate) fn run_choose_objects(
         let outcome = EffectOutcome::with_objects(outcome_objects.clone())
             .with_execution_fact(ExecutionFact::ChosenObjects(outcome_objects))
             .with_chosen_object_memory(chosen_memory);
-        Ok(if let Some(search_event) = search_event {
+        let original = if let Some(search_event) = search_event {
             outcome.with_event(search_event)
-        } else {
-            outcome
-        })
+        } else { outcome };
+        // Tags, chosen-object memory and permission links belong to the
+        // original instruction and must be complete before additions run.
+        crate::effects::zones::finish_zone_change_receipts(game, ctx, original, receipts)
     })();
 
-    if result.is_err() || !ctx.decision_maker.awaiting_choice() {
-        finish_opposition_agent_search_control(game, search_control);
+    if result.is_ok() && ctx.decision_maker.awaiting_choice() {
+        game.capture_pending_decision_controllers();
     }
+    // Active scopes always unwind. Only the pending routing view survives.
+    finish_opposition_agent_search_control(game, search_control);
     result
+    })();
+    let pending = ctx.decision_maker.awaiting_choice();
+    if pending || instruction.is_err() { game.restore_execution_checkpoint(checkpoint, pending && instruction.is_ok()); context_checkpoint.restore(ctx); }
+    if pending {
+        if pending_selection_cleared_tag { ctx.clear_object_tag(effect.tag.as_str()); }
+        return instruction.map(|_| EffectOutcome::count(0));
+    }
+    instruction
 }
 
 #[cfg(test)]
@@ -2754,6 +2796,31 @@ mod tests {
         let mut ctx = ExecutionContext::new_default(source, alice);
 
         let filter = ObjectFilter::default().in_zone(Zone::Graveyard);
+        let mut effect = ChooseObjectsEffect::new(
+            filter,
+            ChoiceCount::dynamic_x(),
+            PlayerFilter::You,
+            "chosen",
+        )
+        .in_zone(Zone::Graveyard);
+
+        effect.count_value = Some(crate::effect::Value::X);
+        let err = run_choose_objects(&effect, &mut game, &mut ctx).expect_err("missing X errors");
+        assert!(
+            matches!(err, ExecutionError::UnresolvableValue(_)),
+            "expected X resolution error, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_undefined_dynamic_x_is_bound_by_choice() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let card = create_graveyard_card(&mut game, "Card", alice);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let filter = ObjectFilter::default().in_zone(Zone::Graveyard);
         let effect = ChooseObjectsEffect::new(
             filter,
             ChoiceCount::dynamic_x(),
@@ -2762,11 +2829,9 @@ mod tests {
         )
         .in_zone(Zone::Graveyard);
 
-        let err = run_choose_objects(&effect, &mut game, &mut ctx).expect_err("missing X errors");
-        assert!(
-            matches!(err, ExecutionError::UnresolvableValue(_)),
-            "expected X resolution error, got {err:?}"
-        );
+        let outcome = run_choose_objects(&effect, &mut game, &mut ctx).expect("undefined X is chosen during resolution");
+        assert_eq!(ctx.x_value, Some(1));
+        assert_eq!(outcome.objects().unwrap(), &[card]);
     }
 
     #[test]

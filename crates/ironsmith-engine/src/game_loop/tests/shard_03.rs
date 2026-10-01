@@ -1176,7 +1176,7 @@ pub(super) fn jhoira_exiles_nonland_card_and_granted_suspend_triggers_from_exile
         .add(ManaSymbol::Colorless, 2);
 
     assert!(
-        !crate::decision::compute_legal_actions(&game, alice)
+        !crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .into_iter()
             .any(|action| matches!(
                 action,
@@ -1215,7 +1215,7 @@ pub(super) fn jhoira_exiles_nonland_card_and_granted_suspend_triggers_from_exile
         ),
         "Jhoira activation should pass direct activation checks"
     );
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let activate_action = actions
         .iter()
         .find(|action| {
@@ -1468,7 +1468,7 @@ pub(super) fn the_face_of_boe_activation_is_sorcery_speed() {
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
     assert!(
-        crate::decision::compute_legal_actions(&game, alice)
+        crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .into_iter()
             .any(|action| matches!(
                 action,
@@ -1480,7 +1480,7 @@ pub(super) fn the_face_of_boe_activation_is_sorcery_speed() {
 
     game.turn.phase = Phase::Combat;
     assert!(
-        !crate::decision::compute_legal_actions(&game, alice)
+        !crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .into_iter()
             .any(|action| matches!(
                 action,
@@ -2886,7 +2886,7 @@ pub(super) fn chaos_lord_attack_as_haste_clause_does_not_grant_haste_for_tap_abi
         "the as-though-haste attack permission must not become the Haste keyword"
     );
     assert!(
-        !crate::decision::compute_legal_actions(&game, alice)
+        !crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .iter()
             .any(|action| matches!(
                 action,
@@ -3064,7 +3064,7 @@ pub(super) fn crystalline_resonance_copies_target_permanent_when_you_cycle() {
         panic!("{label} did not finish producing stack or trigger work");
     }
 
-    let activate_action = compute_legal_actions(&game, alice)
+    let activate_action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -3145,7 +3145,7 @@ pub(super) fn crystalline_resonance_copies_target_permanent_when_you_cycle() {
         "the copied permanent should contribute the target's toughness"
     );
 
-    let second_activate_action = compute_legal_actions(&game, alice)
+    let second_activate_action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(

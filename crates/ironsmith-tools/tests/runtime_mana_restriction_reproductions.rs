@@ -56,7 +56,7 @@ fn cast_or_activate(
 ) -> Result<(ObjectId, u32), String> {
     let stable = game.object(id).ok_or("action source missing")?.stable_id;
     game.turn.priority_player = Some(alice());
-    let action = compute_legal_actions(game, alice())
+    let action = compute_legal_actions(game, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| match action {
             LegalAction::CastSpell { spell_id, .. } => cast && *spell_id == id,
@@ -133,7 +133,7 @@ fn resolve_all(game: &mut GameState) -> Result<usize, String> {
 }
 
 fn activate_mana(game: &mut GameState, id: ObjectId) -> Result<Value, String> {
-    let action = compute_legal_actions(game, alice())
+    let action = compute_legal_actions(game, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| matches!(action, LegalAction::ActivateManaAbility { source,.. } if *source==id))
         .ok_or("fixture mana ability is not legal")?;
@@ -238,7 +238,7 @@ fn scenario(
         },
     );
     let pool_before = game.player(alice()).unwrap().mana_pool.total();
-    let available = compute_legal_actions(&game, alice())
+    let available = compute_legal_actions(&game, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .any(|action| match action {
             LegalAction::CastSpell { spell_id, .. } => !ability && spell_id == id,

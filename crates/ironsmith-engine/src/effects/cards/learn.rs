@@ -6,7 +6,7 @@ use crate::effects::{
     SequenceEffect, execute_effect,
 };
 use crate::events::processing::{
-    TraitEventResult, process_trait_event_with_dm_and_applied_effects,
+    TraitEventResult, process_trait_event_with_execution_context,
 };
 use crate::events::{Event, KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
@@ -28,27 +28,21 @@ impl EffectExecutor for LearnEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = (|| -> Result<EffectOutcome, ExecutionError> {
         let would_event = Event::new_with_provenance(
             KeywordActionEvent::new(KeywordActionKind::Learn, ctx.controller, ctx.source, 1),
             ctx.provenance,
         );
-        let applied_effects = ctx.replacement.suppressed_replacement_effects.clone();
-        let applied_effect_keys = ctx.replacement.suppressed_replacement_effect_keys.clone();
-        if applied_effects.is_empty() && applied_effect_keys.is_empty() {
-            game.update_replacement_effects();
-        }
-        match process_trait_event_with_dm_and_applied_effects(
-            game,
-            would_event,
-            ctx.decision_maker,
-            &applied_effects,
-            &applied_effect_keys,
-        ) {
+        let replacement_result = process_trait_event_with_execution_context(game, would_event, ctx)?;
+        crate::effects::replacement::execute_event_expansion(game, ctx, replacement_result, |game, ctx, original| {
+        match original {
             TraitEventResult::Replaced {
-                effects, effect_id, ..
+                effects, source, controller, context, ..
             } => {
                 return crate::effects::composition::mechanic_actions::execute_keyword_action_replacement_effects(
-                    game, ctx, effects, effect_id, None,
+                    game, ctx, effects, source, controller, &context, None,
                 );
             }
             TraitEventResult::Prevented => return Ok(EffectOutcome::count(0)),
@@ -56,6 +50,7 @@ impl EffectExecutor for LearnEffect {
                 return Ok(EffectOutcome::count(0));
             }
             TraitEventResult::Proceed(_) | TraitEventResult::Modified(_) => {}
+            TraitEventResult::Expanded { .. } => return Err(ExecutionError::InternalError("keyword commit received an unflattened result".into())),
         }
 
         // CR 701.48a offers the discard first. Only a player who did not
@@ -65,8 +60,10 @@ impl EffectExecutor for LearnEffect {
             &Effect::new(MayEffect::single(Effect::discard(1))),
             ctx,
         )?;
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
         if discard_outcome.count_or_zero() > 0 {
             let draw_outcome = execute_effect(game, &Effect::draw(1), ctx)?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
             return Ok(
                 EffectOutcome::aggregate([discard_outcome, draw_outcome]).with_event(
                     crate::triggers::TriggerEvent::new_with_provenance(
@@ -93,6 +90,7 @@ impl EffectExecutor for LearnEffect {
                 .in_zone(Zone::OutsideGame),
         );
         let choose_outcome = execute_effect(game, &choose_lesson, ctx)?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
         if choose_outcome
             .objects()
             .is_some_and(|objects| !objects.is_empty())
@@ -102,6 +100,7 @@ impl EffectExecutor for LearnEffect {
                 Effect::move_to_zone(ChooseSpec::tagged(LEARN_LESSON_TAG), Zone::Hand, false),
             ]);
             let lesson_outcome = execute_effect(game, &Effect::new(reveal_and_put), ctx)?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
             return Ok(
                 EffectOutcome::aggregate([discard_outcome, choose_outcome, lesson_outcome])
                     .with_event(crate::triggers::TriggerEvent::new_with_provenance(
@@ -129,6 +128,15 @@ impl EffectExecutor for LearnEffect {
                 ),
             ),
         )
+        })
+        })();
+        let pending = ctx.decision_maker.awaiting_choice();
+        if pending || result.is_err() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
+        }
+        if pending { return Ok(EffectOutcome::count(0)); }
+        result
     }
 }
 
@@ -188,9 +196,9 @@ mod tests {
         }
     }
 
-    struct ChooseReplacementNamed(&'static str);
+    struct ChooseReplacementSource(crate::ids::ObjectId);
 
-    impl DecisionMaker for ChooseReplacementNamed {
+    impl DecisionMaker for ChooseReplacementSource {
         fn decide_options(
             &mut self,
             _game: &GameState,
@@ -198,9 +206,10 @@ mod tests {
         ) -> Vec<usize> {
             ctx.options
                 .iter()
-                .find(|option| option.legal && option.description.contains(self.0))
+                .find(|option| option.legal && option.object_id == Some(self.0)
+                    && !option.description.starts_with("Do not apply "))
                 .map(|option| vec![option.index])
-                .unwrap_or_default()
+                .expect("replacement source must have an offered apply option")
         }
     }
 
@@ -304,7 +313,7 @@ mod tests {
                 .in_zones(vec![Zone::Graveyard]),
             );
         let source = game.new_object_id();
-        let mut dm = ChooseReplacementNamed("Return Retriever");
+        let mut dm = ChooseReplacementSource(phoenix);
         let mut ctx = ExecutionContext::new(source, alice, &mut dm);
 
         LearnEffect::new()

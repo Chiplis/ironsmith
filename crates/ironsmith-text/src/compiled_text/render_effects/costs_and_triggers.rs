@@ -3480,7 +3480,7 @@ pub(crate) fn pluralize_noun_phrase(phrase: &str) -> String {
     // Past-participial provenance qualifies the noun to its left. Handle it
     // before the broader `with` qualifier so "card exiled with this source"
     // pluralizes its noun instead of becoming the malformed "card exileds".
-    for participle in ["created", "exiled"] {
+    for participle in ["created", "exiled", "banded"] {
         let marker = format!(" {participle} ");
         if let Some((head, tail)) = base.split_once(&marker) {
             return format!(

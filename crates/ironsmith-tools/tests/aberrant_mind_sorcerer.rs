@@ -86,7 +86,7 @@ fn aberrant_mind_die_boundaries_keep_exact_graveyard_target() {
             let creature = game.create_object_from_definition(&definition, alice, Zone::Graveyard);
             let hand = game.create_object_from_definition(&definition, alice, Zone::Hand);
             let source = game
-                .move_object_with_etb_processing(hand, Zone::Battlefield)
+                .move_object_with_etb_processing(hand, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
                 .unwrap()
                 .new_id;
             let mut queue = ironsmith::triggers::TriggerQueue::new();
@@ -159,4 +159,13 @@ fn aberrant_mind_die_boundaries_keep_exact_graveyard_target() {
             }
         }
     }
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: ironsmith::game_state::EntryCommitResult)
+    -> Option<ironsmith::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

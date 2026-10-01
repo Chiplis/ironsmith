@@ -152,7 +152,7 @@ fn announce(
 ) -> Result<(TriggerQueue, Value), String> {
     g.turn.priority_player = Some(PlayerId(actor));
     let source = g.create_object_from_definition(def, PlayerId(actor), Zone::Hand);
-    let action = compute_legal_actions(g, PlayerId(actor))
+    let action = compute_legal_actions(g, PlayerId(actor)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source))
         .ok_or("intended cast unavailable")?;
@@ -279,7 +279,7 @@ fn action(
     mana: bool,
     dm: &mut Choices,
 ) -> Result<Value, String> {
-    let a = compute_legal_actions(g, PlayerId(0))
+    let a = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| match a {
             LegalAction::ActivateAbility {
@@ -435,7 +435,7 @@ fn run(
         .last()
         .ok_or("activated ability absent")?;
     let mana = ability.is_mana_ability();
-    let actions = compute_legal_actions(&g, PlayerId(0));
+    let actions = compute_legal_actions(&g, PlayerId(0)).expect("fixture has complete replacement state");
     let offered = actions.iter().any(|a| match a {
         LegalAction::ActivateAbility {
             source: s,

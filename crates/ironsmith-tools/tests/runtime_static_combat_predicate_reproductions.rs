@@ -154,7 +154,7 @@ fn perform(
         .ok_or("missing action source")?;
     let initial_stack_len = game.stack.len();
     game.turn.priority_player = Some(actor);
-    let action = compute_legal_actions(game, actor)
+    let action = compute_legal_actions(game, actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| match a {
             LegalAction::CastSpell { spell_id, .. } => ability.is_none() && *spell_id == source,
@@ -295,7 +295,7 @@ fn play_snow(
 ) -> Result<(), String> {
     let id = g.create_object_from_definition(&defs["Snow-Covered Island"], actor, Zone::Hand);
     g.turn.priority_player = Some(actor);
-    let a = compute_legal_actions(g, actor)
+    let a = compute_legal_actions(g, actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::PlayLand{land_id}if *land_id==id))
         .ok_or("snow land play unavailable")?;

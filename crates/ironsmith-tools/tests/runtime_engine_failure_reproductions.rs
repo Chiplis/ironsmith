@@ -130,7 +130,7 @@ fn ninjutsu(definition: &CardDefinition) -> Result<Value, String> {
         .unwrap()
         .mana_pool
         .add(ManaSymbol::Blue, 2);
-    let action = compute_legal_actions(&game, alice())
+    let action = compute_legal_actions(&game, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::ActivateAbility { source: id, .. } if *id == source))
         .ok_or("canonical ninjutsu ability was not a legal action")?;
@@ -190,7 +190,7 @@ fn grant_entry_counters(
             .mana_pool
             .add(color, amount);
     }
-    let action = compute_legal_actions(&game, alice())
+    let action = compute_legal_actions(&game, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))
         .ok_or("creature fixture was not a legal cast")?;
@@ -257,7 +257,8 @@ fn simultaneous_loss(
         option,
         ..Default::default()
     };
-    if !apply_state_based_actions_with(&mut game, &mut dm) {
+    if !apply_state_based_actions_with(&mut game, &mut dm)
+        .map_err(|error| format!("state-based action execution failed: {error}"))? {
         return Err("no state-based action applied".into());
     }
     let in_zone = |zone| {
@@ -737,7 +738,7 @@ fn delayed_sacrifice_after_controller_change(
     for symbol in [ManaSymbol::Black, ManaSymbol::Colorless] {
         game.player_mut(alice()).unwrap().mana_pool.add(symbol, 10);
     }
-    let action = compute_legal_actions(&game, alice())
+    let action = compute_legal_actions(&game, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == hand))
         .ok_or("canonical reanimation spell has no legal cast")?;
@@ -1151,7 +1152,7 @@ fn cast_from_hand(
     ] {
         game.player_mut(caster).unwrap().mana_pool.add(symbol, 12);
     }
-    let action = compute_legal_actions(game, caster)
+    let action = compute_legal_actions(game, caster).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == source))
         .ok_or_else(|| format!("no legal cast of {}", definition.name()))?;
@@ -1192,7 +1193,7 @@ fn plargg_reveal_stop(
         .unwrap()
         .mana_pool
         .add(ManaSymbol::Red, 5);
-    let action = compute_legal_actions(&game, alice())
+    let action = compute_legal_actions(&game, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             let LegalAction::ActivateAbility {
@@ -1262,7 +1263,7 @@ fn akiri_equipped(
         .unwrap()
         .mana_pool
         .add(ManaSymbol::White, 1);
-    let action = compute_legal_actions(&game, alice())
+    let action = compute_legal_actions(&game, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::ActivateAbility { source: id, .. } if *id == source))
         .ok_or("equipped Akiri fixture has no legal activation")?;
@@ -1526,7 +1527,7 @@ fn tatsumasa_delayed_return(
         .unwrap()
         .mana_pool
         .add(ManaSymbol::Colorless, 6);
-    let action = compute_legal_actions(&game, alice())
+    let action = compute_legal_actions(&game, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             let LegalAction::ActivateAbility {
@@ -2086,7 +2087,7 @@ fn bane_turn_face_up(
         for color in [ManaSymbol::Black, ManaSymbol::Colorless] {
             game.player_mut(alice()).unwrap().mana_pool.add(color, 12);
         }
-        let action=compute_legal_actions(&game,alice()).into_iter().find(|action|matches!(action,
+        let action=compute_legal_actions(&game,alice()).expect("fixture has complete replacement state").into_iter().find(|action|matches!(action,
             LegalAction::CastSpell{spell_id,casting_method:ironsmith::alternative_cast::CastingMethod::FaceDown,..} if *spell_id==hand))
             .ok_or("Bane has no legal face-down cast")?;
         queue = announce_chosen(&mut game, action, &mut dm)?;
@@ -2119,7 +2120,7 @@ fn bane_turn_face_up(
     } else {
         ironsmith::special_actions::TurnFaceUpMethod::TurnFaceUpAbility
     };
-    let action=compute_legal_actions(&game,alice()).into_iter().find(|action|matches!(action,
+    let action=compute_legal_actions(&game,alice()).expect("fixture has complete replacement state").into_iter().find(|action|matches!(action,
         LegalAction::TurnFaceUp{creature_id,method:selected} if *creature_id==source && *selected==method))
         .ok_or("requested Bane turn-face-up method is not legal")?;
     let result = announce_chosen(&mut game, action, &mut dm);
@@ -3215,7 +3216,7 @@ fn pendant_owner_controller(
             .unwrap()
             .mana_pool
             .add(ManaSymbol::Colorless, 2);
-        let action = compute_legal_actions(&game, bob)
+        let action = compute_legal_actions(&game, bob).expect("fixture has complete replacement state")
             .into_iter()
             .find(|action| matches!(action,LegalAction::ActivateAbility{source,..} if *source==id))
             .ok_or("Pendant activation was not legal")?;
@@ -3521,7 +3522,7 @@ fn elven_passage_resource(
         trace: Vec::new(),
     };
     let result: Result<(), String> = (|| {
-        let action = compute_legal_actions(&game, alice())
+        let action = compute_legal_actions(&game, alice()).expect("fixture has complete replacement state")
             .into_iter()
             .find(
                 |action| matches!(action,LegalAction::ActivateAbility{source:id,..}if *id==source),
@@ -3715,7 +3716,7 @@ fn invigorate_cost_path(
     ] {
         game.player_mut(alice()).unwrap().mana_pool.add(symbol, 12);
     }
-    let legal = compute_legal_actions(&game, alice());
+    let legal = compute_legal_actions(&game, alice()).expect("fixture has complete replacement state");
     trace.push(json!({"stage":"legal_cast_actions","compiled_alternative_costs":format!("{:?}",definition.alternative_casts),"compiled_spell_effect":format!("{:?}",definition.spell_effect),"actions":legal.iter().filter(|action|matches!(action,LegalAction::CastSpell{spell_id,..}if *spell_id==source)).map(|action|format!("{action:?}")).collect::<Vec<_>>()}));
     let action=legal.into_iter().find(|action|matches!(action,LegalAction::CastSpell{spell_id,casting_method,..}if *spell_id==source&&if alternative {matches!(casting_method,CastingMethod::Alternative(_))}else{matches!(casting_method,CastingMethod::Normal)}));
     let available = action.is_some();
@@ -4759,7 +4760,7 @@ fn sorin_optional_sacrifice(
             .ok_or("Sorin did not enter")?;
         source = Some(id);
         loyalty_before = Some(game.counter_count(id, CounterType::Loyalty));
-        let action=compute_legal_actions(&game,alice()).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index} if *source==id&&*ability_index==1)).ok_or("second loyalty ability unavailable")?;
+        let action=compute_legal_actions(&game,alice()).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index} if *source==id&&*ability_index==1)).ok_or("second loyalty ability unavailable")?;
         dm.trace.push(json!({"stage":"legal_loyalty_action","action":format!("{action:?}"),"loyalty_before":loyalty_before,"ability":format!("{:?}",game.current_activated_ability(id,1))}));
         let mut queue = announce_chosen(&mut game, action, &mut dm)?;
         finish_with_priority(&mut game, &mut queue, &mut dm)?;

@@ -406,7 +406,7 @@ fn cohort_multiword_source_or_own_subtype_entry_retains_both_trigger_arms() {
                 )
             };
             game.take_pending_trigger_events();
-            game.move_object_with_etb_processing(entrant, Zone::Battlefield)
+            game.move_object_with_etb_processing(entrant, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
                 .unwrap();
             let mut queue = crate::triggers::TriggerQueue::new();
             crate::game_loop::drain_pending_trigger_events(&mut game, &mut queue);
@@ -422,4 +422,13 @@ fn cohort_multiword_source_or_own_subtype_entry_retains_both_trigger_arms() {
             assert_eq!(game.player(alice).unwrap().hand.len(), expected);
         }
     }
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: crate::game_state::EntryCommitResult)
+    -> Option<crate::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

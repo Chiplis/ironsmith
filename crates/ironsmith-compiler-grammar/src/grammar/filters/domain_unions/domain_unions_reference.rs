@@ -80,7 +80,14 @@ fn leading_shared_domain_colors(segments: &[&[OwnedLexToken]]) -> Option<crate::
     }
     let view = TokenWordView::new(segments[0]);
     let words = view.word_refs();
-    let noun = words.iter().position(|word| domain(word))?;
+    // "a red creature or spell": the first arm's noun may be a card type.
+    let noun = words.iter().position(|word| {
+        domain(word)
+            || crate::util::parse_card_type(word).is_some()
+            || word
+                .strip_suffix('s')
+                .is_some_and(|stem| crate::util::parse_card_type(stem).is_some())
+    })?;
     let mut prefix = &words[..noun];
     if prefix
         .first()
@@ -131,6 +138,50 @@ fn elided_card_noun_type_arms(segments: &[&[OwnedLexToken]]) -> Vec<bool> {
     flags
 }
 
+/// "an instant or sorcery spell that targets ..." / "a Faerie or Wizard
+/// permanent spell": every earlier arm is a bare type adjective whose noun
+/// (and everything after it) is the final arm's terminal `spell`/`permanent`
+/// noun phrase. That is one shared selector, not independently scoped arms.
+fn elides_shared_terminal_spell_or_permanent_noun(segments: &[&[OwnedLexToken]]) -> bool {
+    let Some((last, preceding)) = segments.split_last() else {
+        return false;
+    };
+    let strip_article = |words: Vec<&str>| -> Vec<String> {
+        let mut words = words.into_iter().map(str::to_string).collect::<Vec<_>>();
+        if words
+            .first()
+            .is_some_and(|word| matches!(word.as_str(), "a" | "an"))
+        {
+            words.remove(0);
+        }
+        words
+    };
+    let is_type_word = |word: &str| {
+        crate::util::parse_card_type(word).is_some()
+            || crate::util::parse_non_type(word).is_some()
+            || crate::util::parse_subtype_word(word).is_some()
+    };
+    let last_words = strip_article(TokenWordView::new(last).word_refs());
+    let Some(noun) = last_words
+        .iter()
+        .position(|word| matches!(word.as_str(), "spell" | "spells"))
+    else {
+        return false;
+    };
+    let head = &last_words[..noun];
+    if head.is_empty()
+        || !head
+            .iter()
+            .all(|word| word == "permanent" || is_type_word(word.as_str()))
+    {
+        return false;
+    }
+    preceding.iter().all(|segment| {
+        let words = strip_article(TokenWordView::new(segment).word_refs());
+        !words.is_empty() && words.iter().all(|word| is_type_word(word.as_str()))
+    })
+}
+
 fn is_elided_card_noun_type_arm(segment: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(segment).word_refs();
     !words.is_empty()
@@ -139,6 +190,47 @@ fn is_elided_card_noun_type_arm(segment: &[OwnedLexToken]) -> bool {
                 && (crate::util::parse_card_type(word).is_some()
                     || crate::util::parse_non_type(word).is_some())
         })
+}
+
+/// `Bird and/or Cleric permanent cards ...`: every preceding arm made only of
+/// subtype words borrows the final arm's tail after its own subtype words, so
+/// `Bird` reads `Bird permanent cards ...`. Returns `None` when no arm needs it.
+fn elided_subtype_noun_arms(segments: &[&[OwnedLexToken]]) -> Option<Vec<Vec<OwnedLexToken>>> {
+    let (last, preceding) = segments.split_last()?;
+    let is_subtype_word = |token: &OwnedLexToken| {
+        token
+            .as_word()
+            .is_some_and(|word| parse_subtype_flexible(word).is_some())
+    };
+    let tail_start = last.iter().position(|token| !is_subtype_word(token))?;
+    if tail_start == 0 {
+        return None;
+    }
+    let tail = &last[tail_start..];
+    let shares_noun = tail.first().and_then(OwnedLexToken::as_word).is_some_and(|word| {
+        matches!(
+            word,
+            "permanent" | "permanents" | "card" | "cards" | "creature" | "creatures"
+                | "spell" | "spells"
+        )
+    });
+    if !shares_noun {
+        return None;
+    }
+    let mut changed = false;
+    let mut expanded = Vec::with_capacity(segments.len());
+    for segment in preceding {
+        if !segment.is_empty() && segment.iter().all(is_subtype_word) {
+            let mut arm = segment.to_vec();
+            arm.extend_from_slice(tail);
+            expanded.push(arm);
+            changed = true;
+        } else {
+            expanded.push(segment.to_vec());
+        }
+    }
+    expanded.push(last.to_vec());
+    changed.then_some(expanded)
 }
 
 /// Parse a union whose branches each name their own object class and may
@@ -221,6 +313,18 @@ pub fn parse_branch_scoped_object_filter_union_lexed(
     if segments.len() < 2 {
         return None;
     }
+    // "Bird and/or Cleric permanent cards from your graveyard": a bare
+    // subtype arm elides the noun phrase that the final arm states once.
+    // Give each such arm the final arm's shared tail so it parses with the
+    // same noun and zone.
+    let shared_tail_arms = elided_subtype_noun_arms(&segments);
+    let segments: Vec<&[OwnedLexToken]> = match shared_tail_arms.as_ref() {
+        Some(expanded) => expanded.iter().map(Vec::as_slice).collect(),
+        None => segments,
+    };
+    if elides_shared_terminal_spell_or_permanent_noun(&segments) {
+        return None;
+    }
     let repeats_indefinite_article = segments.iter().skip(1).any(|segment| {
         segment
             .iter()
@@ -233,6 +337,22 @@ pub fn parse_branch_scoped_object_filter_union_lexed(
     // enchantment cards from all graveyards`) elides the card noun it shares
     // with the final arm, so it also shares that arm's trailing card zone.
     let elided_card_noun_arms = elided_card_noun_type_arms(&segments);
+    // "instant or sorcery card from your graveyard or exiled card ...": a
+    // bare type arm elides the card noun of the arm right after it and
+    // shares that arm's domain (zone and owner), not the final arm's.
+    let elided_into_next_arm = segments
+        .iter()
+        .enumerate()
+        .map(|(index, segment)| {
+            segments.get(index + 1).is_some_and(|next| {
+                is_elided_card_noun_type_arm(segment)
+                    && TokenWordView::new(next)
+                        .word_refs()
+                        .iter()
+                        .any(|word| matches!(*word, "card" | "cards"))
+            })
+        })
+        .collect::<Vec<_>>();
 
     let branches = segments
         .into_iter()
@@ -283,6 +403,27 @@ pub fn parse_branch_scoped_object_filter_union_lexed(
             }
         })
         .collect::<Vec<_>>();
+    if elided_into_next_arm.len() == branches.len() {
+        for index in (0..branches.len()).rev() {
+            if !elided_into_next_arm[index] {
+                continue;
+            }
+            let (zone, owner, controller) = {
+                let next = &branches[index + 1];
+                (next.zone, next.owner.clone(), next.controller.clone())
+            };
+            let branch = &mut branches[index];
+            if matches!(branch.zone, None | Some(Zone::Battlefield))
+                && branch.owner.is_none()
+                && branch.controller.is_none()
+                && zone.is_some_and(|zone| zone != Zone::Battlefield)
+            {
+                branch.zone = zone;
+                branch.owner = owner;
+                branch.controller = controller;
+            }
+        }
+    }
     for branch in &mut branches {
         if branch.zone == Some(Zone::Stack) && branch.has_mana_cost && branch.stack_kind.is_none() {
             branch.stack_kind = Some(crate::filter::StackObjectKind::Spell);
@@ -308,7 +449,15 @@ pub fn parse_branch_scoped_object_filter_union_lexed(
         .filter(|word| matches!(*word, "another" | "other"))
         .count()
         >= branches.len();
-    propagate_leading_shared_set_modifiers(tokens, other, shared_player_scope, &mut branches);
+    // A leading set modifier ("other target artifact or creature") scopes the
+    // whole coordinated list unless a later arm is requantified with its own
+    // article ("another creature or an artifact").
+    propagate_leading_shared_set_modifiers(
+        tokens,
+        other,
+        shared_player_scope || !repeats_indefinite_article,
+        &mut branches,
+    );
     propagate_trailing_shared_player_scope(&mut branches);
     let elided_card_noun_arms = if elided_card_noun_arms.len() == branches.len() {
         elided_card_noun_arms
@@ -322,6 +471,9 @@ pub fn parse_branch_scoped_object_filter_union_lexed(
     );
     propagate_trailing_shared_attachment_scope(&mut branches);
     propagate_leading_shared_state(tokens, &mut branches);
+    if !repeats_indefinite_article {
+        distribute_trailing_head_noun_over_bare_subtype_arms(&mut branches);
+    }
     let mut union = ObjectFilter::default();
     union.colors = shared_colors;
     factor_common_domain_scope(&mut branches, &mut union);
@@ -450,4 +602,30 @@ pub fn parse_domain_union_object_filter_lexed(
         union.set_union_connective(ObjectFilterUnionConnective::AndOr);
     }
     Some(union)
+}
+
+/// "target Wolf or Werewolf creature": the head noun after the last subtype
+/// arm is shared by every bare subtype adjective before it, so a noncreature
+/// Wolf is not a legal choice.
+fn distribute_trailing_head_noun_over_bare_subtype_arms(branches: &mut [ObjectFilter]) {
+    let Some((last, preceding)) = branches.split_last_mut() else {
+        return;
+    };
+    if preceding.is_empty() || last.card_types.is_empty() || last.subtypes.is_empty() {
+        return;
+    }
+    let is_bare_subtype_arm = |branch: &ObjectFilter| {
+        branch.card_types.is_empty()
+            && branch.all_card_types.is_empty()
+            && branch.excluded_card_types.is_empty()
+            && !branch.subtypes.is_empty()
+            && branch.any_of.is_empty()
+            && !branch.has_explicit_card_noun()
+    };
+    if !preceding.iter().all(is_bare_subtype_arm) {
+        return;
+    }
+    for branch in preceding.iter_mut() {
+        branch.card_types = last.card_types.clone();
+    }
 }

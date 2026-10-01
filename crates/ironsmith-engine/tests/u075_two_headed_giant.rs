@@ -260,7 +260,7 @@ fn u075_poison_is_shared_uses_the_team_threshold_and_any_loss_propagates() {
             .count(),
         1
     );
-    assert!(apply_state_based_actions(&mut game));
+    assert!(apply_state_based_actions(&mut game).expect("SBA application must succeed"));
     assert!(
         seats[0..2]
             .iter()

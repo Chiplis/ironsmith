@@ -167,7 +167,11 @@ pub fn parse_aggregate_scope_value_words(words: &[&str]) -> Option<Value> {
         AggregateValueMetric::ColorPairs => Some(Value::ColorPairsAmong(filter)),
         AggregateValueMetric::DistinctNames => Some(Value::DistinctNames(filter)),
         AggregateValueMetric::DistinctManaValues => Some(Value::DistinctManaValues(filter)),
+        AggregateValueMetric::UnlockedDoors => Some(Value::UnlockedDoorsAmong(filter)),
         AggregateValueMetric::DistinctPowers => Some(Value::DistinctPowers(filter)),
+        AggregateValueMetric::DistinctCounterTypes => {
+            Some(Value::DistinctCounterTypesAmong(filter))
+        }
         AggregateValueMetric::Counters => Some(
             Value::CountersOn(Box::new(ChooseSpec::All(filter)), None)
                 .with_surface_hint(ironsmith_core::ValueSurfaceHint::CountersAmong),

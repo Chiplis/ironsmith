@@ -170,10 +170,18 @@ fn parse_negated_who_this_way_predicate(
         return Ok(None);
     };
 
-    let filter = match parse_object_filter(filter_tokens, false) {
+    let mut filter = match parse_object_filter(filter_tokens, false) {
         Ok(filter) => filter,
         Err(_) => return Ok(None),
     };
+    // A "card" noun names a card, never a permanent on the battlefield.
+    if filter.zone == Some(crate::zone::Zone::Battlefield)
+        && filter_tokens
+            .iter()
+            .any(|token| token.is_word("card") || token.is_word("cards"))
+    {
+        filter.zone = None;
+    }
 
     Ok(Some(PredicateAst::Player(
         PlayerPredicateAst::PlayerTaggedObjectMatches {

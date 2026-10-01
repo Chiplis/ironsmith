@@ -69,20 +69,23 @@ impl EffectExecutor for ReturnFromGraveyardOrExileToBattlefieldEffect {
             value,
             events,
             execution_facts,
+            instruction_result,
         } = outcome;
 
-        match status {
+        let mut outcome = match status {
             // Preserve prior behavior: ETB prevented is treated as TargetInvalid.
-            crate::effect::OutcomeStatus::Impossible => Ok(EffectOutcome::target_invalid()
+            crate::effect::OutcomeStatus::Impossible => EffectOutcome::target_invalid()
                 .with_events(events)
-                .with_execution_facts(execution_facts)),
-            other => Ok(EffectOutcome::with_details(
+                .with_execution_facts(execution_facts),
+            other => EffectOutcome::with_details(
                 other,
                 value,
                 events,
                 execution_facts,
-            )),
-        }
+            ),
+        };
+        outcome.instruction_result = instruction_result;
+        Ok(outcome)
     }
 }
 

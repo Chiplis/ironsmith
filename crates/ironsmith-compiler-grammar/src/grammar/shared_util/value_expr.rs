@@ -69,6 +69,19 @@ const COLORS_SPENT_PREFIXES: &[&[&str]] = &[
     ],
     &["colors", "of", "mana", "spent", "to", "cast", "it"],
     &["colors", "of", "mana", "used", "to", "cast", "it"],
+    // Converge on a permanent spell names its own card type.
+    &[
+        "the", "number", "of", "colors", "of", "mana", "spent", "to", "cast", "this", "creature",
+    ],
+    &[
+        "number", "of", "colors", "of", "mana", "spent", "to", "cast", "this", "creature",
+    ],
+    &[
+        "the", "number", "of", "colors", "of", "mana", "spent", "to", "cast", "this", "permanent",
+    ],
+    &[
+        "number", "of", "colors", "of", "mana", "spent", "to", "cast", "this", "permanent",
+    ],
 ];
 
 const TAGGED_POWER_PREFIXES: &[&[&str]] = &[

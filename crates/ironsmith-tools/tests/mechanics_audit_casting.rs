@@ -170,7 +170,7 @@ impl DecisionMaker for Dm {
 }
 
 fn find_cast(game: &GameState, player: PlayerId, spell: ObjectId, pred: impl Fn(&CastingMethod, Zone) -> bool) -> Option<LegalAction> {
-    compute_legal_actions(game, player).into_iter().find(|action| {
+    compute_legal_actions(game, player).expect("fixture has complete replacement state").into_iter().find(|action| {
         matches!(action, LegalAction::CastSpell { spell_id, from_zone, casting_method }
             if *spell_id == spell && pred(casting_method, *from_zone))
     })
@@ -460,7 +460,7 @@ mod cycling {
         add_mana(game, ALICE, ManaSymbol::White, 3);
         add_mana(game, ALICE, ManaSymbol::Green, 3);
         game.refresh_continuous_state();
-        let action = compute_legal_actions(game, ALICE)
+        let action = compute_legal_actions(game, ALICE).expect("fixture has complete replacement state")
             .into_iter()
             .find(|a| matches!(a, LegalAction::ActivateAbility { source, .. } if *source == card))
             .expect("cycling is available");
@@ -650,7 +650,7 @@ mod linked_face_mana_value {
         }
         let front = defs.iter().find(|def| def.card.name == "Delver of Secrets").unwrap();
         let delver = game.create_object_from_definition(front, ALICE, Zone::Battlefield);
-        assert!(game.transform_permanent(delver));
+        assert!(game.transform_permanent(delver).expect("transform discovery must succeed in this scenario"));
         assert_eq!(game.object(delver).unwrap().name.as_str(), "Insectile Aberration");
         assert_eq!(mana_value(&game, delver), 1);
     }

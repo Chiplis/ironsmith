@@ -84,7 +84,7 @@ fn shock_can_target_after_vines(owner: PlayerId, caster: PlayerId) -> bool {
         .unwrap()
         .mana_pool
         .add(ManaSymbol::Red, 1);
-    let action = compute_legal_actions(&game, caster)
+    let action = compute_legal_actions(&game, caster).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == shock))
         .expect("Shock castable (players are legal targets)");

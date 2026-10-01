@@ -195,7 +195,7 @@ fn cast(
 ) -> Result<ObjectId, String> {
     g.turn.priority_player = Some(alice());
     let id = g.create_object_from_definition(d, alice(), Zone::Hand);
-    let a = compute_legal_actions(g, alice())
+    let a = compute_legal_actions(g, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or("fixture cast action absent")?;
@@ -220,7 +220,7 @@ fn activate(
     dm: &mut Dm,
 ) -> Result<(), String> {
     g.turn.priority_player = Some(alice());
-    let actions = compute_legal_actions(g, alice());
+    let actions = compute_legal_actions(g, alice()).expect("fixture has complete replacement state");
     let a = actions
         .iter()
         .find(|a| match a {
@@ -277,7 +277,7 @@ fn run(
     let d = &defs[name].0;
     let id = if d.card.card_types.contains(&CardType::Land) {
         let h = g.create_object_from_definition(d, alice(), Zone::Hand);
-        let a = compute_legal_actions(&g, alice())
+        let a = compute_legal_actions(&g, alice()).expect("fixture has complete replacement state")
             .into_iter()
             .find(|a| matches!(a,LegalAction::PlayLand{land_id,..}if *land_id==h))
             .ok_or("fixture no land play")?;
@@ -340,7 +340,7 @@ fn run(
             dm.target = Some(target);
             g.turn.priority_player = Some(alice());
             let spell = g.create_object_from_definition(&defs["Murder"].0, alice(), Zone::Hand);
-            let a = compute_legal_actions(&g, alice())
+            let a = compute_legal_actions(&g, alice()).expect("fixture has complete replacement state")
                 .into_iter()
                 .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==spell))
                 .ok_or("fixture Murder cast absent")?;
@@ -409,7 +409,7 @@ fn run(
         2
     };
     dm.trace.push(json!({"stage":"before_mana_activation","requested_x":x,"resources":resources,"mana":pool(&g)}));
-    let legal = compute_legal_actions(&g, alice());
+    let legal = compute_legal_actions(&g, alice()).expect("fixture has complete replacement state");
     let offered=legal.iter().any(|a|matches!(a,LegalAction::ActivateManaAbility{source,ability_index}if *source==id&&*ability_index==idx));
     dm.trace
         .push(json!({"stage":"mana_legality","offered":offered,"actions":format!("{legal:?}")}));

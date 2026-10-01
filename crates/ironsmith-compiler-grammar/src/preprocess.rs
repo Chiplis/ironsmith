@@ -228,7 +228,81 @@ fn split_parse_line_variants_text(line: &str) -> Vec<String> {
     split_parse_line_variants(line, &stage_tokens(line).unwrap_or_default())
 }
 
+/// "This creature has trample as long as you control a Beast, haste as long
+/// as you control a Goblin, ..., and "{B}: Regenerate this creature" as long
+/// as you control a Zombie." (Tribal Golem): each conditional grant in the
+/// list is its own static ability sharing the subject.
+fn split_conditional_grant_list(line: &str) -> Option<Vec<String>> {
+    const CONDITION: &str = " as long as you control a";
+    let has_index = line.find(" has ")?;
+    let subject = &line[..has_index];
+    if subject.contains(',') || subject.contains('"') {
+        return None;
+    }
+    let rest = line[has_index + " has ".len()..].trim_end().trim_end_matches('.');
+    // Split on top-level commas only (never inside a quoted ability).
+    let mut segments = Vec::new();
+    let mut in_quote = false;
+    let mut start = 0usize;
+    for (index, ch) in rest.char_indices() {
+        match ch {
+            '"' | '\u{201C}' | '\u{201D}' => in_quote = !in_quote,
+            ',' if !in_quote => {
+                segments.push(rest[start..index].trim());
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+    segments.push(rest[start..].trim());
+    if segments.len() < 3 {
+        return None;
+    }
+    let segments = segments
+        .into_iter()
+        .map(|segment| segment.strip_prefix("and ").unwrap_or(segment).trim())
+        .collect::<Vec<_>>();
+    if !segments.iter().all(|segment| {
+        segment.contains(CONDITION)
+            && !segment.starts_with(CONDITION.trim_start())
+            && segment.matches(CONDITION).count() == 1
+    }) {
+        return None;
+    }
+    Some(
+        segments
+            .into_iter()
+            .map(|segment| {
+                // A quoted ability reads its condition first so the
+                // condition is not absorbed into the quoted text.
+                let split = segment.find(CONDITION).unwrap_or(segment.len());
+                let (granted, condition) = segment.split_at(split);
+                let granted = granted.trim();
+                if granted.starts_with(['"', '\u{201C}']) {
+                    let mut chars = subject.chars();
+                    let subject = chars
+                        .next()
+                        .map(|first| first.to_lowercase().chain(chars).collect::<String>())
+                        .unwrap_or_default();
+                    let condition = condition.trim_start();
+                    let condition = condition.strip_prefix("as").unwrap_or(condition);
+                    let granted = match granted.strip_suffix(['"', '\u{201D}']) {
+                        Some(inner) if !inner.ends_with('.') => format!("{inner}.\""),
+                        _ => granted.to_string(),
+                    };
+                    format!("As{condition}, {subject} has {granted}")
+                } else {
+                    format!("{subject} has {segment}.")
+                }
+            })
+            .collect(),
+    )
+}
+
 fn split_parse_line_variants(line: &str, line_tokens: &[OwnedLexToken]) -> Vec<String> {
+    if let Some(lines) = split_conditional_grant_list(line) {
+        return lines;
+    }
     if let Some(split) = preprocess_grammar::parse_line_variant_split_tokens(line_tokens) {
         let first = line.get(..split.first_end).unwrap_or_default().trim();
         let second = line.get(split.second_start..).unwrap_or_default().trim();
@@ -358,7 +432,8 @@ fn replace_names_with_map(
         matches!(&bytes[start..idx], b"cost" | b"costs")
     }
 
-    fn preceded_by_named_keyword(bytes: &[u8], mut idx: usize) -> bool {
+    fn preceded_by_named_keyword(bytes: &[u8], candidate: usize) -> bool {
+        let mut idx = candidate;
         while idx > 0 && !bytes[idx - 1].is_ascii_alphanumeric() {
             idx -= 1;
         }
@@ -366,7 +441,59 @@ fn replace_names_with_map(
         while idx > 0 && bytes[idx - 1].is_ascii_alphanumeric() {
             idx -= 1;
         }
-        idx < end && &bytes[idx..end] == b"named"
+        if idx < end && &bytes[idx..end] == b"named" {
+            return true;
+        }
+        within_named_serial_list(bytes, candidate)
+    }
+
+    /// "Equipment named Sword of Kaldra, Shield of Kaldra, and Helm of
+    /// Kaldra": a later entry of a comma list of names is still a name, not a
+    /// self-reference.
+    fn within_named_serial_list(bytes: &[u8], candidate: usize) -> bool {
+        let mut cursor = candidate;
+        while cursor > 0 && bytes[cursor - 1].is_ascii_whitespace() {
+            cursor -= 1;
+        }
+        if let Some(word) = previous_word(bytes, cursor)
+            && matches!(word, b"and" | b"or")
+            && cursor >= word.len()
+            && &bytes[cursor - word.len()..cursor] == word
+        {
+            cursor -= word.len();
+            while cursor > 0 && bytes[cursor - 1].is_ascii_whitespace() {
+                cursor -= 1;
+            }
+        }
+        if cursor == 0 || bytes[cursor - 1] != b',' {
+            return false;
+        }
+        let before = &bytes[..cursor - 1];
+        let sentence_start = before
+            .iter()
+            .rposition(|byte| matches!(*byte, b'.' | b';' | b'"' | b'(' | b':'))
+            .map(|at| at + 1)
+            .unwrap_or(0);
+        let segment = &before[sentence_start..];
+        let Some(named_at) = segment
+            .windows(7)
+            .rposition(|window| window.eq_ignore_ascii_case(b" named "))
+        else {
+            return false;
+        };
+        segment[named_at + 7..]
+            .split(|byte| byte.is_ascii_whitespace())
+            .filter(|word| !word.is_empty())
+            .count()
+            <= 12
+    }
+
+    /// "meld them into Titania, Gaea Incarnate": the meld result's name is
+    /// another card's name even when it shares the source's short name.
+    fn preceded_by_meld_into(bytes: &[u8], idx: usize) -> bool {
+        let start = idx.saturating_sub(24);
+        let window = bytes[start..idx].to_ascii_lowercase();
+        window.ends_with(b"meld them into ") || window.ends_with(b"meld it into ")
     }
 
     fn previous_word(bytes: &[u8], mut idx: usize) -> Option<&[u8]> {
@@ -697,6 +824,22 @@ fn replace_names_with_map(
     /// name spelled as a subtype between a selecting word and a type noun
     /// describes a class of objects, not this object.
     fn is_subtype_descriptor_usage(bytes: &[u8], idx: usize, len: usize) -> bool {
+        // "for each other attacking Aurochs" on Aurochs: a name spelled as a
+        // creature subtype after a combat-state or `other` adjective, ending
+        // the phrase, is the class of objects.
+        if previous_word(bytes, idx).is_some_and(|word| {
+            matches!(word, b"attacking" | b"blocking" | b"other" | b"another")
+        }) && bytes
+            .get(idx + len)
+            .is_none_or(|byte| matches!(*byte, b'.' | b',' | b';'))
+            && std::str::from_utf8(&bytes[idx..idx + len])
+                .ok()
+                .is_some_and(|name| {
+                    !name.contains(' ') && crate::util::parse_subtype_flexible(name).is_some()
+                })
+        {
+            return true;
+        }
         previous_word(bytes, idx).is_some_and(|word| {
             matches!(word, b"target" | b"other" | b"another" | b"each" | b"all")
         }) && next_word(bytes, idx + len).is_some_and(|word| {
@@ -772,10 +915,30 @@ fn replace_names_with_map(
     /// ("Return Trusty Boomerang ...", "you may sacrifice Trickster's
     /// Talisman"), not part of its cost ("{T}, Sacrifice Blazing Torch:").
     fn is_attachment_grant_action_object(bytes: &[u8], idx: usize, len: usize) -> bool {
-        if !previous_word(bytes, idx).is_some_and(|word| {
-            matches!(word, b"sacrifice" | b"return" | b"exile" | b"destroy" | b"tap" | b"untap")
-        }) {
+        // "where X is the number of arrow counters on Archery Training"
+        // (an Aura's granted ability): the counters sit on the attachment.
+        let counters_on_name = previous_word(bytes, idx).is_some_and(|word| word == b"on")
+            && {
+                let before_on = bytes[..idx]
+                    .iter()
+                    .rposition(|byte| byte.is_ascii_alphanumeric())
+                    .map_or(0, |end| end.saturating_sub(1));
+                previous_word(bytes, before_on)
+                    .is_some_and(|word| matches!(word, b"counter" | b"counters"))
+            };
+        if counters_on_name {
+            return true;
+        }
+        let Some(verb) = previous_word(bytes, idx).filter(|word| {
+            matches!(*word, b"sacrifice" | b"return" | b"exile" | b"destroy" | b"tap" | b"untap")
+        }) else {
             return false;
+        };
+        // "{T}, Sacrifice Blazing Torch:" also names the granting attachment:
+        // the equipped creature is the ability's source, and the cost
+        // sacrifices the Equipment.
+        if verb == b"sacrifice" {
+            return true;
         }
         let rest = &bytes[idx + len..];
         let quote_end = rest.iter().position(|byte| *byte == b'"').unwrap_or(rest.len());
@@ -866,6 +1029,7 @@ fn replace_names_with_map(
             && !(is_keyword_ability_name(full_name)
                 && followed_by_cost_word(bytes, idx + full_bytes.len()))
             && !preceded_by_named_keyword(bytes, idx)
+            && !preceded_by_meld_into(bytes, idx)
             && !appears_to_be_created_token_name(bytes, idx, full_bytes.len())
             && !within_vote_choice_clause(bytes, line_tokens, idx)
             && !is_indefinite_become_descriptor(bytes, idx)
@@ -919,6 +1083,7 @@ fn replace_names_with_map(
             && !(is_keyword_ability_name(short_name)
                 && followed_by_cost_word(bytes, idx + short_bytes.len()))
             && !preceded_by_named_keyword(bytes, idx)
+            && !preceded_by_meld_into(bytes, idx)
             && !appears_to_be_created_token_name(bytes, idx, short_bytes.len())
             && !within_vote_choice_clause(bytes, line_tokens, idx)
             && !is_indefinite_become_descriptor(bytes, idx)
@@ -1351,7 +1516,10 @@ fn expand_recruit_keyword_line(text: &str) -> String {
             .chars()
             .next()
             .is_none_or(|ch| !ch.is_ascii_alphanumeric());
-        if word_start && word_end {
+        // "Freedom Fighter Recruit's power ..." names a card, not the
+        // keyword action.
+        let possessive = tail.starts_with('\'') || tail.starts_with('\u{2019}');
+        if word_start && word_end && !possessive {
             let trimmed = before.trim_end();
             if let Some(without_you) = trimmed.strip_suffix("you")
                 && without_you

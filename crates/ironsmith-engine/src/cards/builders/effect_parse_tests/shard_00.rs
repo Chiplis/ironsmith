@@ -221,7 +221,7 @@ fn dauthi_voidwalker_activation_grants_free_exile_cast_action() {
         "exiled Grizzly Bears should have a void counter"
     );
 
-    let actions_before = compute_legal_actions(&game, alice);
+    let actions_before = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !actions_before.iter().any(|action| {
             matches!(
@@ -275,7 +275,7 @@ fn dauthi_voidwalker_activation_grants_free_exile_cast_action() {
         game.effect_store.grant_registry.grants
     );
 
-    let actions_after = compute_legal_actions(&game, alice);
+    let actions_after = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions_after.iter().any(|action| {
             matches!(
@@ -388,7 +388,7 @@ fn dauthi_voidwalker_activation_auto_selects_single_candidate_without_choice_pro
         "single legal exile target should auto-select without surfacing a choose-objects prompt"
     );
 
-    let actions_after = compute_legal_actions(&game, alice);
+    let actions_after = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(actions_after.iter().any(|action| {
         matches!(
             action,
@@ -493,7 +493,7 @@ fn dauthi_voidwalker_activation_prompts_for_multiple_void_counter_cards_only() {
         "cards without a void counter should not be legal Dauthi choices"
     );
 
-    let actions_after = compute_legal_actions(&game, alice);
+    let actions_after = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(actions_after.iter().any(|action| {
         matches!(
             action,
@@ -576,7 +576,7 @@ fn dauthi_voidwalker_zero_cost_spell_only_offers_free_exile_cast_action() {
             .expect("Dauthi activation effect should resolve");
     }
 
-    let ornithopter_casts: Vec<_> = compute_legal_actions(&game, alice)
+    let ornithopter_casts: Vec<_> = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .filter(|action| {
             matches!(
@@ -666,7 +666,7 @@ fn dauthi_voidwalker_casted_permanent_from_exile_enters_under_casters_control() 
             .expect("Dauthi activation effect should resolve");
     }
 
-    let cast_action = compute_legal_actions(&game, alice)
+    let cast_action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(

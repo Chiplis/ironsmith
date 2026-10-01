@@ -2137,7 +2137,7 @@ fn i050_face_down_source_and_target_expose_face_down_copiable_values() {
     let hidden_target_copy = i050_snapshot_token(&game, target_id, 9309, alice);
     assert_i050_default_face_down_copy(&hidden_target_copy);
 
-    assert!(game.set_face_up(target_id));
+    assert!(game.set_face_up(target_id).expect("fixture has complete replacement state"));
     let revealed_target_copy = i050_snapshot_token(&game, target_id, 9310, alice);
     assert_eq!(revealed_target_copy.name.as_ref(), "Visible Source");
     assert_eq!(

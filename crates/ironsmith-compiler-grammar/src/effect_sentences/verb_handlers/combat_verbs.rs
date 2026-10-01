@@ -281,6 +281,14 @@ pub fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                 }
             }
             let object = parse_attach_object_phrase(object_tokens)?;
+            if !target_is_tagged
+                && let Some(target) = attach_to_another_permanent_of_attached_host_type(
+                    &object,
+                    target_tokens,
+                )
+            {
+                return Ok(EffectAst::subject_verb_attach(object, target));
+            }
             let mut target = if target_is_tagged {
                 TargetAst::Tagged(
                     crate::tag::CompilerReferenceTag::It.bind(),
@@ -300,6 +308,52 @@ pub fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
         }
     }
 }
+/// "Attach target Aura attached to a creature or land to another permanent of
+/// that type" (Enchantment Alteration): "that type" is the card type of the
+/// object the targeted Aura is attached to (one of the listed types), and
+/// "another" excludes that object.
+fn attach_to_another_permanent_of_attached_host_type(
+    object: &TargetAst,
+    target_tokens: &[OwnedLexToken],
+) -> Option<TargetAst> {
+    let words = crate::lexer::token_word_refs(target_tokens);
+    if !crate::word_primitives::parse_any_sequence_complete(
+        &words,
+        &[&["another", "permanent", "of", "that", "type"]],
+    ) {
+        return None;
+    }
+    let mut object = object.clone();
+    let attached_filter =
+        crate::effect_sentences::zone_counter_helpers::target_object_filter_mut(&mut object)?;
+    let host = attached_filter.attached_to_object.as_deref()?;
+    let mut host_types = host.card_types.clone();
+    for branch in &host.any_of {
+        for card_type in &branch.card_types {
+            if !host_types.contains(card_type) {
+                host_types.push(*card_type);
+            }
+        }
+    }
+    if host_types.is_empty() {
+        return None;
+    }
+    let mut attached_target = ObjectFilter::default();
+    attached_target.is_target_object = true;
+    let mut current_host = ObjectFilter::permanent().in_zone(Zone::Battlefield);
+    current_host.with_attached_object = Some(Box::new(attached_target.clone()));
+    let mut destination = ObjectFilter::permanent().in_zone(Zone::Battlefield);
+    destination.card_types = host_types;
+    destination.characteristic_relations.push(
+        crate::target::ObjectCharacteristicRelation::shares(
+            vec![crate::target::ObjectCharacteristic::CardType],
+            current_host,
+        ),
+    );
+    destination.without_attached_object = Some(Box::new(attached_target));
+    Some(TargetAst::Object(destination, None, None))
+}
+
 fn parse_attached_object_reference(tokens: &[OwnedLexToken]) -> Option<TargetAst> {
     let shape = combat_grammar::parse_attached_object_reference_tokens(tokens)?;
     let tag = match shape.tag {

@@ -1,3 +1,209 @@
+#[derive(Debug)]
+enum ForceFaceUpError {
+    ContinuousDiscovery(ironsmith::static_ability_processor::StaticEffectDiscoveryError),
+    Execution(ironsmith::effects::ExecutionError),
+    InvalidPermanent,
+    NotTurnedFaceUp,
+    PendingChoice,
+    TriggerStack(String),
+}
+
+#[derive(Debug)]
+enum SnapshotJsonError {
+    HiddenLibraryEpoch(String),
+    ContinuousDiscovery(ironsmith::static_ability_processor::StaticEffectDiscoveryError),
+    JsonEncoding(serde_json::Error),
+}
+
+impl std::fmt::Display for SnapshotJsonError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::HiddenLibraryEpoch(error) => write!(f, "{error}"),
+            Self::ContinuousDiscovery(error) => write!(f, "snapshot refresh failed: {error}"),
+            Self::JsonEncoding(error) => write!(f, "json encode failed: {error}"),
+        }
+    }
+}
+
+impl WasmGame {
+    /// Complete discovery before a snapshot can inspect payment choices, reuse
+    /// a cached response, advance its serial, or consume transition/audit data.
+    /// Keeping the typed boundary separate from JS encoding also lets native
+    /// host tests exercise failure and retry without constructing JS errors.
+    fn prepare_snapshot_continuous_state(&mut self)
+        -> Result<(), ironsmith::static_ability_processor::StaticEffectDiscoveryError> {
+        self.game.refresh_continuous_state()
+    }
+
+    // Share the engine's event/program owner instead of clearing the overlay
+    // and manufacturing a notification after a rejected state change.
+    fn force_turn_face_up_with_dm(&mut self, player: PlayerId, id: ObjectId,
+        dm: &mut impl DecisionMaker) -> Result<(), ForceFaceUpError> {
+        let checkpoint = self.capture_replay_checkpoint();
+        let result = (|| {
+            if dm.awaiting_choice() { return Err(ForceFaceUpError::PendingChoice); }
+            self.game.refresh_continuous_state().map_err(ForceFaceUpError::ContinuousDiscovery)?;
+            let valid = self.game.object(id).is_some_and(|object|
+                object.zone == Zone::Battlefield && self.game.controller_of(object) == player);
+            if !valid { return Err(ForceFaceUpError::InvalidPermanent); }
+            let effect = ironsmith::effects::permanents::TurnFaceUpEffect::new(
+                ironsmith::target::ChooseSpec::Source);
+            let root = self.game.provenance_graph_mut().alloc_root(
+                ironsmith::provenance::ProvenanceNodeKind::EffectExecution {
+                    source: id, controller: player,
+                });
+            let mut ctx = ironsmith::effects::EffectContext::new(id, player, dm)
+                .with_provenance(root);
+            let outcome = ironsmith::effects::EffectExecutor::execute(&effect, &mut self.game, &mut ctx)
+                .map_err(ForceFaceUpError::Execution)?;
+            if dm.awaiting_choice() { return Err(ForceFaceUpError::PendingChoice); }
+            if outcome.as_count() != Some(1) { return Err(ForceFaceUpError::NotTurnedFaceUp); }
+            ironsmith::game_loop::drain_pending_trigger_events(&mut self.game, &mut self.trigger_queue);
+            ironsmith::put_triggers_on_stack(&mut self.game, &mut self.trigger_queue)
+                .map_err(|error| ForceFaceUpError::TriggerStack(format!("{error:?}")))?;
+            Ok(())
+        })();
+        if result.is_err() {
+            self.restore_execution_replay_checkpoint(&checkpoint,
+                matches!(result, Err(ForceFaceUpError::PendingChoice)));
+        }
+        result
+    }
+
+    /// Native and JS callers run the same fallible JSON snapshot operation.
+    fn snapshot_json_for_host(&mut self) -> Result<String, SnapshotJsonError> {
+        if let Some(error) = self.game.verified_hidden_library_epoch_error() {
+            return Err(SnapshotJsonError::HiddenLibraryEpoch(error));
+        }
+        self.prepare_snapshot_continuous_state()
+            .map_err(SnapshotJsonError::ContinuousDiscovery)?;
+        self.cached_snapshot = None;
+        let pending_cast_stack_id = self
+            .priority_state
+            .pending_cast
+            .as_ref()
+            .map(|p| p.stack_id);
+        let cancelable = self.is_cancelable();
+        let undo_land_stable_id = self.visible_undo_land_stable_id(cancelable);
+        self.snapshot_serial = self.snapshot_serial.saturating_add(1);
+        let snapshot_id = self.snapshot_serial;
+        let battlefield_transitions =
+            battlefield_transition_snapshots(self.game.take_ui_battlefield_transitions());
+        let mut snap = GameSnapshot::from_game_with_object_view_cache(
+            &self.game,
+            self.perspective,
+            self.pending_decision.as_ref(),
+            self.current_mana_payment_view(),
+            self.game_over.as_ref(),
+            pending_cast_stack_id,
+            self.active_resolving_stack_object.clone(),
+            battlefield_transitions,
+            self.active_viewed_cards.as_ref(),
+            cancelable,
+            undo_land_stable_id,
+            snapshot_id,
+            &self.snapshot_object_view_cache,
+        );
+        snap.crypto_requirements = self.last_crypto_requirements.clone();
+        insert_pending_stack_object_snapshots(&mut snap, self.pending_trigger_stack_objects());
+        serde_json::to_string_pretty(&snap)
+            .map_err(SnapshotJsonError::JsonEncoding)
+    }
+
+    fn probe_legend_rule_choice_live(&mut self, keep_id: ObjectId, legend_group: &[ObjectId])
+        -> Result<Option<DecisionContext>, String> {
+        let probe_checkpoint = self.capture_replay_checkpoint();
+        let mut legend_dm = WasmReplayDecisionMaker::new(&[]);
+        let result = ironsmith::rules::state_based::apply_legend_rule_choice_from_group_with_decision_maker(
+            &mut self.game, keep_id, legend_group, &mut legend_dm,
+        );
+        let (pending, _, _) = legend_dm.finish();
+        if result.is_err() || pending.is_some() {
+            self.restore_execution_replay_checkpoint(&probe_checkpoint, result.is_ok() && pending.is_some());
+        }
+        result.map_err(|error| error.to_string())?;
+        Ok(pending)
+    }
+}
+
+// Manual placement is a transaction requiring an original arrival. A
+// prevented/replaced/non-applicable original is an explicit rejected request;
+// the enclosing replay checkpoint restores all prepared and committed work.
+fn manual_entry_original(
+    receipt: &ironsmith::game_state::EntryCommitResult,
+    dm: &dyn DecisionMaker,
+) -> Result<ironsmith::game_state::EntersResult, String> {
+    use ironsmith::events::processing::EventOutcome;
+    if receipt.pending || dm.awaiting_choice() {
+        return Err("battlefield entry is awaiting a choice".to_owned());
+    }
+    match &receipt.original {
+        EventOutcome::Proceed(result) => Ok(result.clone()),
+        EventOutcome::Prevented => Err("battlefield entry was prevented by replacement effect".to_owned()),
+        EventOutcome::Replaced => Err("manual battlefield addition was replaced; no original arrival exists".to_owned()),
+        EventOutcome::NotApplicable => Err("manual battlefield addition has no applicable original entry".to_owned()),
+    }
+}
+
+// All original entry metadata and bookkeeping is finished before its added
+// instructions run. Use the shared zone receipt executor so actual arrivals,
+// event context, source snapshots and replacement history remain bound.
+fn finish_manual_entry_receipt(
+    game: &mut GameState,
+    original_object: ObjectId,
+    controller: PlayerId,
+    receipt: ironsmith::game_state::EntryCommitResult,
+    dm: &mut dyn DecisionMaker,
+) -> Result<(), String> {
+    use ironsmith::events::processing::{EventOutcome, PreparedEventOutcome};
+    use ironsmith::effects::zones::AppliedZoneChange;
+    if receipt.pending || dm.awaiting_choice() {
+        return Err("battlefield entry is awaiting a choice".to_owned());
+    }
+    let original = match receipt.original {
+        EventOutcome::Proceed(entry) => {
+            let zone = game.object(entry.new_id).map(|object| object.zone)
+                .ok_or_else(|| "manual entry lost its original arrival before additions".to_owned())?;
+            EventOutcome::Proceed(AppliedZoneChange {
+                final_zone: zone, new_object_id: Some(entry.new_id), new_object_ids: vec![entry.new_id],
+            })
+        }
+        EventOutcome::Prevented => EventOutcome::Prevented,
+        EventOutcome::Replaced => EventOutcome::Replaced,
+        EventOutcome::NotApplicable => EventOutcome::NotApplicable,
+    };
+    let mut ctx = ironsmith::effects::EffectContext::new(original_object, controller, dm);
+    if let Some(program) = receipt.programs.first() {
+        ctx.provenance = program.context.event.provenance();
+    }
+    let outcome = ironsmith::effects::zones::finish_zone_change_receipts(game, &mut ctx,
+        ironsmith::effect::EffectOutcome::resolved(),
+        vec![(original_object, PreparedEventOutcome { original, programs: receipt.programs })],
+    ).map_err(|error| error.to_string())?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Err("battlefield entry addition is awaiting a choice".to_owned());
+    }
+    for event in outcome.events { game.queue_trigger_event(event.provenance(), event); }
+    Ok(())
+}
+
+#[cfg(test)]
+impl WasmGame {
+    pub(super) fn legend_probe_for_test(&mut self, keep: ObjectId, group: &[ObjectId])
+        -> Result<Option<DecisionContext>, String> {
+        self.probe_legend_rule_choice_live(keep, group)
+    }
+    pub(super) fn manual_entry_with_dm_for_test(&mut self, player: PlayerId,
+        definition: &CardDefinition, zone: Zone, skip_triggers: bool,
+        dm: &mut impl DecisionMaker) -> Result<u64, String> {
+        self.add_card_to_zone_with_dm(player, definition, zone, skip_triggers, dm)
+    }
+    pub(super) fn manual_entry_undo_for_test(&mut self, definition: &CardDefinition,
+        player: PlayerId, zone: Zone) -> Result<ObjectId, JsValue> {
+        self.add_definition_to_zone_with_triggers(definition, player, zone)
+    }
+}
+
 #[wasm_bindgen(start)]
 pub fn wasm_start() {
     console_error_panic_hook::set_once();
@@ -722,21 +928,33 @@ impl WasmGame {
 
     fn current_mana_payment_view(&self) -> Option<ManaPaymentView> {
         let Some(DecisionContext::ManaPayment(context)) = self.pending_decision.as_ref() else {
+            self.mana_activation_inventory_cache.borrow_mut().take();
             return None;
         };
+        let mut inventory_request = context.request.clone();
+        inventory_request.preferences = Default::default();
+        let inventory_key = hash_debug_value(&(
+            &inventory_request, self.game.mutation_revision(), self.game.derived_view_revision(),
+            self.game.zone_revisions().all, &self.game.players, &self.game.turn,
+        ));
+        let mut cache = self.mana_activation_inventory_cache.borrow_mut();
+        if cache.as_ref().is_none_or(|(key, _)| *key != inventory_key) {
+            *cache = Some((inventory_key, mana_activation_option_views(&self.game, &inventory_request)));
+        }
+        let options = &cache.as_ref().unwrap().1;
         // A cost/effect decision inside a manual mana activation temporarily owns
         // the payment UI. Only reuse the parent's provisional view when it matches.
         let parent = self
             .priority_state
             .pending_cast
             .as_ref()
-            .and_then(|pending| mana_payment_view_from_pending_cast(&self.game, pending))
+            .and_then(|pending| mana_payment_view_from_pending_cast(&self.game, pending, options))
             .or_else(|| {
                 self.priority_state
                     .pending_activation
                     .as_ref()
                     .and_then(|pending| {
-                        mana_payment_view_from_pending_activation(&self.game, pending)
+                        mana_payment_view_from_pending_activation(&self.game, pending, options)
                     })
             });
         if let Some(view) = parent
@@ -745,7 +963,7 @@ impl WasmGame {
         {
             return Some(view);
         }
-        Some(mana_payment_view_from_context(&self.game, context))
+        Some(mana_payment_view_from_context(&self.game, context, options))
     }
 
     fn pending_priority_decision_is_stale(&self) -> bool {
@@ -762,24 +980,24 @@ impl WasmGame {
 
     fn recompute_stale_priority_decision(&mut self) -> Result<(), JsValue> {
         if self.pending_priority_decision_is_stale() {
-            self.rebuild_stale_priority_decision();
+            self.rebuild_stale_priority_decision().map_err(|error| JsValue::from_str(&format!("priority action analysis failed: {error}")))?;
         }
         Ok(())
     }
 
-    fn rebuild_stale_priority_decision(&mut self) -> bool {
+    fn rebuild_stale_priority_decision(&mut self) -> Result<bool, ironsmith::game_loop::GameLoopError> {
         if !self.pending_priority_decision_is_stale() {
-            return false;
+            return Ok(false);
         }
         let Some(priority_player) = self.game.turn.priority_player else {
             self.pending_decision = None;
-            return true;
+            return Ok(true);
         };
         self.pending_decision = Some(DecisionContext::Priority(
-            ironsmith::game_loop::priority_context(&self.game, priority_player),
+            ironsmith::game_loop::priority_context(&self.game, priority_player)?,
         ));
         self.runner_pending_decision = false;
-        true
+        Ok(true)
     }
 
     fn should_preserve_decision_after_hidden_reveal(&self) -> bool {
@@ -899,7 +1117,7 @@ impl WasmGame {
             || self.priority_state.pending_cast.is_some()
             || self.pending_live_continuation.is_some();
         let recompute_decision = recompute_decision && !mid_action_chain;
-        if !recompute_decision && self.rebuild_stale_priority_decision() {
+        if !recompute_decision && self.rebuild_stale_priority_decision().map_err(|error| JsValue::from_str(&format!("priority action analysis failed: {error}")))? {
             return self.snapshot();
         }
         let preserve_decision =
@@ -1082,6 +1300,7 @@ impl WasmGame {
             manabrew_next_prompt_id: 1,
             manabrew_open_prompt: None,
             cached_snapshot: None,
+            mana_activation_inventory_cache: Default::default(),
         }
     }
 
@@ -2929,6 +3148,8 @@ impl WasmGame {
             return Err(JsValue::from_str(&error));
         }
         let snapshot_started_at = PerfTimer::start();
+        self.prepare_snapshot_continuous_state()
+            .map_err(|error| JsValue::from_str(&format!("snapshot refresh failed: {error}")))?;
         let pending_cast_stack_id = self
             .priority_state
             .pending_cast
@@ -2961,7 +3182,6 @@ impl WasmGame {
         #[cfg(not(target_arch = "wasm32"))]
         let _ = had_battlefield_transitions;
         let battlefield_transition_ms = transitions_started_at.elapsed_ms();
-        self.game.refresh_continuous_state();
         let build_started_at = PerfTimer::start();
         if let Some(before) = self.pending_crypto_audit_before.take() {
             self.update_crypto_requirements_from(before);
@@ -3146,41 +3366,8 @@ impl WasmGame {
     /// Return game snapshot as pretty JSON.
     #[wasm_bindgen(js_name = snapshotJson)]
     pub fn snapshot_json(&mut self) -> Result<String, JsValue> {
-        if let Some(error) = self.game.verified_hidden_library_epoch_error() {
-            return Err(JsValue::from_str(&error));
-        }
-        self.cached_snapshot = None;
-        let pending_cast_stack_id = self
-            .priority_state
-            .pending_cast
-            .as_ref()
-            .map(|p| p.stack_id);
-        let cancelable = self.is_cancelable();
-        let undo_land_stable_id = self.visible_undo_land_stable_id(cancelable);
-        self.snapshot_serial = self.snapshot_serial.saturating_add(1);
-        let snapshot_id = self.snapshot_serial;
-        let battlefield_transitions =
-            battlefield_transition_snapshots(self.game.take_ui_battlefield_transitions());
-        self.game.refresh_continuous_state();
-        let mut snap = GameSnapshot::from_game_with_object_view_cache(
-            &self.game,
-            self.perspective,
-            self.pending_decision.as_ref(),
-            self.current_mana_payment_view(),
-            self.game_over.as_ref(),
-            pending_cast_stack_id,
-            self.active_resolving_stack_object.clone(),
-            battlefield_transitions,
-            self.active_viewed_cards.as_ref(),
-            cancelable,
-            undo_land_stable_id,
-            snapshot_id,
-            &self.snapshot_object_view_cache,
-        );
-        snap.crypto_requirements = self.last_crypto_requirements.clone();
-        insert_pending_stack_object_snapshots(&mut snap, self.pending_trigger_stack_objects());
-        serde_json::to_string_pretty(&snap)
-            .map_err(|e| JsValue::from_str(&format!("json encode failed: {e}")))
+        self.snapshot_json_for_host()
+            .map_err(|error| JsValue::from_str(&error.to_string()))
     }
 
     /// Return locally-known card name suggestions from the generated registry.
@@ -3436,46 +3623,39 @@ impl WasmGame {
     /// special action because mana was supplied out of band.
     #[wasm_bindgen(js_name = forceTurnFaceUp)]
     pub fn force_turn_face_up(&mut self, player_index: u8, object_id: u64) -> Result<(), JsValue> {
-        let player_id = PlayerId::from_index(player_index);
+        let player = PlayerId::from_index(player_index);
         let id = ObjectId(object_id);
-        let controller = self
-            .game
-            .object(id)
-            .map(|object| (self.game.controller_of(object), object.zone))
-            .ok_or_else(|| JsValue::from_str("object not found"))?;
-        if controller.0 != player_id || controller.1 != Zone::Battlefield {
-            return Err(JsValue::from_str(
-                "object is not a battlefield permanent controlled by that player",
-            ));
+        let session = RuntimeSavepoint::capture(self);
+        let checkpoint = self.capture_replay_checkpoint();
+        let mut dm = WasmReplayDecisionMaker::new(&[]);
+        let result = self.force_turn_face_up_with_dm(player, id, &mut dm);
+        let (pending, viewed_cards, audit_viewed_cards) = dm.finish();
+        if matches!(result, Err(ForceFaceUpError::PendingChoice)) {
+            if let Some(context) = pending {
+                session.restore(self);
+                self.active_viewed_cards = viewed_cards;
+                self.active_audit_viewed_cards = audit_viewed_cards;
+                self.pending_decision = Some(context);
+                self.runner_pending_decision = false;
+                self.pending_replay_action = Some(PendingReplayAction {
+                    checkpoint,
+                    root: ReplayRoot::ForceTurnFaceUp { player, object: id },
+                    nested_answers: Vec::new(),
+                });
+                self.clear_active_resolving_stack_object();
+                return Ok(());
+            }
         }
-        let object = self
-            .game
-            .object_mut(id)
-            .ok_or_else(|| JsValue::from_str("object not found"))?;
-        object.end_face_down_cast_overlay();
-        self.game.set_face_up(id);
-
-        let root = self.game.provenance_graph_mut().alloc_root(
-            ironsmith::provenance::ProvenanceNodeKind::EffectExecution {
-                source: id,
-                controller: player_id,
-            },
-        );
-        let event_provenance = self
-            .game
-            .alloc_child_event_provenance(root, ironsmith::events::EventKind::TurnedFaceUp);
-        self.game.queue_trigger_event(
-            root,
-            ironsmith::TriggerEvent::new_with_provenance(
-                ironsmith::events::TurnedFaceUpEvent::new(id, player_id),
-                event_provenance,
-            ),
-        );
-        ironsmith::game_loop::drain_pending_trigger_events(&mut self.game, &mut self.trigger_queue);
-        ironsmith::put_triggers_on_stack(&mut self.game, &mut self.trigger_queue).map_err(
-            |err| JsValue::from_str(&format!("failed to put triggers on stack: {err:?}")),
-        )?;
-        self.recompute_ui_decision()?;
+        if let Err(error) = result {
+            session.restore(self);
+            return Err(JsValue::from_str(&format!("forced face-up failed: {error:?}")));
+        }
+        self.active_viewed_cards = viewed_cards;
+        self.active_audit_viewed_cards = audit_viewed_cards;
+        if let Err(error) = self.recompute_ui_decision() {
+            session.restore(self);
+            return Err(error);
+        }
         Ok(())
     }
 
@@ -3517,6 +3697,23 @@ impl WasmGame {
         skip_triggers: bool,
         dm: &mut impl DecisionMaker,
     ) -> Result<u64, String> {
+        if !dm.awaiting_choice() { self.game.clear_pending_decision_controllers(); }
+        let checkpoint = self.capture_replay_checkpoint();
+        let result = self.add_card_to_zone_with_dm_inner(player_id, definition, zone, skip_triggers, dm);
+        if result.is_err() || dm.awaiting_choice() {
+            self.restore_execution_replay_checkpoint(&checkpoint, dm.awaiting_choice());
+        }
+        result
+    }
+
+    fn add_card_to_zone_with_dm_inner(
+        &mut self,
+        player_id: PlayerId,
+        definition: &CardDefinition,
+        zone: Zone,
+        skip_triggers: bool,
+        dm: &mut impl DecisionMaker,
+    ) -> Result<u64, String> {
         fn align_manual_add_stable_id(game: &mut GameState, object_id: ObjectId) {
             if let Some(object) = game.object_mut(object_id) {
                 object.stable_id = StableId::from(object_id);
@@ -3533,15 +3730,12 @@ impl WasmGame {
                 let temp_id =
                     self.game
                         .create_object_from_definition(definition, player_id, Zone::Command);
-                let Some(result) = self.game.move_object_with_etb_processing_with_dm(
-                    temp_id,
-                    Zone::Battlefield,
-                    dm,
-                ) else {
-                    self.game.remove_object(temp_id);
-                    return Err("battlefield entry was prevented by replacement effect".to_string());
-                };
+                let receipt = self.game.move_object_with_etb_processing_with_dm(
+                    temp_id, Zone::Battlefield, dm,
+                ).map_err(|error| error.to_string())?;
+                let result = manual_entry_original(&receipt, dm)?;
                 align_manual_add_stable_id(&mut self.game, result.new_id);
+                finish_manual_entry_receipt(&mut self.game, temp_id, player_id, receipt, dm)?;
                 self.game.take_pending_trigger_events();
                 self.game
                     .turn_store
@@ -3575,13 +3769,10 @@ impl WasmGame {
             .game
             .create_object_from_definition(definition, player_id, Zone::Command);
         let object_id = if zone == Zone::Battlefield {
-            let Some(result) =
-                self.game
-                    .move_object_with_etb_processing_with_dm(temp_id, Zone::Battlefield, dm)
-            else {
-                self.game.remove_object(temp_id);
-                return Err("battlefield entry was prevented by replacement effect".to_string());
-            };
+            let receipt = self.game
+                .move_object_with_etb_processing_with_dm(temp_id, Zone::Battlefield, dm)
+                .map_err(|error| error.to_string())?;
+            let result = manual_entry_original(&receipt, dm)?;
 
             let entered_id = result.new_id;
             align_manual_add_stable_id(&mut self.game, entered_id);
@@ -3621,6 +3812,7 @@ impl WasmGame {
                 ).map_err(|error| error.to_string())?;
             }
 
+            finish_manual_entry_receipt(&mut self.game, temp_id, player_id, receipt, dm)?;
             entered_id
         } else {
             self.game
@@ -4483,17 +4675,16 @@ impl WasmGame {
                 // choice live with the replayable decision maker; if a
                 // replacement choice is needed, undo the probe and take the
                 // general replay path below so the player is prompted.
-                let probe_checkpoint = self.capture_replay_checkpoint();
-                let mut legend_dm = WasmReplayDecisionMaker::new(&[]);
-                ironsmith::rules::state_based::apply_legend_rule_choice_from_group_with_decision_maker(
-                    &mut self.game,
-                    keep_id,
-                    &legend_group,
-                    &mut legend_dm,
-                );
-                let (legend_pending_context, _, _) = legend_dm.finish();
+                let legend_pending_context = match self.probe_legend_rule_choice_live(keep_id, &legend_group) {
+                    Ok(pending) => pending,
+                    Err(error) => {
+                        self.pending_decision = Some(pending_ctx);
+                        self.pending_replay_action = Some(replay);
+                        return Err(JsValue::from_str(&error));
+                    }
+                };
                 if legend_pending_context.is_some() {
-                    self.restore_replay_checkpoint(&probe_checkpoint);
+                    // The probe restores the original live state before replay.
                 } else {
                     drain_pending_trigger_events(&mut self.game, &mut self.trigger_queue);
                     self.pending_action_checkpoint = None;
@@ -4792,4 +4983,314 @@ fn card_definition_may_trigger_when_drawn(definition: &CardDefinition) -> bool {
                 && ability.functional_zones.contains(&Zone::Hand)
         })
         || definition.canonical_text.to_ascii_lowercase().contains("miracle")
+}
+
+
+#[cfg(test)]
+mod replacement_entry_boundary_tests {
+    use super::*;
+
+    fn setup() -> (WasmGame, CardDefinition, PlayerId, ObjectId) {
+        let alice = PlayerId::from_index(0);
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let definition = CardDefinition::new(
+            ironsmith::CardBuilder::new(ironsmith::ids::CardId::new(), "Manual entry fixture")
+                .card_types(vec![ironsmith::types::CardType::Creature])
+                .power_toughness(ironsmith::card::PowerToughness::fixed(2, 2))
+                .build(),
+        );
+        let source = wasm.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        wasm.game.take_pending_trigger_events();
+        (wasm, definition, alice, source)
+    }
+
+    fn install_program(
+        wasm: &mut WasmGame,
+        source: ObjectId,
+        alice: PlayerId,
+        effects: Vec<ironsmith::Effect>,
+    ) -> ironsmith::replacement::ReplacementEffectId {
+        wasm.game.effect_store.replacement_effects.add_one_shot_effect(
+            ironsmith::replacement::ReplacementEffect::with_matcher(
+                source,
+                alice,
+                ironsmith::events::zones::matchers::WouldEnterBattlefieldMatcher::creature(),
+                ironsmith::replacement::ReplacementAction::AsEntersProgram(
+                    ironsmith::resolution::ResolutionProgram::from_effects(effects),
+                ),
+            ),
+        )
+    }
+
+    #[derive(Debug, Clone)]
+    struct OversizedSnapshotGraph;
+    impl ironsmith::static_abilities::StaticAbilityKind for OversizedSnapshotGraph {
+        fn id(&self) -> ironsmith::static_abilities::StaticAbilityId {
+            ironsmith::static_abilities::StaticAbilityId::Anthem
+        }
+        fn display(&self) -> String { "Oversized snapshot discovery fixture".into() }
+        fn generate_effects(&self, source: ObjectId, controller: PlayerId, _game: &GameState)
+            -> Vec<ironsmith::continuous::ContinuousEffect> {
+            (0..16_385).map(|_| ironsmith::continuous::ContinuousEffect::new(
+                source, controller, ironsmith::continuous::EffectTarget::Source,
+                ironsmith::continuous::Modification::ModifyPower(1))).collect()
+        }
+    }
+
+    #[test]
+    fn forced_face_up_executes_the_shared_immediate_program() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let (mut wasm, _, alice, source) = setup();
+        wasm.game.object_mut(source).unwrap().abilities_mut().push(
+            ironsmith::ability::Ability::static_ability(
+                ironsmith::static_abilities::StaticAbility::from_model(
+                    ironsmith::static_abilities::CompiledStaticAbility::as_turns_face_up_effect_program(
+                        vec![ironsmith::Effect::gain_life(2)].into(), "this creature", None))));
+        assert!(wasm.game.set_face_down(source));
+        wasm.game.refresh_continuous_state().unwrap();
+        wasm.force_turn_face_up(0, source.0).expect("forced reveal must execute successfully");
+        assert!(!wasm.game.is_face_down(source));
+        assert!(wasm.game.object(source).unwrap().face_down_cast_state.is_none());
+        assert_eq!(wasm.game.player(alice).unwrap().life, 22);
+    }
+
+    fn install_face_up_program(wasm: &mut WasmGame, source: ObjectId, effects: Vec<ironsmith::Effect>) {
+        wasm.game.object_mut(source).unwrap().abilities_mut().push(
+            ironsmith::ability::Ability::static_ability(
+                ironsmith::static_abilities::StaticAbility::from_model(
+                    ironsmith::static_abilities::CompiledStaticAbility::as_turns_face_up_effect_program(
+                        effects.into(), "this creature", None))));
+    }
+
+    #[test]
+    fn forced_face_up_failures_preserve_overlay_program_prefix_and_host_state() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        for discovery in [false, true] {
+            let (mut wasm, definition, alice, source) = setup();
+            install_face_up_program(&mut wasm, source, vec![ironsmith::Effect::gain_life(2),
+                ironsmith::Effect::lose_life(ironsmith::effect::Value::X)]);
+            assert!(wasm.game.set_face_down(source));
+            let producer = if discovery {
+                let producer = wasm.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+                wasm.game.object_mut(producer).unwrap().abilities_mut().push(
+                    ironsmith::ability::Ability::static_ability(
+                        ironsmith::static_abilities::StaticAbility::new(OversizedSnapshotGraph)));
+                wasm.game.take_pending_trigger_events();
+                Some(producer)
+            } else { None };
+            let revision = wasm.game.effect_store.continuous_effects.revision();
+            let ids = snapshot_id_counters();
+            for _ in 0..2 {
+                let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
+                let error = wasm.force_turn_face_up_with_dm(alice, source, &mut dm).unwrap_err();
+                if discovery {
+                    assert!(matches!(error, ForceFaceUpError::ContinuousDiscovery(
+                        ironsmith::static_ability_processor::StaticEffectDiscoveryError::EffectLimit {
+                            maximum: 16_384, completed_rounds: 0 })));
+                } else {
+                    assert!(matches!(error, ForceFaceUpError::Execution(
+                        ironsmith::effects::ExecutionError::UnresolvableValue(_))));
+                }
+                assert!(wasm.game.is_face_down(source));
+                assert!(wasm.game.object(source).unwrap().face_down_cast_state.is_some());
+                assert_eq!(wasm.game.player(alice).unwrap().life, 20);
+                assert_eq!(wasm.game.effect_store.continuous_effects.revision(), revision);
+                let current_ids = snapshot_id_counters();
+                assert_eq!((current_ids.player, current_ids.object, current_ids.card),
+                    (ids.player, ids.object, ids.card));
+                assert!(wasm.game.take_pending_trigger_events().is_empty());
+                assert!(wasm.trigger_queue.is_empty());
+                assert!(wasm.game.stack.is_empty());
+            }
+            if let Some(producer) = producer {
+                wasm.game.object_mut(producer).unwrap().abilities_mut().clear();
+            }
+            // Turning face up restores these saved abilities, not the visible overlay.
+            let object = wasm.game.object_mut(source).unwrap();
+            std::sync::Arc::make_mut(&mut object.face_down_cast_state.as_mut().unwrap().abilities).clear();
+            object.abilities_mut().clear();
+            let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
+            wasm.force_turn_face_up_with_dm(alice, source, &mut dm).unwrap();
+            assert!(!wasm.game.is_face_down(source));
+            assert!(wasm.game.object(source).unwrap().face_down_cast_state.is_none());
+        }
+    }
+
+    #[test]
+    fn forced_face_up_rejection_emits_no_event_and_allows_retry() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let (mut wasm, definition, alice, source) = setup();
+        wasm.game.object_mut(source).unwrap().abilities_mut().push(
+            ironsmith::ability::Ability::static_ability(ironsmith::static_abilities::StaticAbility::restriction(
+                ironsmith::effect::Restriction::TurnFaceUp(ironsmith::filter::ObjectFilter::source()), "This cannot turn face up".into())));
+        assert!(wasm.game.set_face_down(source));
+        // The source's own ability is inactive face down; use an independent producer.
+        let producer = wasm.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        wasm.game.object_mut(producer).unwrap().abilities_mut().push(
+            ironsmith::ability::Ability::static_ability(ironsmith::static_abilities::StaticAbility::restriction(
+                ironsmith::effect::Restriction::TurnFaceUp(ironsmith::filter::ObjectFilter::creature()), "Creatures cannot turn face up".into())));
+        wasm.game.take_pending_trigger_events();
+        for _ in 0..2 {
+            let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
+            assert!(matches!(wasm.force_turn_face_up_with_dm(alice, source, &mut dm),
+                Err(ForceFaceUpError::NotTurnedFaceUp)));
+            assert!(wasm.game.is_face_down(source));
+            assert!(wasm.game.object(source).unwrap().face_down_cast_state.is_some());
+            assert!(wasm.game.take_pending_trigger_events().is_empty());
+            assert!(wasm.trigger_queue.is_empty());
+        }
+        wasm.game.object_mut(producer).unwrap().abilities_mut().clear();
+        wasm.game.object_mut(source).unwrap().abilities_mut().clear();
+        let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
+        wasm.force_turn_face_up_with_dm(alice, source, &mut dm).unwrap();
+        assert!(!wasm.game.is_face_down(source));
+    }
+
+    #[test]
+    fn forced_face_up_public_prompt_replays_all_programs_once() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let (mut wasm, _, alice, source) = setup();
+        install_face_up_program(&mut wasm, source, vec![ironsmith::Effect::gain_life(2),
+            ironsmith::Effect::may(vec![ironsmith::Effect::gain_life(1)]),
+            ironsmith::Effect::may(vec![ironsmith::Effect::gain_life(3)])]);
+        assert!(wasm.game.set_face_down(source));
+        wasm.force_turn_face_up(0, source.0).unwrap();
+        assert!(wasm.pending_decision.is_some());
+        assert!(wasm.game.is_face_down(source));
+        assert_eq!(wasm.game.player(alice).unwrap().life, 20);
+        let replay = wasm.pending_replay_action.clone().expect("public operation must retain replay");
+        assert!(matches!(replay.root, ReplayRoot::ForceTurnFaceUp { player, object }
+            if player == alice && object == source));
+        let first = wasm.execute_with_replay(&replay.checkpoint, &replay.root,
+            &[ReplayDecisionAnswer::Boolean(true)]).unwrap();
+        assert!(matches!(first, ReplayOutcome::NeedsDecision(DecisionContext::Boolean(_))));
+        assert!(wasm.game.is_face_down(source));
+        assert_eq!(wasm.game.player(alice).unwrap().life, 20);
+        assert!(wasm.game.take_pending_trigger_events().is_empty());
+        let done = wasm.execute_with_replay(&replay.checkpoint, &replay.root,
+            &[ReplayDecisionAnswer::Boolean(true), ReplayDecisionAnswer::Boolean(true)]).unwrap();
+        assert!(matches!(done, ReplayOutcome::Complete(GameProgress::Continue)));
+        assert!(!wasm.game.is_face_down(source));
+        assert!(wasm.game.object(source).unwrap().face_down_cast_state.is_none());
+        assert_eq!(wasm.game.player(alice).unwrap().life, 26);
+        assert!(wasm.game.take_pending_trigger_events().is_empty());
+    }
+
+    #[test]
+    fn snapshot_refresh_failure_preserves_host_state_and_allows_retry() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let (mut wasm, _, alice, source) = setup();
+        wasm.prepare_snapshot_continuous_state().unwrap();
+        let shield = wasm.game.effect_store.replacement_effects.add_one_shot_effect(
+            ironsmith::replacement::ReplacementEffect::with_matcher(source, alice,
+                ironsmith::events::life::matchers::WouldGainLifeMatcher::you(),
+                ironsmith::replacement::ReplacementAction::Modify(
+                    ironsmith::replacement::EventModification::Add(1))));
+        wasm.game.object_mut(source).unwrap().abilities_mut().push(
+            ironsmith::ability::Ability::static_ability(ironsmith::static_abilities::StaticAbility::new(
+                OversizedSnapshotGraph)));
+        let stable = wasm.game.object(source).unwrap().stable_id;
+        wasm.game.record_ui_battlefield_transition(
+            ironsmith::game_state::UiBattlefieldTransitionKind::Damaged, stable);
+        wasm.snapshot_serial = 41;
+        let key = wasm.snapshot_cache_key(None, false, None, &None);
+        wasm.cached_snapshot = Some(CachedSnapshot {
+            key: key.clone(), value: JsValue::NULL, perf: SnapshotPerfMetrics::default(),
+        });
+        let revision = wasm.game.effect_store.continuous_effects.revision();
+        for _ in 0..2 {
+            let error = wasm.snapshot_json_for_host().unwrap_err();
+            assert!(matches!(error, SnapshotJsonError::ContinuousDiscovery(
+                ironsmith::static_ability_processor::StaticEffectDiscoveryError::EffectLimit {
+                    maximum: 16_384, completed_rounds: 0 })));
+            assert_eq!(wasm.snapshot_serial, 41);
+            assert_eq!(wasm.cached_snapshot.as_ref().unwrap().key, key);
+            assert!(wasm.game.has_ui_battlefield_transitions());
+            assert_eq!(wasm.game.effect_store.continuous_effects.revision(), revision);
+            assert!(wasm.game.effect_store.replacement_effects.get_effect(shield).is_some());
+            assert!(wasm.game.effect_store.replacement_effects.is_one_shot(shield));
+            assert_eq!(wasm.game.player(alice).unwrap().life, 20);
+            assert!(wasm.game.stack.is_empty());
+            assert!(wasm.game.take_pending_trigger_events().is_empty());
+            assert!(wasm.trigger_queue.is_empty());
+            assert!(!wasm.game.continuous_state_is_clean_public());
+        }
+        wasm.game.object_mut(source).unwrap().abilities_mut().clear();
+        let rendered = wasm.snapshot_json().expect("corrected graph must render on retry");
+        assert!(!rendered.is_empty());
+        assert_eq!(wasm.snapshot_serial, 42);
+        assert!(wasm.cached_snapshot.is_none());
+        assert!(!wasm.game.has_ui_battlefield_transitions());
+        assert!(wasm.game.continuous_state_is_clean_public());
+        assert!(wasm.game.effect_store.replacement_effects.get_effect(shield).is_some());
+    }
+
+    #[test]
+    fn manual_entry_error_restores_temporary_object_and_replacement_prefix() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        for skip_triggers in [false, true] {
+            for fails in [false, true] {
+                let (mut wasm, definition, alice, source) = setup();
+                let mut effects = vec![ironsmith::Effect::gain_life(2)];
+                if fails {
+                    effects.push(ironsmith::Effect::lose_life(ironsmith::effect::Value::X));
+                }
+                let replacement = install_program(&mut wasm, source, alice, effects);
+                let command_count = wasm.game.command_zone.len();
+                let battlefield_count = wasm.game.battlefield.len();
+                let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
+                let result = wasm.add_card_to_zone_with_dm(
+                    alice, &definition, Zone::Battlefield, skip_triggers, &mut dm,
+                );
+                assert_eq!(wasm.game.command_zone.len(), command_count);
+                assert_eq!(wasm.game.player(alice).unwrap().life, if fails { 20 } else { 22 });
+                assert_eq!(wasm.game.battlefield.len(), battlefield_count + usize::from(!fails));
+                assert_eq!(wasm.game.effect_store.replacement_effects.get_effect(replacement).is_some(), fails);
+                if fails {
+                    assert!(result.is_err());
+                    assert!(wasm.game.take_pending_trigger_events().is_empty());
+                    assert!(wasm.trigger_queue.is_empty());
+                } else {
+                    let entered = ObjectId::from_raw(result.unwrap());
+                    assert_eq!(wasm.game.object(entered).unwrap().zone, Zone::Battlefield);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn manual_entry_pause_restores_temporary_object_before_replay() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        for skip_triggers in [false, true] {
+            let (mut wasm, definition, alice, source) = setup();
+            let replacement = install_program(&mut wasm, source, alice, vec![
+                ironsmith::Effect::gain_life(2),
+                ironsmith::Effect::may(vec![ironsmith::Effect::gain_life(1)]),
+            ]);
+            let command_count = wasm.game.command_zone.len();
+            let battlefield_count = wasm.game.battlefield.len();
+            let mut paused = WasmReplayDecisionMaker::new(&[]);
+            let result = wasm.add_card_to_zone_with_dm(
+                alice, &definition, Zone::Battlefield, skip_triggers, &mut paused,
+            );
+            assert!(paused.awaiting_choice());
+            assert!(result.is_err());
+            assert_eq!(wasm.game.player(alice).unwrap().life, 20);
+            assert_eq!(wasm.game.command_zone.len(), command_count);
+            assert_eq!(wasm.game.battlefield.len(), battlefield_count);
+            assert!(wasm.game.effect_store.replacement_effects.get_effect(replacement).is_some());
+            assert!(wasm.game.take_pending_trigger_events().is_empty());
+            assert!(wasm.trigger_queue.is_empty());
+            let mut replay = ironsmith::decision::SelectFirstDecisionMaker;
+            let entered = wasm.add_card_to_zone_with_dm(
+                alice, &definition, Zone::Battlefield, skip_triggers, &mut replay,
+            ).unwrap();
+            assert_eq!(wasm.game.object(ObjectId::from_raw(entered)).unwrap().zone, Zone::Battlefield);
+            assert_eq!(wasm.game.player(alice).unwrap().life, 23);
+            assert_eq!(wasm.game.command_zone.len(), command_count);
+            assert_eq!(wasm.game.battlefield.len(), battlefield_count + 1);
+            assert!(wasm.game.effect_store.replacement_effects.get_effect(replacement).is_none());
+        }
+    }
 }

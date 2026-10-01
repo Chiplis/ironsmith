@@ -1249,7 +1249,7 @@ mod tests {
                 Zone::Battlefield,
                 cause,
                 &mut dm,
-            )
+            ).expect("replacement operation must execute successfully in this scenario")
             .expect("Airship Engine Room should enter the battlefield");
 
         assert!(
@@ -1271,7 +1271,7 @@ mod tests {
                 Zone::Battlefield,
                 cause,
                 &mut dm,
-            )
+            ).expect("replacement operation must execute successfully in this scenario")
             .expect("Airship Engine Room should enter the battlefield");
 
         assert!(
@@ -1315,7 +1315,7 @@ mod tests {
             Zone::Hand,
             Zone::Graveyard,
             EventCause::from_game_rule(),
-        );
+        ).unwrap();
 
         match result {
             crate::events::processing::ZoneChangeResult::NeedsChoice {
@@ -1413,7 +1413,7 @@ mod tests {
                 Zone::Battlefield,
                 cause,
                 &mut dm,
-            )
+            ).expect("replacement operation must execute successfully in this scenario")
             .expect("copy land should enter the battlefield");
 
         let entered = game
@@ -1459,7 +1459,7 @@ mod tests {
                 Zone::Battlefield,
                 cause,
                 &mut dm,
-            )
+            ).expect("replacement operation must execute successfully in this scenario")
             .expect("copy creature should enter the battlefield");
 
         let entered = game
@@ -1510,7 +1510,7 @@ mod tests {
                 Zone::Battlefield,
                 cause,
                 &mut dm,
-            )
+            ).expect("replacement operation must execute successfully in this scenario")
             .expect("historic artifact should enter the battlefield");
 
         let entered = game
@@ -1561,7 +1561,7 @@ mod tests {
                 Zone::Battlefield,
                 cause,
                 &mut dm,
-            )
+            ).expect("replacement operation must execute successfully in this scenario")
             .expect("copy creature should enter the battlefield");
 
         let entered = game

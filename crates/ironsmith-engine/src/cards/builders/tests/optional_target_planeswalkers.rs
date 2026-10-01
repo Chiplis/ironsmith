@@ -53,7 +53,7 @@ fn activate_loyalty(
     ability_index: usize,
     selected_targets: Option<Vec<crate::game_state::Target>>,
 ) -> Vec<crate::game_state::Target> {
-    let action = crate::decision::compute_legal_actions(game, controller)
+    let action = crate::decision::compute_legal_actions(game, controller).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(

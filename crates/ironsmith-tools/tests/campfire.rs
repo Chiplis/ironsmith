@@ -81,7 +81,7 @@ fn names(game: &GameState, ids: impl Iterator<Item = ObjectId>) -> Vec<String> {
 
 fn activate(game: &mut GameState, source: ObjectId, ability_index: usize) {
     let alice = PlayerId::from_index(0);
-    let action = compute_legal_actions(game, alice)
+    let action = compute_legal_actions(game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| {
             matches!(a, LegalAction::ActivateAbility { source: s, ability_index: i, .. }

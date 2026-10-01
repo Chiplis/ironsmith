@@ -628,7 +628,7 @@ pub(super) fn pyretic_hunter_without_tracked_draft_notes_enters_with_zero_counte
     let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
     let hunter_in_hand = game.create_object_from_definition(&def, alice, Zone::Hand);
     let hunter = game
-        .move_object_with_etb_processing(hunter_in_hand, Zone::Battlefield)
+        .move_object_with_etb_processing(hunter_in_hand, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
         .expect("Pyretic Hunter should enter")
         .new_id;
     let hunter_obj = game.object(hunter).expect("Pyretic Hunter should exist");
@@ -665,7 +665,7 @@ pub(super) fn pyretic_hunter_uses_tracked_highest_draft_note_for_entering_counte
     game.set_draft_noted_highest_number(alice, "Pyretic Hunter", 4);
     let hunter_in_hand = game.create_object_from_definition(&def, alice, Zone::Hand);
     let hunter = game
-        .move_object_with_etb_processing(hunter_in_hand, Zone::Battlefield)
+        .move_object_with_etb_processing(hunter_in_hand, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
         .expect("Pyretic Hunter should enter")
         .new_id;
     let hunter_obj = game.object(hunter).expect("Pyretic Hunter should exist");
@@ -3484,7 +3484,7 @@ pub(super) fn test_aura_chosen_basic_land_type_sets_enchanted_land_subtype() {
             aura_id_in_hand,
             crate::zone::Zone::Battlefield,
             &mut dm,
-        )
+        ).expect("replacement operation must execute successfully in this scenario")
         .expect("aura should enter and attach to the available land");
     let aura_id = result.new_id;
 
@@ -3725,7 +3725,7 @@ pub(super) fn realmwright_adds_chosen_basic_land_type_to_lands_you_control_only(
             realmwright_in_hand,
             crate::zone::Zone::Battlefield,
             &mut dm,
-        )
+        ).expect("replacement operation must execute successfully in this scenario")
         .expect("Realmwright should enter and choose a basic land type");
     let realmwright = result.new_id;
 

@@ -119,7 +119,7 @@ fn settle(g: &mut GameState, dm: &mut Dm) {
     panic!("did not settle")
 }
 fn activate(g: &mut GameState, id: ObjectId, dm: &mut Dm) {
-    let action = compute_legal_actions(g, A)
+    let action = compute_legal_actions(g, A).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::ActivateAbility{source,..} if *source==id))
         .expect("activation legal");
@@ -147,7 +147,7 @@ fn f16_improvise_uses_live_artifact_types_and_excludes_phased_permanents() {
         .build();
     let spell = g.create_object_from_definition(&spell, A, Zone::Hand);
     let legal = |g: &GameState| {
-        compute_legal_actions(g, A)
+        compute_legal_actions(g, A).expect("fixture has complete replacement state")
             .iter()
             .any(|a| matches!(a,LegalAction::CastSpell{spell_id,..} if *spell_id==spell))
     };
@@ -196,7 +196,7 @@ fn f17_ward_uses_current_then_departure_power_on_actual_stack() {
             A,
             Zone::Hand,
         );
-        let action = compute_legal_actions(&g, A)
+        let action = compute_legal_actions(&g, A).expect("fixture has complete replacement state")
             .into_iter()
             .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==spell))
             .unwrap();
@@ -423,7 +423,7 @@ fn f22_counter_cost_prohibitions_affect_legal_actions_and_blight_selection() {
     let bad = g.create_object_from_definition(&prohibited, A, Zone::Battlefield);
     g.refresh_continuous_state();
     assert!(
-        !compute_legal_actions(&g, A)
+        !compute_legal_actions(&g, A).expect("fixture has complete replacement state")
             .iter()
             .any(|a| matches!(a,LegalAction::ActivateAbility{source,..}if *source==bad))
     );
@@ -437,7 +437,7 @@ fn f22_counter_cost_prohibitions_affect_legal_actions_and_blight_selection() {
         Zone::Battlefield,
     );
     assert!(
-        !compute_legal_actions(&g, A)
+        !compute_legal_actions(&g, A).expect("fixture has complete replacement state")
             .iter()
             .any(|a| matches!(a,LegalAction::ActivateAbility{source,..}if *source==b))
     );
@@ -582,7 +582,7 @@ fn f20_failed_waterbend_payment_has_no_completion_event() {
     );
     let helper =
         g.create_object_from_definition(&creature("Payment creature", 2, 2), A, Zone::Battlefield);
-    let action = compute_legal_actions(&g, A)
+    let action = compute_legal_actions(&g, A).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::ActivateAbility {source: id, ..} if *id == source))
         .unwrap_or_else(|| panic!("missing ability: {:?}", g.object(source).unwrap().abilities));

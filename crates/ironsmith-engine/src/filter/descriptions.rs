@@ -626,10 +626,32 @@ pub(super) fn object_has_static_ability_id(object: &Object, ability_id: StaticAb
 }
 
 pub(super) fn object_has_ability_marker(object: &Object, marker: &str) -> bool {
+    object_has_ability_marker_in_view(object, None, marker)
+}
+
+pub(super) fn calculated_object_has_ability_marker(
+    object: &Object,
+    chars: &CalculatedCharacteristics,
+    marker: &str,
+) -> bool {
+    object_has_ability_marker_in_view(object, Some(chars), marker)
+}
+
+fn object_has_ability_marker_in_view(
+    object: &Object,
+    chars: Option<&CalculatedCharacteristics>,
+    marker: &str,
+) -> bool {
+    let abilities = chars.map(|chars| chars.abilities.as_slice())
+        .unwrap_or(object.abilities.as_slice());
+    let labels = chars.map(|chars| chars.ability_labels.as_slice())
+        .unwrap_or(object.ability_labels.as_slice());
+    let enchant_filter = chars.map(|chars| chars.aura_attach_filter.as_ref())
+        .unwrap_or(object.aura_attach_filter.as_deref());
     if marker.trim().eq_ignore_ascii_case("kicked") {
         return object.optional_costs_paid.was_kicked();
     }
-    if aura_attachment_has_ability_marker(object.aura_attach_filter.as_deref(), marker) {
+    if aura_attachment_has_ability_marker(enchant_filter, marker) {
         return true;
     }
     if marker.trim().eq_ignore_ascii_case("disturb")
@@ -652,6 +674,16 @@ pub(super) fn object_has_ability_marker(object: &Object, marker: &str) -> bool {
     {
         return true;
     }
+    if marker.trim().eq_ignore_ascii_case("awaken")
+        && object.alternative_casts.iter().any(|method| {
+            matches!(
+                method,
+                crate::alternative_cast::AlternativeCastingMethod::Awaken { .. }
+            )
+        })
+    {
+        return true;
+    }
     if marker.trim().eq_ignore_ascii_case("freerunning")
         && object.alternative_casts.iter().any(|method| {
             method.is_composed_cost() && method.name().eq_ignore_ascii_case("Freerunning")
@@ -659,20 +691,20 @@ pub(super) fn object_has_ability_marker(object: &Object, marker: &str) -> bool {
     {
         return true;
     }
-    if abilities_have_marker(&object.abilities, marker) {
+    if abilities_have_marker(abilities, marker) {
         return true;
     }
     // Costed activated keywords ("Eternalize {4}{U}{U}", "Embalm {W}") are
     // plain activated abilities; their printed line names the keyword.
-    if object
-        .ability_labels
-        .iter()
+    if labels.iter()
         .any(|label| label_opens_with_keyword(label, marker))
     {
         return true;
     }
 
-    object.level_granted_abilities().iter().any(|ability| {
+    // Level grants are already included in calculated abilities; consulting
+    // raw tiers here would restore abilities removed by the layer system.
+    chars.is_none() && object.level_granted_abilities().iter().any(|ability| {
         matches!(
             ability.id(),
             StaticAbilityId::KeywordMarker | StaticAbilityId::KeywordText
@@ -797,6 +829,22 @@ pub(super) fn abilities_have_marker(abilities: &[crate::ability::Ability], marke
     if normalized_marker == "craft" && abilities.iter().any(ability_is_structural_craft) {
         return true;
     }
+    if normalized_marker == "unearth" && abilities.iter().any(ability_is_structural_unearth) {
+        return true;
+    }
+    // Modular (CR 702.43) lowers to an enters-with-counters static plus a
+    // dies trigger that tags its triggering object as the counter source.
+    if normalized_marker == "modular"
+        && abilities.iter().any(|ability| {
+            matches!(&ability.kind, AbilityKind::Triggered(triggered)
+            if triggered.effects.all_effects().into_iter().any(|effect|
+                effect
+                    .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+                    .is_some_and(|tag| tag.tag.as_str() == "modular_triggering_object")))
+        })
+    {
+        return true;
+    }
 
     abilities.iter().any(|ability| {
         if let AbilityKind::Static(static_ability) = &ability.kind {
@@ -871,6 +919,12 @@ pub(super) fn snapshot_has_ability_marker(
         return true;
     }
 
+    if normalized_marker == "unearth"
+        && snapshot.abilities.iter().any(ability_is_structural_unearth)
+    {
+        return true;
+    }
+
     snapshot.abilities.iter().any(|ability| {
         if let AbilityKind::Static(static_ability) = &ability.kind
             && matches!(
@@ -902,6 +956,25 @@ pub(super) fn aura_attachment_has_ability_marker(
     normalized.zone = None;
     normalized.card_types.clear();
     normalized == ObjectFilter::default()
+}
+
+fn ability_is_structural_unearth(ability: &crate::ability::Ability) -> bool {
+    let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {
+        return false;
+    };
+    if !ability.functional_zones.contains(&Zone::Graveyard)
+        || !matches!(activated.timing, crate::ability::ActivationTiming::SorcerySpeed)
+    {
+        return false;
+    }
+    // The compiler's keyword builder emits this canonical rules operation.
+    // An arbitrary activated ability merely mentioning unearth is insufficient.
+    let [segment] = activated.effects.segments.as_slice() else {
+        return false;
+    };
+    segment.self_replacements.is_empty()
+        && matches!(segment.default_effects.as_slice(), [effect]
+            if effect.downcast_ref::<crate::effects::UnearthEffect>().is_some())
 }
 
 pub(super) fn ability_is_structural_cycling(ability: &crate::ability::Ability) -> bool {
@@ -1327,6 +1400,92 @@ pub(crate) fn describe_comparison(cmp: &Comparison) -> String {
             } else {
                 format!("{} or greater", describe_value_expr(value))
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod unearth_marker_contract_tests {
+    use super::*;
+
+    fn canonical_ability() -> crate::ability::Ability {
+        crate::ability::Ability::activated_with_timing(
+            crate::cost::TotalCost::from_cost(crate::costs::Cost::mana(crate::mana::ManaCost::from_pips(vec![vec![crate::mana::ManaSymbol::Generic(2)]]))),
+            vec![crate::effect::Effect::new(crate::effects::UnearthEffect::new())],
+            crate::ability::ActivationTiming::SorcerySpeed,
+        ).in_zones(vec![Zone::Graveyard])
+    }
+
+    #[test]
+    fn unearth_marker_uses_activated_structure_for_live_and_snapshot_filters() {
+        let mut game = crate::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = crate::PlayerId::from_index(0);
+        let card = crate::card::CardBuilder::new(crate::CardId::new(), "Marker subject")
+            .card_types(vec![CardType::Creature]).build();
+        let id = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.object_mut(id).unwrap().abilities_mut().push(canonical_ability());
+        let object = game.object(id).unwrap();
+        let snapshot = crate::snapshot::ObjectSnapshot::from_object(object, &game);
+        let ctx = game.filter_context_for(alice, None);
+        let required = ObjectFilter::default().with_ability_marker("unearth");
+        let excluded = ObjectFilter::default().without_ability_marker("unearth");
+        assert!(required.matches(object, &ctx, &game));
+        assert!(required.matches_snapshot(&snapshot, &ctx, &game));
+        assert!(!excluded.matches(object, &ctx, &game));
+        assert!(!excluded.matches_snapshot(&snapshot, &ctx, &game));
+    }
+
+    #[test]
+    fn marker_filters_use_removed_and_granted_current_abilities() {
+        for (marker, ability) in [
+            ("unearth", canonical_ability()),
+            ("flying", crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility::flying())),
+        ] {
+            let mut game = crate::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = crate::PlayerId::from_index(0);
+            let card = crate::card::CardBuilder::new(crate::CardId::new(), "Layer marker subject")
+                .card_types(vec![CardType::Creature]).build();
+            let removed = game.create_object_from_card(&card, alice, Zone::Battlefield);
+            game.object_mut(removed).unwrap().abilities_mut().push(ability.clone());
+            game.effect_store.continuous_effects.add_effect(crate::continuous::ContinuousEffect::new(
+                removed, alice, crate::continuous::EffectTarget::Specific(removed),
+                crate::continuous::Modification::RemoveAllAbilities,
+            ));
+            let gained = game.create_object_from_card(&card, alice, Zone::Battlefield);
+            game.effect_store.continuous_effects.add_effect(crate::continuous::ContinuousEffect::new(
+                gained, alice, crate::continuous::EffectTarget::Specific(gained),
+                crate::continuous::Modification::AddAbilityGeneric(ability),
+            ));
+            game.refresh_continuous_state();
+            assert!(game.current_characteristics(removed).unwrap().abilities.is_empty());
+            let ctx = game.filter_context_for(alice, None);
+            let required = ObjectFilter::default().with_ability_marker(marker);
+            let excluded = ObjectFilter::default().without_ability_marker(marker);
+            assert!(!required.matches(game.object(removed).unwrap(), &ctx, &game), "removed {marker}");
+            assert!(excluded.matches(game.object(removed).unwrap(), &ctx, &game), "excluded removed {marker}");
+            assert!(required.matches(game.object(gained).unwrap(), &ctx, &game), "granted {marker}");
+            assert!(!excluded.matches(game.object(gained).unwrap(), &ctx, &game), "excluded granted {marker}");
+            let snapshot = crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                game.object(removed).unwrap(), &game,
+            );
+            assert!(!required.matches_snapshot(&snapshot, &ctx, &game));
+        }
+    }
+
+    #[test]
+    fn unearth_marker_rejects_wrong_zone_timing_and_extra_effects() {
+        let canonical = canonical_ability();
+        let wrong_zone = canonical.clone().in_zones(vec![Zone::Hand]);
+        let mut wrong_timing = canonical.clone();
+        if let crate::ability::AbilityKind::Activated(activated) = &mut wrong_timing.kind {
+            activated.timing = crate::ability::ActivationTiming::AnyTime;
+        }
+        let mut extra_effects = canonical;
+        if let crate::ability::AbilityKind::Activated(activated) = &mut extra_effects.kind {
+            activated.effects = vec![crate::effect::Effect::new(crate::effects::UnearthEffect::new()), crate::effect::Effect::gain_life(1)].into();
+        }
+        for ability in [wrong_zone, wrong_timing, extra_effects] {
+            assert!(!abilities_have_marker(&[ability], "unearth"));
         }
     }
 }

@@ -1,5 +1,5 @@
 use crate::filter::ObjectFilterExt as _;
-use std::cell::{OnceCell, RefCell};
+use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashSet;
 
 use crate::FxMap;
@@ -30,6 +30,7 @@ use crate::zone::Zone;
 /// global invalidation concerns on `GameState`.
 pub(crate) struct DerivedGameView<'a> {
     game: &'a GameState,
+    memo_characteristic_context: Cell<Option<u64>>,
     all_effects: Arc<Vec<ContinuousEffect>>,
     battlefield_characteristic_scope: OnceCell<BattlefieldCharacteristicScope>,
     use_game_characteristics_cache: bool,
@@ -69,7 +70,7 @@ pub(crate) struct DerivedGameView<'a> {
     activated_ability_cost_modifier_sources: RefCell<Option<Vec<ObjectId>>>,
     has_battlefield_spell_cost_modifiers: RefCell<Option<bool>>,
     has_activated_ability_cost_modifiers: RefCell<Option<bool>>,
-    pub(crate) available_payment_sources:
+    available_payment_sources:
         RefCell<FxMap<PlayerId, Rc<Vec<crate::decision::AvailableManaSource>>>>,
     simple_battlefield_mana_analysis: RefCell<FxMap<PlayerId, Rc<SimpleBattlefieldManaAnalysis>>>,
     spell_target_legality: RefCell<FxMap<SpellTargetLegalityKey, bool>>,
@@ -397,6 +398,7 @@ impl<'a> DerivedGameView<'a> {
         game.count_derived_view_rebuild();
         Self {
             game,
+            memo_characteristic_context: Cell::new(crate::continuous::characteristic_memo_context(game)),
             battlefield_characteristic_scope: OnceCell::new(),
             all_effects,
             use_game_characteristics_cache: true,
@@ -436,6 +438,7 @@ impl<'a> DerivedGameView<'a> {
         let all_effects = Arc::new(all_effects);
         Self {
             game,
+            memo_characteristic_context: Cell::new(crate::continuous::characteristic_memo_context(game)),
             battlefield_characteristic_scope: OnceCell::new(),
             all_effects,
             use_game_characteristics_cache: false,
@@ -470,6 +473,54 @@ impl<'a> DerivedGameView<'a> {
         }
     }
 
+    /// All memoized projections belong to one layer context. An enclosing
+    /// calculation may legitimately expose partial characteristics, but those
+    /// results and any lists derived from them cannot survive a frame update
+    /// or become the quiescent game's final values.
+    fn ensure_memo_context(&self) {
+        let current = crate::continuous::characteristic_memo_context(self.game);
+        if self.memo_characteristic_context.get() == current { return; }
+        self.characteristics.borrow_mut().clear();
+        self.abilities_cache.borrow_mut().clear();
+        self.ability_index_summary_cache.borrow_mut().clear();
+        self.static_abilities_cache.borrow_mut().clear();
+        self.zone_candidates.borrow_mut().clear();
+        self.battlefield_controlled.borrow_mut().clear();
+        self.battlefield_controlled_creatures.borrow_mut().clear();
+        self.battlefield_opponents.borrow_mut().clear();
+        self.battlefield_opponent_creatures.borrow_mut().clear();
+        self.potential_mana.borrow_mut().clear();
+        self.black_mana_life_permission.borrow_mut().clear();
+        self.pay_life_cast_or_activate_restriction.borrow_mut().clear();
+        self.granted_alternative_casts.borrow_mut().clear();
+        self.granted_play_from.borrow_mut().clear();
+        self.granted_static_ability_presence.borrow_mut().clear();
+        self.active_grant_zone_presence.borrow_mut().clear();
+        self.available_payment_sources.borrow_mut().clear();
+        self.simple_battlefield_mana_analysis.borrow_mut().clear();
+        self.spell_target_legality.borrow_mut().clear();
+        *self.battlefield_creatures.borrow_mut() = None;
+        *self.battlefield_noncreatures.borrow_mut() = None;
+        *self.active_grants.borrow_mut() = None;
+        *self.battlefield_spell_cost_modifier_sources.borrow_mut() = None;
+        *self.activated_ability_cost_modifier_sources.borrow_mut() = None;
+        *self.has_battlefield_spell_cost_modifiers.borrow_mut() = None;
+        *self.has_activated_ability_cost_modifiers.borrow_mut() = None;
+        self.memo_characteristic_context.set(current);
+    }
+
+    pub(crate) fn cached_available_payment_sources(&self, player: PlayerId)
+        -> Option<Rc<Vec<crate::decision::AvailableManaSource>>> {
+        self.ensure_memo_context();
+        self.available_payment_sources.borrow().get(&player).cloned()
+    }
+
+    pub(crate) fn cache_available_payment_sources(&self, player: PlayerId,
+        sources: Rc<Vec<crate::decision::AvailableManaSource>>) {
+        self.ensure_memo_context();
+        self.available_payment_sources.borrow_mut().insert(player, sources);
+    }
+
     pub(crate) fn effects(&self) -> &[ContinuousEffect] {
         self.all_effects.as_slice()
     }
@@ -482,6 +533,7 @@ impl<'a> DerivedGameView<'a> {
         &self,
         object_id: ObjectId,
     ) -> Option<Arc<CalculatedCharacteristics>> {
+        self.ensure_memo_context();
         if let Some(cached) = self.characteristics.borrow().get(&object_id) {
             return cached.clone();
         }
@@ -503,6 +555,7 @@ impl<'a> DerivedGameView<'a> {
         &self,
         object_id: ObjectId,
     ) -> Option<CalculatedCharacteristics> {
+        self.ensure_memo_context();
         self.calculated_characteristics_arc(object_id)
             .map(|chars| chars.as_ref().clone())
     }
@@ -514,6 +567,7 @@ impl<'a> DerivedGameView<'a> {
         &self,
         object_id: ObjectId,
     ) -> Option<Arc<CalculatedCharacteristics>> {
+        self.ensure_memo_context();
         let object = self.game.object(object_id)?;
         let chars = self.calculated_characteristics_arc(object_id)?;
         if object.zone == Zone::Battlefield {
@@ -548,6 +602,7 @@ impl<'a> DerivedGameView<'a> {
     }
 
     pub(crate) fn prewarm_characteristics(&self, ids: &[ObjectId]) {
+        self.ensure_memo_context();
         let required: Vec<_> = ids
             .iter()
             .copied()
@@ -562,6 +617,7 @@ impl<'a> DerivedGameView<'a> {
     /// for a nonbattlefield object and wants to avoid a singleton full-board
     /// baseline calculation.
     pub(crate) fn prewarm_characteristics_forced(&self, ids: &[ObjectId]) {
+        self.ensure_memo_context();
         let missing: Vec<_> = {
             let cache = self.characteristics.borrow();
             ids.iter()
@@ -592,17 +648,20 @@ impl<'a> DerivedGameView<'a> {
     }
 
     pub(crate) fn calculated_toughness(&self, object_id: ObjectId) -> Option<i32> {
+        self.ensure_memo_context();
         self.calculated_characteristics_arc(object_id)
             .and_then(|chars| chars.toughness)
     }
 
     pub(crate) fn calculated_subtypes(&self, object_id: ObjectId) -> Vec<Subtype> {
+        self.ensure_memo_context();
         self.calculated_characteristics_arc(object_id)
             .map(|chars| chars.subtypes.to_vec())
             .unwrap_or_default()
     }
 
     pub(crate) fn object_colors(&self, object_id: ObjectId) -> crate::color::ColorSet {
+        self.ensure_memo_context();
         let Some(object) = self.game.object(object_id) else {
             return crate::color::ColorSet::default();
         };
@@ -619,6 +678,7 @@ impl<'a> DerivedGameView<'a> {
         &self,
         object_id: ObjectId,
     ) -> Option<Arc<Vec<crate::ability::Ability>>> {
+        self.ensure_memo_context();
         if let Some(cached) = self.abilities_cache.borrow().get(&object_id) {
             return Some(Arc::clone(cached));
         }
@@ -687,6 +747,7 @@ impl<'a> DerivedGameView<'a> {
         &self,
         object_id: ObjectId,
     ) -> Option<Rc<AbilityIndexSummary>> {
+        self.ensure_memo_context();
         if let Some(cached) = self.ability_index_summary_cache.borrow().get(&object_id) {
             return Some(Rc::clone(cached));
         }
@@ -722,6 +783,7 @@ impl<'a> DerivedGameView<'a> {
         &self,
         object_id: ObjectId,
     ) -> Option<Arc<Vec<crate::static_abilities::StaticAbility>>> {
+        self.ensure_memo_context();
         if let Some(cached) = self.static_abilities_cache.borrow().get(&object_id) {
             return Some(Arc::clone(cached));
         }
@@ -755,6 +817,7 @@ impl<'a> DerivedGameView<'a> {
     }
 
     pub(crate) fn object_has_card_type(&self, object_id: ObjectId, card_type: CardType) -> bool {
+        self.ensure_memo_context();
         let Some(object) = self.game.object(object_id) else {
             return false;
         };
@@ -769,6 +832,7 @@ impl<'a> DerivedGameView<'a> {
     /// Haste for the {T}/{Q} activation restriction (CR 302.6): real haste,
     /// or an "activate abilities ... as though they had haste" permission.
     pub(crate) fn object_has_haste_for_activation(&self, object_id: ObjectId) -> bool {
+        self.ensure_memo_context();
         self.object_has_static_ability_id(
             object_id,
             crate::static_abilities::StaticAbilityId::Haste,
@@ -780,6 +844,7 @@ impl<'a> DerivedGameView<'a> {
         object_id: ObjectId,
         ability_id: crate::static_abilities::StaticAbilityId,
     ) -> bool {
+        self.ensure_memo_context();
         let Some(object) = self.game.object(object_id) else {
             return false;
         };
@@ -801,6 +866,7 @@ impl<'a> DerivedGameView<'a> {
     }
 
     pub(crate) fn candidate_ids_for_zone(&self, zone: Option<Zone>) -> Vec<ObjectId> {
+        self.ensure_memo_context();
         if let Some(cached) = self.zone_candidates.borrow().get(&zone) {
             return cached.clone();
         }
@@ -811,6 +877,7 @@ impl<'a> DerivedGameView<'a> {
     }
 
     pub(crate) fn candidate_ids_for_filter(&self, filter: &ObjectFilter) -> Vec<ObjectId> {
+        self.ensure_memo_context();
         if filter.stack_kind == Some(crate::filter::StackObjectKind::Spell)
             && filter.zone.is_some_and(|zone| zone != Zone::Stack)
         {
@@ -849,6 +916,7 @@ impl<'a> DerivedGameView<'a> {
         filter: &ObjectFilter,
         filter_ctx: &crate::filter::FilterContext,
     ) -> Vec<ObjectId> {
+        self.ensure_memo_context();
         if let Some(ids) = self.narrow_battlefield_candidates(filter, filter_ctx) {
             return ids;
         }
@@ -857,6 +925,7 @@ impl<'a> DerivedGameView<'a> {
     }
 
     pub(crate) fn potential_mana(&self, player: PlayerId) -> ManaPool {
+        self.ensure_memo_context();
         if let Some(cached) = self.potential_mana.borrow().get(&player) {
             return cached.clone();
         }
@@ -871,6 +940,7 @@ impl<'a> DerivedGameView<'a> {
     }
 
     pub(crate) fn potential_mana_compute_ms(&self) -> f64 {
+        self.ensure_memo_context();
         *self.potential_mana_compute_ms.borrow()
     }
 
@@ -882,6 +952,7 @@ impl<'a> DerivedGameView<'a> {
         x_value: u32,
         reason: crate::costs::PaymentReason,
     ) -> bool {
+        self.ensure_memo_context();
         let mana_spend_policy = self.game.mana_spend_policy(player, source);
         let allow_black_life = crate::decision::mana_cost_has_black_symbol(cost)
             && self.player_can_pay_black_with_life_for_reason(player, reason);
@@ -903,12 +974,14 @@ impl<'a> DerivedGameView<'a> {
         payer: PlayerId,
         reason: crate::costs::PaymentReason,
     ) -> bool {
+        self.ensure_memo_context();
         self.player_can_pay_black_with_life(payer)
             && (!reason.is_cast_or_ability_payment()
                 || !self.player_cant_pay_life_to_cast_or_activate(payer))
     }
 
     fn player_can_pay_black_with_life(&self, payer: PlayerId) -> bool {
+        self.ensure_memo_context();
         if let Some(cached) = self.black_mana_life_permission.borrow().get(&payer) {
             return *cached;
         }
@@ -933,6 +1006,7 @@ impl<'a> DerivedGameView<'a> {
         &self,
         player: PlayerId,
     ) -> Rc<SimpleBattlefieldManaAnalysis> {
+        self.ensure_memo_context();
         if let Some(cached) = self.simple_battlefield_mana_analysis.borrow().get(&player) {
             return Rc::clone(cached);
         }
@@ -1050,6 +1124,7 @@ impl<'a> DerivedGameView<'a> {
         zone: Zone,
         player: PlayerId,
     ) -> Vec<GrantedAlternativeCast> {
+        self.ensure_memo_context();
         let key = (card_id, zone, player);
         if let Some(cached) = self.granted_alternative_casts.borrow().get(&key) {
             return cached.clone();
@@ -1069,18 +1144,24 @@ impl<'a> DerivedGameView<'a> {
             .filter(|grant| grant_applies_to_card(grant, card_id, card, &ctx, self.game))
             .filter_map(|grant| match &grant.grantable {
                 Grantable::AlternativeCast(method) => Some(GrantedAlternativeCast {
+                    permission_identity: grant.permission_identity.clone(),
                     method: method.clone(),
                     source_id: grant.source.source_id(),
                     zone: grant.zone,
                     usage_limit: None,
+                    cast_this_way_grants: grant.cast_this_way_grants.clone(),
+                    cast_this_way_filter: grant.cast_this_way_filter.clone(),
                 }),
                 Grantable::DerivedAlternativeCast(spec) => {
                     materialize_derived_alternative_cast(card, spec).map(|method| {
                         GrantedAlternativeCast {
+                            permission_identity: grant.permission_identity.clone(),
                             method,
                             source_id: grant.source.source_id(),
                             zone: grant.zone,
                             usage_limit: spec.usage_limit(),
+                            cast_this_way_grants: grant.cast_this_way_grants.clone(),
+                            cast_this_way_filter: grant.cast_this_way_filter.clone(),
                         }
                     })
                 }
@@ -1100,6 +1181,7 @@ impl<'a> DerivedGameView<'a> {
         zone: Zone,
         player: PlayerId,
     ) -> Vec<GrantedPlayFrom> {
+        self.ensure_memo_context();
         let key = (card_id, zone, player);
         if let Some(cached) = self.granted_play_from.borrow().get(&key) {
             return cached.clone();
@@ -1116,6 +1198,7 @@ impl<'a> DerivedGameView<'a> {
             .filter(|grant| grant_applies_to_card(grant, card_id, card, &ctx, self.game))
             .filter_map(|grant| match &grant.grantable {
                 Grantable::PlayFrom => Some(GrantedPlayFrom {
+                    permission_identity: grant.permission_identity.clone(),
                     source_id: grant.source.source_id(),
                     zone: grant.zone,
                     usage_limit: grant.usage_limit,
@@ -1139,6 +1222,7 @@ impl<'a> DerivedGameView<'a> {
         zone: Zone,
         player: PlayerId,
     ) -> Vec<GrantedAlternativeCast> {
+        self.ensure_memo_context();
         let ctx = self.game.filter_context_for(player, None);
         // CR 715.4 / 720.4: outside the stack an Adventure or Omen card has
         // only its normal characteristics, so a grant *to cards* in the
@@ -1164,18 +1248,24 @@ impl<'a> DerivedGameView<'a> {
             })
             .filter_map(|grant| match &grant.grantable {
                 Grantable::AlternativeCast(method) => Some(GrantedAlternativeCast {
+                    permission_identity: grant.permission_identity.clone(),
                     method: method.clone(),
                     source_id: grant.source.source_id(),
                     zone: grant.zone,
                     usage_limit: None,
+                    cast_this_way_grants: grant.cast_this_way_grants.clone(),
+                    cast_this_way_filter: grant.cast_this_way_filter.clone(),
                 }),
                 Grantable::DerivedAlternativeCast(spec) => {
                     materialize_derived_alternative_cast(card, spec).map(|method| {
                         GrantedAlternativeCast {
+                            permission_identity: grant.permission_identity.clone(),
                             method,
                             source_id: grant.source.source_id(),
                             zone: grant.zone,
                             usage_limit: spec.usage_limit(),
+                            cast_this_way_grants: grant.cast_this_way_grants.clone(),
+                            cast_this_way_filter: grant.cast_this_way_filter.clone(),
                         }
                     })
                 }
@@ -1191,6 +1281,7 @@ impl<'a> DerivedGameView<'a> {
         zone: Zone,
         player: PlayerId,
     ) -> Vec<GrantedPlayFrom> {
+        self.ensure_memo_context();
         let ctx = self.game.filter_context_for(player, None);
         self.active_grants()
             .iter()
@@ -1200,6 +1291,7 @@ impl<'a> DerivedGameView<'a> {
             })
             .filter_map(|grant| match &grant.grantable {
                 Grantable::PlayFrom => Some(GrantedPlayFrom {
+                    permission_identity: grant.permission_identity.clone(),
                     source_id: grant.source.source_id(),
                     zone: grant.zone,
                     usage_limit: grant.usage_limit,
@@ -1219,6 +1311,7 @@ impl<'a> DerivedGameView<'a> {
         player: PlayerId,
         ability_id: crate::static_abilities::StaticAbilityId,
     ) -> bool {
+        self.ensure_memo_context();
         let key = (card_id, zone, player, ability_id);
         if let Some(cached) = self.granted_static_ability_presence.borrow().get(&key) {
             return *cached;
@@ -1252,6 +1345,7 @@ impl<'a> DerivedGameView<'a> {
         player: PlayerId,
         ability_id: crate::static_abilities::StaticAbilityId,
     ) -> bool {
+        self.ensure_memo_context();
         let ctx = self.game.filter_context_for(player, None);
         self.active_grants().iter().any(|grant| {
             grant.player == player
@@ -1265,6 +1359,7 @@ impl<'a> DerivedGameView<'a> {
     }
 
     pub(crate) fn player_has_active_grants_for_zone(&self, player: PlayerId, zone: Zone) -> bool {
+        self.ensure_memo_context();
         let key = (player, zone);
         if let Some(cached) = self.active_grant_zone_presence.borrow().get(&key) {
             return *cached;
@@ -1281,6 +1376,7 @@ impl<'a> DerivedGameView<'a> {
     }
 
     pub(crate) fn battlefield_spell_cost_modifier_sources(&self) -> Vec<ObjectId> {
+        self.ensure_memo_context();
         if let Some(cached) = self
             .battlefield_spell_cost_modifier_sources
             .borrow()
@@ -1311,6 +1407,7 @@ impl<'a> DerivedGameView<'a> {
     }
 
     pub(crate) fn has_battlefield_spell_cost_modifiers(&self) -> bool {
+        self.ensure_memo_context();
         if let Some(cached) = *self.has_battlefield_spell_cost_modifiers.borrow() {
             return cached;
         }
@@ -1334,6 +1431,7 @@ impl<'a> DerivedGameView<'a> {
     }
 
     pub(crate) fn activated_ability_cost_modifier_sources(&self) -> Vec<ObjectId> {
+        self.ensure_memo_context();
         if let Some(cached) = self
             .activated_ability_cost_modifier_sources
             .borrow()
@@ -1366,6 +1464,7 @@ impl<'a> DerivedGameView<'a> {
     }
 
     pub(crate) fn has_activated_ability_cost_modifiers(&self) -> bool {
+        self.ensure_memo_context();
         if let Some(cached) = *self.has_activated_ability_cost_modifiers.borrow() {
             return cached;
         }
@@ -1387,6 +1486,7 @@ impl<'a> DerivedGameView<'a> {
     }
 
     pub(crate) fn minimum_total_spell_mana_payment(&self) -> Option<u32> {
+        self.ensure_memo_context();
         let mut minimum = None;
         if self.can_scan_non_layered_minimum_total_spell_mana() {
             for &perm_id in &self.game.battlefield {
@@ -1419,6 +1519,7 @@ impl<'a> DerivedGameView<'a> {
     }
 
     pub(crate) fn player_cant_pay_life_to_cast_or_activate(&self, player: PlayerId) -> bool {
+        self.ensure_memo_context();
         if self.game.player(player).is_none() {
             return false;
         }
@@ -1447,6 +1548,7 @@ impl<'a> DerivedGameView<'a> {
     /// Run `f` with `spell_id` marked as a spell being cast, so targeting
     /// checks treat it as a spell rather than as one of its abilities.
     pub(crate) fn with_casting_spell<R>(&self, spell_id: ObjectId, f: impl FnOnce() -> R) -> R {
+        self.ensure_memo_context();
         let previous = self.casting_spell_source.replace(Some(spell_id));
         let result = f();
         self.casting_spell_source.set(previous);
@@ -1455,6 +1557,7 @@ impl<'a> DerivedGameView<'a> {
 
     /// Whether `source_id` is the spell whose castability is being checked.
     pub(crate) fn is_casting_spell(&self, source_id: ObjectId) -> bool {
+        self.ensure_memo_context();
         self.casting_spell_source.get() == Some(source_id)
     }
 
@@ -1465,6 +1568,7 @@ impl<'a> DerivedGameView<'a> {
         source_id: Option<ObjectId>,
         chosen_modes: Option<&[usize]>,
     ) -> bool {
+        self.ensure_memo_context();
         let key = SpellTargetLegalityKey {
             caster,
             source_id,
@@ -1490,6 +1594,7 @@ impl<'a> DerivedGameView<'a> {
     }
 
     fn active_grants(&self) -> Rc<Vec<Grant>> {
+        self.ensure_memo_context();
         if let Some(cached) = self.active_grants.borrow().as_ref() {
             return Rc::clone(cached);
         }
@@ -1505,6 +1610,7 @@ impl<'a> DerivedGameView<'a> {
     }
 
     fn can_scan_non_layered_spell_cost_modifiers(&self) -> bool {
+        self.ensure_memo_context();
         !self
             .all_effects
             .iter()
@@ -1512,6 +1618,7 @@ impl<'a> DerivedGameView<'a> {
     }
 
     fn can_scan_non_layered_activated_ability_cost_modifiers(&self) -> bool {
+        self.ensure_memo_context();
         !self
             .all_effects
             .iter()
@@ -1519,6 +1626,7 @@ impl<'a> DerivedGameView<'a> {
     }
 
     fn can_scan_non_layered_minimum_total_spell_mana(&self) -> bool {
+        self.ensure_memo_context();
         !self
             .all_effects
             .iter()
@@ -1526,6 +1634,7 @@ impl<'a> DerivedGameView<'a> {
     }
 
     fn permanent_non_layered_has_spell_cost_modifiers(&self, permanent_id: ObjectId) -> bool {
+        self.ensure_memo_context();
         let mut has_modifier = false;
         self.for_each_active_non_layered_static_ability(permanent_id, |static_ability| {
             has_modifier |= static_ability_has_spell_cost_modifier(static_ability);
@@ -1534,6 +1643,7 @@ impl<'a> DerivedGameView<'a> {
     }
 
     fn permanent_has_spell_cost_modifiers(&self, permanent_id: ObjectId) -> bool {
+        self.ensure_memo_context();
         self.static_abilities_rc(permanent_id)
             .unwrap_or_default()
             .iter()
@@ -1544,6 +1654,7 @@ impl<'a> DerivedGameView<'a> {
         &self,
         permanent_id: ObjectId,
     ) -> bool {
+        self.ensure_memo_context();
         let mut has_modifier = false;
         self.for_each_active_non_layered_static_ability(permanent_id, |static_ability| {
             has_modifier |= static_ability_has_activated_ability_cost_modifier(static_ability);
@@ -1552,6 +1663,7 @@ impl<'a> DerivedGameView<'a> {
     }
 
     fn permanent_has_activated_ability_cost_modifiers(&self, permanent_id: ObjectId) -> bool {
+        self.ensure_memo_context();
         self.static_abilities_rc(permanent_id)
             .unwrap_or_default()
             .iter()
@@ -1563,6 +1675,7 @@ impl<'a> DerivedGameView<'a> {
         permanent_id: ObjectId,
         mut visit: impl FnMut(&crate::static_abilities::StaticAbility),
     ) {
+        self.ensure_memo_context();
         let Some(permanent) = self.game.object(permanent_id) else {
             return;
         };
@@ -1571,9 +1684,7 @@ impl<'a> DerivedGameView<'a> {
             matches!(&ability.kind, AbilityKind::Static(static_ability)
                 if static_ability.level_abilities().is_some())
         });
-        let tracks_grant_duplicates =
-            has_level_abilities || !permanent.temporary_static_ability_grants.is_empty();
-        let mut seen_abilities = tracks_grant_duplicates.then(Vec::new);
+        let mut seen_abilities = has_level_abilities.then(Vec::new);
 
         for ability in permanent.abilities.iter() {
             let AbilityKind::Static(static_ability) = &ability.kind else {
@@ -1589,9 +1700,9 @@ impl<'a> DerivedGameView<'a> {
             }
         }
 
-        // Initial layered characteristics apply temporary grants before level
-        // grants. A temporary payload is suppressed when a printed/earlier
-        // temporary ability has the same ID, even when its payload differs.
+        // Each registered temporary grant is an independent occurrence,
+        // including a grant equal to an already printed or granted ability.
+        // Level grants follow the temporary grants.
         for grant in &permanent.temporary_static_ability_grants {
             if grant.is_expired(self.game.turn.turn_number) {
                 continue;
@@ -1599,16 +1710,9 @@ impl<'a> DerivedGameView<'a> {
             let Some(static_ability) = grant.materialize() else {
                 continue;
             };
-            let seen = seen_abilities
-                .as_mut()
-                .expect("temporary grants should enable duplicate tracking");
-            if seen
-                .iter()
-                .any(|existing| existing.id() == static_ability.id())
-            {
-                continue;
+            if let Some(seen) = seen_abilities.as_mut() {
+                seen.push(static_ability.clone());
             }
-            seen.push(static_ability.clone());
             if static_ability.is_active(self.game, permanent_id) {
                 visit(&static_ability);
             }
@@ -1637,6 +1741,7 @@ impl<'a> DerivedGameView<'a> {
         filter: &ObjectFilter,
         filter_ctx: &crate::filter::FilterContext,
     ) -> Option<Vec<ObjectId>> {
+        self.ensure_memo_context();
         use crate::target::PlayerFilter;
         use crate::types::CardType;
 
@@ -1694,6 +1799,7 @@ impl<'a> DerivedGameView<'a> {
     }
 
     fn battlefield_creature_candidates(&self) -> Vec<ObjectId> {
+        self.ensure_memo_context();
         if let Some(cached) = self.battlefield_creatures.borrow().as_ref() {
             return cached.clone();
         }
@@ -1710,6 +1816,7 @@ impl<'a> DerivedGameView<'a> {
     }
 
     fn battlefield_noncreature_candidates(&self) -> Vec<ObjectId> {
+        self.ensure_memo_context();
         if let Some(cached) = self.battlefield_noncreatures.borrow().as_ref() {
             return cached.clone();
         }
@@ -1726,6 +1833,7 @@ impl<'a> DerivedGameView<'a> {
     }
 
     fn battlefield_controlled_candidates(&self, player: PlayerId) -> Vec<ObjectId> {
+        self.ensure_memo_context();
         if let Some(cached) = self.battlefield_controlled.borrow().get(&player) {
             return cached.clone();
         }
@@ -1741,6 +1849,7 @@ impl<'a> DerivedGameView<'a> {
     }
 
     fn battlefield_controlled_creature_candidates(&self, player: PlayerId) -> Vec<ObjectId> {
+        self.ensure_memo_context();
         if let Some(cached) = self.battlefield_controlled_creatures.borrow().get(&player) {
             return cached.clone();
         }
@@ -1754,6 +1863,7 @@ impl<'a> DerivedGameView<'a> {
     }
 
     fn battlefield_opponent_candidates(&self, player: PlayerId) -> Vec<ObjectId> {
+        self.ensure_memo_context();
         if let Some(cached) = self.battlefield_opponents.borrow().get(&player) {
             return cached.clone();
         }
@@ -1773,6 +1883,7 @@ impl<'a> DerivedGameView<'a> {
     }
 
     fn battlefield_opponent_creature_candidates(&self, player: PlayerId) -> Vec<ObjectId> {
+        self.ensure_memo_context();
         if let Some(cached) = self.battlefield_opponent_creatures.borrow().get(&player) {
             return cached.clone();
         }
@@ -1796,6 +1907,7 @@ impl<'a> DerivedGameView<'a> {
         candidates: Vec<ObjectId>,
         controllers: &[PlayerId],
     ) -> Vec<ObjectId> {
+        self.ensure_memo_context();
         candidates
             .into_iter()
             .filter(|id| {
@@ -1806,6 +1918,7 @@ impl<'a> DerivedGameView<'a> {
     }
 
     pub(crate) fn current_controller(&self, object_id: ObjectId) -> Option<PlayerId> {
+        self.ensure_memo_context();
         let object = self.game.object(object_id)?;
         if !self.requires_battlefield_characteristic_calculation(object_id) {
             return Some(object.owner);
@@ -2200,15 +2313,15 @@ mod tests {
             .iter()
             .filter_map(StaticAbility::minimum_total_spell_mana)
             .max();
-        assert_eq!(layered_duplicate_minimum, Some(3));
+        assert_eq!(layered_duplicate_minimum, Some(5), "different minimum-mana payloads are independent abilities");
 
         let view = DerivedGameView::new(&game);
         assert!(view.has_battlefield_spell_cost_modifiers());
         assert!(view.has_activated_ability_cost_modifiers());
         assert_eq!(
             view.minimum_total_spell_mana_payment(),
-            Some(3),
-            "a temporary payload with the same ID as a printed ability must be suppressed"
+            Some(5),
+            "the sparse scan must retain a distinct payload even when its ability family matches"
         );
 
         let unique_temporary_source =
@@ -2228,6 +2341,36 @@ mod tests {
             Some(3),
             "expired temporary grants must not remain in the sparse cost scan"
         );
+    }
+
+    #[test]
+    fn sparse_cost_scan_retains_independent_temporary_payloads() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::from_raw(20005), "Payload parity source")
+            .card_types(vec![CardType::Creature]).build();
+        let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let printed = crate::static_abilities::StaticAbility::minimum_spell_total_mana(3);
+        game.object_mut(source).unwrap().abilities_mut().push(Ability::static_ability(printed.clone()));
+        for payload in [printed, crate::static_abilities::StaticAbility::minimum_spell_total_mana(5)] {
+            game.grant_temporary_static_ability_payload_to_object_until_end_of_turn(
+                source, crate::static_abilities::StaticAbilityId::MinimumSpellTotalMana, Some(payload),
+            );
+        }
+        let layered = game.calculated_characteristics(source).unwrap();
+        let mut layered_values = layered.static_abilities.iter()
+            .filter_map(crate::static_abilities::StaticAbility::minimum_total_spell_mana)
+            .collect::<Vec<_>>();
+        layered_values.sort();
+        assert_eq!(layered_values, vec![3, 3, 5], "a printed ability and a separately granted equal ability are independent occurrences");
+        let view = DerivedGameView::new(&game);
+        let mut sparse_values = Vec::new();
+        view.for_each_active_non_layered_static_ability(source, |ability| {
+            if let Some(value) = ability.minimum_total_spell_mana() { sparse_values.push(value); }
+        });
+        sparse_values.sort();
+        assert_eq!(sparse_values, layered_values);
+        assert_eq!(view.minimum_total_spell_mana_payment(), Some(5));
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]

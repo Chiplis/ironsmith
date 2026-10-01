@@ -1,3 +1,4 @@
+use crate::grant_registry::grant_usage_limit_allows;
 use super::*;
 use crate::ability::ActivatedAbilityRuntimeExt as _;
 
@@ -16,7 +17,7 @@ pub fn compute_actions_for_source(
     game: &GameState,
     player: PlayerId,
     source: Option<ObjectId>,
-) -> Vec<LegalAction> {
+) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
     struct Restore(Option<ObjectId>);
     impl Drop for Restore {
         fn drop(&mut self) {
@@ -24,9 +25,9 @@ pub fn compute_actions_for_source(
         }
     }
     let _restore = Restore(REQUESTED_ACTION_SOURCE.with(|slot| slot.replace(source)));
-    let mut actions = compute_legal_actions(game, player);
+    let mut actions = compute_legal_actions(game, player)?;
     actions.extend(compute_commander_actions(game, player));
-    actions
+    Ok(actions)
 }
 
 pub fn legal_action_source(action: &LegalAction) -> Option<ObjectId> {
@@ -42,28 +43,6 @@ pub fn legal_action_source(action: &LegalAction) -> Option<ObjectId> {
     }
 }
 
-fn grant_usage_limit_allows(
-    game: &GameState,
-    player: PlayerId,
-    source_id: ObjectId,
-    limit: Option<crate::grant::GrantUsageLimit>,
-) -> bool {
-    match limit {
-        Some(crate::grant::GrantUsageLimit::OnceEachTurn) => !game
-            .turn_store
-            .grant_cast_uses_this_turn
-            .contains(&(player, source_id)),
-        Some(crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns) => {
-            game.is_active_player(player)
-                && !game
-                    .turn_store
-                    .grant_cast_uses_this_turn
-                    .contains(&(player, source_id))
-        }
-        Some(crate::grant::GrantUsageLimit::DuringYourTurns) => game.is_active_player(player),
-        None => true,
-    }
-}
 
 fn append_granted_play_from_actions_for_card(
     game: &GameState,
@@ -76,7 +55,7 @@ fn append_granted_play_from_actions_for_card(
 ) {
     let play_from_grants = view.granted_play_from_for_card(card_id, source_zone, player);
     for grant in play_from_grants {
-        if !grant_usage_limit_allows(game, player, grant.source_id, grant.usage_limit) {
+        if !grant_usage_limit_allows(game, player, grant.permission_identity.as_ref(), grant.usage_limit) {
             continue;
         }
         // PlayFrom (e.g., Yawgmoth's Will): can cast from zone as if from hand.
@@ -183,7 +162,7 @@ fn append_granted_play_from_actions_for_card(
             .granted_alternative_casts_for_card(card_id, source_zone, player)
             .len();
     for grant in adventure_play_from_grants {
-        if !grant_usage_limit_allows(game, player, grant.source_id, grant.usage_limit) {
+        if !grant_usage_limit_allows(game, player, grant.permission_identity.as_ref(), grant.usage_limit) {
             continue;
         }
         let has_same_source_alternative = face_alternatives
@@ -290,7 +269,7 @@ fn append_zone_granted_alternative_cast_actions_for_card(
     let base_alt_idx = card.alternative_casts.len();
     for (offset, grant) in granted_casts.into_iter().enumerate() {
         let method = &grant.method;
-        if !grant_usage_limit_allows(game, player, grant.source_id, grant.usage_limit) {
+        if !grant_usage_limit_allows(game, player, grant.permission_identity.as_ref(), grant.usage_limit) {
             continue;
         }
         let requirements = build_requirements_for_method(method);
@@ -372,7 +351,7 @@ fn append_graveyard_granted_adventure_alternative_cast_actions_for_card(
     for (offset, grant) in granted_casts.into_iter().enumerate() {
         let method = &grant.method;
         if method.cast_from_zone() != Zone::Graveyard
-            || !grant_usage_limit_allows(game, player, grant.source_id, grant.usage_limit)
+            || !grant_usage_limit_allows(game, player, grant.permission_identity.as_ref(), grant.usage_limit)
         {
             continue;
         }
@@ -430,7 +409,7 @@ fn append_hand_granted_alternative_cast_actions_for_card(
 
     for (offset, grant) in granted_casts.iter().enumerate() {
         if grant.method.cast_from_zone() != Zone::Hand
-            || !grant_usage_limit_allows(game, player, grant.source_id, grant.usage_limit)
+            || !grant_usage_limit_allows(game, player, grant.permission_identity.as_ref(), grant.usage_limit)
             || !can_cast_with_alternative_from_hand_with_view(
                 game,
                 player,
@@ -906,6 +885,15 @@ fn add_hand_alternative_cast_actions(
     }
 }
 
+fn special_action_is_legal(result: Result<(), crate::special_actions::ActionError>)
+    -> Result<bool, crate::effects::ExecutionError> {
+    match result {
+        Ok(()) => Ok(true),
+        Err(crate::special_actions::ActionError::ExecutionFailure { error, .. }) => Err(error),
+        Err(_) => Ok(false),
+    }
+}
+
 fn add_battlefield_actions(
     game: &GameState,
     actions: &mut Vec<LegalAction>,
@@ -913,7 +901,7 @@ fn add_battlefield_actions(
     controlled_battlefield: &[ObjectId],
     view: &DerivedGameView<'_>,
     battlefield_ability_ctx: &BattlefieldAbilityContext,
-) {
+) -> Result<(), crate::effects::ExecutionError> {
     use crate::special_actions::{SpecialAction, can_perform_check};
 
     // Ignore-effect permissions may be usable by a player who does not
@@ -945,7 +933,7 @@ fn add_battlefield_actions(
                 }
                 _ => continue,
             };
-            if can_perform_check(&action, game, player).is_ok() {
+            if special_action_is_legal(can_perform_check(&action, game, player))? {
                 actions.push(LegalAction::SpecialAction(action));
             }
         }
@@ -953,12 +941,13 @@ fn add_battlefield_actions(
 
     for &perm_id in controlled_battlefield {
         if game.is_face_down(perm_id) {
-            for method in crate::special_actions::available_turn_face_up_methods(game, perm_id) {
+            for method in crate::special_actions::available_turn_face_up_methods(game, perm_id)
+                .map_err(crate::effects::ExecutionError::ContinuousDiscovery)? {
                 let action = SpecialAction::TurnFaceUp {
                     permanent_id: perm_id,
                     method,
                 };
-                if can_perform_check(&action, game, player).is_ok() {
+                if special_action_is_legal(can_perform_check(&action, game, player))? {
                     actions.push(LegalAction::TurnFaceUp {
                         creature_id: perm_id,
                         method,
@@ -973,7 +962,7 @@ fn add_battlefield_actions(
                 room_id: perm_id,
                 door,
             };
-            if can_perform_check(&unlock_action, game, player).is_ok() {
+            if special_action_is_legal(can_perform_check(&unlock_action, game, player))? {
                 actions.push(LegalAction::SpecialAction(unlock_action));
             }
         }
@@ -1051,6 +1040,7 @@ fn add_battlefield_actions(
             }
         }
     }
+    Ok(())
 }
 
 fn collect_non_battlefield_source_ids(
@@ -1166,7 +1156,9 @@ fn add_non_battlefield_ability_actions(
     }
 }
 
-pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAction> {
+pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
+    let checked = game.continuous_query_snapshot().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+    let game = &checked;
     let total_started_at = PerfTimer::start();
     let mut perf = ComputeLegalActionsPerfMetrics::default();
     let empty_zone: &[ObjectId] = &[];
@@ -1349,7 +1341,7 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
         &controlled_battlefield,
         &view,
         &battlefield_ability_ctx,
-    );
+    )?;
     perf.battlefield_abilities_ms = battlefield_abilities_started_at.elapsed_ms();
     let battlefield_breakdown = battlefield_ability_ctx.snapshot_perf();
     perf.can_activate_ability_with_restrictions_with_view_ms = battlefield_breakdown.total_ms;
@@ -1379,7 +1371,7 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
     perf.total_ms = total_started_at.elapsed_ms();
     perf.action_count = actions.len();
     store_compute_legal_actions_perf(perf);
-    actions
+    Ok(actions)
 }
 
 /// Returns whether an activated ability can be used right now based on per-turn
@@ -2650,7 +2642,7 @@ pub fn compute_commander_actions(game: &GameState, player: PlayerId) -> Vec<Lega
                 for (offset, grant) in granted_casts.iter().enumerate() {
                     if grant.method.cast_from_zone() != Zone::Hand
                         || grant.method.requires_cast_from_hand()
-                        || !grant_usage_limit_allows(game, player, grant.source_id, grant.usage_limit)
+                        || !grant_usage_limit_allows(game, player, grant.permission_identity.as_ref(), grant.usage_limit)
                         || !can_cast_with_alternative_from_hand_with_view(
                             game,
                             player,

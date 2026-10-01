@@ -36,6 +36,17 @@ pub(super) fn read_explicit_action_segments(
     input: &Sentence<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
+    // "Any number of target players each lose 2 life and sacrifice a
+    // creature of their choice" (Priest of Forgotten Gods): one plural
+    // target set performs every coordinated action. Splitting on "and"
+    // would re-declare that target set once per action, so leave the
+    // sentence to the target-player fanout reading.
+    if matches!(
+        super::super::super::super::parse_for_each_target_players_clause(tokens),
+        Ok(Some(_))
+    ) {
+        return Ok(None);
+    }
     let explicit_action_segments =
         super::super::super::super::lex_chain_helpers::split_effect_chain_on_and_lexed(tokens);
     if explicit_action_segments.len() >= 2
@@ -122,7 +133,35 @@ pub(super) fn read_leading_result_prefix(
         // The consequence owns its terminal where-X definition ("When you
         // do, return up to X target cards ..., where X is ..."): bind it into
         // the consequence's values and target counts.
-        let mut trailing_effects = if sentence_shapes::parse_where_x_sentence_tokens(
+        // "When you do, target creature gets +3/+0 and gains first strike
+        // and deathtouch until end of turn": the pump and every granted
+        // keyword share one subject and one duration (Campsite Cuisine,
+        // Lightfoot Rogue). The generic chain splitter would hand the
+        // duration to the last keyword only.
+        let mut get_then_gain_body = prefix.trailing_tokens;
+        while let Some((last, rest)) = get_then_gain_body.split_last()
+            && matches!(last.kind, crate::lexer::TokenKind::Period)
+        {
+            get_then_gain_body = rest;
+        }
+        let get_then_gain = if !get_then_gain_body.iter().any(|token| token.is_comma())
+            && !get_then_gain_body
+                .first()
+                .is_some_and(|token| token.is_word("the"))
+            && get_then_gain_body
+                .iter()
+                .filter(|token| token.is_word("and"))
+                .count()
+                >= 2
+        {
+            super::super::super::parse_target_gets_then_gains_subject_verb(get_then_gain_body)?
+                .filter(|effects| !effects.is_empty())
+        } else {
+            None
+        };
+        let mut trailing_effects = if let Some(effects) = get_then_gain {
+            effects
+        } else if sentence_shapes::parse_where_x_sentence_tokens(
             prefix.trailing_tokens,
         )
         .is_some()

@@ -33,7 +33,7 @@ impl EffectExecutor for SetBasePowerToughnessEffect {
                 .ok_or(ExecutionError::ObjectNotFound(target_id))?;
             target.base_power = Some(PtValue::Fixed(base_power));
             target.base_toughness = Some(PtValue::Fixed(base_toughness));
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
             return Ok(EffectOutcome::resolved());
         }
 

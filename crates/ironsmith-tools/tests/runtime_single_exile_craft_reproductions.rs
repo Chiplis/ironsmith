@@ -219,7 +219,7 @@ fn cast_announce(
 ) -> Result<(), String> {
     g.turn.priority_player = Some(dm.actor);
     let id = g.create_object_from_definition(d, dm.actor, Zone::Hand);
-    let a = compute_legal_actions(g, dm.actor)
+    let a = compute_legal_actions(g, dm.actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or("fixture source cast absent")?;
@@ -387,7 +387,7 @@ fn run(
         .unwrap_or_default();
     let sid = current(&g, source);
     let index = c["ability_index"].as_u64().unwrap() as usize;
-    let actions = compute_legal_actions(&g, alice());
+    let actions = compute_legal_actions(&g, alice()).expect("fixture has complete replacement state");
     let action=actions.iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index,..}if *source==sid&&*ability_index==index)).cloned();
     let ability = match &defs[n].0.abilities[index].kind {
         ironsmith::ability::AbilityKind::Activated(a) => a,

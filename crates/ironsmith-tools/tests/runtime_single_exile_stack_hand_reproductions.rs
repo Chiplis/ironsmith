@@ -199,7 +199,7 @@ fn cast_announce(
 ) -> Result<(), String> {
     g.turn.priority_player = Some(dm.actor);
     let id = g.create_object_from_definition(d, dm.actor, Zone::Hand);
-    let a = compute_legal_actions(g, dm.actor)
+    let a = compute_legal_actions(g, dm.actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or("fixture source cast absent")?;
@@ -368,7 +368,7 @@ fn run(
     let sid = current(&g, source);
     g.remove_summoning_sickness(sid);
     let index = c["ability_index"].as_u64().unwrap() as usize;
-    let action=compute_legal_actions(&g,alice()).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index,..}if *source==sid&&*ability_index==index));
+    let action=compute_legal_actions(&g,alice()).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index,..}if *source==sid&&*ability_index==index));
     dm.chosen = resources
         .first()
         .map(|s| vec![current(&g, *s)])
@@ -378,7 +378,7 @@ fn run(
     } else {
         vec![]
     };
-    dm.trace.push(json!({"stage":"candidate_exact_path","cost_path":c["cost_path"],"ability_index":index,"mode":mode,"legal_actions":format!("{:?}",compute_legal_actions(&g,alice())),"source_zone":format!("{:?}",g.object(sid).unwrap().zone),"materials":resources.iter().map(|s|{let o=g.object(current(&g,*s)).unwrap();json!({"id":o.id.0,"name":o.name.to_string(),"zone":format!("{:?}",o.zone),"owner":o.owner.0})}).collect::<Vec<_>>()}));
+    dm.trace.push(json!({"stage":"candidate_exact_path","cost_path":c["cost_path"],"ability_index":index,"mode":mode,"legal_actions":format!("{:?}",compute_legal_actions(&g,alice()).expect("fixture has complete replacement state")),"source_zone":format!("{:?}",g.object(sid).unwrap().zone),"materials":resources.iter().map(|s|{let o=g.object(current(&g,*s)).unwrap();json!({"id":o.id.0,"name":o.name.to_string(),"zone":format!("{:?}",o.zone),"owner":o.owner.0})}).collect::<Vec<_>>()}));
     let valid = c["valid"].as_bool().unwrap();
     if action.is_none() || !valid {
         return Ok((

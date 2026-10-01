@@ -1,5 +1,6 @@
 //! Mill effect implementation.
 
+use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
 use crate::effect::{EffectOutcome, OutcomeObjectMemory, Value};
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::zones::apply_zone_change_with_additional_effects;
@@ -64,6 +65,10 @@ impl EffectExecutor for MillEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = (|| {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
 
@@ -75,6 +80,7 @@ impl EffectExecutor for MillEffect {
                 p.library
                     .iter()
                     .rev()
+                    .filter(|id| !ctx.replacement.entry_reserved_objects.contains(id))
                     .take(count)
                     .copied()
                     .collect::<Vec<_>>()
@@ -84,6 +90,7 @@ impl EffectExecutor for MillEffect {
         let mut milled = Vec::new();
         let mut milled_memory = Vec::new();
         let mut any_prevented = false;
+        let mut receipts = Vec::new();
 
         // CR 701.17a / 603.2c: the cards are milled at the same time, as one
         // event ("whenever one or more cards are put into your graveyard").
@@ -95,15 +102,17 @@ impl EffectExecutor for MillEffect {
             let pre_memory = OutcomeObjectMemory::from_object_id(game, card_id);
             let additional_effects = ctx.additional_replacement_effects_snapshot();
 
-            match apply_zone_change_with_additional_effects(
-                game,
-                card_id,
-                from_zone,
-                Zone::Graveyard,
-                ctx.cause.clone(),
-                &mut *ctx.decision_maker,
-                &additional_effects,
-            ) {
+            let receipt = apply_zone_change_with_context_and_additional_effects(
+    game,
+    card_id,
+    from_zone,
+    Zone::Graveyard,
+    ctx.cause.clone(),
+    ctx,
+    &additional_effects
+)?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            match &receipt.original {
                 EventOutcome::Proceed(change) => {
                     if change.final_zone.is_public()
                         && let Some(new_id) = change.new_object_id
@@ -119,18 +128,27 @@ impl EffectExecutor for MillEffect {
                 }
                 EventOutcome::Replaced | EventOutcome::NotApplicable => {}
             }
+            receipts.push((card_id, receipt));
         }
         game.close_simultaneous_action(opened_batch);
 
-        if !milled.is_empty() {
-            return Ok(EffectOutcome::with_objects(milled.clone())
+        let original_outcome = if !milled.is_empty() {
+            EffectOutcome::with_objects(milled.clone())
                 .with_affected_objects(milled)
-                .with_affected_object_memory(milled_memory));
+                .with_affected_object_memory(milled_memory)
+        } else if any_prevented {
+            EffectOutcome::prevented()
+        } else {
+            EffectOutcome::count(0)
+        };
+        crate::effects::zones::finish_zone_change_receipts(game, ctx, original_outcome, receipts)
+        })();
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
         }
-        if any_prevented {
-            return Ok(EffectOutcome::prevented());
-        }
-        Ok(EffectOutcome::count(0))
+        if ctx.decision_maker.awaiting_choice() { return result.map(|_| EffectOutcome::count(0)); }
+        result
     }
 }
 
@@ -330,4 +348,102 @@ mod tests {
             "milled tags should follow the card into a replaced public zone"
         );
     }
+}
+
+
+#[cfg(test)]
+mod additional_contract_tests {
+    use super::*;
+    use crate::effect::Effect;
+    use crate::ids::{CardId, PlayerId};
+    use crate::replacement::{ReplacementAction, ReplacementEffect};
+    struct ObserveOriginalMill { alice: PlayerId, pause: bool, pending: bool, questions: usize }
+    impl crate::decision::DecisionMaker for ObserveOriginalMill {
+        fn decide_boolean(&mut self, game: &GameState, _: &crate::decisions::context::BooleanContext) -> bool {
+            self.questions += 1;
+            assert_eq!(game.player(self.alice).unwrap().graveyard.len(), 2, "the entire original mill precedes its added instructions");
+            assert!(game.player(self.alice).unwrap().library.is_empty());
+            self.pending = self.pause;
+            !self.pause
+        }
+        fn awaiting_choice(&self) -> bool { self.pending }
+    }
+    fn check_additional_mill(mode: u8) {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let card = crate::card::CardBuilder::new(CardId::new(), "Mill addition fixture")
+            .card_types(vec![crate::types::CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2,2)).build();
+        game.create_object_from_card(&card, alice, Zone::Library);
+        let top = game.create_object_from_card(&card, alice, Zone::Library);
+        let source = game.create_object_from_card(&card, bob, Zone::Battlefield);
+        let effects = if mode == 3 { vec![Effect::new(crate::effects::PutCountersEffect::new(
+            crate::object::CounterType::PlusOnePlusOne, 1, crate::target::ChooseSpec::tagged("it")))] }
+        else if mode == 1 { vec![Effect::gain_life(3), Effect::lose_life(Value::X)] }
+        else { vec![Effect::gain_life(3), Effect::may(vec![Effect::gain_life(4)])] };
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(
+            source, bob, crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+                crate::target::ObjectFilter::specific(top), Some(Zone::Library), Some(Zone::Graveyard)),
+            ReplacementAction::Additionally(effects)));
+        game.take_pending_trigger_events();
+        let library = game.player(alice).unwrap().library.clone();
+        let before_id = game.next_object_id_counter();
+        let parent_tag = crate::snapshot::ObjectSnapshot::from_object(game.object(source).unwrap(), &game);
+        let mut dm = ObserveOriginalMill { alice, pause: mode == 2, pending: false, questions: 0 };
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        ctx.set_tagged_objects("it", vec![parent_tag.clone()]);
+        let result = MillEffect::you(2).execute(&mut game, &mut ctx);
+        if mode == 1 { assert!(matches!(result, Err(ExecutionError::UnresolvableValue(_)))); }
+        else {
+            let outcome = result.unwrap();
+            if mode == 2 { assert!(ctx.decision_maker.awaiting_choice()); assert!(outcome.events.is_empty()); }
+            else {
+                let crate::effect::OutcomeValue::Objects(ids) = &outcome.value else { panic!("original mill summary"); };
+                assert_eq!(ids.len(), 2);
+                assert_eq!(outcome.affected_object_memory().unwrap().iter().filter(|memory| memory.zone == Zone::Library).count(), 2, "original pre-mill memory survives alongside any added action memory");
+                assert!(game.player(alice).unwrap().library.is_empty());
+                if mode == 3 {
+                    let arrived = ids[0];
+                    assert_eq!(game.object(arrived).unwrap().counters.get(&crate::object::CounterType::PlusOnePlusOne), Some(&1));
+                    assert!(!game.object(source).unwrap().counters.contains_key(&crate::object::CounterType::PlusOnePlusOne));
+                    assert!(outcome.execution_facts.iter().filter_map(|fact| match fact { crate::effect::ExecutionFact::AffectedObjectMemory(memory) => Some(memory.as_slice()), _ => None }).flatten().any(|memory| memory.object_id == arrived && memory.zone == Zone::Graveyard), "the added counter action must retain its own post-move memory");
+                    assert!(!outcome.affected_object_memory().unwrap_or(&[]).iter().any(|memory| memory.object_id == arrived && memory.zone == Zone::Graveyard), "auxiliary post-move counter memory is not original movement memory");
+                } else {
+                    assert_eq!(game.player(bob).unwrap().life, 27);
+                    let gains = outcome.events.iter().filter_map(|e| e.downcast::<crate::events::LifeGainEvent>()).collect::<Vec<_>>();
+                    assert_eq!(gains.iter().map(|e| e.amount).collect::<Vec<_>>(), vec![3,4]);
+                    assert!(gains.iter().all(|e| e.player == bob));
+                }
+            }
+        }
+        assert_eq!(ctx.source, source); assert_eq!(ctx.controller, alice);
+        assert_eq!(ctx.get_tagged_all("it").unwrap()[0].object_id, parent_tag.object_id);
+        assert!(ctx.replacement.suppressed_replacement_effects.is_empty());
+        drop(ctx);
+        assert_eq!(game.player(alice).unwrap().life, 20);
+        if mode == 1 || mode == 2 {
+            assert_eq!(game.player(alice).unwrap().library, library);
+            assert!(game.player(alice).unwrap().graveyard.is_empty());
+            assert_eq!(game.player(bob).unwrap().life, 20);
+            assert_eq!(game.next_object_id_counter(), before_id);
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_some());
+            assert!(game.take_pending_trigger_events().is_empty());
+        } else { assert!(game.effect_store.replacement_effects.get_effect(shield).is_none()); }
+        if mode == 2 {
+            assert_eq!(dm.questions, 1);
+            let mut replay = ObserveOriginalMill { alice, pause: false, pending: false, questions: 0 };
+            let mut ctx = ExecutionContext::new(source, alice, &mut replay);
+            let outcome = MillEffect::you(2).execute(&mut game, &mut ctx).unwrap();
+            assert!(!ctx.decision_maker.awaiting_choice()); drop(ctx);
+            assert_eq!(replay.questions, 1); assert_eq!(game.player(bob).unwrap().life, 27);
+            let crate::effect::OutcomeValue::Objects(ids) = outcome.value else { panic!("replayed original mill summary"); };
+            assert_eq!(ids.len(), 2);
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+            assert_eq!(outcome.events.iter().filter_map(|e| e.downcast::<crate::events::LifeGainEvent>()).map(|e| e.amount).collect::<Vec<_>>(), vec![3,4]);
+        }
+    }
+    #[test] fn additional_mill_runs_after_original_batch_and_keeps_primary_objects() { check_additional_mill(0); }
+    #[test] fn additional_mill_error_restores_entire_batch_and_program_prefix() { check_additional_mill(1); }
+    #[test] fn additional_mill_pending_restores_then_replays_once() { check_additional_mill(2); }
+    #[test] fn additional_mill_binds_arriving_card_and_keeps_counter_facts() { check_additional_mill(3); }
 }

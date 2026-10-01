@@ -149,7 +149,7 @@ impl EffectExecutor for CastSourceEffect {
                         trigger_face.as_ref(),
                     );
                 }
-                return Err(ExecutionError::Impossible(error.to_string()));
+                return Err(super::runtime_helpers::effect_driven_cast_error(error));
             }
         };
         let Some(new_id) = result else {

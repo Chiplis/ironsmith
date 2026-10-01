@@ -118,7 +118,7 @@ pub(super) fn alternative_activation_cost_locks_and_pays_the_selected_complete_b
         .mana_pool
         .add(ManaSymbol::White, 1);
 
-    let action = crate::decision::compute_legal_actions(&game, alice)
+    let action = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(

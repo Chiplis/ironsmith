@@ -218,6 +218,8 @@ fn parse_relation_subject_word_slice(
             relation_phrase(&["opponents"]).value(PlayerFilter::Opponent),
             alt((
                 relation_phrase(&["voter"]).value(PlayerFilter::IteratedPlayer),
+                // "a permanent owned by another player" (Kothophed).
+                relation_phrase(&["another", "player"]).value(PlayerFilter::NotYou),
                 relation_phrase(&["they"]).map(|()| pronoun_player_filter.clone()),
                 // "one of their opponents controls": opponents of the
                 // pronoun's player, not of the ability's controller.
@@ -475,6 +477,14 @@ fn parse_put_there_from_their_library_this_turn_shape(words: &[&str]) -> Option<
         ],
         &[
             "that", "were", "put", "there", "from", "their", "library", "this", "turn",
+        ],
+        // "a Doctor card in your graveyard that was put there from your
+        // library this turn" (The Fourteenth Doctor).
+        &[
+            "that", "was", "put", "there", "from", "your", "library", "this", "turn",
+        ],
+        &[
+            "that", "were", "put", "there", "from", "your", "library", "this", "turn",
         ],
     ];
     crate::word_primitives::find_any_phrase_start(words, PHRASES)
@@ -933,6 +943,49 @@ pub(super) fn try_apply_put_there_from_anywhere_this_turn_clause(
     true
 }
 
+/// "target land card in a graveyard that was milled this turn" (Tato
+/// Farmer): a card milled this turn went to its graveyard from its library.
+pub(super) fn try_apply_milled_this_turn_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+    segment_tokens: &mut Vec<OwnedLexToken>,
+) -> bool {
+    const PHRASES: &[&[&str]] = &[
+        &["that", "was", "milled", "this", "turn"],
+        &["that", "were", "milled", "this", "turn"],
+        &["milled", "this", "turn"],
+    ];
+    let Some((word_start, consumed)) = PHRASES.iter().find_map(|phrase| {
+        all_words
+            .windows(phrase.len())
+            .position(|window| window == *phrase)
+            .map(|start| (start, phrase.len()))
+    }) else {
+        return false;
+    };
+    filter.entered_graveyard_this_turn = true;
+    filter.entered_graveyard_from_library_this_turn = true;
+    all_words.drain(word_start..word_start + consumed);
+    drain_segment_phrase_variants(
+        segment_tokens,
+        &[
+            SegmentPhraseVariant {
+                words: &["that", "was", "milled", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["that", "were", "milled", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["milled", "this", "turn"],
+                drain_start_offset: 0,
+            },
+        ],
+    );
+    true
+}
+
 pub(super) fn try_apply_put_there_from_their_library_this_turn_clause(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&str>,
@@ -959,6 +1012,18 @@ pub(super) fn try_apply_put_there_from_their_library_this_turn_clause(
             SegmentPhraseVariant {
                 words: &[
                     "that", "were", "put", "there", "from", "their", "library", "this", "turn",
+                ],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &[
+                    "that", "was", "put", "there", "from", "your", "library", "this", "turn",
+                ],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &[
+                    "that", "were", "put", "there", "from", "your", "library", "this", "turn",
                 ],
                 drain_start_offset: 0,
             },

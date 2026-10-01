@@ -68,7 +68,7 @@ mod tests {
 
     fn apply_sbas_deterministically(game: &mut GameState) -> bool {
         let mut dm = crate::decision::SelectFirstDecisionMaker;
-        crate::rules::state_based::apply_state_based_actions_with(game, &mut dm)
+        crate::rules::state_based::apply_state_based_actions_with(game, &mut dm).expect("replacement operation must finish without execution error")
     }
 
     /// Helper to create an undead creature on the battlefield.

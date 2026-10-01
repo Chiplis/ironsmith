@@ -62,7 +62,7 @@ fn airbend_exiles_another_creature_and_grants_only_its_owner_the_exact_incarnati
         }
         let hand = game.create_object_from_definition(&definition, alice, Zone::Hand);
         let source = game
-            .move_object_with_etb_processing(hand, Zone::Battlefield)
+            .move_object_with_etb_processing(hand, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
             .unwrap()
             .new_id;
         let mut queue = TriggerQueue::new();
@@ -96,7 +96,7 @@ fn airbend_exiles_another_creature_and_grants_only_its_owner_the_exact_incarnati
             use ironsmith::game_state::Phase;
             use ironsmith::mana::ManaSymbol;
             let offered = |g: &GameState, player| {
-                compute_legal_actions(g, player).into_iter()
+                compute_legal_actions(g, player).expect("fixture has complete replacement state").into_iter()
                 .find(|a| matches!(a, LegalAction::CastSpell { spell_id, from_zone: Zone::Exile, .. } if *spell_id == exiled))
             };
             let mut cast_game = game.clone();
@@ -431,7 +431,7 @@ fn airbend_permission_casts_spell_faces_without_permitting_land_plays() {
                 Some(ironsmith::card::PtValue::Fixed(2));
         }
         let hand = game.create_object_from_definition(&definition, alice, Zone::Hand);
-        game.move_object_with_etb_processing(hand, Zone::Battlefield)
+        game.move_object_with_etb_processing(hand, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
             .unwrap();
         let mut queue = TriggerQueue::new();
         for event in game.take_pending_trigger_events() {
@@ -454,7 +454,7 @@ fn airbend_permission_casts_spell_faces_without_permitting_land_plays() {
             .unwrap()
             .mana_pool
             .add(ManaSymbol::Colorless, 2);
-        let actions = compute_legal_actions(&game, bob);
+        let actions = compute_legal_actions(&game, bob).expect("fixture has complete replacement state");
         assert!(
             !actions
                 .iter()
@@ -539,7 +539,7 @@ fn airbend_rechecks_target_legality_and_does_not_follow_a_new_incarnation() {
         let target = game.create_object_from_definition(&fixture, bob, Zone::Battlefield);
         let hand = game.create_object_from_definition(&definition, alice, Zone::Hand);
         let source = game
-            .move_object_with_etb_processing(hand, Zone::Battlefield)
+            .move_object_with_etb_processing(hand, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
             .unwrap()
             .new_id;
         let mut queue = TriggerQueue::new();
@@ -588,7 +588,7 @@ fn airbend_event_requires_an_actual_exile_and_keeps_the_trigger_controller() {
         let stable = game.object(target).unwrap().stable_id;
         let hand = game.create_object_from_definition(&definition, alice, Zone::Hand);
         let source = game
-            .move_object_with_etb_processing(hand, Zone::Battlefield)
+            .move_object_with_etb_processing(hand, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
             .unwrap()
             .new_id;
         let mut queue = TriggerQueue::new();
@@ -669,4 +669,13 @@ fn airbend_event_requires_an_actual_exile_and_keeps_the_trigger_controller() {
             usize::from(replacement == 0)
         );
     }
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: ironsmith::game_state::EntryCommitResult)
+    -> Option<ironsmith::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

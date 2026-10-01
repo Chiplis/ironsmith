@@ -152,7 +152,7 @@ fn announce(
 ) -> Result<(TriggerQueue, Value), String> {
     g.turn.priority_player = Some(PlayerId(actor));
     let source = g.create_object_from_definition(def, PlayerId(actor), Zone::Hand);
-    let action = compute_legal_actions(g, PlayerId(actor))
+    let action = compute_legal_actions(g, PlayerId(actor)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source))
         .ok_or("intended cast unavailable")?;
@@ -281,7 +281,7 @@ fn action(
     mana: bool,
     dm: &mut Choices,
 ) -> Result<Value, String> {
-    let a = compute_legal_actions(g, PlayerId(0))
+    let a = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| match a {
             LegalAction::ActivateAbility {
@@ -355,7 +355,7 @@ fn next_main(g: &mut GameState) {
 fn play_land(g: &mut GameState, d: &CardDefinition, dm: &mut Choices) -> Result<ObjectId, String> {
     let hand = g.create_object_from_definition(d, g.turn.active_player, Zone::Hand);
     let stable=g.object(hand).unwrap().stable_id;
-    let a = compute_legal_actions(g, g.turn.active_player)
+    let a = compute_legal_actions(g, g.turn.active_player).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::PlayLand{land_id}if *land_id==hand))
         .ok_or("land play missing")?;
@@ -397,7 +397,7 @@ fn run(defs:&HashMap<String,CardDefinition>,name:&str,n:usize,state:&str)->Resul
  }
  let source=g.create_object_from_definition(&defs[name],PlayerId(0),Zone::Hand);let stable=g.object(source).unwrap().stable_id;
  let method=if state=="normal"{ironsmith::alternative_cast::CastingMethod::Normal}else{ironsmith::alternative_cast::CastingMethod::Alternative(0)};
- let actions=compute_legal_actions(&g,PlayerId(0));let offered=actions.iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,casting_method,..}if *spell_id==source&&*casting_method==method)).cloned();
+ let actions=compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state");let offered=actions.iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,casting_method,..}if *spell_id==source&&*casting_method==method)).cloned();
  let valid=state=="normal"||(n>=required&&state!="wrong_land");
  let before=json!({"actions":format!("{actions:?}"),"method":format!("{method:?}"),"source_in_hand":true,"resources":resources.iter().map(|id|json!({"id":id.0,"name":g.object(*id).unwrap().name.to_string(),"zone":format!("{:?}",g.object(*id).unwrap().zone),"tapped":g.is_tapped(*id)})).collect::<Vec<_>>(),"opponent_stack_spell":enemy_spell.map(|id|id.0)});
  if !valid||offered.is_none(){return Ok((json!({"intended_cast_available":valid}),json!({"intended_cast_available":offered.is_some()}),json!({"producers":producers,"before_cast":before,"cast_dispatched":false,"choice_trace":dm.trace})));}

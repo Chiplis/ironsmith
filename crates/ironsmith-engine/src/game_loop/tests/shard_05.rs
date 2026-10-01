@@ -350,7 +350,7 @@ pub(super) fn leyline_of_transformation_applies_chosen_type_across_its_three_sco
     let leyline_in_hand = game.create_object_from_definition(&leyline, alice, Zone::Hand);
     let mut dm = SelectFirstDecisionMaker;
     let leyline_id = game
-        .move_object_with_etb_processing_with_dm(leyline_in_hand, Zone::Battlefield, &mut dm)
+        .move_object_with_etb_processing_with_dm(leyline_in_hand, Zone::Battlefield, &mut dm).expect("replacement operation must execute successfully in this scenario")
         .expect("Leyline should enter and record its creature-type choice")
         .new_id;
     let chosen_type = game
@@ -1249,7 +1249,7 @@ pub(super) fn joint_assault_is_castable_with_creature_target_and_green_mana() {
         "Joint Assault should pass direct cast legality"
     );
 
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     assert!(
         actions
@@ -1926,7 +1926,7 @@ pub(super) fn run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_
     add_ui_opening_hand_preset(&mut game, alice, fixture);
     let exchange_id = game.create_object_from_definition(&fixture.exchange, alice, Zone::Hand);
 
-    let exchange_cast_method = crate::decision::compute_legal_actions(&game, alice)
+    let exchange_cast_method = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find_map(|action| match action {
             crate::decision::LegalAction::CastSpell {
@@ -2014,7 +2014,7 @@ pub(super) fn test_compute_legal_actions_after_exchange_of_words_sees_borrowed_a
         run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter();
     let alice = PlayerId::from_index(0);
 
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     assert!(
         actions.iter().any(|action| {
@@ -3367,7 +3367,7 @@ pub(super) fn vexing_shusher_activation_targets_spell_and_stops_countering_it() 
         .add(ManaSymbol::Red, 1);
 
     assert!(
-        !crate::decision::compute_legal_actions(&game, alice)
+        !crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .into_iter()
             .any(|action| matches!(
                 action,
@@ -3391,7 +3391,7 @@ pub(super) fn vexing_shusher_activation_targets_spell_and_stops_countering_it() 
         .iter()
         .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
         .expect("Vexing Shusher should have an activated ability");
-    let activate_action = crate::decision::compute_legal_actions(&game, alice)
+    let activate_action = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -3566,7 +3566,7 @@ pub(super) fn loxodon_smiter_opponent_effect_discard_replacement_moves_to_battle
         false,
         crate::provenance::ProvNodeId::default(),
         &mut dm,
-    );
+    ).expect("root discard should execute").expect("root discard should finish without a pending choice");
 
     assert_eq!(result.final_zone, Zone::Battlefield);
     let moved = result

@@ -336,7 +336,7 @@ fn setup(
 }
 fn run(def: &CardDefinition, kind: &str, n: usize, other: usize) -> Result<(Value, Value), String> {
     let (mut game, source, index, mut evidence) = setup(def, kind, n, other)?;
-    let action=compute_legal_actions(&game,PlayerId(0)).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:id,ability_index}|LegalAction::ActivateManaAbility{source:id,ability_index} if *id==source && *ability_index==index));
+    let action=compute_legal_actions(&game,PlayerId(0)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:id,ability_index}|LegalAction::ActivateManaAbility{source:id,ability_index} if *id==source && *ability_index==index));
     let legal = action.is_some();
     let mut announced = false;
     if let Some(action) = action {

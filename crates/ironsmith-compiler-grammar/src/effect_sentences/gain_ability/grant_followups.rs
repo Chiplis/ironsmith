@@ -215,6 +215,17 @@ pub fn append_gain_ability_trailing_effects(
         && !parsed_tail.is_empty()
     {
         effects.extend(parsed_tail);
+    } else if token_slice_first_is(&trimmed, "and") && trimmed.len() > 1 {
+        // "that creature gains first strike until end of turn and must be
+        // blocked this turn if able" (Magitek Scythe): the second conjunct
+        // shares the grant's subject.
+        let mut carried = crate::lexer::synthetic_word_tokens(&["it"]);
+        carried.extend_from_slice(&trimmed[1..]);
+        if let Ok(parsed_tail) = parse_effect_chain(&carried)
+            && !parsed_tail.is_empty()
+        {
+            effects.extend(parsed_tail);
+        }
     }
     Ok(effects)
 }

@@ -152,7 +152,7 @@ fn announce(
 ) -> Result<(TriggerQueue, Value), String> {
     g.turn.priority_player = Some(PlayerId(actor));
     let source = g.create_object_from_definition(def, PlayerId(actor), Zone::Hand);
-    let action = compute_legal_actions(g, PlayerId(actor))
+    let action = compute_legal_actions(g, PlayerId(actor)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source))
         .ok_or("intended cast unavailable")?;
@@ -279,7 +279,7 @@ fn action(
     mana: bool,
     dm: &mut Choices,
 ) -> Result<Value, String> {
-    let a = compute_legal_actions(g, PlayerId(0))
+    let a = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| match a {
             LegalAction::ActivateAbility {
@@ -492,7 +492,7 @@ fn run(
         })
         .last()
         .ok_or("activated ability absent")?;
-    let actions = compute_legal_actions(&g, PlayerId(0));
+    let actions = compute_legal_actions(&g, PlayerId(0)).expect("fixture has complete replacement state");
     let offered=actions.iter().any(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index}if *s==source&&*ability_index==index));
     let before = json!({"source_ability_index":index,"hand_islands":count(&g,"Island",Zone::Hand),"exiled_ornithopters":g.objects_in_deterministic_order().iter().filter(|o|o.name=="Ornithopter"&&o.zone==Zone::Exile).map(|o|json!({"id":o.id.0,"owner":o.owner.index()})).collect::<Vec<_>>(),"library_bottom_to_top":g.player(PlayerId(0)).unwrap().library.iter().filter_map(|id|g.object(*id).map(|o|o.name.to_string())).collect::<Vec<_>>(),"actions":format!("{actions:?}"),"component_checks":ability.mana_cost.costs().iter().map(|c|format!("{:?}",ironsmith::costs::can_pay_with_check_context(&*c.0,&g,&ironsmith::costs::CostCheckContext::new(source,PlayerId(0)).with_reason(ironsmith::costs::PaymentReason::ActivateAbility)))).collect::<Vec<_>>()});
     let valid = resources > 0 && !own_exile;

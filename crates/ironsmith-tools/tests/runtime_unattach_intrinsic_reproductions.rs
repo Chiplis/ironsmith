@@ -151,7 +151,7 @@ fn announce(
 ) -> Result<(TriggerQueue, Value), String> {
     g.turn.priority_player = Some(PlayerId(actor));
     let source = g.create_object_from_definition(def, PlayerId(actor), Zone::Hand);
-    let action = compute_legal_actions(g, PlayerId(actor))
+    let action = compute_legal_actions(g, PlayerId(actor)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source))
         .ok_or("intended cast unavailable")?;
@@ -253,7 +253,7 @@ fn activate(
 ) -> Result<Value, String> {
     let initial_stack_len = g.stack.len();
     g.turn.priority_player = Some(PlayerId(0));
-    let action=compute_legal_actions(g,PlayerId(0)).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index}if *s==source&&*ability_index==index)).ok_or("intended activation unavailable")?;
+    let action=compute_legal_actions(g,PlayerId(0)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index}if *s==source&&*ability_index==index)).ok_or("intended activation unavailable")?;
     let before = g.player(PlayerId(0)).unwrap().mana_pool.total();
     let mut q = TriggerQueue::new();
     let mut st = PriorityLoopState::new(g.players_in_game());
@@ -398,7 +398,7 @@ fn priority(g: &mut GameState, q: &mut TriggerQueue, p: u8, d: &mut Choices) -> 
     Err("priority unavailable".into())
 }
 fn offered(g: &GameState, s: ObjectId, index: usize) -> bool {
-    compute_legal_actions(g,PlayerId(0)).iter().any(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index}if *source==s&&*ability_index==index))
+    compute_legal_actions(g,PlayerId(0)).expect("fixture has complete replacement state").iter().any(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index}if *source==s&&*ability_index==index))
 }
 
 use ironsmith::static_abilities::StaticAbilityId;
@@ -494,7 +494,7 @@ fn equip(
     }
     let index = indices[0];
     d.targets = vec![Target::Object(host)];
-    let ev=activate(g,eq,index,d).map_err(|e|format!("equip actual index{index} canonical index{canonical_index} failed:{e}; advertised:{:?}",compute_legal_actions(g,PlayerId(0))))?;
+    let ev=activate(g,eq,index,d).map_err(|e|format!("equip actual index{index} canonical index{canonical_index} failed:{e}; advertised:{:?}",compute_legal_actions(g,PlayerId(0)).expect("fixture has complete replacement state")))?;
     if ev["mana_paid"] != cost || !ev["resolution_error"].is_null() {
         return Err(format!("equip payment/resolution:{ev}"));
     }
@@ -642,7 +642,7 @@ fn trial(
     };
     let ctx = ironsmith::costs::CostCheckContext::new(source, PlayerId(0))
         .with_reason(ironsmith::costs::PaymentReason::ActivateAbility);
-    let diagnostic = json!({"canonical_source_ability_index":canonical_index,"selected_live_source_ability_index":index,"source":source.0,"current_ability":format!("{a:?}"),"component_checks":a.mana_cost.costs().iter().map(|c|json!({"cost":format!("{c:?}"),"check":format!("{:?}",ironsmith::costs::can_pay_with_check_context(&*c.0,&g,&ctx))})).collect::<Vec<_>>(),"active":g.turn.active_player.index(),"phase":format!("{:?}",g.turn.phase),"priority":g.turn.priority_player.map(|p|p.index()),"legal_actions":format!("{:?}",compute_legal_actions(&g,PlayerId(0)))});
+    let diagnostic = json!({"canonical_source_ability_index":canonical_index,"selected_live_source_ability_index":index,"source":source.0,"current_ability":format!("{a:?}"),"component_checks":a.mana_cost.costs().iter().map(|c|json!({"cost":format!("{c:?}"),"check":format!("{:?}",ironsmith::costs::can_pay_with_check_context(&*c.0,&g,&ctx))})).collect::<Vec<_>>(),"active":g.turn.active_player.index(),"phase":format!("{:?}",g.turn.phase),"priority":g.turn.priority_player.map(|p|p.index()),"legal_actions":format!("{:?}",compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state"))});
     let mana_before_resolution = g.player(PlayerId(0)).unwrap().mana_pool.total();
     let mut action = if want && is_offered {
         match activate(&mut g, source, index, &mut d) {

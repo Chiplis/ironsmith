@@ -1190,15 +1190,15 @@ pub(super) fn check_modes_or_continue(
 
         let base_has_legal_targets =
             spell_has_legal_targets(game, &spell_effects, player, Some(source));
-        let conditional_has_legal_targets =
-            conditional_range.is_some_and(|(optional_cost_index, _, _)| {
-                let mut hypothetical = game.clone();
-                if let Some(spell) = hypothetical.object_mut(source) {
-                    spell.optional_costs_paid.pay_times(optional_cost_index, 1);
-                }
-                hypothetical.refresh_continuous_state();
-                spell_has_legal_targets(&hypothetical, &spell_effects, player, Some(source))
-            });
+        let conditional_has_legal_targets = if let Some((optional_cost_index, _, _)) = conditional_range {
+            let mut hypothetical = game.clone();
+            if let Some(spell) = hypothetical.object_mut(source) {
+                spell.optional_costs_paid.pay_times(optional_cost_index, 1);
+            }
+            hypothetical.refresh_continuous_state()
+                .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+            spell_has_legal_targets(&hypothetical, &spell_effects, player, Some(source))
+        } else { false };
         if !base_has_legal_targets && !conditional_has_legal_targets {
             return Err(GameLoopError::InvalidState(
                 "No legal mode/target combination available".to_string(),
@@ -1467,7 +1467,7 @@ pub(super) fn apply_splice_response(
             program.extend(added_program);
         }
         spell.spell_effect = Some(program.into());
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
 
         let legal = game
             .object(pending.spell_id)
@@ -2227,22 +2227,22 @@ pub(super) fn check_optional_costs_or_continue(
     // X and other announcement metadata can mutate the stack object before
     // re-entering this stage. Start cast-time cost discovery from one clean
     // state so its first characteristics query uses the batched game cache.
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     if ensure_granted_conspire_optional_costs(game, &mut pending) {
         // Conspire discovery mutates the stack object; optional-life discovery
         // immediately performs another derived-characteristics query.
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     }
     if ensure_granted_casualty_optional_costs(game, &mut pending) {
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     }
     if ensure_prototype_choice_optional_cost(game, &mut pending) {
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     }
     if ensure_optional_life_cost_reduction_costs(game, &mut pending) {
         // Keep later affordability and target queries on the clean path, while
         // avoiding a refresh when no new optional costs were appended.
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     }
 
     // Check if the spell has optional costs
@@ -3209,7 +3209,7 @@ pub(super) fn finalize_pending_spell_cast(
     // triggers only after the proposal survives legality and payment. Until
     // this point they remain in GameState so CR 729 rollback erases them with
     // the rest of an illegal proposal.
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     drain_pending_trigger_events(game, trigger_queue);
     let effect_driven = pending.effect_driven;
     let base_mana_cost_waived = pending.base_mana_cost_waived;
@@ -4011,10 +4011,40 @@ pub(super) fn continue_spell_cost_payment(
                     // CR 601.2h: a cost that cannot be paid makes the cast
                     // illegal, so the whole proposal is reversed.
                     state.rollback_action(game);
-                    return Err(GameLoopError::InvalidState(format!(
+                    let description = format!(
                         "Failed to pay deferred spell cost {}: {err:?}",
                         describe_cost_component(&cost)
-                    )));
+                    );
+                    return Err(match err {
+                        // Ordinary inability to pay cancels the proposed cast.
+                        // Effect-driven casting can then execute its authored
+                        // fallback, with the whole cast already reversed.
+                        crate::cost::CostPaymentError::Cancelled
+                        | crate::cost::CostPaymentError::InsufficientMana
+                        | crate::cost::CostPaymentError::AlreadyTapped
+                        | crate::cost::CostPaymentError::SummoningSickness
+                        | crate::cost::CostPaymentError::AlreadyUntapped
+                        | crate::cost::CostPaymentError::InsufficientLife
+                        | crate::cost::CostPaymentError::SourceNotOnBattlefield
+                        | crate::cost::CostPaymentError::NoValidSacrificeTarget
+                        | crate::cost::CostPaymentError::InsufficientCardsInHand
+                        | crate::cost::CostPaymentError::InsufficientCounters
+                        | crate::cost::CostPaymentError::InsufficientEnergy
+                        | crate::cost::CostPaymentError::InsufficientCardsToExile
+                        | crate::cost::CostPaymentError::InsufficientCardsInGraveyard
+                        | crate::cost::CostPaymentError::NoValidReturnTarget
+                        | crate::cost::CostPaymentError::InsufficientCardsToReveal =>
+                            GameLoopError::ActionCancelled(description),
+                        // Replacement/program execution is a different failure;
+                        // preserve the typed error instead of treating it as a
+                        // declined or unpayable cast.
+                        crate::cost::CostPaymentError::ExecutionFailed(error) =>
+                            GameLoopError::ExecutionFailed(error),
+                        crate::cost::CostPaymentError::SourceNotFound
+                        | crate::cost::CostPaymentError::PlayerNotFound
+                        | crate::cost::CostPaymentError::Other(_) =>
+                            GameLoopError::InvalidState(description),
+                    });
                 }
             };
             if cost_ctx.decision_maker.awaiting_choice() {

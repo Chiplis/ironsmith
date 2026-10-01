@@ -242,7 +242,7 @@ fn cast_announce(
 ) -> Result<(), String> {
     g.turn.priority_player = Some(dm.actor);
     let id = g.create_object_from_definition(d, dm.actor, Zone::Hand);
-    let a = compute_legal_actions(g, dm.actor)
+    let a = compute_legal_actions(g, dm.actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or("fixture source cast absent")?;
@@ -333,7 +333,7 @@ fn land(
 ) -> Result<ironsmith::ids::StableId, String> {
     let id = g.create_object_from_definition(d, dm.actor, Zone::Hand);
     let stable = g.object(id).unwrap().stable_id;
-    let a = compute_legal_actions(g, dm.actor)
+    let a = compute_legal_actions(g, dm.actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::PlayLand{land_id}if *land_id==id))
         .ok_or_else(|| format!("actual {} land action absent", d.name()))?;
@@ -390,7 +390,7 @@ fn refill(g: &mut GameState) {
     }
 }
 fn mana_actions(g: &GameState, source: ObjectId) -> Vec<LegalAction> {
-    compute_legal_actions(g, alice())
+    compute_legal_actions(g, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .filter(|a| matches!(a,LegalAction::ActivateManaAbility{source:s,..}if *s==source))
         .collect()
@@ -482,7 +482,7 @@ fn run(
     if entered_tapped {
         next_main(&mut g, &mut q, dm)?;
     }
-    g.player_mut(alice()).unwrap().mana_pool = ironsmith::mana::ManaPool::new();
+    g.player_mut(alice()).unwrap().mana_pool = ironsmith::ManaPool::new();
     dm.stage = "actual_advertised_primary_mana_activation".into();
     let actions = mana_actions(&g, sid);
     let action = actions.first().cloned();

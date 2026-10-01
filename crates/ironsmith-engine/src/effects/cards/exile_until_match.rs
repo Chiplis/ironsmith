@@ -60,11 +60,10 @@ impl EffectExecutor for ExileUntilMatchEffect {
             |object, game| self.filter.matches(object, &filter_ctx, game),
         )?;
 
-        if result.exposed_object_ids.is_empty() {
-            Ok(EffectOutcome::count(0))
-        } else {
-            Ok(EffectOutcome::with_objects(result.exposed_object_ids))
-        }
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        let original = if result.exposed_object_ids.is_empty() { EffectOutcome::count(0) }
+            else { EffectOutcome::with_objects(result.exposed_object_ids.clone()) };
+        Ok(result.attach_to_outcome(original))
     }
 }
 

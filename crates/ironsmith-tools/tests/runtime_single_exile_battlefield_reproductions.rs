@@ -199,7 +199,7 @@ fn cast_announce(
 ) -> Result<(), String> {
     g.turn.priority_player = Some(dm.actor);
     let id = g.create_object_from_definition(d, dm.actor, Zone::Hand);
-    let a = compute_legal_actions(g, dm.actor)
+    let a = compute_legal_actions(g, dm.actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or("fixture source cast absent")?;
@@ -301,7 +301,7 @@ fn paid_land(
 ) -> Result<ironsmith::ids::StableId, String> {
     let id = g.create_object_from_definition(d, alice(), Zone::Hand);
     let s = g.object(id).unwrap().stable_id;
-    let a = compute_legal_actions(g, alice())
+    let a = compute_legal_actions(g, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::PlayLand{land_id}if *land_id==id))
         .ok_or("source land play absent")?;
@@ -319,7 +319,7 @@ fn sacrifice(
 ) -> Result<(), String> {
     dm.chosen = vec![current(g, m)];
     dm.targets = vec![Target::Player(PlayerId(2))];
-    let a=compute_legal_actions(g,dm.actor).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index:0,..}if *source==current(g,altar))).ok_or("Altar producer absent")?;
+    let a=compute_legal_actions(g,dm.actor).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index:0,..}if *source==current(g,altar))).ok_or("Altar producer absent")?;
     announce(g, a, q, dm)?;
     finish(g, q, dm)?;
     dm.targets.clear();
@@ -453,7 +453,7 @@ fn run(
     if primary == "Food Chain" {
         g.player_mut(alice()).unwrap().mana_pool = Default::default();
     }
-    let actions = compute_legal_actions(&g, alice());
+    let actions = compute_legal_actions(&g, alice()).expect("fixture has complete replacement state");
     let action=actions.iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index,..}|LegalAction::ActivateManaAbility{source,ability_index,..}if *source==sid&&*ability_index==index)).cloned();
     dm.trace.push(json!({"stage":"candidate_exact_path","ability_index":index,"cost_path":c["cost_path"],"other_cost_path":c["other_cost_path"],"legal_actions":format!("{actions:?}"),"material_ids":resources.iter().map(|s|current(&g,*s).0).collect::<Vec<_>>() }));
     let valid = c["valid"].as_bool().unwrap();
@@ -517,7 +517,7 @@ fn run(
             actual["storage_counters"] = json!(named_counter(&g, sid, "storage"));
             next_main(&mut g);
             g.player_mut(alice()).unwrap().mana_pool = Default::default();
-            let a=compute_legal_actions(&g,alice()).into_iter().find(|a|matches!(a,LegalAction::ActivateManaAbility{source,ability_index:1,..}|LegalAction::ActivateAbility{source,ability_index:1,..}if *source==sid)).ok_or("City mana action absent")?;
+            let a=compute_legal_actions(&g,alice()).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateManaAbility{source,ability_index:1,..}|LegalAction::ActivateAbility{source,ability_index:1,..}if *source==sid)).ok_or("City mana action absent")?;
             let e = immediate(&mut g, a, &mut q, dm).err();
             expected["mana_error"] = Value::Null;
             actual["mana_error"] = json!(e);
@@ -536,7 +536,7 @@ fn run(
             let id = current(&g, m);
             expected["exiled_face_down"] = json!(false);
             actual["exiled_face_down"] = json!(g.is_face_down(id));
-            let a=compute_legal_actions(&g,alice()).into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,from_zone:Zone::Exile,..}if *spell_id==id));
+            let a=compute_legal_actions(&g,alice()).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,from_zone:Zone::Exile,..}if *spell_id==id));
             expected["exiled_cast_available"] = json!(true);
             actual["exiled_cast_available"] = json!(a.is_some());
             if let Some(a) = a {

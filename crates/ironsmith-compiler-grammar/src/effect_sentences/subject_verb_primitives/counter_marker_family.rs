@@ -499,8 +499,22 @@ pub fn parse_return_with_counters_on_it_sentence(
     let tagged_target =
         TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), clause.span());
     for descriptor in shape.descriptors {
-        let count = Value::Fixed(descriptor.count as i32)
-            .with_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter);
+        let count = if descriptor.fewer {
+            // "return it ... with one fewer revival counter on it": the
+            // counters the dying object had, less the stated amount.
+            Value::Add(
+                Box::new(Value::CountersOn(
+                    Box::new(crate::target::ChooseSpec::Tagged(
+                        crate::tag::CompilerReferenceTag::Triggering.bind().into(),
+                    )),
+                    Some(descriptor.counter_type),
+                )),
+                Box::new(Value::Fixed(-(descriptor.count as i32))),
+            )
+        } else {
+            Value::Fixed(descriptor.count as i32)
+        }
+        .with_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter);
         let count = if descriptor.additional {
             count.with_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter)
         } else {

@@ -50,6 +50,12 @@ pub(super) const REGISTRY: RuleId = RuleId::new("static-compound-line-registry")
 /// The readings, in the order they were ranked.
 const READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("graveyard-cast-linked-exile-replacement-line"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_graveyard_cast_linked_exile_replacement_line(input)),
+    },
+    Reading {
         id: RuleId::new("once-each-turn-paid-die-reroll-line"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -304,6 +310,24 @@ fn read_first_spell_cost_reduction_and_flash_line(
     }
     Ok(None)
 }
+fn read_graveyard_cast_linked_exile_replacement_line(
+    input: &StaticLine<'_>,
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    // The typed fact owns the complete permission plus its cast-this-way
+    // replacement rider. Splitting them loses the selected permission's
+    // provenance and turns the rider into an unrelated static replacement.
+    let Some(fact) = crate::grammar::permission_facts::graveyard_source::
+        parse_once_each_turn_graveyard_cast_tokens(input.tokens)
+    else {
+        return Ok(None);
+    };
+    if !fact.exiles_after_resolution && fact.exile_rider_subject_tokens.is_none() {
+        return Ok(None);
+    }
+    Ok(parse_you_may_static_grant_line(input.tokens)?
+        .map(|abilities| abilities.into_iter().map(StaticAbilityAst::Static).collect()))
+}
+
 fn read_source_graveyard_dynamic_surcharge_line(
     input: &StaticLine<'_>,
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {

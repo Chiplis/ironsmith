@@ -161,7 +161,7 @@ pub(super) fn debt_of_loyalty_gains_control_when_target_regenerates_this_way() {
 
     let mut dm = SelectFirstDecisionMaker;
     let outcome =
-        crate::events::processing::process_destroy(&mut game, creature, Some(source), &mut dm);
+        crate::events::processing::process_destroy(&mut game, creature, Some(source), &mut dm).expect("destruction succeeds").expect("destruction is not pending");
 
     assert!(
         matches!(outcome, crate::events::processing::EventOutcome::Replaced),
@@ -269,7 +269,7 @@ pub(super) fn debt_of_loyalty_shield_is_not_deduplicated_with_plain_regeneration
         creature,
         Some(plain_source),
         &mut dm,
-    );
+    ).expect("destruction succeeds").expect("destruction is not pending");
 
     assert!(
         matches!(outcome, crate::events::processing::EventOutcome::Replaced),
@@ -525,7 +525,7 @@ pub(super) fn transfigure_activation_sacrifices_source_and_searches_by_its_lki_m
     let source = game.create_object_from_definition(&source_definition, alice, Zone::Battlefield);
     game.turn.phase = Phase::Combat;
     assert!(
-        crate::decision::compute_legal_actions(&game, alice)
+        crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .iter()
             .all(|action| !matches!(
                 action,
@@ -556,7 +556,7 @@ pub(super) fn transfigure_activation_sacrifices_source_and_searches_by_its_lki_m
         .build();
     game.create_object_from_definition(&wrong_type, alice, Zone::Library);
 
-    let action = crate::decision::compute_legal_actions(&game, alice)
+    let action = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -920,7 +920,7 @@ pub(super) fn party_dude_can_activate_level(
     level: u32,
 ) -> bool {
     let ability_index = party_dude_level_ability_index(game, party_dude_id, level);
-    crate::decision::compute_legal_actions(game, PlayerId::from_index(0))
+    crate::decision::compute_legal_actions(game, PlayerId::from_index(0)).expect("fixture has complete replacement state")
         .iter()
         .any(|action| {
             matches!(
@@ -1399,7 +1399,7 @@ pub(super) fn kargan_can_activate(
     kargan_id: ObjectId,
     ability_index: usize,
 ) -> bool {
-    crate::decision::compute_legal_actions(game, PlayerId::from_index(0))
+    crate::decision::compute_legal_actions(game, PlayerId::from_index(0)).expect("fixture has complete replacement state")
         .iter()
         .any(|action| {
             matches!(
@@ -1416,7 +1416,7 @@ pub(super) fn activate_kargan_ability_and_resolve(
     kargan_id: ObjectId,
     ability_index: usize,
 ) {
-    let action = crate::decision::compute_legal_actions(game, PlayerId::from_index(0))
+    let action = crate::decision::compute_legal_actions(game, PlayerId::from_index(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -2847,7 +2847,7 @@ pub(super) fn alhammarret_high_arbiter_reveals_opponents_hand_and_blocks_chosen_
 
     let mut dm = AlhammarretChoiceDecisionMaker::new("Lightning Bolt");
     let result = game
-        .move_object_with_etb_processing_with_dm(alhammarret_hand, Zone::Battlefield, &mut dm)
+        .move_object_with_etb_processing_with_dm(alhammarret_hand, Zone::Battlefield, &mut dm).expect("replacement operation must execute successfully in this scenario")
         .expect("Alhammarret should enter the battlefield");
     game.update_cant_effects();
 
@@ -2924,7 +2924,7 @@ pub(super) fn alhammarret_high_arbiter_rejects_revealed_land_name_choice() {
 
     let mut dm = AlhammarretChoiceDecisionMaker::new("Forest");
     let result = game
-        .move_object_with_etb_processing_with_dm(alhammarret_hand, Zone::Battlefield, &mut dm)
+        .move_object_with_etb_processing_with_dm(alhammarret_hand, Zone::Battlefield, &mut dm).expect("replacement operation must execute successfully in this scenario")
         .expect("Alhammarret should enter the battlefield");
     game.update_cant_effects();
 
@@ -2959,7 +2959,7 @@ pub(super) fn alhammarret_high_arbiter_rejects_unrevealed_nonland_name_choice() 
 
     let mut dm = AlhammarretChoiceDecisionMaker::new("Giant Growth");
     let result = game
-        .move_object_with_etb_processing_with_dm(alhammarret_hand, Zone::Battlefield, &mut dm)
+        .move_object_with_etb_processing_with_dm(alhammarret_hand, Zone::Battlefield, &mut dm).expect("replacement operation must execute successfully in this scenario")
         .expect("Alhammarret should enter the battlefield");
     game.update_cant_effects();
 

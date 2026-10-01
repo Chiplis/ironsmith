@@ -227,7 +227,7 @@ pub(super) fn lichs_mirror_replaces_an_sba_loss_with_its_full_effect_sequence() 
     game.create_object_from_definition(&filler, alice, Zone::Graveyard);
     game.player_mut(alice).expect("alice").life = 0;
 
-    assert!(crate::rules::apply_state_based_actions(&mut game));
+    assert!(crate::rules::apply_state_based_actions(&mut game).expect("replacement operation must finish without execution error"));
 
     let player = game.player(alice).expect("alice");
     assert!(player.is_in_game());
@@ -249,7 +249,7 @@ pub(super) fn lichs_mirror_replaces_an_sba_loss_with_its_full_effect_sequence() 
         "Lich's Mirror itself must be shuffled before drawing seven"
     );
     assert!(
-        !crate::rules::apply_state_based_actions(&mut game),
+        !crate::rules::apply_state_based_actions(&mut game).expect("replacement operation must finish without execution error"),
         "the post-replacement SBA recheck must find no remaining loss condition"
     );
 }

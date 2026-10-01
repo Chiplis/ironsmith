@@ -351,6 +351,33 @@ fn delayed_trigger_event_object_is_source(trigger: &TriggerSpec) -> bool {
     )
 }
 
+/// A delayed body that measures the registering instruction's result ("for
+/// each creature card put into your graveyard this way") reads that result's
+/// tagged objects through the registration alias. Bind the alias to the
+/// result tag current where the delayed trigger is scheduled; the delayed
+/// trigger captures that tag's objects when it is registered.
+fn delayed_registration_result_imports(
+    effects: &[EffectAst],
+    ctx: &EffectLoweringContext,
+) -> Option<ReferenceImports> {
+    use ironsmith_core::tag::TagKeyWalk;
+    let alias = crate::reference_helpers::DELAYED_REGISTRATION_RESULT_ALIAS;
+    let mut references_alias = false;
+    for effect in effects {
+        effect.for_each_tag_key(&mut |key| {
+            references_alias |= key.as_str() == alias;
+        });
+    }
+    if !references_alias {
+        return None;
+    }
+    let result_tag = ctx.last_object_tag.clone()?;
+    Some(ReferenceImports {
+        snapshot_tag_aliases: vec![(TagKey::from(alias), result_tag.into())],
+        ..Default::default()
+    })
+}
+
 fn compile_delayed_effects_preserving_outer_context(
     effects: &[EffectAst],
     ctx: &mut EffectLoweringContext,
@@ -593,6 +620,58 @@ fn apply_delayed_trigger_duration(
     }
 }
 
+/// "whenever you play a land or cast a spell this way": the played land or
+/// cast spell must be one of the cards the scheduling instruction made
+/// playable. Bind that prior-object reference before the delayed trigger is
+/// registered; the trigger captures the tagged cards it names.
+fn resolve_play_or_cast_trigger_references(
+    trigger: &TriggerSpec,
+    refs: &ReferenceEnv,
+) -> Result<TriggerSpec, CardTextError> {
+    fn references_it(filter: &ObjectFilter) -> bool {
+        filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+        })
+    }
+    Ok(match trigger {
+        TriggerSpec::WithIntro { intro, trigger } => TriggerSpec::WithIntro {
+            intro: intro.clone(),
+            trigger: Box::new(resolve_play_or_cast_trigger_references(trigger, refs)?),
+        },
+        TriggerSpec::Either(left, right) => TriggerSpec::Either(
+            Box::new(resolve_play_or_cast_trigger_references(left, refs)?),
+            Box::new(resolve_play_or_cast_trigger_references(right, refs)?),
+        ),
+        TriggerSpec::AnyOf(triggers) => TriggerSpec::AnyOf(
+            triggers
+                .iter()
+                .map(|trigger| resolve_play_or_cast_trigger_references(trigger, refs))
+                .collect::<Result<Vec<_>, _>>()?,
+        ),
+        TriggerSpec::PlayerPlaysLand { player, filter } if references_it(filter) => {
+            TriggerSpec::PlayerPlaysLand {
+                player: player.clone(),
+                filter: resolve_it_tag(filter, refs)?,
+            }
+        }
+        TriggerSpec::SpellCast {
+            filter: Some(filter),
+            ..
+        } if references_it(filter) => {
+            let mut resolved = trigger.clone();
+            if let TriggerSpec::SpellCast {
+                filter: Some(filter),
+                ..
+            } = &mut resolved
+            {
+                *filter = resolve_it_tag(filter, refs)?;
+            }
+            resolved
+        }
+        trigger => trigger.clone(),
+    })
+}
+
 fn compile_duration_scoped_delayed_trigger(
     trigger: &TriggerSpec,
     effects: &[EffectAst],
@@ -649,20 +728,13 @@ fn compile_duration_scoped_delayed_trigger(
                 !triggers.is_empty()
                     && triggers.iter().all(event_object_trigger_supplies_own_object)
             }
-            TriggerSpec::SpellCast { filter, .. } => filter.as_ref().is_none_or(|filter| {
-                let mut references_tag = false;
-                ironsmith_core::tag::TagKeyWalk::for_each_tag_key(filter, &mut |_| {
-                    references_tag = true
-                });
-                !filter.source && !references_tag
-            }),
-            TriggerSpec::PlayerPlaysLand { filter, .. } => {
-                let mut references_tag = false;
-                ironsmith_core::tag::TagKeyWalk::for_each_tag_key(filter, &mut |_| {
-                    references_tag = true
-                });
-                !filter.source && !references_tag
+            // A cast spell or a played land is always a new object of its
+            // own event; a tagged constraint ("... this way") only restricts
+            // which cards qualify and never makes it a watched prior object.
+            TriggerSpec::SpellCast { filter, .. } => {
+                filter.as_ref().is_none_or(|filter| !filter.source)
             }
+            TriggerSpec::PlayerPlaysLand { filter, .. } => !filter.source,
             _ => false,
         }
     }
@@ -840,7 +912,9 @@ fn compile_duration_scoped_delayed_trigger(
                 }
             }
         }
-        _ => compile_delayed_trigger_spec(trigger)?,
+        _ => compile_delayed_trigger_spec(&resolve_play_or_cast_trigger_references(
+            trigger, &refs,
+        )?)?,
     };
 
     let mut delayed = if let Some(tag) = watched_tag {
@@ -1159,7 +1233,17 @@ pub(super) fn try_compile_timing_and_control_effect(
                         )?;
                         (lowered.effects.to_vec(), lowered.choices)
                     }
-                    None => compile_trigger_effects(Some(trigger), effects)?,
+                    None => match delayed_registration_result_imports(effects, ctx) {
+                        Some(imports) => {
+                            let lowered = compile_trigger_effects_with_imports(
+                                Some(trigger),
+                                effects,
+                                &imports,
+                            )?;
+                            (lowered.effects.to_vec(), lowered.choices)
+                        }
+                        None => compile_trigger_effects(Some(trigger), effects)?,
+                    },
                 };
             fuse_next_cast_entry_counter_body(trigger, *one_shot, &mut delayed_effects);
             let choices = Vec::new();
@@ -1706,8 +1790,13 @@ pub(super) fn try_compile_stack_and_condition_effect(
             // result's player partition to bind its accepting participant.
             // This is reference context, not an announced target: damage to
             // "that player" deliberately exposes no target requirement.
+            // "Otherwise" tests the complete antecedent instruction. An
+            // earlier participant-bound follow-up may leave its reference
+            // context here; it must not turn that collective fallback into
+            // one action for every participant who declined.
             let per_player_result = !ctx.iterated_player
-                && ctx.last_player_filter == Some(PlayerFilter::IteratedPlayer);
+                && ctx.last_player_filter == Some(PlayerFilter::IteratedPlayer)
+                && !matches!(predicate, IfResultPredicate::Otherwise);
             let (inner_effects, inner_choices) = with_preserved_lowering_context(
                 ctx,
                 |ctx| {
@@ -1976,5 +2065,48 @@ fn predicate_uses_implicit_object_reference(predicate: &PredicateAst) -> bool {
                 || predicate_uses_implicit_object_reference(right)
         }
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod collective_otherwise_scope_tests {
+    use super::*;
+    use crate::cards::builders::LifeResourceActionAst;
+
+    fn lower_followup(predicate: IfResultPredicate, in_player_loop: bool) -> crate::effect::Effect {
+        let mut ctx=EffectLoweringContext::new();
+        ctx.last_player_filter=Some(PlayerFilter::IteratedPlayer);
+        ctx.iterated_player=in_player_loop;
+        let ast=EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult {
+            condition:crate::effect::EffectId(77),predicate,
+            effects:vec![EffectAst::subject_verb(SubjectVerbRoleAst::AffectedPlayer,PlayerAst::You,
+                SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count:Value::Fixed(1) }))],
+        });
+        let (mut effects,choices)=try_compile_stack_and_condition_effect(&ast,&mut ctx).unwrap().unwrap();
+        assert!(choices.is_empty());assert_eq!(effects.len(),1);
+        effects.remove(0)
+    }
+
+    #[test]
+    fn collective_otherwise_does_not_inherit_participant_partition() {
+        let effect=lower_followup(IfResultPredicate::Otherwise,false);
+        let condition=effect.as_if_effect().unwrap();
+        assert!(!condition.per_player_result);
+        assert_eq!(condition.condition,crate::effect::EffectId(77));
+        assert_eq!(condition.predicate,EffectPredicate::DidNotHappen);
+    }
+
+    #[test]
+    fn explicit_participant_conditions_keep_partition_binding() {
+        for predicate in [IfResultPredicate::Did,IfResultPredicate::DidNot,IfResultPredicate::ExplicitDidNot] {
+            assert!(lower_followup(predicate,false).as_if_effect().unwrap().per_player_result);
+        }
+    }
+
+    #[test]
+    fn condition_inside_participant_loop_does_not_repeat_all_participants() {
+        for predicate in [IfResultPredicate::Did,IfResultPredicate::DidNot,IfResultPredicate::Otherwise] {
+            assert!(!lower_followup(predicate,true).as_if_effect().unwrap().per_player_result);
+        }
     }
 }

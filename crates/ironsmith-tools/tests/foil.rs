@@ -43,7 +43,7 @@ fn setup(definition: &CardDefinition) -> (GameState, PlayerId, ObjectId, ObjectI
     (game, alice, foil, target)
 }
 fn cast(game: &mut GameState, alice: PlayerId, foil: ObjectId, method: CastingMethod) {
-    let action = compute_legal_actions(game, alice).into_iter().find(|action| matches!(action, LegalAction::CastSpell { spell_id, casting_method, .. } if *spell_id == foil && *casting_method == method)).expect("requested casting method must be legal");
+    let action = compute_legal_actions(game, alice).expect("fixture has complete replacement state").into_iter().find(|action| matches!(action, LegalAction::CastSpell { spell_id, casting_method, .. } if *spell_id == foil && *casting_method == method)).expect("requested casting method must be legal");
     let mut queue = ironsmith::triggers::TriggerQueue::new();
     let mut state = PriorityLoopState::new(game.players_in_game());
     let mut dm = SelectFirstDecisionMaker;
@@ -108,7 +108,7 @@ fn alternative_requires_two_distinct_hand_cards_including_an_island() {
         for _ in 0..others {
             game.create_object_from_definition(&card("Other card", false), alice, Zone::Hand);
         }
-        let offered = compute_legal_actions(&game, alice).iter().any(|action| matches!(action, LegalAction::CastSpell { spell_id, casting_method: CastingMethod::Alternative(0), .. } if *spell_id == foil));
+        let offered = compute_legal_actions(&game, alice).expect("fixture has complete replacement state").iter().any(|action| matches!(action, LegalAction::CastSpell { spell_id, casting_method: CastingMethod::Alternative(0), .. } if *spell_id == foil));
         assert_eq!(
             offered, expected,
             "islands={islands}, other hand cards={others}; Foil cannot pay for itself"

@@ -811,7 +811,7 @@ pub(super) fn sengir_the_dark_baron_another_player_loses_game_gains_life_from_tu
     game.add_player_counters_with_source(bob, crate::object::CounterType::Poison, 10, None, None).unwrap();
 
     assert!(
-        crate::rules::state_based::apply_state_based_actions(&mut game),
+        crate::rules::state_based::apply_state_based_actions(&mut game).expect("replacement operation must finish without execution error"),
         "Bob at negative life and ten poison counters should lose the game as a state-based action"
     );
     let mut trigger_queue = crate::triggers::TriggerQueue::new();
@@ -922,7 +922,7 @@ pub(super) fn sengir_the_dark_baron_does_not_trigger_when_its_controller_loses_g
     game.lose_life(alice, 21);
 
     assert!(
-        crate::rules::state_based::apply_state_based_actions(&mut game),
+        crate::rules::state_based::apply_state_based_actions(&mut game).expect("replacement operation must finish without execution error"),
         "Alice at negative life should lose the game as a state-based action"
     );
     let mut trigger_queue = crate::triggers::TriggerQueue::new();

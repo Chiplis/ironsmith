@@ -408,7 +408,7 @@ mod tests {
                 .is_empty(),
             "actual current-state mana inference remains separate from structural classification"
         );
-        let actions = crate::decision::compute_legal_actions(&game, alice);
+        let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
         assert!(actions.iter().any(|action| matches!(
             action,
             crate::decision::LegalAction::ActivateManaAbility {

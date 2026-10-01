@@ -494,7 +494,7 @@ fn aftermath_half_permission_stays_specific_but_other_grants_can_allow_both_halv
         .mana_pool
         .add(ManaSymbol::Red, 2);
     let routes = |game: &GameState| {
-        compute_legal_actions(game, A)
+        compute_legal_actions(game, A).expect("fixture has complete replacement state")
             .into_iter()
             .filter_map(|action| {
                 if let LegalAction::CastSpell {
@@ -595,7 +595,7 @@ fn graveyard_flashback_grants_filter_the_adventure_card_before_selecting_its_spe
         Grantable::flashback_from_cards_mana_cost(),
         grant_source.clone(),
     );
-    let actions = compute_legal_actions(&game, A);
+    let actions = compute_legal_actions(&game, A).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action, LegalAction::CastSpell { spell_id, .. } if *spell_id == ordinary_sorcery
@@ -617,7 +617,7 @@ fn graveyard_flashback_grants_filter_the_adventure_card_before_selecting_its_spe
         grant_source,
     );
     assert!(
-        compute_legal_actions(&game, A)
+        compute_legal_actions(&game, A).expect("fixture has complete replacement state")
             .iter()
             .any(|action| matches!(
                 action, LegalAction::CastSpell {

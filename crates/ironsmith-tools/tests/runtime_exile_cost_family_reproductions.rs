@@ -192,7 +192,7 @@ fn cast_announce(
 ) -> Result<(), String> {
     g.turn.priority_player = Some(alice());
     let id = g.create_object_from_definition(d, alice(), Zone::Hand);
-    let a = compute_legal_actions(g, alice())
+    let a = compute_legal_actions(g, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or("fixture source cast absent")?;
@@ -325,7 +325,7 @@ fn run(
         }
     }
     g.turn.priority_player = Some(alice());
-    let legal = compute_legal_actions(&g, alice());
+    let legal = compute_legal_actions(&g, alice()).expect("fixture has complete replacement state");
     let action = legal
         .iter()
         .find(

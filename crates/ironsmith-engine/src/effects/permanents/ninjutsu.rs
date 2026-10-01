@@ -6,6 +6,7 @@
 //! - a resolution effect (`NinjutsuEffect`) that puts the source card from hand onto the
 //!   battlefield tapped and attacking the recorded target.
 
+use crate::effects::zones::{finish_zone_change_receipts, finish_battlefield_entry_receipts};
 use crate::combat_state::{AttackTarget, AttackerInfo, get_attack_target, is_unblocked};
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
@@ -67,6 +68,10 @@ impl EffectExecutor for NinjutsuCostEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = (|| -> Result<EffectOutcome, ExecutionError> {
         if !in_ninjutsu_window(game) {
             return Err(ExecutionError::Impossible(
                 "Ninjutsu can only be activated during combat after blockers are declared"
@@ -110,15 +115,11 @@ impl EffectExecutor for NinjutsuCostEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        let chosen_attacker = chosen
-            .into_iter()
-            .find(|id| candidates.contains(id))
-            .or_else(|| candidates.first().copied())
-            .ok_or_else(|| {
-                ExecutionError::Impossible(
-                    "No valid unblocked attacker was chosen for ninjutsu".to_string(),
-                )
-            })?;
+        if chosen.len() != 1 || !candidates.contains(&chosen[0]) {
+            return Err(ExecutionError::Impossible(
+                "No valid unblocked attacker was chosen for ninjutsu".to_string()));
+        }
+        let chosen_attacker = chosen[0];
 
         let attack_target = game
             .combat
@@ -133,22 +134,34 @@ impl EffectExecutor for NinjutsuCostEffect {
 
         // Return is a cost, but its zone change still sees replacements
         // (CR 118.11), notably Unearth's exile replacement.
-        let outcome = crate::effects::zones::apply_zone_change(
-            game, chosen_attacker, Zone::Battlefield, Zone::Hand,
-            ctx.cause.clone(), ctx.decision_maker,
-        );
+        let outcome = {
+    let zone_additional_effects = ctx.additional_replacement_effects_snapshot();
+    crate::effects::zones::apply_zone_change_with_context_and_additional_effects(
+        game,
+        chosen_attacker,
+        Zone::Battlefield,
+        Zone::Hand,
+        ctx.cause.clone(),
+        ctx,
+        &zone_additional_effects
+    )
+}?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
         }
-        if !matches!(outcome, crate::events::processing::EventOutcome::Proceed(ref result)
-            if result.new_object_id.is_some())
-        {
-            return Err(ExecutionError::Impossible("Failed to return chosen attacker".to_string()));
+        if matches!(&outcome.original, crate::events::processing::EventOutcome::NotApplicable) {
+            return Err(ExecutionError::Impossible("Chosen attacker cannot be returned".to_string()));
         }
-
         game.record_ninjutsu_attack_target(ctx.source, attack_target);
-
-        Ok(EffectOutcome::resolved())
+        finish_zone_change_receipts(game, ctx, EffectOutcome::resolved(), vec![(chosen_attacker, outcome)])
+        })();
+        let pending = ctx.decision_maker.awaiting_choice();
+        if pending || result.is_err() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
+        }
+        if pending { return Ok(EffectOutcome::count(0)); }
+        result
     }
 
     fn cost_description(&self) -> Option<String> {
@@ -201,6 +214,10 @@ impl EffectExecutor for SneakCostEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = (|| -> Result<EffectOutcome, ExecutionError> {
         if !in_sneak_window(game) {
             return Err(ExecutionError::Impossible(
                 "Sneak can only be paid during the declare blockers step".to_string(),
@@ -243,15 +260,11 @@ impl EffectExecutor for SneakCostEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        let chosen_attacker = chosen
-            .into_iter()
-            .find(|id| candidates.contains(id))
-            .or_else(|| candidates.first().copied())
-            .ok_or_else(|| {
-                ExecutionError::Impossible(
-                    "No valid unblocked attacker was chosen for sneak".to_string(),
-                )
-            })?;
+        if chosen.len() != 1 || !candidates.contains(&chosen[0]) {
+            return Err(ExecutionError::Impossible(
+                "No valid unblocked attacker was chosen for sneak".to_string()));
+        }
+        let chosen_attacker = chosen[0];
 
         let attack_target = game
             .combat
@@ -266,22 +279,34 @@ impl EffectExecutor for SneakCostEffect {
 
         // Return is a cost, but its zone change still sees replacements
         // (CR 118.11), notably Unearth's exile replacement.
-        let outcome = crate::effects::zones::apply_zone_change(
-            game, chosen_attacker, Zone::Battlefield, Zone::Hand,
-            ctx.cause.clone(), ctx.decision_maker,
-        );
+        let outcome = {
+    let zone_additional_effects = ctx.additional_replacement_effects_snapshot();
+    crate::effects::zones::apply_zone_change_with_context_and_additional_effects(
+        game,
+        chosen_attacker,
+        Zone::Battlefield,
+        Zone::Hand,
+        ctx.cause.clone(),
+        ctx,
+        &zone_additional_effects
+    )
+}?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
         }
-        if !matches!(outcome, crate::events::processing::EventOutcome::Proceed(ref result)
-            if result.new_object_id.is_some())
-        {
-            return Err(ExecutionError::Impossible("Failed to return chosen attacker".to_string()));
+        if matches!(&outcome.original, crate::events::processing::EventOutcome::NotApplicable) {
+            return Err(ExecutionError::Impossible("Chosen attacker cannot be returned".to_string()));
         }
-
         game.record_sneak_attack_target(ctx.source, attack_target);
-
-        Ok(EffectOutcome::resolved())
+        finish_zone_change_receipts(game, ctx, EffectOutcome::resolved(), vec![(chosen_attacker, outcome)])
+        })();
+        let pending = ctx.decision_maker.awaiting_choice();
+        if pending || result.is_err() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
+        }
+        if pending { return Ok(EffectOutcome::count(0)); }
+        result
     }
 
     fn cost_description(&self) -> Option<String> {
@@ -368,6 +393,10 @@ impl EffectExecutor for NinjutsuEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = (|| -> Result<EffectOutcome, ExecutionError> {
         let Some(attack_target) = ctx.ninjutsu_attack_target.clone()
             .or_else(|| pop_ninjutsu_attack_target(game, ctx.source)) else {
             return Ok(EffectOutcome::target_invalid());
@@ -385,10 +414,14 @@ impl EffectExecutor for NinjutsuEffect {
             ctx,
             ctx.source,
             BattlefieldEntryOptions::specific(ctx.controller, true),
-        );
+        )?;
 
-        match outcome {
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        let receipt = outcome.ok_or_else(|| ExecutionError::InternalError(
+            "completed ninjutsu entry has no receipt".into()))?;
+        let original = match &receipt.outcome {
             BattlefieldEntryOutcome::Moved(new_id) => {
+                let new_id = *new_id;
                 let valid_target = attack_target_still_valid(game, ctx.controller, &attack_target);
                 if let Some(combat) = game.combat.as_mut()
                     && valid_target
@@ -398,10 +431,20 @@ impl EffectExecutor for NinjutsuEffect {
                         target: attack_target,
                     });
                 }
-                Ok(EffectOutcome::with_objects(vec![new_id]))
+                EffectOutcome::with_objects(vec![new_id])
             }
-            BattlefieldEntryOutcome::Prevented => Ok(EffectOutcome::prevented()),
+            BattlefieldEntryOutcome::Redirected(change) => EffectOutcome::with_objects(change.new_object_ids.clone()),
+            BattlefieldEntryOutcome::Prevented => EffectOutcome::prevented(),
+        };
+        finish_battlefield_entry_receipts(game, ctx, original, vec![receipt])
+        })();
+        let pending = ctx.decision_maker.awaiting_choice();
+        if pending || result.is_err() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
         }
+        if pending { return Ok(EffectOutcome::count(0)); }
+        result
     }
 }
 
@@ -564,4 +607,50 @@ mod tests {
             "ninjutsu should not be payable before blockers are declared"
         );
     }
+}
+
+#[cfg(test)]
+mod replacement_cost_owner_contract_tests {
+    use super::*;
+    use crate::ids::CardId;
+    use crate::replacement::{ReplacementAction, ReplacementEffect};
+    fn check(sneak: bool, prevent: bool) {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let card = crate::card::CardBuilder::new(CardId::new(), "Cost creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2)).build();
+        let source = game.create_object_from_card(&card, alice, Zone::Hand);
+        let attacker = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let replacement_source = game.create_object_from_card(&card, bob, Zone::Battlefield);
+        game.turn.phase = Phase::Combat; game.turn.step = Some(Step::DeclareBlockers);
+        game.combat = Some(crate::combat_state::CombatState {
+            attackers: vec![AttackerInfo { creature: attacker, target: AttackTarget::Player(bob) }],
+            ..Default::default()
+        });
+        let action = if prevent { ReplacementAction::Prevent } else {
+            ReplacementAction::Instead(vec![crate::effect::Effect::gain_life(3)])
+        };
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(
+            replacement_source, bob,
+            crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+                crate::target::ObjectFilter::specific(attacker), Some(Zone::Battlefield), Some(Zone::Hand)), action));
+        game.take_pending_trigger_events();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let result = if sneak { SneakCostEffect::new().execute(&mut game, &mut ctx) }
+            else { NinjutsuCostEffect::new().execute(&mut game, &mut ctx) };
+        let outcome = result.expect("a legal attempted cost remains paid after replacement (118.11)");
+        assert!(matches!(outcome.status, crate::effect::OutcomeStatus::Succeeded));
+        assert_eq!(game.object(attacker).unwrap().zone, Zone::Battlefield);
+        assert_eq!(game.object(source).unwrap().zone, Zone::Hand);
+        assert_eq!(game.player(alice).unwrap().life, 20);
+        assert_eq!(game.player(bob).unwrap().life, if prevent {20} else {23});
+        let target = if sneak { game.last_sneak_attack_target(source) } else { game.last_ninjutsu_attack_target(source) };
+        assert_eq!(target.cloned(), Some(AttackTarget::Player(bob)));
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+    }
+    #[test] fn ninjutsu_instead_cost_is_paid() { check(false, false); }
+    #[test] fn ninjutsu_prevented_cost_is_paid() { check(false, true); }
+    #[test] fn sneak_instead_cost_is_paid() { check(true, false); }
+    #[test] fn sneak_prevented_cost_is_paid() { check(true, true); }
 }

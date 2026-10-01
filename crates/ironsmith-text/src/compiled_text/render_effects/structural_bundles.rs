@@ -6020,6 +6020,7 @@ pub(super) fn value_references_target_player(value: &Value) -> bool {
         | Value::ColorsAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctManaValues(filter)
+        | Value::UnlockedDoorsAmong(filter)
         | Value::DistinctPowers(filter) => object_filter_references_target_player(filter),
         Value::StaticAbilitiesAmong { filter, .. } => {
             object_filter_references_target_player(filter)

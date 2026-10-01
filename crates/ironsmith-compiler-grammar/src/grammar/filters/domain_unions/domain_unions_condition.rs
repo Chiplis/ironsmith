@@ -40,4 +40,21 @@ pub(super) fn propagate_leading_shared_set_modifiers(
             branch.nontoken = true;
         }
     }
+    // "basic Island, Mountain, or Plains card": a leading supertype
+    // adjective qualifies every bare arm of the list.
+    if let Some(first) = branches.first()
+        && !first.supertypes.is_empty()
+        && first.supertypes.iter().all(|supertype| {
+            leading_words.iter().any(|word| {
+                crate::util::parse_supertype_word(word).is_some_and(|parsed| parsed == *supertype)
+            })
+        })
+    {
+        let supertypes = first.supertypes.clone();
+        for branch in branches.iter_mut().skip(1) {
+            if branch.supertypes.is_empty() {
+                branch.supertypes = supertypes.clone();
+            }
+        }
+    }
 }

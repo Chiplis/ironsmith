@@ -1037,7 +1037,7 @@ pub(super) fn keeper_of_the_flame_activation_requires_higher_life_opponent_and_d
         .add(ManaSymbol::Red, 1);
 
     assert!(
-        !crate::decision::compute_legal_actions(&game, alice)
+        !crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .into_iter()
             .any(|action| matches!(
                 action,
@@ -1055,7 +1055,7 @@ pub(super) fn keeper_of_the_flame_activation_requires_higher_life_opponent_and_d
         .iter()
         .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
         .expect("Keeper of the Flame should have an activated ability");
-    let activate_action = crate::decision::compute_legal_actions(&game, alice)
+    let activate_action = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -1200,7 +1200,7 @@ pub(super) fn enter_barrensteppe_siege_with_choice(
     );
     let mut dm = BarrensteppeChoiceDecisionMaker { option_index };
     let siege = game
-        .move_object_with_etb_processing_with_dm(hand_id, Zone::Battlefield, &mut dm)
+        .move_object_with_etb_processing_with_dm(hand_id, Zone::Battlefield, &mut dm).expect("replacement operation must execute successfully in this scenario")
         .expect("Barrensteppe Siege should enter the battlefield")
         .new_id;
 
@@ -1605,7 +1605,7 @@ pub(super) fn vastwood_animist_activation_animates_only_your_land_using_ally_cou
     let _opponent_land_id = create_test_land(&mut game, "Bob's Forest", bob);
 
     assert!(
-        !crate::decision::compute_legal_actions(&game, alice)
+        !crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .into_iter()
             .any(|action| matches!(
                 action,
@@ -1625,7 +1625,7 @@ pub(super) fn vastwood_animist_activation_animates_only_your_land_using_ally_cou
         .iter()
         .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
         .expect("Vastwood Animist should have an activated ability");
-    let activate_action = crate::decision::compute_legal_actions(&game, alice)
+    let activate_action = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -1776,7 +1776,7 @@ pub(super) fn cho_arrim_alchemist_activation_pays_costs_and_registers_prevention
         .iter()
         .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
         .expect("Cho-Arrim Alchemist should have an activated ability");
-    let activate_action = crate::decision::compute_legal_actions(&game, alice)
+    let activate_action = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -1883,7 +1883,7 @@ pub(super) fn cho_arrim_alchemist_activation_pays_costs_and_registers_prevention
 
     resolve_stack_entry_with(&mut game, &mut dm)
         .expect("Cho-Arrim Alchemist ability should resolve");
-    let (damage, prevented) = crate::events::processing::process_damage_with_event(
+    let (damage, prevented) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         chosen_source,
         crate::events::DamageTarget::Player(alice),
@@ -1920,7 +1920,7 @@ pub(super) fn activate_goblin_kites_targeting(
         .iter()
         .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
         .expect("Goblin Kites should have an activated ability");
-    let activate_action = crate::decision::compute_legal_actions(game, controller)
+    let activate_action = crate::decision::compute_legal_actions(game, controller).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -1989,7 +1989,7 @@ pub(super) fn goblin_kites_activation_requires_creature_you_control_with_toughne
         .add(ManaSymbol::Red, 1);
 
     assert!(
-        !crate::decision::compute_legal_actions(&game, alice)
+        !crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .into_iter()
             .any(|action| matches!(
                 action,
@@ -2181,7 +2181,7 @@ pub(super) fn tsabos_assassin_activation_is_legal_taps_source_and_resolves_from_
         .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
         .expect("Tsabo's Assassin should have an activated ability");
 
-    let activate_action = crate::decision::compute_legal_actions(&game, alice)
+    let activate_action = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(

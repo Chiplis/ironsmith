@@ -75,7 +75,7 @@ fn cast(
 ) -> Result<u32, String> {
     g.turn.priority_player = Some(actor);
     let id = g.create_object_from_definition(def, actor, Zone::Hand);
-    let action = compute_legal_actions(g, actor)
+    let action = compute_legal_actions(g, actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or_else(|| format!("{} normal cast unavailable", def.name()))?;
@@ -358,7 +358,7 @@ fn run(
     let paid;
     if def.card.card_types.contains(&CardType::Land) {
         let hand = g.create_object_from_definition(def, PlayerId(0), Zone::Hand);
-        let action = compute_legal_actions(&g, PlayerId(0))
+        let action = compute_legal_actions(&g, PlayerId(0)).expect("fixture has complete replacement state")
             .into_iter()
             .find(|a| matches!(a,LegalAction::PlayLand{land_id}if *land_id==hand))
             .ok_or("canonical land play unavailable")?;
@@ -428,7 +428,7 @@ fn run(
     }
     g.turn.priority_player = Some(PlayerId(0));
     if condition_on && def.name() == "Manor Gargoyle" {
-        let first = compute_legal_actions(&g, PlayerId(0)).into_iter().find(|a|matches!(a, LegalAction::ActivateAbility{source:s,..} if *s == source)).ok_or("first Gargoyle activation unavailable")?;
+        let first = compute_legal_actions(&g, PlayerId(0)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a, LegalAction::ActivateAbility{source:s,..} if *s == source)).ok_or("first Gargoyle activation unavailable")?;
         let before = g.player(PlayerId(0)).unwrap().mana_pool.total();
         announce(&mut g, &mut q, &mut dm, first)?;
         resolve_all(&mut g, &mut q, &mut dm)?;
@@ -436,7 +436,7 @@ fn run(
         evidence["first_gargoyle_activation_paid"] = json!(1);
         evidence["first_gargoyle_activation_resolved"] = json!(true);
     }
-    let actions: Vec<_> = compute_legal_actions(&g, PlayerId(0))
+    let actions: Vec<_> = compute_legal_actions(&g, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .filter(|a| matches!(a,LegalAction::ActivateAbility{source:s,..}|LegalAction::ActivateManaAbility{source:s,..}if *s==source))
         .collect();

@@ -28,7 +28,7 @@ fn attached_source_counter_release_removes_counters_from_the_granting_aura() {
             let attacker = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
             let task = crate::CounterType::Named("task".into());
             let aura = game
-                .move_object_with_etb_processing(aura, Zone::Battlefield)
+                .move_object_with_etb_processing(aura, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
                 .unwrap()
                 .new_id;
             assert_eq!(
@@ -115,4 +115,13 @@ fn attached_source_counter_release_retains_named_grant_and_shared_predicates() {
         crate::compiled_text::compiled_text_lines(&definition).join("\n"),
         TEXT
     );
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: crate::game_state::EntryCommitResult)
+    -> Option<crate::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

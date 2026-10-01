@@ -1887,7 +1887,7 @@ pub(super) fn activate_radiant_kavu(
         .iter()
         .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
         .expect("Radiant Kavu should have an activated ability");
-    let activate_action = crate::decision::compute_legal_actions(game, controller)
+    let activate_action = crate::decision::compute_legal_actions(game, controller).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -2055,7 +2055,7 @@ pub(super) fn radiant_kavu_activation_cost_and_source_filter_prevention_runtime(
         crate::color::ColorSet::BLUE,
     );
 
-    let (blue_combat, _) = crate::events::processing::process_damage_with_event(
+    let (blue_combat, _) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         blue_creature,
         crate::events::DamageTarget::Player(alice),
@@ -2068,7 +2068,7 @@ pub(super) fn radiant_kavu_activation_cost_and_source_filter_prevention_runtime(
         "Radiant Kavu should prevent blue creature combat damage"
     );
 
-    let (black_combat, _) = crate::events::processing::process_damage_with_event(
+    let (black_combat, _) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         black_creature,
         crate::events::DamageTarget::Player(alice),
@@ -2081,7 +2081,7 @@ pub(super) fn radiant_kavu_activation_cost_and_source_filter_prevention_runtime(
         "Radiant Kavu should prevent black creature combat damage"
     );
 
-    let (green_combat, _) = crate::events::processing::process_damage_with_event(
+    let (green_combat, _) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         green_creature,
         crate::events::DamageTarget::Player(alice),
@@ -2094,7 +2094,7 @@ pub(super) fn radiant_kavu_activation_cost_and_source_filter_prevention_runtime(
         "Radiant Kavu should not prevent green creature combat damage"
     );
 
-    let (blue_artifact_combat, _) = crate::events::processing::process_damage_with_event(
+    let (blue_artifact_combat, _) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         blue_artifact,
         crate::events::DamageTarget::Player(alice),
@@ -2107,7 +2107,7 @@ pub(super) fn radiant_kavu_activation_cost_and_source_filter_prevention_runtime(
         "Radiant Kavu should not prevent combat damage from blue noncreatures"
     );
 
-    let (blue_noncombat, _) = crate::events::processing::process_damage_with_event(
+    let (blue_noncombat, _) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         blue_creature,
         crate::events::DamageTarget::Player(alice),
@@ -2270,7 +2270,7 @@ pub(super) fn heavy_fog_prevents_only_damage_to_you_from_attacking_creatures() {
         ..crate::combat_state::CombatState::default()
     });
 
-    let (attacking_damage_to_you, _) = crate::events::processing::process_damage_with_event(
+    let (attacking_damage_to_you, _) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         bob_attacker,
         crate::events::DamageTarget::Player(alice),
@@ -2283,7 +2283,7 @@ pub(super) fn heavy_fog_prevents_only_damage_to_you_from_attacking_creatures() {
         "Heavy Fog should prevent noncombat damage to you from an attacking creature"
     );
 
-    let (nonattacking_damage_to_you, _) = crate::events::processing::process_damage_with_event(
+    let (nonattacking_damage_to_you, _) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         bob_nonattacker,
         crate::events::DamageTarget::Player(alice),
@@ -2297,7 +2297,7 @@ pub(super) fn heavy_fog_prevents_only_damage_to_you_from_attacking_creatures() {
     );
 
     let (attacking_damage_to_other_player, _) =
-        crate::events::processing::process_damage_with_event(
+        crate::events::processing::process_damage_summary_for_test(
             &mut game,
             bob_attacker,
             crate::events::DamageTarget::Player(bob),
@@ -2310,7 +2310,7 @@ pub(super) fn heavy_fog_prevents_only_damage_to_you_from_attacking_creatures() {
         "Heavy Fog should not prevent damage to players other than you"
     );
 
-    let (attacking_damage_to_permanent, _) = crate::events::processing::process_damage_with_event(
+    let (attacking_damage_to_permanent, _) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         bob_attacker,
         crate::events::DamageTarget::Object(alice_creature),
@@ -2446,7 +2446,7 @@ pub(super) fn fiery_emancipation_triples_only_damage_from_sources_you_control() 
         "Fiery Emancipation should register a factor-3 damage replacement"
     );
 
-    let (player_damage, _) = crate::events::processing::process_damage_with_event(
+    let (player_damage, _) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         alice_source_id,
         crate::events::DamageTarget::Player(bob),
@@ -2459,7 +2459,7 @@ pub(super) fn fiery_emancipation_triples_only_damage_from_sources_you_control() 
         "damage from an Alice-controlled source to a player should be tripled"
     );
 
-    let (permanent_damage, _) = crate::events::processing::process_damage_with_event(
+    let (permanent_damage, _) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         alice_source_id,
         crate::events::DamageTarget::Object(target_id),
@@ -2472,7 +2472,7 @@ pub(super) fn fiery_emancipation_triples_only_damage_from_sources_you_control() 
         "damage from an Alice-controlled source to a permanent should be tripled"
     );
 
-    let (opponent_source_damage, _) = crate::events::processing::process_damage_with_event(
+    let (opponent_source_damage, _) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         bob_source_id,
         crate::events::DamageTarget::Player(alice),
@@ -2562,7 +2562,7 @@ pub(super) fn embermaw_hellion_adds_one_to_another_red_source_damage_to_players_
         2,
         false,
         crate::events::cause::EventCause::effect(),
-    );
+    ).expect("damage test proposal must process successfully");
     assert_eq!(player_damage.assignments.len(), 1);
     assert_eq!(player_damage.assignments[0].amount, 3);
 
@@ -2573,7 +2573,7 @@ pub(super) fn embermaw_hellion_adds_one_to_another_red_source_damage_to_players_
         4,
         false,
         crate::events::cause::EventCause::effect(),
-    );
+    ).expect("damage test proposal must process successfully");
     assert_eq!(permanent_damage.assignments.len(), 1);
     assert_eq!(permanent_damage.assignments[0].amount, 5);
 
@@ -2584,7 +2584,7 @@ pub(super) fn embermaw_hellion_adds_one_to_another_red_source_damage_to_players_
         2,
         false,
         crate::events::cause::EventCause::effect(),
-    );
+    ).expect("damage test proposal must process successfully");
     assert_eq!(spell_damage.assignments.len(), 1);
     assert_eq!(spell_damage.assignments[0].amount, 3);
 }
@@ -2621,7 +2621,7 @@ pub(super) fn embermaw_hellion_ignores_self_nonred_and_opposing_sources() {
         2,
         false,
         crate::events::cause::EventCause::effect(),
-    );
+    ).expect("damage test proposal must process successfully");
     assert_eq!(self_damage.assignments.len(), 1);
     assert_eq!(self_damage.assignments[0].amount, 2);
 
@@ -2632,7 +2632,7 @@ pub(super) fn embermaw_hellion_ignores_self_nonred_and_opposing_sources() {
         2,
         false,
         crate::events::cause::EventCause::effect(),
-    );
+    ).expect("damage test proposal must process successfully");
     assert_eq!(nonred_damage.assignments.len(), 1);
     assert_eq!(nonred_damage.assignments[0].amount, 2);
 
@@ -2643,7 +2643,7 @@ pub(super) fn embermaw_hellion_ignores_self_nonred_and_opposing_sources() {
         2,
         false,
         crate::events::cause::EventCause::effect(),
-    );
+    ).expect("damage test proposal must process successfully");
     assert_eq!(opposing_damage.assignments.len(), 1);
     assert_eq!(opposing_damage.assignments[0].amount, 2);
 }
@@ -2705,7 +2705,7 @@ pub(super) fn sphere_of_truth_reduces_each_white_source_damage_event_to_you_by_t
         "Sphere of Truth should register a static partial-prevention replacement"
     );
 
-    let (white_damage, _) = crate::events::processing::process_damage_with_event(
+    let (white_damage, _) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         white_source_id,
         crate::events::DamageTarget::Player(alice),
@@ -2718,7 +2718,7 @@ pub(super) fn sphere_of_truth_reduces_each_white_source_damage_event_to_you_by_t
         "3 white damage to you should be reduced by 2"
     );
 
-    let (small_white_damage, _) = crate::events::processing::process_damage_with_event(
+    let (small_white_damage, _) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         white_source_id,
         crate::events::DamageTarget::Player(alice),
@@ -2731,7 +2731,7 @@ pub(super) fn sphere_of_truth_reduces_each_white_source_damage_event_to_you_by_t
         "1 white damage to you should be fully prevented"
     );
 
-    let (red_damage, _) = crate::events::processing::process_damage_with_event(
+    let (red_damage, _) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         red_source_id,
         crate::events::DamageTarget::Player(alice),
@@ -2744,7 +2744,7 @@ pub(super) fn sphere_of_truth_reduces_each_white_source_damage_event_to_you_by_t
         "nonwhite source damage should not be reduced"
     );
 
-    let (damage_to_other_player, _) = crate::events::processing::process_damage_with_event(
+    let (damage_to_other_player, _) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         white_source_id,
         crate::events::DamageTarget::Player(bob),
@@ -2765,7 +2765,7 @@ pub(super) fn sphere_of_truth_reduces_each_white_source_damage_event_to_you_by_t
         .build();
     game.create_object_from_definition(&no_prevention, bob, Zone::Battlefield);
 
-    let (unpreventable_white_damage, _) = crate::events::processing::process_damage_with_event(
+    let (unpreventable_white_damage, _) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         white_source_id,
         crate::events::DamageTarget::Player(alice),
@@ -2866,7 +2866,7 @@ pub(super) fn healing_grace_runtime_prevents_up_to_three_damage_and_gains_life()
         "Healing Grace should gain 3 life for the caster"
     );
 
-    let (first_damage, first_prevented) = crate::events::processing::process_damage_with_event(
+    let (first_damage, first_prevented) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         chosen_source,
         crate::events::DamageTarget::Player(bob),
@@ -2880,7 +2880,7 @@ pub(super) fn healing_grace_runtime_prevents_up_to_three_damage_and_gains_life()
         "first damage application should reflect prevention"
     );
 
-    let (second_damage, second_prevented) = crate::events::processing::process_damage_with_event(
+    let (second_damage, second_prevented) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         chosen_source,
         crate::events::DamageTarget::Player(bob),
@@ -2898,7 +2898,7 @@ pub(super) fn healing_grace_runtime_prevents_up_to_three_damage_and_gains_life()
     );
 
     let (other_source_damage, other_source_prevented) =
-        crate::events::processing::process_damage_with_event(
+        crate::events::processing::process_damage_summary_for_test(
             &mut game,
             other_source,
             crate::events::DamageTarget::Player(bob),
@@ -2957,7 +2957,7 @@ pub(super) fn healing_grace_runtime_only_protects_chosen_target() {
     )
     .expect("Healing Grace should resolve");
 
-    let (damage_to_alice, _) = crate::events::processing::process_damage_with_event(
+    let (damage_to_alice, _) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         damage_source,
         crate::events::DamageTarget::Player(alice),
@@ -2970,7 +2970,7 @@ pub(super) fn healing_grace_runtime_only_protects_chosen_target() {
         "non-targeted player should not be protected"
     );
 
-    let (damage_to_bob, _) = crate::events::processing::process_damage_with_event(
+    let (damage_to_bob, _) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         damage_source,
         crate::events::DamageTarget::Player(bob),
@@ -3122,7 +3122,7 @@ pub(super) fn dazzling_reflection_runtime_gains_target_power_and_prevents_that_c
 
         let life_after_resolution = game.life_total(alice);
         let (other_source_damage, other_source_prevented) =
-            crate::events::processing::process_damage_with_event(
+            crate::events::processing::process_damage_summary_for_test(
                 &mut game,
                 other_creature,
                 crate::events::DamageTarget::Player(alice),
@@ -3131,7 +3131,7 @@ pub(super) fn dazzling_reflection_runtime_gains_target_power_and_prevents_that_c
                 crate::events::cause::EventCause::effect(),
             );
         let (target_source_damage, target_source_prevented) =
-            crate::events::processing::process_damage_with_event(
+            crate::events::processing::process_damage_summary_for_test(
                 &mut game,
                 target_creature,
                 crate::events::DamageTarget::Player(bob),
@@ -3259,7 +3259,7 @@ pub(super) fn cho_arrim_alchemist_runtime_prevents_chosen_source_to_you_and_gain
     .expect("Cho-Arrim Alchemist ability should resolve");
 
     let (wrong_player_damage, wrong_player_prevented) =
-        crate::events::processing::process_damage_with_event(
+        crate::events::processing::process_damage_summary_for_test(
             &mut game,
             chosen_source,
             crate::events::DamageTarget::Player(bob),
@@ -3279,7 +3279,7 @@ pub(super) fn cho_arrim_alchemist_runtime_prevents_chosen_source_to_you_and_gain
     );
 
     let (other_source_damage, other_source_prevented) =
-        crate::events::processing::process_damage_with_event(
+        crate::events::processing::process_damage_summary_for_test(
             &mut game,
             other_source,
             crate::events::DamageTarget::Player(alice),
@@ -3301,7 +3301,7 @@ pub(super) fn cho_arrim_alchemist_runtime_prevents_chosen_source_to_you_and_gain
         "unchosen source should not gain life"
     );
 
-    let (prevented_damage, prevented) = crate::events::processing::process_damage_with_event(
+    let (prevented_damage, prevented) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         chosen_source,
         crate::events::DamageTarget::Player(alice),
@@ -3398,7 +3398,7 @@ pub(super) fn divine_deflection_runtime_prevents_shared_pool_and_damages_chosen_
     )
     .expect("Divine Deflection should resolve");
 
-    let (alice_damage, _) = crate::events::processing::process_damage_with_event(
+    let (alice_damage, _) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         damage_source,
         crate::events::DamageTarget::Player(alice),
@@ -3413,7 +3413,7 @@ pub(super) fn divine_deflection_runtime_prevents_shared_pool_and_damages_chosen_
         "prevented damage should be dealt to the chosen any-target player"
     );
 
-    let (permanent_damage, _) = crate::events::processing::process_damage_with_event(
+    let (permanent_damage, _) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         damage_source,
         crate::events::DamageTarget::Object(alice_permanent),
@@ -3431,7 +3431,7 @@ pub(super) fn divine_deflection_runtime_prevents_shared_pool_and_damages_chosen_
         "the follow-up should deal only the amount actually prevented"
     );
 
-    let (bob_damage, bob_prevented) = crate::events::processing::process_damage_with_event(
+    let (bob_damage, bob_prevented) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         damage_source,
         crate::events::DamageTarget::Player(bob),
@@ -3495,7 +3495,7 @@ pub(super) fn divine_deflection_runtime_does_not_damage_target_when_damage_canno
     )
     .expect("Divine Deflection should resolve");
 
-    let (damage, prevented) = crate::events::processing::process_damage_with_event(
+    let (damage, prevented) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         damage_source,
         crate::events::DamageTarget::Player(alice),

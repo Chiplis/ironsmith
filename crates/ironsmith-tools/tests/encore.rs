@@ -38,7 +38,7 @@ fn setup(zone: Zone) -> (GameState, PlayerId, ObjectId) {
     (game, alice, source)
 }
 fn activate(game: &mut GameState, alice: PlayerId, source: ObjectId) {
-    let action = compute_legal_actions(game, alice)
+    let action = compute_legal_actions(game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::ActivateAbility {source: id, ..} if *id == source))
         .unwrap();
@@ -124,7 +124,7 @@ fn encore_activation_zone_and_timing() {
     ] {
         let (mut game, alice, source) = setup(zone);
         let offered = |game: &GameState| {
-            compute_legal_actions(game, alice).iter().any(
+            compute_legal_actions(game, alice).expect("fixture has complete replacement state").iter().any(
                 |a| matches!(a, LegalAction::ActivateAbility {source: id, ..} if *id == source),
             )
         };

@@ -604,7 +604,7 @@ fn execute_untap_step_inner(
     // dirty state that snapshot can predate freshly generated static effects
     // (e.g. an aura attached since the last refresh), which would skip the
     // characteristics check entirely.
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     game.update_cant_effects();
 
     // CR 702.26a performs one simultaneous phasing exchange before untapping:
@@ -643,7 +643,7 @@ fn execute_untap_step_inner(
 
     // The delayed action can move a static-ability source away before the
     // simultaneous untap, so rebuild the calculated state it may have changed.
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     game.update_cant_effects();
     let may_have_untap_static_abilities = game_may_have_untap_static_abilities(game);
     let has_cant_untap_restrictions = !game.effect_store.cant_effects.cant_untap.is_empty();
@@ -1143,97 +1143,61 @@ pub fn get_cleanup_discard_spec_after(
 pub fn apply_cleanup_discard(
     game: &mut GameState,
     cards_to_discard: &[crate::ids::ObjectId],
-    decision_maker: &mut impl DecisionMaker,
-) -> Vec<crate::ids::ObjectId> {
-    use crate::events::cause::EventCause;
-    use crate::events::processing::execute_discard;
-    use crate::snapshot::ObjectSnapshot;
-    use crate::zone::Zone;
-
-    let mut madness_cards = Vec::new();
-    let mut successful_discards = Vec::new();
-    let active_player = cards_to_discard
-        .first()
-        .and_then(|card| game.object(*card))
-        .map(|card| card.owner)
-        .unwrap_or(game.turn.active_player);
-
-    // All discards go through execute_discard which handles:
-    // - Madness (replacement effect that exiles instead)
-    // - Library of Leng (player choice to put on top of library)
-    // - Normal discard to graveyard
-    // Cleanup discard is a GAME RULE discard, so Library of Leng can't apply
-    let cause = EventCause::from_game_rule();
-
-    // CR 514.1 / 603.2c: the cleanup discard is one simultaneous event.
+    decision_maker: &mut dyn DecisionMaker,
+) -> Result<Vec<crate::ids::ObjectId>, crate::effects::ExecutionError> {
+    let checkpoint = game.clone();
     let opened_batch = game.open_simultaneous_action();
-    for &card_id in cards_to_discard {
-        let pre_discard_snapshot = game
-            .object(card_id)
-            .map(|obj| ObjectSnapshot::from_object(obj, game));
-        let discard_provenance = game
-            .provenance_graph_mut()
-            .alloc_root_event(crate::events::EventKind::Discard);
-        let result = execute_discard(
-            game,
-            card_id,
-            active_player,
-            cause.clone(),
-            false,
-            discard_provenance,
-            decision_maker,
-        );
-        if !result.prevented {
-            successful_discards.push((
-                card_id,
-                pre_discard_snapshot,
-                result.final_zone,
-                discard_provenance,
-            ));
-        }
-
-        // Track cards that were exiled via Madness (can be cast from exile)
-        if result.final_zone == Zone::Exile
-            && let Some(new_id) = result.new_id
-        {
-            madness_cards.push(new_id);
-        }
-    }
+    let result = apply_cleanup_discard_inner(game, cards_to_discard, decision_maker);
     game.close_simultaneous_action(opened_batch);
+    if result.is_err() || decision_maker.awaiting_choice() { *game = checkpoint; }
+    if decision_maker.awaiting_choice() { return Ok(Vec::new()); }
+    result
+}
 
-    let batch_cards: Vec<_> = successful_discards
-        .iter()
-        .map(|(card_id, _, _, _)| *card_id)
-        .collect();
-    let batch_snapshots: Vec<_> = successful_discards
-        .iter()
-        .filter_map(|(_, snapshot, _, _)| snapshot.clone())
-        .collect();
-    for (batch_index, (card_id, pre_discard_snapshot, final_zone, provenance)) in
-        successful_discards.into_iter().enumerate()
-    {
-        let discard_event = crate::triggers::TriggerEvent::new_with_provenance(
-            crate::events::cards::DiscardEvent::with_cause(card_id, active_player, cause.clone())
-                .with_destination(final_zone),
-            provenance,
-        );
-        game.queue_trigger_event(provenance, discard_event);
-
-        let mut card_discarded_event = crate::events::other::CardDiscardedEvent::with_cause(
-            active_player,
-            card_id,
-            cause.clone(),
-        )
-        .with_batch(batch_cards.clone(), batch_snapshots.clone(), batch_index);
-        if let Some(snapshot) = pre_discard_snapshot {
-            card_discarded_event = card_discarded_event.with_snapshot(snapshot);
+fn apply_cleanup_discard_inner(
+    game: &mut GameState,
+    cards_to_discard: &[crate::ids::ObjectId],
+    decision_maker: &mut dyn DecisionMaker,
+) -> Result<Vec<crate::ids::ObjectId>, crate::effects::ExecutionError> {
+    use crate::events::cause::EventCause;
+    use crate::effects::{ExecutionContext,ExecutionError};
+    if cards_to_discard.is_empty() { return Ok(Vec::new()); }
+    let source = cards_to_discard[0];
+    let source_snapshot = game.object(source).map(|object|
+        crate::snapshot::ObjectSnapshot::from_object(object, game));
+    let player = source_snapshot.as_ref().map(|snapshot| snapshot.owner)
+        .unwrap_or(game.turn.active_player);
+    let cause = EventCause::from_game_rule();
+    let provenance = game.provenance_graph_mut().alloc_root_event(crate::events::EventKind::Discard);
+    let mut receipts = Vec::new();
+    let mut successful = Vec::new();
+    let mut madness_cards = Vec::new();
+    for &card_id in cards_to_discard {
+        let receipt = crate::events::processing::execute_discard_with_scope(
+            game, card_id, player, cause.clone(), false, provenance, decision_maker,
+            &crate::effects::ReplacementExecutionContext::default(), None)?;
+        if decision_maker.awaiting_choice() { return Ok(Vec::new()); }
+        if !receipt.result.prevented && receipt.result.new_id.is_some() {
+            let event = receipt.resolved_event.as_ref().ok_or_else(|| ExecutionError::InternalError(
+                "cleanup discard has no resolved event".into()))?;
+            if event.player != player || event.card != card_id || event.cause != cause {
+                return Err(ExecutionError::InternalError("cleanup discard changed an unsupported batch identity".into()));
+            }
+            successful.push((event.card, receipt.discarded_snapshot.clone(), receipt.result.final_zone));
         }
-        let trigger_event =
-            crate::triggers::TriggerEvent::new_with_provenance(card_discarded_event, provenance);
-        game.queue_trigger_event(provenance, trigger_event);
+        if let Some(id) = receipt.result.new_id && game.is_madness_exiled(id) { madness_cards.push(id); }
+        receipts.push(receipt);
     }
-
-    madness_cards
+    let count = i32::try_from(successful.len()).map_err(|_| ExecutionError::InternalError("cleanup discard count overflow".into()))?;
+    let events = crate::effects::cards::completed_discard_events(game, player, cause.clone(), provenance, successful);
+    let mut ctx = ExecutionContext::new(source, player, decision_maker).with_cause(cause).with_provenance(provenance);
+    ctx.source_snapshot = source_snapshot;
+    let mut outcome = crate::effects::cards::finish_discard_receipts(game, &mut ctx,
+        crate::effect::EffectOutcome::count(count).with_events(events), receipts)?;
+    if ctx.decision_maker.awaiting_choice() { return Ok(Vec::new()); }
+    crate::effects::retain_unmatched_outcome_events(game, &mut outcome.events);
+    for event in outcome.events { game.queue_trigger_event(event.provenance(), event); }
+    Ok(madness_cards)
 }
 
 /// Executes the cleanup step (damage removal, mana emptying).

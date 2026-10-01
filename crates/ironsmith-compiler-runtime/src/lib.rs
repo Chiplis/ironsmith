@@ -1005,7 +1005,7 @@ mod tests {
         let mut game = ironsmith::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
         game.turn.phase = ironsmith::game_state::Phase::FirstMain;
         let ordinary = game.create_object_from_definition(&definition, alice, Zone::Graveyard);
-        assert!(!ironsmith::decision::compute_legal_actions(&game, alice).iter().any(|action|
+        assert!(!ironsmith::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state").iter().any(|action|
             matches!(action, ironsmith::decision::LegalAction::CastSpell { spell_id, .. } if *spell_id == ordinary)));
         let card = game.create_object_from_definition(&definition, alice, Zone::Hand);
         let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
@@ -1013,7 +1013,7 @@ mod tests {
         ironsmith::effects::execute_effect(&mut game, &ironsmith::Effect::discard(1), &mut ctx)
             .unwrap();
         let discarded = *game.player(alice).unwrap().graveyard.last().unwrap();
-        assert!(ironsmith::decision::compute_legal_actions(&game, alice).iter().any(|action|
+        assert!(ironsmith::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state").iter().any(|action|
             matches!(action, ironsmith::decision::LegalAction::CastSpell { spell_id, casting_method: CastingMethod::Alternative(0), .. } if *spell_id == discarded)));
         cast_payment_probe(&mut game, discarded, CastingMethod::Alternative(0));
         ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
@@ -1027,12 +1027,12 @@ mod tests {
         ironsmith::effects::execute_effect(&mut game, &ironsmith::Effect::discard(1), &mut ctx)
             .unwrap();
         let discarded_land = *game.player(alice).unwrap().graveyard.last().unwrap();
-        assert!(ironsmith::decision::compute_legal_actions(&game, alice).iter().any(|action|
+        assert!(ironsmith::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state").iter().any(|action|
             matches!(action, ironsmith::decision::LegalAction::PlayLand { land_id } if *land_id == discarded_land)),
             "costless Mayhem also permits playing a discarded land");
         let mut next_turn = game.clone();
         next_turn.turn_store.turn_history.clear_for_new_turn();
-        assert!(!ironsmith::decision::compute_legal_actions(&next_turn, alice).iter().any(|action|
+        assert!(!ironsmith::decision::compute_legal_actions(&next_turn, alice).expect("fixture has complete replacement state").iter().any(|action|
             matches!(action, ironsmith::decision::LegalAction::PlayLand { land_id } if *land_id == discarded_land)));
         ironsmith::special_actions::perform(
             ironsmith::special_actions::SpecialAction::PlayLand {
@@ -1065,7 +1065,7 @@ mod tests {
         game.turn.phase = ironsmith::game_state::Phase::FirstMain;
         game.register_linked_face_definition(&back);
         let source = game.create_object_from_definition(&front, alice, Zone::Hand);
-        assert!(ironsmith::decision::compute_legal_actions(&game, alice).iter().any(|action|
+        assert!(ironsmith::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state").iter().any(|action|
             matches!(action, ironsmith::decision::LegalAction::CastSpell { spell_id, casting_method: CastingMethod::Alternative(0), .. } if *spell_id == source)));
         cast_payment_probe(&mut game, source, CastingMethod::Alternative(0));
         let stack = game.stack.last().unwrap().object_id;
@@ -1102,7 +1102,7 @@ mod tests {
         )
         .unwrap();
         let source = game.create_object_from_definition(&spell, alice, Zone::Hand);
-        assert!(ironsmith::decision::compute_legal_actions(&game, alice).iter().any(|action|
+        assert!(ironsmith::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state").iter().any(|action|
             matches!(action, ironsmith::decision::LegalAction::CastSpell { spell_id, .. } if *spell_id == source)), "Offering permits the otherwise unaffordable creature outside sorcery timing");
         cast_payment_probe(&mut game, source, CastingMethod::Normal);
         assert!(!game.battlefield.contains(&resource));

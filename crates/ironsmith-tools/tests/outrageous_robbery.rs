@@ -123,7 +123,7 @@ fn rob() -> Board {
         .unwrap()
         .mana_pool
         .add(ManaSymbol::Black, 4);
-    let action = compute_legal_actions(&game, alice)
+    let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))
         .expect("castable");
@@ -175,7 +175,7 @@ fn you_may_cast_an_exiled_spell_with_mana_of_any_type() {
         .mana_pool
         .add(ManaSymbol::Black, 1);
     let opt = current(&board.game, board.opt);
-    let action = compute_legal_actions(&board.game, alice)
+    let action = compute_legal_actions(&board.game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == opt))
         .expect("Opt is castable from exile with black mana");
@@ -200,13 +200,13 @@ fn you_may_play_an_exiled_land() {
     let alice = PlayerId::from_index(0);
     let forest = current(&board.game, board.forest);
     assert!(
-        compute_legal_actions(&board.game, alice)
+        compute_legal_actions(&board.game, alice).expect("fixture has complete replacement state")
             .iter()
             .any(|a| matches!(a, LegalAction::PlayLand { land_id } if *land_id == forest)),
         "the exiled Forest can be played"
     );
     assert!(
-        !compute_legal_actions(&board.game, PlayerId::from_index(1))
+        !compute_legal_actions(&board.game, PlayerId::from_index(1)).expect("fixture has complete replacement state")
             .iter()
             .any(|a| matches!(a, LegalAction::PlayLand { land_id } if *land_id == forest)),
         "Bob has no permission"

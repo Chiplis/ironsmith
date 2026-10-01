@@ -101,7 +101,7 @@ fn magus(def: &CardDefinition, hand: usize) -> Result<Value, String> {
     for _ in 0..3 {
         game.create_object_from_definition(&filler(CardType::Instant), PlayerId(0), Zone::Library);
     }
-    let action = compute_legal_actions(&game, PlayerId(0))
+    let action = compute_legal_actions(&game, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::ActivateAbility{source:id,..} if *id==source));
     let legal = action.is_some();

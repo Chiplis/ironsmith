@@ -5,38 +5,45 @@ use super::*;
 /// the comparison is against the clause's object antecedent (`it`), which
 /// reference resolution binds to the trigger object or source.
 fn apply_relative_lesser_power_toughness(filter: &mut ObjectFilter, all_words: &[&str]) {
+    // "exile target creature an opponent controls with greater power" (Eowyn,
+    // Fearless Knight) compares upward against the same antecedent.
     for (axis, is_power) in [("power", true), ("toughness", false)] {
-        let or_equal = find_phrase_start(all_words, &["with", "equal", "or", "lesser", axis]);
-        let strict = find_phrase_start(all_words, &["with", "lesser", axis]);
-        let Some(start) = or_equal.or(strict) else {
-            continue;
-        };
-        // "with lesser power than <something>" names its own comparand.
-        let phrase_len = if or_equal.is_some() { 5 } else { 3 };
-        if all_words.get(start + phrase_len) == Some(&"than") {
-            continue;
+        for greater in [false, true] {
+            let comparative = if greater { "greater" } else { "lesser" };
+            let or_equal =
+                find_phrase_start(all_words, &["with", "equal", "or", comparative, axis]);
+            let strict = find_phrase_start(all_words, &["with", comparative, axis]);
+            let Some(start) = or_equal.or(strict) else {
+                continue;
+            };
+            // "with lesser power than <something>" names its own comparand.
+            let phrase_len = if or_equal.is_some() { 5 } else { 3 };
+            if all_words.get(start + phrase_len) == Some(&"than") {
+                continue;
+            }
+            let slot = if is_power {
+                &mut filter.power
+            } else {
+                &mut filter.toughness
+            };
+            if slot.is_some() {
+                continue;
+            }
+            let spec = Box::new(crate::ChooseSpec::Tagged(
+                (crate::tag::CompilerReferenceTag::It.bind()).into(),
+            ));
+            let value = Box::new(if is_power {
+                Value::PowerOf(spec)
+            } else {
+                Value::ToughnessOf(spec)
+            });
+            *slot = Some(match (greater, or_equal.is_some()) {
+                (false, true) => crate::filter::Comparison::LessThanOrEqualExpr(value),
+                (false, false) => crate::filter::Comparison::LessThanExpr(value),
+                (true, true) => crate::filter::Comparison::GreaterThanOrEqualExpr(value),
+                (true, false) => crate::filter::Comparison::GreaterThanExpr(value),
+            });
         }
-        let slot = if is_power {
-            &mut filter.power
-        } else {
-            &mut filter.toughness
-        };
-        if slot.is_some() {
-            continue;
-        }
-        let spec = Box::new(crate::ChooseSpec::Tagged(
-            (crate::tag::CompilerReferenceTag::It.bind()).into(),
-        ));
-        let value = Box::new(if is_power {
-            Value::PowerOf(spec)
-        } else {
-            Value::ToughnessOf(spec)
-        });
-        *slot = Some(if or_equal.is_some() {
-            crate::filter::Comparison::LessThanOrEqualExpr(value)
-        } else {
-            crate::filter::Comparison::LessThanExpr(value)
-        });
     }
 }
 
@@ -249,6 +256,26 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         all_words.truncate(relation_idx);
     }
 
+    // "creatures banded with it" (Icatian Skirmishers, Urza's Engine): the
+    // source's attacking band (CR 702.22).
+    if let Some(relation_idx) = find_any_filter_phrase_start(
+        all_words,
+        &[
+            &["banded", "with", "it"],
+            &["banded", "with", "this", "creature"],
+            &["banded", "with", "this", "permanent"],
+        ],
+    ) && (all_words[relation_idx..] == ["banded", "with", "it"]
+        || all_words[relation_idx..] == ["banded", "with", "this", "creature"]
+        || all_words[relation_idx..] == ["banded", "with", "this", "permanent"])
+    {
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: (crate::tag::CompilerReferenceTag::SourceObject.bind()).into(),
+            relation: TaggedOpbjectRelation::BandedWithTagged,
+        });
+        all_words.truncate(relation_idx);
+    }
+
     let starts_with_exiled_card =
         words_start_with_any_phrase(all_words, EXILED_CARD_PREFIXES).is_some();
     if starts_with_exiled_card {
@@ -402,9 +429,19 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         find_phrase_start(all_words, TAPPED_THIS_WAY_PHRASE).is_some();
     let references_each_tapped_cost_object =
         find_phrase_start(all_words, EACH_CREATURE_TAPPED_THIS_WAY_PHRASE).is_some();
+    // "a creature that shares a creature type with that creature" (Reins of
+    // the Vinesteed, Conjurer's Mantle): the demonstrative names the creature
+    // whose event triggered the ability.
+    let shares_with_triggering_creature = !words_contain_any_word(all_words, IT_OR_THEM_WORDS)
+        && find_any_phrase_start(
+            all_words,
+            &[&["with", "that", "creature"], &["with", "that", "permanent"]],
+        )
+        .is_some();
     let has_share_creature_type = find_any_phrase_start(all_words, CREATURE_TYPE_PHRASES).is_some()
         && words_contain_any_word(all_words, SHARE_WORDS)
         && (words_contain_any_word(all_words, IT_OR_THEM_WORDS)
+            || shares_with_triggering_creature
             || references_tapped_cost_objects
             || references_additional_cost_object);
     let has_same_mana_value = find_phrase_start(all_words, SAME_MANA_VALUE_AS_PHRASE).is_some();
@@ -458,6 +495,8 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: if references_additional_cost_object {
                 (crate::tag::CompilerReferenceTag::AdditionalCostObject.bind()).into()
+            } else if shares_with_triggering_creature {
+                (crate::tag::CompilerReferenceTag::Triggering.bind()).into()
             } else {
                 (crate::tag::CompilerReferenceTag::It.bind()).into()
             },
@@ -513,6 +552,19 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         });
     }
     apply_relative_lesser_power_toughness(filter, all_words);
+    // "it fights up to one target creature you don't control with the same
+    // mana value" (Boxing Ring): the comparand is the clause's antecedent.
+    if !has_same_mana_value
+        && filter.mana_value.is_none()
+        && (all_words.ends_with(&["with", "same", "mana", "value"])
+            || all_words.ends_with(&["with", "the", "same", "mana", "value"]))
+    {
+        filter.mana_value = Some(crate::filter::Comparison::EqualExpr(Box::new(
+            Value::ManaValueOf(Box::new(crate::ChooseSpec::Tagged(
+                (crate::tag::CompilerReferenceTag::It.bind()).into(),
+            ))),
+        )));
+    }
     if has_same_name_as_tagged_object {
         filter.set_same_name_antecedent_surface(same_name_antecedent_surface(all_words));
         filter.tagged_constraints.push(TaggedObjectConstraint {

@@ -142,7 +142,7 @@ fn cast(collect: bool, graveyard_mvs: &[u8]) -> Result<Outcome, String> {
         );
     }
 
-    let action = compute_legal_actions(&game, alice)
+    let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))
         .expect("castable");

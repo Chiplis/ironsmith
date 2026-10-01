@@ -100,7 +100,7 @@ fn linked_permission_discount_applies_only_to_its_own_casts() {
         .unwrap()
         .mana_pool
         .add(crate::mana::ManaSymbol::Blue, 1);
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(!actions.iter().any(|a| matches!(a, crate::decision::LegalAction::CastSpell { spell_id, .. } if *spell_id == unlinked)));
     let action = actions.into_iter().find(|a| matches!(a, crate::decision::LegalAction::CastSpell { spell_id, casting_method: CastingMethod::PlayFrom { source: grant_source, .. }, .. } if *spell_id == linked && *grant_source == source)).expect("discount must make the linked spell affordable");
     let mut state = crate::game_loop::PriorityLoopState::new(game.players_in_game());

@@ -193,6 +193,7 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
         | Value::DistinctCounterTypesAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctManaValues(filter)
+        | Value::UnlockedDoorsAmong(filter)
         | Value::DistinctPowers(filter) => object_filter_mentions_iterated_player(filter),
         Value::PlayersWhoControl { players, filter }
         | Value::PlayersWhoControlMoreThanYou { players, filter }
@@ -360,6 +361,7 @@ pub fn value_contains_pending_effect_metric(value: &Value) -> bool {
         | Value::DistinctCounterTypesAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctManaValues(filter)
+        | Value::UnlockedDoorsAmong(filter)
         | Value::DistinctPowers(filter) => object_filter_contains_pending_effect_metric(filter),
         Value::PlayersWhoControl { filter, .. }
         | Value::PlayersWhoControlMoreThanYou { filter, .. }

@@ -77,7 +77,7 @@ impl WasmGame {
                 Some(ReplayDecisionAnswer::Priority(action))
                     if Self::priority_action_starts_cancelable_action_chain(action)
             ),
-            ReplayRoot::AddCardToZone { .. } => false,
+            ReplayRoot::AddCardToZone { .. } | ReplayRoot::ForceTurnFaceUp { .. } => false,
         }
     }
 
@@ -321,7 +321,7 @@ impl WasmGame {
                 false
             }
             ReplayRoot::Response(_) => true,
-            ReplayRoot::Advance | ReplayRoot::AddCardToZone { .. } => false,
+            ReplayRoot::Advance | ReplayRoot::AddCardToZone { .. } | ReplayRoot::ForceTurnFaceUp { .. } => false,
         }
     }
 
@@ -1451,6 +1451,21 @@ impl WasmGame {
         player_id: PlayerId,
         zone: Zone,
     ) -> Result<ObjectId, JsValue> {
+        self.game.clear_pending_decision_controllers();
+        let checkpoint = self.capture_replay_checkpoint();
+        let result = self.add_definition_to_zone_with_triggers_inner(definition, player_id, zone);
+        if result.is_err() {
+            self.restore_execution_replay_checkpoint(&checkpoint, false);
+        }
+        result
+    }
+
+    fn add_definition_to_zone_with_triggers_inner(
+        &mut self,
+        definition: &CardDefinition,
+        player_id: PlayerId,
+        zone: Zone,
+    ) -> Result<ObjectId, JsValue> {
         self.game
             .register_linked_face_family_from_catalog(definition, &self.registry);
         // Create in Command zone first, then move to target zone so that
@@ -1462,16 +1477,11 @@ impl WasmGame {
         );
         let object_id = if zone == ironsmith::zone::Zone::Battlefield {
             let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
-            let Some(result) = self.game.move_object_with_etb_processing_with_dm(
-                temp_id,
-                ironsmith::zone::Zone::Battlefield,
-                &mut dm,
-            ) else {
-                self.game.remove_object(temp_id);
-                return Err(JsValue::from_str(
-                    "battlefield entry was prevented by replacement effect",
-                ));
-            };
+            let receipt = self.game.move_object_with_etb_processing_with_dm(
+                temp_id, ironsmith::zone::Zone::Battlefield, &mut dm,
+            ).map_err(|error| JsValue::from_str(&error.to_string()))?;
+            let result = manual_entry_original(&receipt, &dm)
+                .map_err(|error| JsValue::from_str(&error))?;
 
             let entered_id = result.new_id;
             let entered_tapped = result.enters_tapped;
@@ -1516,6 +1526,8 @@ impl WasmGame {
                 ).map_err(|error| JsValue::from_str(&error.to_string()))?;
             }
 
+            finish_manual_entry_receipt(&mut self.game, temp_id, player_id, receipt, &mut dm)
+                .map_err(|error| JsValue::from_str(&error))?;
             entered_id
         } else {
             self.game

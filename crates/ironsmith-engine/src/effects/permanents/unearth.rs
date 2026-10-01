@@ -48,13 +48,14 @@ impl EffectExecutor for UnearthEffect {
                 value,
                 events,
                 execution_facts,
+                instruction_result,
             } = move_outcome;
             let status = if matches!(value, crate::effect::OutcomeValue::Objects(_)) {
                 crate::effect::OutcomeStatus::TargetInvalid
             } else {
                 status
             };
-            return Ok(EffectOutcome::with_details(
+            let mut outcome = EffectOutcome::with_details(
                 status,
                 if status == crate::effect::OutcomeStatus::TargetInvalid {
                     crate::effect::OutcomeValue::None
@@ -63,7 +64,9 @@ impl EffectExecutor for UnearthEffect {
                 },
                 events,
                 execution_facts,
-            ));
+            );
+            outcome.instruction_result = instruction_result;
+            return Ok(outcome);
         };
         let events = move_outcome.events;
 

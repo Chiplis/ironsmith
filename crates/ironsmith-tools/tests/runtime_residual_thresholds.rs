@@ -53,7 +53,7 @@ fn cast(
     game.turn.active_player = player;
     game.turn.priority_player = Some(player);
     let before = game.player(player).unwrap().mana_pool.total();
-    let action = compute_legal_actions(game, player)
+    let action = compute_legal_actions(game, player).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..} if *spell_id==id))
         .ok_or("fixture has no legal cast")?;

@@ -322,9 +322,20 @@ impl EffectExecutor for ForEachTaggedEffect {
                 // Also expose this object's controller as the iterated player.
                 // This lets inner effects naturally say "its controller" via IteratedPlayer.
                 ctx.with_temp_iterated_player(Some(iterated_player), |ctx| {
-                    // Execute all inner effects for this object
-                    for effect in &self.effects {
-                        outcomes.push(execute_effect(game, effect, ctx)?);
+                    // An authored "onto the battlefield attached to ..."
+                    // destination belongs to the entry proposal. Prepare it
+                    // before the move, just as SequenceEffect does, rather
+                    // than relying on a later attachment of a new incarnation.
+                    for (effect_index, effect) in self.effects.iter().enumerate() {
+                        let previous_attachment = std::mem::replace(
+                            &mut ctx.pending_entry_attachment,
+                            crate::effects::permanents::entry_attachment_for_move(
+                                effect, self.effects.get(effect_index + 1),
+                            ),
+                        );
+                        let outcome = execute_effect(game, effect, ctx);
+                        ctx.pending_entry_attachment = previous_attachment;
+                        outcomes.push(outcome?);
                     }
                     Ok::<(), ExecutionError>(())
                 })

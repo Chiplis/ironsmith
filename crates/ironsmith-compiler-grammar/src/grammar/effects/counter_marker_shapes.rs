@@ -16,6 +16,9 @@ pub struct CounterDescriptorShape {
     pub count: u32,
     pub counter_type: CounterType,
     pub additional: bool,
+    /// "with one fewer revival counter on it": `count` fewer than the
+    /// triggering object had (Nine-Lives Familiar).
+    pub fewer: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -164,6 +167,8 @@ fn parse_counter_descriptor_lexed<'a>(
     let additional = opt(primitives::kw("additional"))
         .parse_next(input)?
         .is_some();
+    let fewer = !additional
+        && opt(primitives::kw("fewer")).parse_next(input)?.is_some();
     let counter_type_tokens = (
         repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(counter_noun)).void(),
         counter_noun,
@@ -178,6 +183,7 @@ fn parse_counter_descriptor_lexed<'a>(
         count,
         counter_type,
         additional,
+        fewer,
     })
 }
 

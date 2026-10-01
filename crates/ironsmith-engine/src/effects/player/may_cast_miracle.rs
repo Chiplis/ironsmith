@@ -120,7 +120,7 @@ impl EffectExecutor for MayCastForMiracleCostEffect {
             &mut ctx.decision_maker,
         );
         game.revoke_miracle_cast(card_id);
-        let result = result.map_err(|error| ExecutionError::Impossible(error.to_string()))?;
+        let result = result.map_err(super::runtime_helpers::effect_driven_cast_error)?;
         if let Some(new_id) = result {
             Ok(with_spell_cast_event(
                 EffectOutcome::with_objects(vec![new_id]),

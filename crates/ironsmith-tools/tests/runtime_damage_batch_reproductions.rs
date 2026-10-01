@@ -59,7 +59,7 @@ fn cast_or_activate(
 ) -> Result<(ObjectId, u32), String> {
     let stable = game.object(id).ok_or("action source missing")?.stable_id;
     game.turn.priority_player = Some(alice());
-    let action = compute_legal_actions(game, alice())
+    let action = compute_legal_actions(game, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| match action {
             LegalAction::CastSpell { spell_id, .. } => cast && *spell_id == id,

@@ -39,7 +39,15 @@ impl EffectExecutor for ModifyPowerToughnessEffect {
         let power_mod = resolve_value(game, &self.power, ctx)?;
         let toughness_mod = resolve_value(game, &self.toughness, ctx)?;
 
-        let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
+        let target_id = match resolve_single_object_for_effect(game, ctx, &self.target) {
+            Ok(selected) => selected,
+            Err(ExecutionError::InvalidTarget)
+                if !self.target.is_target()
+                    && matches!(self.target.base(), ChooseSpec::Object(_))
+                    && ctx.targets.iter().any(|target| matches!(target, crate::effects::ResolvedTarget::Object(_))) =>
+                return Ok(EffectOutcome::target_invalid()),
+            Err(error) => return Err(error),
+        };
 
         // Verify the target exists and is a creature
         if game.object(target_id).is_none() {

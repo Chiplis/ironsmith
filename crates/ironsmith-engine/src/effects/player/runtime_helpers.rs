@@ -11,6 +11,15 @@ use crate::ids::{ObjectId, PlayerId};
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 
+/// Keep a replacement/program execution failure typed across the cast-to-effect
+/// boundary. Other casting failures retain the existing impossible-effect form.
+pub(super) fn effect_driven_cast_error(error: crate::game_loop::GameLoopError) -> ExecutionError {
+    match error {
+        crate::game_loop::GameLoopError::ExecutionFailed(error) => error,
+        error => ExecutionError::Impossible(error.to_string()),
+    }
+}
+
 pub(super) fn register_effect_driven_spell_cast(
     game: &mut GameState,
     new_id: ObjectId,
@@ -319,7 +328,7 @@ pub(super) fn cast_effect_driven_spell_with_payment(
         ctx.provenance,
         &mut ctx.decision_maker,
     )
-    .map_err(|err| crate::effects::ExecutionError::Impossible(err.to_string()))?;
+    .map_err(effect_driven_cast_error)?;
     Ok(result.map(|new_id| EffectDrivenCastResult {
         new_id,
         from_zone: option.from_zone,

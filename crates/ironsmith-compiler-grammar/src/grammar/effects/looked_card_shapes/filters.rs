@@ -368,6 +368,12 @@ fn parse_filter_disjunction(tokens: &[OwnedLexToken], words: &[&str]) -> Option<
     }
     let mut filter = ObjectFilter::default();
     filter.any_of = branches;
+    // "an instant or sorcery card with mana value X or less": the trailing
+    // comparison qualifies every type arm, not only the last one.
+    crate::grammar::filters::reference_tag_stage::lift_shared_trailing_mana_value_from_type_union(
+        &mut filter,
+        tokens,
+    );
     if tokens.iter().any(|token| token.is_word("and/or")) {
         filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
     }

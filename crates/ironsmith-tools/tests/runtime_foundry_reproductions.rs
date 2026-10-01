@@ -89,7 +89,7 @@ fn scenario(definition: &CardDefinition, values: &[u32], target_value: u32) -> (
         .mana_pool
         .add(ManaSymbol::White, 3);
     game.effect_store.pending_trigger_events.clear();
-    let actions = compute_legal_actions(&game, PlayerId(0));
+    let actions = compute_legal_actions(&game, PlayerId(0)).expect("fixture has complete replacement state");
     let available: Vec<_> = actions
         .iter()
         .filter(|a| matches!(a,LegalAction::ActivateAbility{source:id,..} if *id==source))

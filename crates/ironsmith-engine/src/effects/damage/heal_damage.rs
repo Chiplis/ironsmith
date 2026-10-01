@@ -4,7 +4,7 @@ use crate::effect::{Effect, EffectOutcome};
 use crate::effects::helpers::{resolve_single_object_for_effect, resolve_value};
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::events::processing::{
-    TraitEventResult, process_trait_event_with_dm_and_applied_effects,
+    TraitEventResult, process_trait_event_with_execution_context,
 };
 use crate::events::{Event, KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
@@ -14,86 +14,7 @@ use crate::triggers::TriggerEvent;
 
 pub use ironsmith_core::HealDamageEffect;
 
-fn execute_keyword_action_replacement_effects(
-    game: &mut GameState,
-    ctx: &mut ExecutionContext,
-    effects: Vec<Effect>,
-    effect_id: crate::replacement::ReplacementEffectId,
-    action_snapshot: ObjectSnapshot,
-) -> Result<EffectOutcome, ExecutionError> {
-    let replacement_effect = game
-        .effect_store
-        .replacement_effects
-        .get_effect(effect_id)
-        .cloned();
-    let (replacement_source, replacement_controller) = replacement_effect
-        .as_ref()
-        .map(|effect| (effect.source, effect.controller))
-        .unwrap_or((ctx.source, ctx.controller));
-    let replacement_key = replacement_effect
-        .as_ref()
-        .map(|effect| effect.application_key());
-
-    let original_source = ctx.source;
-    let original_controller = ctx.controller;
-    let original_cause = ctx.cause.clone();
-    let original_it = ctx.clear_object_tag("__it__");
-    let original_plain_it = ctx.clear_object_tag("it");
-    let was_suppressed = !ctx
-        .replacement
-        .suppressed_replacement_effects
-        .insert(effect_id);
-    let key_was_suppressed = if let Some(key) = replacement_key.as_ref() {
-        !ctx.replacement
-            .suppressed_replacement_effect_keys
-            .insert(key.clone())
-    } else {
-        true
-    };
-
-    ctx.source = replacement_source;
-    ctx.controller = replacement_controller;
-    ctx.cause =
-        crate::events::cause::EventCause::from_effect(replacement_source, replacement_controller);
-    ctx.set_tagged_objects("__it__", vec![action_snapshot.clone()]);
-    ctx.set_tagged_objects("it", vec![action_snapshot]);
-
-    let result = (|| -> Result<EffectOutcome, ExecutionError> {
-        let mut outcomes = Vec::new();
-        for effect in effects {
-            outcomes.push(crate::effects::execute_effect(game, &effect, ctx)?);
-        }
-        Ok(EffectOutcome::aggregate_summing_counts(outcomes))
-    })();
-
-    ctx.source = original_source;
-    ctx.controller = original_controller;
-    ctx.cause = original_cause;
-    if !was_suppressed {
-        ctx.replacement
-            .suppressed_replacement_effects
-            .remove(&effect_id);
-    }
-    if !key_was_suppressed && let Some(key) = replacement_key {
-        ctx.replacement
-            .suppressed_replacement_effect_keys
-            .remove(&key);
-    }
-    match original_it {
-        Some(snapshots) => ctx.set_tagged_objects("__it__", snapshots),
-        None => {
-            ctx.clear_object_tag("__it__");
-        }
-    }
-    match original_plain_it {
-        Some(snapshots) => ctx.set_tagged_objects("it", snapshots),
-        None => {
-            ctx.clear_object_tag("it");
-        }
-    }
-
-    result
-}
+use crate::effects::composition::mechanic_actions::execute_keyword_action_replacement_effects;
 
 impl EffectExecutor for HealDamageEffect {
     fn execute(
@@ -101,6 +22,9 @@ impl EffectExecutor for HealDamageEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = (|| -> Result<EffectOutcome, ExecutionError> {
         let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
         let Some(target) = game.object(target_id) else {
             return Ok(EffectOutcome::target_invalid());
@@ -122,23 +46,14 @@ impl EffectExecutor for HealDamageEffect {
                 .with_snapshot(Some(snapshot.clone())),
             ctx.provenance,
         );
-        let applied_effects = ctx.replacement.suppressed_replacement_effects.clone();
-        let applied_effect_keys = ctx.replacement.suppressed_replacement_effect_keys.clone();
-        if applied_effects.is_empty() && applied_effect_keys.is_empty() {
-            game.update_replacement_effects();
-        }
-        match process_trait_event_with_dm_and_applied_effects(
-            game,
-            would_event,
-            ctx.decision_maker,
-            &applied_effects,
-            &applied_effect_keys,
-        ) {
+        let replacement_result = process_trait_event_with_execution_context(game, would_event, ctx)?;
+        crate::effects::replacement::execute_event_expansion_with_bindings(game, ctx, replacement_result, |game, ctx, original| {
+        match original {
             TraitEventResult::Replaced {
-                effects, effect_id, ..
+                effects, source, controller, context, ..
             } => {
                 return execute_keyword_action_replacement_effects(
-                    game, ctx, effects, effect_id, snapshot,
+                    game, ctx, effects, source, controller, &context, Some(snapshot),
                 );
             }
             TraitEventResult::Prevented => return Ok(EffectOutcome::prevented()),
@@ -146,6 +61,7 @@ impl EffectExecutor for HealDamageEffect {
                 return Ok(EffectOutcome::count(0));
             }
             TraitEventResult::Proceed(_) | TraitEventResult::Modified(_) => {}
+            TraitEventResult::Expanded { .. } => return Err(ExecutionError::InternalError("keyword commit received an unflattened result".into())),
         }
 
         game.set_damage_marked(target_id, marked - healed);
@@ -157,6 +73,24 @@ impl EffectExecutor for HealDamageEffect {
         Ok(EffectOutcome::count(healed as i32)
             .with_affected_objects_from_game(game, vec![target_id])
             .with_event(event))
+        }, |_, context, _| {
+            let action = crate::events::downcast_event::<KeywordActionEvent>(context.event.inner())
+                .filter(|action| action.action == KeywordActionKind::Heal)
+                .ok_or_else(|| ExecutionError::InternalError("heal addition captured an incompatible event".into()))?;
+            let object_tags = action.snapshot.as_ref().map(|snapshot| vec![
+                ("__it__".to_owned(), vec![snapshot.clone()]),
+                ("it".to_owned(), vec![snapshot.clone()]),
+            ]).unwrap_or_default();
+            Ok(crate::effects::replacement::ReplacementProgramBindings { targets: None, object_tags })
+        })
+        })();
+        let pending = ctx.decision_maker.awaiting_choice();
+        if pending || result.is_err() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
+        }
+        if pending { return Ok(EffectOutcome::count(0)); }
+        result
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -254,4 +188,83 @@ mod tests {
         assert_eq!(outcome.count_or_zero(), 0);
         assert!(outcome.events.is_empty());
     }
+}
+
+
+#[cfg(test)]
+mod additional_contract_tests {
+    use super::*;
+    use crate::effect::{Effect,Value};
+    use crate::ids::{CardId,PlayerId};
+    use crate::object::CounterType;
+    use crate::replacement::{ReplacementAction,ReplacementEffect};
+    struct PauseAdded { pause:bool,pending:bool,questions:usize }
+    impl crate::decision::DecisionMaker for PauseAdded {
+        fn decide_boolean(&mut self,_game:&GameState,_ctx:&crate::decisions::context::BooleanContext)->bool {
+            self.questions+=1;if self.pause { self.pending=true;false }else{true}
+        }
+        fn awaiting_choice(&self)->bool {self.pending}
+    }
+    fn check_additional_heal(mode:u8) {
+        let mut game=crate::tests::test_helpers::setup_two_player_game();
+        let alice=PlayerId::from_index(0);let bob=PlayerId::from_index(1);
+        let card=crate::card::CardBuilder::new(CardId::new(),"Heal addition probe")
+            .card_types(vec![crate::types::CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(4,4)).build();
+        let target=game.create_object_from_card(&card,alice,crate::zone::Zone::Battlefield);
+        let replacement_source=game.create_object_from_card(&card,bob,crate::zone::Zone::Battlefield);
+        game.mark_damage(target,3);
+        let effects=if mode==3 { vec![Effect::new(crate::effects::PutCountersEffect::new(CounterType::PlusOnePlusOne,1,ChooseSpec::tagged("it")))] }
+        else {
+            let mut effects=vec![Effect::gain_life(2)];
+            if mode==1 {effects.push(Effect::lose_life(Value::X));}
+            if mode==2 {effects.push(Effect::may(vec![Effect::gain_life(4)]));}
+            effects.push(Effect::gain_life(8));effects
+        };
+        let shield=game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(replacement_source,bob,
+            crate::events::WouldKeywordActionMatcher::new(KeywordActionKind::Heal,crate::target::ObjectFilter::default()),
+            ReplacementAction::Additionally(effects)));
+        game.take_pending_trigger_events();let before_id=game.next_object_id_counter();
+        let parent_tag=ObjectSnapshot::from_object(game.object(replacement_source).unwrap(),&game);
+        let effect=HealDamageEffect::exact(ChooseSpec::SpecificObject(target),2);
+        let mut dm=PauseAdded {pause:mode==2,pending:false,questions:0};
+        let mut ctx=ExecutionContext::new_default(target,alice).with_decision_maker(&mut dm);
+        ctx.set_tagged_objects("it",vec![parent_tag.clone()]);
+        let result=effect.execute(&mut game,&mut ctx);
+        if mode==1 {assert!(matches!(result,Err(ExecutionError::UnresolvableValue(_))));}
+        else {
+            let outcome=result.unwrap();
+            if mode==2 {assert!(ctx.decision_maker.awaiting_choice());assert!(outcome.events.is_empty());}
+            else {
+                assert_eq!(outcome.count_or_zero(),2);assert_eq!(game.damage_on(target),1);
+                if mode==3 {
+                    assert_eq!(game.object(target).unwrap().counters.get(&CounterType::PlusOnePlusOne),Some(&1));
+                    assert!(!game.object(replacement_source).unwrap().counters.contains_key(&CounterType::PlusOnePlusOne));
+                }else{assert_eq!(game.player(bob).unwrap().life,30);}
+                let mut events=game.take_pending_trigger_events();events.extend(outcome.events);
+                let heals=events.iter().filter_map(|event|event.downcast::<KeywordActionEvent>()).filter(|action|action.action==KeywordActionKind::Heal).collect::<Vec<_>>();
+                assert_eq!(heals.len(),1);assert_eq!(heals[0].source,target);assert_eq!(heals[0].amount,2);
+            }
+        }
+        assert_eq!(ctx.source,target);assert_eq!(ctx.controller,alice);
+        assert_eq!(ctx.get_tagged_all("it").unwrap()[0].object_id,parent_tag.object_id);
+        assert!(ctx.replacement.suppressed_replacement_effects.is_empty());drop(ctx);
+        assert_eq!(game.player(alice).unwrap().life,20);assert_eq!(game.next_object_id_counter(),before_id);
+        assert_eq!(game.effect_store.replacement_effects.get_effect(shield).is_some(),mode==1||mode==2);
+        if mode==1||mode==2 {assert_eq!(game.damage_on(target),3);assert_eq!(game.player(bob).unwrap().life,20);assert!(game.take_pending_trigger_events().is_empty());}
+        if mode==2 {
+            assert_eq!(dm.questions,1);let mut replay=PauseAdded {pause:false,pending:false,questions:0};
+            let mut ctx=ExecutionContext::new_default(target,alice).with_decision_maker(&mut replay);
+            ctx.set_tagged_objects("it",vec![parent_tag]);let outcome=effect.execute(&mut game,&mut ctx).unwrap();drop(ctx);
+            assert_eq!(replay.questions,1);assert_eq!(outcome.count_or_zero(),2);assert_eq!(game.damage_on(target),1);
+            assert_eq!(game.player(bob).unwrap().life,34);assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+            let mut events=game.take_pending_trigger_events();events.extend(outcome.events);
+            assert_eq!(events.iter().filter_map(|event|event.downcast::<crate::events::LifeGainEvent>()).map(|gain|gain.amount).collect::<Vec<_>>(),vec![2,4,8]);
+            assert_eq!(events.iter().filter_map(|event|event.downcast::<KeywordActionEvent>()).filter(|action|action.action==KeywordActionKind::Heal).count(),1);
+        }
+    }
+    #[test] fn additional_heal_preserves_primary_count_and_payload() {check_additional_heal(0);}
+    #[test] fn additional_heal_error_restores_original_and_prefix() {check_additional_heal(1);}
+    #[test] fn additional_heal_pending_restores_then_replays_once() {check_additional_heal(2);}
+    #[test] fn additional_heal_binds_action_object_without_changing_parent_tag() {check_additional_heal(3);}
 }

@@ -1890,7 +1890,7 @@ impl DecisionMaker for CliDecisionMaker {
     ) -> LegalAction {
         display_game_state(game);
         println!("\n--- {} has priority ---", player_name(game, ctx.player));
-        prompt_priority_action(game, &ctx.actions)
+        prompt_priority_action(&ctx.actions)
     }
 
     fn decide_boolean(
@@ -2378,14 +2378,14 @@ fn format_non_mana_costs(costs: &[crate::costs::Cost]) -> String {
 
 /// New version of prompt_priority_action that returns LegalAction directly
 /// (used by the new decide_priority method).
-fn prompt_priority_action(game: &GameState, actions: &[LegalAction]) -> LegalAction {
+fn prompt_priority_action(actions: &crate::decisions::context::PreparedPriorityActions) -> LegalAction {
     let commander_indices = commander_action_indices(actions);
 
     // Format actions compactly
     let action_strs: Vec<String> = actions
-        .iter()
+        .iter_with_labels()
         .enumerate()
-        .map(|(i, a)| format!("{}:{}", i, format_action_short(game, a)))
+        .map(|(i, (_, label))| format!("{}:{}", i, label))
         .collect();
     println!("Actions: {}", action_strs.join(" | "));
 
@@ -2395,11 +2395,11 @@ fn prompt_priority_action(game: &GameState, actions: &[LegalAction]) -> LegalAct
             .iter()
             .enumerate()
             .map(|(i, action_index)| {
-                let action = &actions[*action_index];
+                let label = actions.label(*action_index);
                 if commander_indices.len() == 1 {
-                    format!("C:{}", format_action_short(game, action))
+                    format!("C:{}", label)
                 } else {
-                    format!("C{}:{}", i, format_action_short(game, action))
+                    format!("C{}:{}", i, label)
                 }
             })
             .collect();
@@ -2457,7 +2457,7 @@ fn zone_label(zone: Zone) -> &'static str {
     }
 }
 
-pub(crate) fn format_action_short(game: &GameState, action: &LegalAction) -> String {
+pub(crate) fn format_action_short(game: &GameState, action: &LegalAction, face_up_cost: Option<&str>) -> String {
     match action {
         LegalAction::PassPriority => "Pass".to_string(),
         LegalAction::KeepOpeningHand => "Keep hand".to_string(),
@@ -2746,7 +2746,7 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction) -> Str
                 .map(|o| o.name.as_str())
                 .unwrap_or("?");
             let cost_prefix =
-                crate::special_actions::turn_face_up_cost_display(game, *creature_id, *method)
+                face_up_cost
                     .map(|cost| format!("{cost}: "))
                     .unwrap_or_default();
             format!("{cost_prefix}Turn this face-down permanent face up. ({name})")
@@ -2761,7 +2761,7 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction) -> Str
                 method,
             } => {
                 let cost_prefix =
-                    crate::special_actions::turn_face_up_cost_display(game, *permanent_id, *method)
+                    face_up_cost
                         .map(|cost| format!("{cost}: "))
                         .unwrap_or_default();
                 format!("{cost_prefix}Turn this face-down permanent face up.")

@@ -1984,6 +1984,137 @@ pub fn parse_static_ability_ast_line_lexed(
     parse_static_ability_ast_line_lexed_unstacked(tokens)
 }
 
+/// "Nonlegendary creatures enchanted player controls have base power and
+/// toughness 3/3 and lose all creature types." (Curse of Conformity): two
+/// continuous statics over the same subject, a layer-7b base P/T and a
+/// layer-4 creature-subtype set to none.
+fn parse_base_pt_and_lose_all_creature_types_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    let view = TokenWordView::new(&tokens);
+    let words = view.word_refs();
+    let suffix_len = 5usize;
+    if words.len() <= suffix_len
+        || !matches!(
+            &words[words.len() - suffix_len..],
+            ["and", "lose" | "loses", "all", "creature", "types"]
+        )
+    {
+        return Ok(None);
+    }
+    let and_word = words.len() - suffix_len;
+    let Some(and_token) = view.map_word_to_token_start(and_word) else {
+        return Ok(None);
+    };
+    let prefix = &tokens[..and_token];
+    let Some(shape) = anthem_grant_grammar::parse_base_power_toughness_shape(prefix) else {
+        return Ok(None);
+    };
+    if !matches!(
+        shape.condition,
+        anthem_grant_grammar::BasePowerToughnessConditionShape::None
+    ) {
+        return Ok(None);
+    }
+    let subject = parse_anthem_subject_with_attached_fallback(shape.subject_tokens, None)?;
+    let filter = anthem_subject_filter(&subject);
+    Ok(Some(vec![
+        StaticAbility::set_base_power_toughness(filter.clone(), shape.power, shape.toughness)
+            .into(),
+        StaticAbility::set_creature_subtypes(filter, Vec::new()).into(),
+    ]))
+}
+
+/// "All creatures able to block this creature or enchanted creature do so."
+/// (Noble Quarry, bestow): one lure on the creature itself and one granted to
+/// the creature it enchants. Both are statics; only one applies at a time.
+fn parse_bestow_lure_source_or_enchanted_line(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<StaticAbilityAst>> {
+    let words = parser_token_word_refs(tokens);
+    let matches_shape = matches!(
+        words.as_slice(),
+        [
+            "all", "creatures", "able", "to", "block", "this", "creature" | "permanent", "or",
+            "enchanted", "creature", "do", "so"
+        ]
+    );
+    if !matches_shape {
+        return None;
+    }
+    let source_display = "All creatures able to block this creature do so".to_string();
+    let enchanted_display = "All creatures able to block enchanted creature do so".to_string();
+    Some(vec![
+        StaticAbilityAst::Static(StaticAbility::restriction(
+            crate::effect::Restriction::must_block_specific_attacker(
+                ObjectFilter::creature(),
+                ObjectFilter::source(),
+            ),
+            source_display,
+        )),
+        StaticAbilityAst::AttachedStaticAbilityGrant {
+            ability: Box::new(StaticAbilityAst::Static(StaticAbility::restriction(
+                crate::effect::Restriction::must_block_specific_attacker(
+                    ObjectFilter::creature(),
+                    ObjectFilter::source(),
+                ),
+                enchanted_display.clone(),
+            ))),
+            display: enchanted_display,
+            condition: None,
+        },
+    ])
+}
+
+/// "Tadeas has hexproof unless it's attacking.": the source's own static
+/// grant, conditioned on the negated status. A permanent's characteristic
+/// line, never a one-shot `unless` control flow.
+fn parse_source_has_unless_status_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    let Some(unless) = tokens.iter().position(|token| token.is_word("unless")) else {
+        return Ok(None);
+    };
+    let head = &tokens[..unless];
+    let tail = &tokens[unless + 1..];
+    if head.iter().any(|token| token.kind == TokenKind::Quote) {
+        return Ok(None);
+    }
+    let head_words = parser_token_word_refs(head);
+    if head_words.first() != Some(&"this")
+        || !head_words.iter().any(|word| matches!(*word, "has" | "have"))
+    {
+        return Ok(None);
+    }
+    let tail_words = parser_token_word_refs(tail);
+    let Some((state, subject)) = tail_words.split_last() else {
+        return Ok(None);
+    };
+    if !matches!(*state, "attacking" | "blocking" | "tapped" | "untapped")
+        || !matches!(subject, ["it's"] | ["its"] | ["it", "is"] | ["it", "s"])
+    {
+        return Ok(None);
+    }
+    let Some(abilities) = parse_static_ability_ast_line_lexed_unstacked(head)? else {
+        return Ok(None);
+    };
+    if abilities.is_empty() {
+        return Ok(None);
+    }
+    let condition = parse_static_condition_clause(tail)?;
+    Ok(Some(
+        abilities
+            .into_iter()
+            .map(|ability| StaticAbilityAst::ConditionalStaticAbility {
+                ability: Box::new(ability),
+                condition: PredicateAst::Not(Box::new(condition.clone())),
+            })
+            .collect(),
+    ))
+}
+
 mod compound_line_readings;
 fn parse_static_ability_ast_line_lexed_unstacked(
     tokens: &[OwnedLexToken],
@@ -2051,6 +2182,15 @@ fn parse_static_ability_ast_line_lexed_unstacked(
         }
     {
         return parse_static_ability_ast_line_lexed_unstacked(body_tokens);
+    }
+    if let Some(abilities) = parse_source_has_unless_status_line(tokens)? {
+        return Ok(Some(abilities));
+    }
+    if let Some(abilities) = parse_bestow_lure_source_or_enchanted_line(tokens) {
+        return Ok(Some(abilities));
+    }
+    if let Some(abilities) = parse_base_pt_and_lose_all_creature_types_line(tokens)? {
+        return Ok(Some(abilities));
     }
     if let Some(abilities) = parse_conditional_source_characteristics_and_predicate_line(tokens)? {
         return Ok(Some(abilities));
@@ -4091,6 +4231,24 @@ pub fn parse_choose_named_options_as_enters_line(
         return Ok(None);
     }
     options.push(current.join(" "));
+    // "choose Elemental, Elf, Faerie, ..., or Treefolk": the comma list
+    // arrives without its commas, so a run of words that are each a subtype
+    // is several one-word options, not one multi-word name.
+    let options = options
+        .into_iter()
+        .flat_map(|option| {
+            let words = option.split_whitespace().collect::<Vec<_>>();
+            if words.len() > 1
+                && words
+                    .iter()
+                    .all(|word| crate::util::parse_subtype_word(word).is_some())
+            {
+                words.into_iter().map(str::to_string).collect::<Vec<_>>()
+            } else {
+                vec![option]
+            }
+        })
+        .collect::<Vec<_>>();
     if options.len() < 2 {
         return Ok(None);
     }
@@ -4168,7 +4326,54 @@ fn parse_trigger_duplication_source_filter(
         }
     }
 
-    parse_object_filter_with_grammar_entrypoint(&tokens, false)
+    // "a colorless spell you control or another colorless permanent you
+    // control" (Echoes of Eternity): two independently nouned arms, the second
+    // excluding the source itself.
+    let or_positions = tokens
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.is_word("or"))
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    if let [or_index] = or_positions.as_slice()
+        && *or_index > 0
+        && tokens
+            .get(or_index + 1)
+            .is_some_and(|token| token.is_word("another") || token.is_word("other"))
+        && let Ok(left) = parse_object_filter_with_grammar_entrypoint(&tokens[..*or_index], false)
+        && let Ok(mut right) =
+            parse_object_filter_with_grammar_entrypoint(&tokens[or_index + 1..], false)
+        && left != ObjectFilter::default()
+        && right != ObjectFilter::default()
+    {
+        right.other = true;
+        // "a Shaman or another Wizard you control" (Harmonic Prodigy): a
+        // trailing controller scope is shared by an arm that names none.
+        let mut left = left;
+        if left.controller.is_none() && left.owner.is_none() {
+            left.controller = right.controller.clone();
+        }
+        if left.zone.is_none() {
+            left.zone = right.zone;
+        }
+        let mut filter = ObjectFilter::default();
+        filter.any_of = vec![left, right];
+        return Ok(filter);
+    }
+
+    let mut filter = parse_object_filter_with_grammar_entrypoint(&tokens, false)?;
+    // "a triggered ability of another Wolf or battle you control" (Chief of
+    // the Wilds): the leading determiner excludes the source from the whole
+    // coordinated set.
+    if tokens
+        .first()
+        .is_some_and(|token| token.is_word("another") || token.is_word("other"))
+        && !filter.other
+        && filter.any_of.iter().all(|branch| !branch.other)
+    {
+        filter.other = true;
+    }
+    Ok(filter)
 }
 
 fn parse_trigger_duplication_event_matcher(
@@ -4178,7 +4383,38 @@ fn parse_trigger_duplication_event_matcher(
     let clause_display = render_token_slice(&tokens);
 
     let build_filter = |subject_tokens: &[OwnedLexToken]| -> Result<ObjectFilter, CardTextError> {
-        parse_object_filter_with_grammar_entrypoint(&trim_edge_punctuation(subject_tokens), false)
+        let subject_tokens = trim_edge_punctuation(subject_tokens);
+        // "a legendary permanent or an artifact": each article-led arm is a
+        // complete object noun, so the arms are a union, not one object that
+        // is both.
+        if let Some(or_index) = subject_tokens.iter().position(|token| token.is_word("or"))
+            && or_index > 0
+            && subject_tokens
+                .first()
+                .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+            && subject_tokens
+                .get(or_index + 1)
+                .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+            && subject_tokens[or_index + 1..]
+                .iter()
+                .all(|token| !token.is_word("or"))
+            && let Ok(left) =
+                parse_object_filter_with_grammar_entrypoint(&subject_tokens[..or_index], false)
+            && let Ok(right) =
+                parse_object_filter_with_grammar_entrypoint(&subject_tokens[or_index + 1..], false)
+            && left != right
+        {
+            let mut union = ObjectFilter::default();
+            if left.zone == right.zone {
+                union.zone = left.zone;
+            }
+            union.any_of = vec![left, right];
+            for branch in &mut union.any_of {
+                branch.zone = None;
+            }
+            return Ok(union);
+        }
+        parse_object_filter_with_grammar_entrypoint(&subject_tokens, false)
     };
 
     use early_static_facts::{
@@ -4515,7 +4751,32 @@ pub fn parse_double_damage_amount_replacement_line(
 fn damage_source_filter_from_shape(
     shape: keyword_static_lines::DamageSourceShape<'_>,
 ) -> Result<ObjectFilter, CardTextError> {
-    let mut filter = if shape.filter_tokens.is_empty() && shape.trailing_filter_tokens.is_empty() {
+    // "a red instant or sorcery spell you control or a red planeswalker you
+    // control" (Pyromancer's Gauntlet): independently articled sources, each
+    // with its own domain, are alternatives.
+    let articled_union = if shape.trailing_filter_tokens.is_empty() {
+        shape
+            .filter_tokens
+            .windows(2)
+            .position(|window| window[0].is_word("or") && window[1].is_any_word(&["a", "an"]))
+            .filter(|&or_idx| or_idx > 0)
+            .and_then(|or_idx| {
+                let left = parse_object_filter_lexed(&shape.filter_tokens[..or_idx], false).ok()?;
+                let right =
+                    parse_object_filter_lexed(&shape.filter_tokens[or_idx + 1..], false).ok()?;
+                (left.zone != right.zone).then(|| {
+                    let mut union = ObjectFilter::default();
+                    union.any_of = vec![left, right];
+                    union.set_explicit_union_branch_articles(true);
+                    union
+                })
+            })
+    } else {
+        None
+    };
+    let mut filter = if let Some(union) = articled_union {
+        union
+    } else if shape.filter_tokens.is_empty() && shape.trailing_filter_tokens.is_empty() {
         ObjectFilter::default()
     } else if shape.trailing_filter_tokens.is_empty() {
         parse_object_filter_lexed(shape.filter_tokens, false)?

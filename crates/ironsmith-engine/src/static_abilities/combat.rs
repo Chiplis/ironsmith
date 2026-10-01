@@ -7,6 +7,7 @@ use super::{AttackTaxTargetKind, StaticAbilityId, StaticAbilityKind};
 use crate::effect::Restriction;
 use crate::effect::RestrictionExt as _;
 use crate::effects::EffectExecutor;
+use crate::decision::DecisionMaker;
 use crate::events::permanents::SacrificeEvent;
 use crate::events::processing::{EventOutcome, process_zone_change};
 use crate::events::{EventKind, KeywordActionEvent, KeywordActionKind};
@@ -1614,6 +1615,19 @@ pub enum AttackingGroupAttackCondition {
     AtLeastNOtherCreaturesAttack(u32),
     CreatureWithGreaterPowerAlsoAttacks,
     BlackOrGreenCreatureAlsoAttacks,
+    AtLeastNOtherCreaturesBlock(u32),
+    CreatureWithGreaterPowerAlsoBlocks,
+}
+
+impl AttackingGroupAttackCondition {
+    /// Whether this group condition constrains the blocker declaration rather
+    /// than the attacker declaration.
+    pub fn is_blocking_group(&self) -> bool {
+        matches!(
+            self,
+            Self::AtLeastNOtherCreaturesBlock(_) | Self::CreatureWithGreaterPowerAlsoBlocks
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1766,8 +1780,18 @@ impl CantAttackUnlessCondition {
                     AttackingGroupAttackCondition::BlackOrGreenCreatureAlsoAttacks => {
                         "a black or green creature also attacks".to_string()
                     }
+                    AttackingGroupAttackCondition::AtLeastNOtherCreaturesBlock(count) => {
+                        format!("at least {count} other creatures block")
+                    }
+                    AttackingGroupAttackCondition::CreatureWithGreaterPowerAlsoBlocks => {
+                        "a creature with greater power also blocks".to_string()
+                    }
                 };
-                format!("Can't attack unless {clause}")
+                if group_condition.is_blocking_group() {
+                    format!("Can't block unless {clause}")
+                } else {
+                    format!("Can't attack unless {clause}")
+                }
             }
             CantAttackUnlessConditionSpec::AttackCost(cost_condition) => {
                 let clause = match cost_condition {
@@ -2057,6 +2081,8 @@ impl CantAttackUnlessCondition {
                         })
                     }))
                 }
+                AttackingGroupAttackCondition::AtLeastNOtherCreaturesBlock(_)
+                | AttackingGroupAttackCondition::CreatureWithGreaterPowerAlsoBlocks => None,
             },
             CantAttackUnlessConditionSpec::ControllerControlsMoreThanDefendingPlayer(_)
             | CantAttackUnlessConditionSpec::SourceCondition(_)
@@ -2144,105 +2170,59 @@ impl CantAttackUnlessCondition {
         }
     }
 
-    fn pay_sacrifice_attack_cost(
-        game: &mut GameState,
-        source: ObjectId,
-        controller: PlayerId,
-        count: u32,
-        filter: &ObjectFilter,
-    ) -> Result<(), String> {
-        let candidates = Self::eligible_permanents_for_controller(game, controller, filter, true);
-        if candidates.len() < count as usize {
-            return Err("Cannot pay required attack cost".to_string());
-        }
-
-        let chosen: Vec<ObjectId> = candidates.into_iter().take(count as usize).collect();
-        let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
-
-        for target_id in chosen {
-            let snapshot = game
-                .object(target_id)
-                .map(|obj| ObjectSnapshot::from_object(obj, game));
-            let sacrificing_player = snapshot
-                .as_ref()
-                .map(|snap| snap.controller)
-                .or(Some(controller));
-
-            match process_zone_change(
-                game,
-                target_id,
-                Zone::Battlefield,
-                Zone::Graveyard,
-                crate::events::cause::EventCause::from_cost(source, controller),
-                &mut decision_maker,
-            ) {
-                EventOutcome::Prevented | EventOutcome::NotApplicable => {
-                    return Err("Cannot pay required attack cost".to_string());
-                }
-                EventOutcome::Proceed(final_zone) => {
-                    game.move_object(
-                        target_id,
-                        final_zone,
-                        crate::events::cause::EventCause::from_cost(source, controller),
-                    );
-                    if final_zone == Zone::Graveyard {
-                        game.queue_trigger_event(
-                            crate::provenance::ProvNodeId::default(),
-                            TriggerEvent::new_with_provenance(
-                                SacrificeEvent::new(target_id, Some(source))
-                                    .with_snapshot(snapshot, sacrificing_player),
-                                crate::provenance::ProvNodeId::default(),
-                            ),
-                        );
-                    }
-                }
-                EventOutcome::Replaced => {}
-            }
-        }
-
-        Ok(())
+    fn pay_sacrifice_attack_cost(game: &mut GameState, source: ObjectId, controller: PlayerId, count: u32, filter: &ObjectFilter) -> Result<(), String> {
+        Self::pay_zone_attack_cost(game, source, controller, count, filter, true)
     }
 
-    fn pay_return_permanents_attack_cost(
-        game: &mut GameState,
-        source: ObjectId,
-        controller: PlayerId,
-        filter: &ObjectFilter,
-        count: u32,
-    ) -> Result<(), String> {
-        let candidates = Self::eligible_permanents_for_controller(game, controller, filter, false);
-        if candidates.len() < count as usize {
-            return Err("Cannot pay required attack cost".to_string());
-        }
-        let chosen: Vec<ObjectId> = candidates.into_iter().take(count as usize).collect();
+    fn pay_return_permanents_attack_cost(game: &mut GameState, source: ObjectId, controller: PlayerId, filter: &ObjectFilter, count: u32) -> Result<(), String> {
+        Self::pay_zone_attack_cost(game, source, controller, count, filter, false)
+    }
 
-        for target_id in chosen {
-            let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
-            match process_zone_change(
-                game,
-                target_id,
-                Zone::Battlefield,
-                Zone::Hand,
-                crate::events::cause::EventCause::from_cost(source, controller),
-                &mut decision_maker,
-            ) {
-                EventOutcome::Prevented | EventOutcome::NotApplicable | EventOutcome::Replaced => {
-                    return Err("Cannot pay required attack cost".to_string());
-                }
-                EventOutcome::Proceed(final_zone) => {
-                    if final_zone != Zone::Hand {
-                        return Err("Cannot pay required attack cost".to_string());
-                    }
-                    game.move_object(
-                        target_id,
-                        final_zone,
-                        crate::events::cause::EventCause::from_cost(source, controller),
-                    );
-                }
+    fn pay_zone_attack_cost(game: &mut GameState, source: ObjectId, controller: PlayerId, count: u32, filter: &ObjectFilter, sacrifice: bool) -> Result<(), String> {
+        let checkpoint = game.clone();
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let result = (|| {
+            let candidates = Self::eligible_permanents_for_controller(game, controller, filter, sacrifice);
+            if candidates.len() < count as usize { return Err("Cannot pay required attack cost".to_string()); }
+            let chosen = candidates.into_iter().take(count as usize).collect::<Vec<_>>();
+            let cause = crate::events::cause::EventCause::from_cost(source, controller);
+            if sacrifice && chosen.iter().any(|id| !game.can_be_sacrificed_with_cause(*id, &cause)) {
+                return Err("Cannot pay required attack cost".to_string());
             }
-        }
-
-        Ok(())
+            let destination = if sacrifice { Zone::Graveyard } else { Zone::Hand };
+            let mut prepared = Vec::new();
+            for id in chosen {
+                let snapshot = game.object(id).map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game));
+                let proposal = process_zone_change(game, id, Zone::Battlefield, destination, cause.clone(), &mut dm)
+                    .map_err(|error| error.to_string())?;
+                if dm.awaiting_choice() { return Err("Awaiting attack cost replacement".to_string()); }
+                prepared.push((id, snapshot, proposal));
+            }
+            let mut receipts = Vec::new();
+            for (id, snapshot, proposal) in prepared {
+                let receipt = crate::effects::zones::commit_zone_change_proposal(game, id, proposal, &mut dm)
+                    .map_err(|error| error.to_string())?;
+                if dm.awaiting_choice() { return Err("Awaiting attack cost commitment".to_string()); }
+                if sacrifice && matches!(&receipt.original, EventOutcome::Proceed(change) if !change.new_object_ids.is_empty()) {
+                    let player = snapshot.as_ref().map(|snapshot| snapshot.controller).or(Some(controller));
+                    game.queue_trigger_event(crate::provenance::ProvNodeId::default(), TriggerEvent::new_with_provenance(
+                        SacrificeEvent::new(id, Some(source)).with_snapshot(snapshot, player), crate::provenance::ProvNodeId::default(),
+                    ));
+                }
+                receipts.push((id, receipt));
+            }
+            // Legally started payments remain paid through prevention,
+            // redirection and replacement; performed events are separate.
+            let mut ctx = crate::effects::ExecutionContext::new(source, controller, &mut dm).with_cause(cause);
+            let mut outcome = crate::effects::zones::finish_zone_change_receipts(game, &mut ctx, crate::effect::EffectOutcome::resolved(), receipts)
+                .map_err(|error| error.to_string())?;
+            if ctx.decision_maker.awaiting_choice() { return Err("Awaiting attack cost added program".to_string()); }
+            crate::effects::retain_unmatched_outcome_events(game, &mut outcome.events);
+            for event in outcome.events { game.queue_trigger_event(event.provenance(), event); }
+            Ok(())
+        })();
+        if result.is_err() || dm.awaiting_choice() { *game = checkpoint; }
+        result
     }
 
     fn pay_non_mana_attack_cost_now(
@@ -2315,6 +2295,44 @@ impl StaticAbilityKind for CantAttackUnlessCondition {
         attacking_creatures: &[ObjectId],
     ) -> Option<bool> {
         self.source_can_attack_with_group(game, source, attacking_creatures)
+    }
+
+    fn can_block_with_blocking_group(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        blocking_creatures: &[ObjectId],
+    ) -> Option<bool> {
+        use crate::types::CardType;
+
+        let CantAttackUnlessConditionSpec::AttackingGroupCondition(condition) = &self.condition
+        else {
+            return None;
+        };
+        let other_blockers = move || {
+            blocking_creatures
+                .iter()
+                .copied()
+                .filter(move |id| *id != source)
+                .filter(move |id| game.object_has_card_type(*id, CardType::Creature))
+        };
+        match condition {
+            AttackingGroupAttackCondition::AtLeastNOtherCreaturesBlock(required) => {
+                Some((other_blockers().count() as u32) >= *required)
+            }
+            AttackingGroupAttackCondition::CreatureWithGreaterPowerAlsoBlocks => {
+                let source_power = game
+                    .calculated_power(source)
+                    .or_else(|| game.object(source).and_then(|obj| obj.power()))
+                    .unwrap_or(0);
+                Some(other_blockers().any(|id| {
+                    game.calculated_power(id)
+                        .or_else(|| game.object(id).and_then(|obj| obj.power()))
+                        .is_some_and(|power| power > source_power)
+                }))
+            }
+            _ => None,
+        }
     }
 
     fn can_pay_attack_cost(
@@ -3053,4 +3071,64 @@ impl StaticAbilityKind for GoadMatching {
     fn goads_matching(&self) -> Option<&crate::target::ObjectFilter> {
         Some(&self.filter)
     }
+}
+
+#[cfg(test)]
+mod replacement_attack_zone_cost_owner_contract_tests {
+    use super::*;
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::effect::{Effect, Value};
+    use crate::ids::CardId;
+    use crate::replacement::{ReplacementAction, ReplacementEffect};
+    use crate::target::ChooseSpec;
+    use crate::types::CardType;
+    fn check(sacrifice: bool, mode: u8) {
+        let mut game = crate::tests::test_helpers::setup_two_player_game(); let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let artifact = CardBuilder::new(CardId::new(), "Cost source").card_types(vec![CardType::Artifact]).build();
+        let source = game.create_object_from_card(&artifact, alice, Zone::Battlefield); let replacement = game.create_object_from_card(&artifact, bob, Zone::Battlefield);
+        let card = CardBuilder::new(CardId::new(), "Cost victim").card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(2, 2)).build();
+        let originals = (0..2).map(|_| game.create_object_from_card(&card, alice, Zone::Battlefield)).collect::<Vec<_>>();
+        let stable = originals.iter().map(|id| game.object(*id).unwrap().stable_id).collect::<Vec<_>>();
+        let destination = if sacrifice { Zone::Graveyard } else { Zone::Hand };
+        let action = match mode {
+            1 => ReplacementAction::Additionally(vec![Effect::gain_life(3), Effect::lose_life(Value::X)]),
+            2 => ReplacementAction::Additionally(vec![Effect::new(crate::effects::PutCountersEffect::new(CounterType::PlusOnePlusOne, 1, ChooseSpec::tagged("it")))]),
+            3 => ReplacementAction::Prevent,
+            4 => ReplacementAction::ChangeDestination(Zone::Exile),
+            5 => ReplacementAction::Instead(vec![Effect::gain_life(3)]),
+            _ => ReplacementAction::Additionally(vec![Effect::gain_life(3)]),
+        };
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(replacement, bob,
+            crate::events::zones::matchers::WouldChangeZoneMatcher::new(ObjectFilter::specific(originals[0]), Some(Zone::Battlefield), Some(destination)), action));
+        game.take_pending_trigger_events(); let ids = game.next_object_id_counter(); let objects = game.objects_in_deterministic_order().len();
+        let result = if sacrifice { CantAttackUnlessCondition::pay_sacrifice_attack_cost(&mut game, source, alice, 2, &ObjectFilter::creature()) }
+            else { CantAttackUnlessCondition::pay_return_permanents_attack_cost(&mut game, source, alice, &ObjectFilter::creature(), 2) };
+        if mode == 1 {
+            assert!(result.is_err(), "surface replacement program error"); assert!(result.unwrap_err().contains('X'));
+            assert!(originals.iter().all(|id| game.object(*id).is_some_and(|object| object.zone == Zone::Battlefield)));
+            assert_eq!(game.player(bob).unwrap().life, 20); assert_eq!(game.next_object_id_counter(), ids); assert_eq!(game.objects_in_deterministic_order().len(), objects);
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_some()); assert!(game.take_pending_trigger_events().is_empty()); return;
+        }
+        assert!(result.is_ok(), "legally started payment remains paid through replacement");
+        for (index, id) in stable.iter().enumerate() {
+            let arrival = game.objects_in_deterministic_order().into_iter().find(|object| object.stable_id == *id).unwrap();
+            assert_eq!(arrival.zone, if index == 0 { match mode { 3 | 5 => Zone::Battlefield, 4 => Zone::Exile, _ => destination } } else { destination });
+            if mode == 2 && index == 0 { assert_eq!(game.counter_count(arrival.id, CounterType::PlusOnePlusOne), 1); }
+        }
+        assert_eq!(game.player(alice).unwrap().life, 20); assert_eq!(game.player(bob).unwrap().life, if mode == 0 || mode == 5 { 23 } else { 20 });
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+        let events = game.take_pending_trigger_events(); assert_eq!(events.iter().filter(|event| event.kind() == crate::events::EventKind::Sacrifice).count(), if sacrifice { if mode == 3 || mode == 5 { 1 } else { 2 } } else { 0 });
+    }
+    #[test] fn sacrifice_additions_after_payment() { check(true, 0); }
+    #[test] fn sacrifice_error_restores_payment() { check(true, 1); }
+    #[test] fn sacrifice_addition_binds_arrival() { check(true, 2); }
+    #[test] fn sacrifice_prevented_cost_still_paid() { check(true, 3); }
+    #[test] fn sacrifice_redirected_cost_still_paid() { check(true, 4); }
+    #[test] fn sacrifice_instead_cost_still_paid() { check(true, 5); }
+    #[test] fn return_additions_after_payment() { check(false, 0); }
+    #[test] fn return_error_restores_payment() { check(false, 1); }
+    #[test] fn return_addition_binds_arrival() { check(false, 2); }
+    #[test] fn return_prevented_cost_still_paid() { check(false, 3); }
+    #[test] fn return_redirected_cost_still_paid() { check(false, 4); }
+    #[test] fn return_instead_cost_still_paid() { check(false, 5); }
 }

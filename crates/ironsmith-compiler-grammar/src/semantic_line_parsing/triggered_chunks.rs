@@ -97,6 +97,15 @@ fn apply_frequency_turn_scope(
         && matches!(trigger, TriggerSpec::YouGainLife)
     {
         TriggerSpec::YouGainLifeDuringTurn(PlayerFilter::You)
+    } else if facts.frequency.first_time_during_each_of_their_turns
+        && let TriggerSpec::PlayerLosesLife(player) = &trigger
+    {
+        // "an opponent loses life for the first time during each of their
+        // turns": only while the life-losing player is the active player.
+        TriggerSpec::PlayerLosesLifeDuringTurn {
+            player: player.clone(),
+            during_turn: PlayerFilter::IteratedPlayer,
+        }
     } else {
         trigger
     }

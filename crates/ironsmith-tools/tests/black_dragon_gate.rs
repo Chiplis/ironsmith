@@ -66,7 +66,7 @@ fn black_dragon_gate_prompts_before_entry_and_remembers_nonblack_color() {
         let hand = game.create_object_from_definition(&definition, alice, Zone::Hand);
         let mut dm = ChooseBlue::default();
         let entered = game
-            .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm)
+            .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
             .unwrap()
             .new_id;
         assert_eq!(
@@ -95,7 +95,7 @@ fn black_dragon_gate_waits_for_the_color_choice_before_entering() {
         ..Default::default()
     };
     assert!(
-        game.move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm)
+        game.move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
             .is_none()
     );
     assert_eq!(dm.prompts, 1);
@@ -105,9 +105,18 @@ fn black_dragon_gate_waits_for_the_color_choice_before_entering() {
 
     dm.suspend = false;
     let entered = game
-        .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm)
+        .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     assert_eq!(game.chosen_color(entered), Some(Color::Blue));
     assert!(game.is_tapped(entered));
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: ironsmith::game_state::EntryCommitResult)
+    -> Option<ironsmith::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

@@ -24,6 +24,9 @@ pub enum DamagePreventionActionAst {
         duration: Until,
         source_filter: ObjectFilter,
         excluded_source_target: Option<TargetAst>,
+        /// "a creature of your choice would deal": one matching source is
+        /// chosen as the effect resolves, and only its damage is prevented.
+        source_of_your_choice: bool,
     },
     PreventAllCombatDamageToPlayers {
         duration: Until,

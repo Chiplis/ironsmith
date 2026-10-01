@@ -56,7 +56,7 @@ impl EffectExecutor for AddManaFromCommanderColorIdentityEffect {
                 ManaSymbol::Colorless,
                 amount,
                 ctx,
-            );
+            )?;
             return Ok(mana_added_count_outcome(
                 ctx,
                 player_id,
@@ -101,7 +101,7 @@ impl EffectExecutor for AddManaFromCommanderColorIdentityEffect {
         }
 
         let symbol = ManaSymbol::from_color(color);
-        let mana = credit_repeated_mana_symbol_from_context(game, player_id, symbol, amount, ctx);
+        let mana = credit_repeated_mana_symbol_from_context(game, player_id, symbol, amount, ctx)?;
 
         Ok(mana_added_count_outcome(
             ctx,

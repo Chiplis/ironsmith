@@ -209,15 +209,14 @@ fn tagged_aggregates_retain_snapshot_numbers() {
         resolve(&Value::TotalPower(ObjectFilter::tagged("test")), &context).unwrap(),
         9
     );
-    // A direct tagged selection still requires a resolvable object; aggregate
-    // filters can consume retained snapshots after the object is removed.
-    assert!(matches!(
-        resolve(
-            &Value::PowerOf(Box::new(ChooseSpec::Tagged("test".into()))),
-            &context
-        ),
-        Err(ExecutionError::InvalidTarget)
-    ));
+    // Numeric information uses the departed object's LKI (CR 608.2h).
+    assert_eq!(resolve(
+        &Value::PowerOf(Box::new(ChooseSpec::Tagged("test".into()))), &context,
+    ).unwrap(), 9);
+    // Selecting that removed object for a new operation still fails.
+    assert!(crate::effects::helpers::resolve_objects_from_spec(
+        &game, &ChooseSpec::Tagged("test".into()), &exec,
+    ).unwrap().is_empty(), "physical selection cannot return a removed object");
 }
 
 #[test]

@@ -109,7 +109,10 @@ pub fn parse_combat_damage_target_shape_lexed(
         && phrase_occurs(target_tokens, &["max", "speed"]);
     if max_speed_players {
         let negated =
-            one_of_words_occurs(target_tokens, &["does", "doesnt", "doesn", "dont", "not"])
+            one_of_words_occurs(
+                target_tokens,
+                &["does", "doesnt", "doesn", "doesn't", "dont", "don't", "not"],
+            )
                 || phrase_occurs(target_tokens, &["does", "not"]);
         return Ok(CombatDamageTargetShape::MaxSpeedPlayers {
             has_max_speed: !negated,

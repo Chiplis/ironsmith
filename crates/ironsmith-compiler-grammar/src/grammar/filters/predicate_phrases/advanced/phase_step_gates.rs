@@ -819,6 +819,31 @@ fn parse_control_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, 
         same_name_group = true;
         filter_tokens = group_stripped.tokens();
     }
+    // "a Villain with greater mana value than that creature" (Evil's Thrall):
+    // a mana-value comparison against the referenced object.
+    let mut greater_mana_value_than_it = false;
+    for suffix in [
+        &["with", "greater", "mana", "value", "than", "that", "creature"][..],
+        &["with", "greater", "mana", "value", "than", "that", "permanent"][..],
+    ] {
+        let suffix_clause = LexedClause::new(filter_tokens);
+        let suffix_stripped = suffix_clause.without_trailing_phrase(suffix);
+        if suffix_stripped.tokens().len() != filter_tokens.len() {
+            greater_mana_value_than_it = true;
+            filter_tokens = suffix_stripped.tokens();
+            break;
+        }
+    }
+    // "seven or more lands with different names" (Field of the Dead) counts
+    // distinct names among the matching permanents, not the permanents.
+    const DIFFERENT_NAMES_SUFFIX: &[&str] = &["with", "different", "names"];
+    let mut distinct_names = false;
+    let names_clause = LexedClause::new(filter_tokens);
+    let names_stripped = names_clause.without_trailing_phrase(DIFFERENT_NAMES_SUFFIX);
+    if names_stripped.tokens().len() != filter_tokens.len() {
+        distinct_names = true;
+        filter_tokens = names_stripped.tokens();
+    }
     // "seven or more lands and/or Treefolk" (Tend the Sprigs): each counted
     // permanent is a land, a Treefolk, or both.
     let mut filter = if let Some(split) = filter_tokens
@@ -838,6 +863,27 @@ fn parse_control_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, 
     };
     filter.controller = Some(controller);
     filter.power_greater_than_base_power |= above_base;
+    if greater_mana_value_than_it {
+        filter.mana_value = Some(crate::filter::Comparison::GreaterThanExpr(Box::new(
+            Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
+                crate::tag::CompilerReferenceTag::It.bind().into(),
+            ))),
+        )));
+    }
+    if distinct_names {
+        filter.distinct_names = false;
+        if filter.zone.is_none() {
+            filter.zone = Some(Zone::Battlefield);
+        }
+        let Some(count) = comparison_to_at_least_threshold(&comparison) else {
+            return Ok(None);
+        };
+        return Ok(Some(PredicateAst::ValueComparison {
+            left: Value::DistinctNames(filter),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(count as i32),
+        }));
+    }
     if same_name_group {
         let Some(count) = comparison_to_at_least_threshold(&comparison) else {
             return Ok(None);

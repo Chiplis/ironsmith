@@ -55,7 +55,7 @@ impl EffectExecutor for AddOneManaOfAnyColorAmongEffect {
             player_id,
             vec![ManaSymbol::from_color(color)],
             ctx,
-        );
+        )?;
         Ok(mana_added_count_outcome(ctx, player_id, symbols, 1))
     }
 

@@ -191,7 +191,7 @@ fn cast(
 ) -> Result<TriggerQueue, String> {
     game.turn.priority_player = Some(alice());
     let id = game.create_object_from_definition(def, alice(), Zone::Hand);
-    let action = compute_legal_actions(game, alice())
+    let action = compute_legal_actions(game, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or_else(|| format!("no legal cast of {}", def.name()))?;
@@ -432,7 +432,7 @@ fn equip(
     dm: &mut Choices,
 ) -> Result<(), String> {
     dm.target = Some(wearer);
-    let action = compute_legal_actions(g, alice())
+    let action = compute_legal_actions(g, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::ActivateAbility{source:id,..}if *id==source))
         .ok_or("equip unavailable")?;

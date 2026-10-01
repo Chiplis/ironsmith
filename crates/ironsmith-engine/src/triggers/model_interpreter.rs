@@ -268,6 +268,9 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::BlocksObjectWithLesserPower { blocker, blocked } => {
             crate::triggers::Trigger::blocks_object_with_lesser_power(blocker, blocked)
         }
+        TriggerKind::BlocksObject { blocker, blocked } => {
+            crate::triggers::Trigger::blocks_object(blocker, blocked)
+        }
         TriggerKind::ThisBecomesBlocked => crate::triggers::Trigger::this_becomes_blocked(),
         TriggerKind::BecomesBlocked { filter } => crate::triggers::Trigger::becomes_blocked(filter),
         TriggerKind::ThisBecomesBlockedByObject { filter } => {

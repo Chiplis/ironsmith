@@ -263,6 +263,9 @@ fn strip_trigger_frequency_suffix_tokens(
             &[
                 "for", "the", "first", "time", "during", "each", "of", "your", "turns",
             ][..],
+            &[
+                "for", "the", "first", "time", "during", "each", "of", "their", "turns",
+            ][..],
         ],
     ) {
         return (rest, Some(1));
@@ -1415,6 +1418,7 @@ fn replace_named_source_alias_tokens(
             || source_alias_occurrence_looks_like_effect_verb_lexed(&pieces, word_idx, end_word)
             || source_alias_occurrence_is_name_override_surface_lexed(&pieces, word_idx, end_word)
             || source_alias_occurrence_is_created_token_name_lexed(&pieces, word_idx, end_word)
+            || source_alias_occurrence_is_meld_result_name_lexed(&pieces, word_idx)
             || source_alias_occurrence_is_typed_subtype_noun_lexed(&pieces, word_idx, end_word)
             || source_alias_occurrence_is_rules_term_lexed(&pieces, word_idx, end_word)
             || (!pieces[end_word - 1].possessive
@@ -1662,15 +1666,24 @@ fn source_alias_occurrence_is_typed_subtype_noun_lexed(
         .map(|piece| piece.text)
         .collect::<Vec<_>>()
         .join(" ");
-    let Some(subtype) = parse_subtype_flexible(&alias) else {
-        return false;
-    };
-
     let previous_word = start_word
         .checked_sub(1)
         .and_then(|idx| pieces.get(idx))
         .map(|piece| piece.text);
     let next_word = pieces.get(end_word).map(|piece| piece.text);
+    // "one or more Blood tokens" (Blood Hypnotist): a subtype noun heading
+    // "token(s)" names tokens of that type, never the named card itself.
+    // Token-definition subtype vocabulary, since the rules-text reader
+    // rejects English-noun subtypes such as "blood".
+    if matches!(next_word, Some("token" | "tokens"))
+        && crate::grammar::leaf::classify_token_definition_subtype(&alias).is_some()
+    {
+        return true;
+    }
+    let Some(subtype) = parse_subtype_flexible(&alias) else {
+        return false;
+    };
+
     // "put a loyalty counter on each Garruk you control": a quantified
     // subtype noun names every permanent of that type, never this object.
     if matches!(previous_word, Some("each" | "another")) {
@@ -1678,6 +1691,14 @@ fn source_alias_occurrence_is_typed_subtype_noun_lexed(
     }
     if !subtype.is_creature_type() {
         return false;
+    }
+    // "for each other attacking Aurochs" on Aurochs: a combat-state or
+    // `other` adjective before the bare subtype names the class.
+    if matches!(
+        previous_word,
+        Some("other" | "attacking" | "blocking")
+    ) {
+        return true;
     }
 
     previous_word == Some("target")
@@ -1866,8 +1887,17 @@ fn source_alias_occurrence_is_name_override_surface_lexed(
         .and_then(|idx| pieces.get(idx))
         .map(|piece| piece.text);
 
+    let third_previous_word = start_word
+        .checked_sub(3)
+        .and_then(|idx| pieces.get(idx))
+        .map(|piece| piece.text);
     previous_word == Some("named")
         || (previous_word == Some("is") && previous_previous_word == Some("name"))
+        // "meld them into Titania, Gaea Incarnate": the meld result is
+        // another card's name.
+        || (previous_word == Some("into")
+            && matches!(previous_previous_word, Some("them" | "it"))
+            && third_previous_word == Some("meld"))
         || source_alias_occurrence_ends_named_phrase_lexed(pieces, start_word)
 }
 
@@ -1937,6 +1967,30 @@ fn source_alias_occurrence_ends_named_phrase_lexed(
         idx -= 1;
     }
     false
+}
+
+/// "meld them into <Name>": the meld result is a different card whose name
+/// may share the source's short name ("Titania, Gaea Incarnate",
+/// "Hanweir, the Writhing Township"). It is a card-name literal the runtime
+/// looks up, never a self-reference.
+fn source_alias_occurrence_is_meld_result_name_lexed(
+    pieces: &[SourceAliasWordPiece<'_>],
+    start_word: usize,
+) -> bool {
+    let Some(sentence) = pieces.get(start_word).map(|piece| piece.sentence) else {
+        return false;
+    };
+    let previous_word = start_word
+        .checked_sub(1)
+        .and_then(|idx| pieces.get(idx))
+        .map(|piece| piece.text);
+    previous_word == Some("into")
+        && pieces[..start_word - 1]
+            .iter()
+            .rev()
+            .take_while(|piece| piece.sentence == sentence)
+            .take(3)
+            .any(|piece| piece.text == "meld")
 }
 
 fn source_alias_occurrence_is_created_token_name_lexed(
@@ -2579,6 +2633,15 @@ fn try_parse_labeled_line_dispatch(
     line: &PreprocessedLine,
     allow_unsupported: bool,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
+    // "Max speed — <trigger>" is gated on having max speed (CR 702.179); the
+    // dedicated max-speed line family inserts that intervening-if, so do not
+    // claim the trigger here as a presentation-only ability word.
+    if let Some((label, _, body_tokens)) = split_label_prefix_lexed(&line.tokens)
+        && label.eq_ignore_ascii_case("max speed")
+        && line_starts_with_trigger_intro_tokens(body_tokens)
+    {
+        return Ok(None);
+    }
     // Prefer the authored token stream for the narrow labeled trigger whose
     // event is itself a source-qualified triggered-ability event.  Generic
     // preprocessing is allowed to strip presentation labels and rewrite
@@ -2799,6 +2862,11 @@ fn try_parse_labeled_line_dispatch(
                 triggered.chosen_option =
                     document_grammar::parse_chosen_option_context_tokens(label_tokens);
             }
+            // "Max speed — Whenever ..." only triggers while you have max
+            // speed; the label is a condition, not just presentation.
+            if triggered.chosen_option.is_none() && max_speed_chosen_option.is_some() {
+                triggered.chosen_option = max_speed_chosen_option.clone();
+            }
             if looks_like_ability_word_label(label_tokens, preserve_as_choice_label) {
                 triggered.presentation = trigger_presentation_from_preprocessed_line(line)
                     .or_else(|| Some(trigger_presentation(label_tokens, &label)));
@@ -2818,6 +2886,11 @@ fn try_parse_labeled_line_dispatch(
             if preserve_as_choice_label && !is_case_ability_label(label_tokens) {
                 triggered.chosen_option =
                     document_grammar::parse_chosen_option_context_tokens(label_tokens);
+            }
+            // "Max speed — Whenever ..." only triggers while you have max
+            // speed; the label is a condition, not just presentation.
+            if triggered.chosen_option.is_none() && max_speed_chosen_option.is_some() {
+                triggered.chosen_option = max_speed_chosen_option.clone();
             }
             if looks_like_ability_word_label(label_tokens, preserve_as_choice_label) {
                 triggered.presentation = trigger_presentation_from_preprocessed_line(line)
@@ -5147,10 +5220,14 @@ fn rewrite_overload_target_tokens(
     tokens
         .iter()
         .map(|token| {
+            // CR 702.96b: every instance of "target" in the spell's text
+            // becomes "each". Match the recorded spans, and fall back to the
+            // word itself for token streams re-lexed with different spans.
             if payload
                 .target_spans
                 .iter()
                 .any(|target_span| target_span == &token.span)
+                || token.is_word("target")
             {
                 OwnedLexToken::word("each", token.span)
             } else {
@@ -5178,6 +5255,10 @@ fn rewrite_overload_recognized_line(
                 .iter()
                 .map(|group| rewrite_overload_target_tokens(group, payload))
                 .collect();
+            // Some statement programs reread the authored stream; keep it in
+            // step with the overloaded "each" wording (Winds of Abandon).
+            statement.info.source_tokens =
+                rewrite_overload_target_tokens(&statement.info.source_tokens, payload);
             statement.text = render_token_slice(&statement.parse_tokens)
                 .trim()
                 .to_string();

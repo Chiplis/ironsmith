@@ -1,5 +1,6 @@
 //! Exile a chosen object, then grant permission to cast or play it from exile.
 
+use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_single_object_for_effect};
@@ -41,6 +42,10 @@ impl EffectExecutor for ExileThenGrantPlayEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
         let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
         // A delayed effect tracks the original object, not the card's new
         // incarnation after a zone change. There is nothing left to exile.
@@ -55,27 +60,32 @@ impl EffectExecutor for ExileThenGrantPlayEffect {
         };
         let additional_effects = ctx.additional_replacement_effects_snapshot();
 
-        let outcome = crate::effects::zones::apply_zone_change_with_additional_effects(
-            game,
-            target_id,
-            from_zone,
-            Zone::Exile,
-            crate::events::cause::EventCause::from_effect(ctx.source, ctx.controller),
-            ctx.decision_maker,
-            &additional_effects,
-        );
+        let receipt = crate::effects::zones::apply_zone_change_with_context_and_additional_effects(
+    game,
+    target_id,
+    from_zone,
+    Zone::Exile,
+    ctx.cause.clone(),
+    ctx,
+    &additional_effects
+)?;
 
-        let crate::events::processing::EventOutcome::Proceed(result) = outcome else {
-            return Ok(EffectOutcome::count(0));
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        let arrived = match &receipt.original {
+            crate::events::processing::EventOutcome::Proceed(change) => change.new_object_ids.clone(),
+            crate::events::processing::EventOutcome::Replaced => {
+                let ids = game.take_zone_change_results(target_id);
+                if !ids.is_empty() { game.record_zone_change_results(target_id, ids.clone()); }
+                ids
+            }
+            _ => Vec::new(),
         };
-        if result.final_zone != Zone::Exile {
-            return Ok(EffectOutcome::count(0));
-        }
-        if result.new_object_ids.is_empty() {
-            return Ok(EffectOutcome::count(0));
-        }
+        // Grant only to this instruction's actual arrivals still in exile;
+        // never follow a later object incarnation by stable identity.
+        let exiled_ids = arrived.into_iter().filter(|id| game.object(*id)
+            .is_some_and(|card| card.zone == Zone::Exile)).collect::<Vec<_>>();
 
-        for &exiled_id in &result.new_object_ids {
+        for &exiled_id in &exiled_ids {
             let grant_source = match self.duration {
                 GrantDuration::UntilYourNextTurn => GrantSource::until_player_next_turn_start(
                     ctx.source,
@@ -112,7 +122,15 @@ impl EffectExecutor for ExileThenGrantPlayEffect {
             }
         }
 
-        Ok(EffectOutcome::with_objects(result.new_object_ids))
+        let original = if exiled_ids.is_empty() { EffectOutcome::count(0) }
+            else { EffectOutcome::with_objects(exiled_ids) };
+        // Permissions are part of the original compound instruction.
+        crate::effects::zones::finish_zone_change_receipts(game, ctx, original, vec![(target_id, receipt)])
+        })();
+        let pending = ctx.decision_maker.awaiting_choice();
+        if pending || instruction.is_err() { *game = checkpoint; context_checkpoint.restore(ctx); }
+        if pending { return instruction.map(|_| EffectOutcome::count(0)); }
+        instruction
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -181,4 +199,96 @@ mod tests {
                 .is_empty()
         );
     }
+}
+
+#[cfg(test)]
+mod replacement_exile_grant_owner_contract_tests {
+    use super::*;
+    use crate::card::CardBuilder;
+    use crate::decision::DecisionMaker;
+    use crate::effect::{Effect, Value};
+    use crate::ids::{CardId, ObjectId, PlayerId, StableId};
+    use crate::object::CounterType;
+    use crate::replacement::{ReplacementAction, ReplacementEffect};
+    use crate::snapshot::ObjectSnapshot;
+    use crate::target::ObjectFilter;
+    use crate::types::CardType;
+    struct Answers { target: StableId, permission_player: PlayerId, pause: bool, pending: bool, calls: usize }
+    impl DecisionMaker for Answers {
+        fn decide_boolean(&mut self, game: &GameState, _: &crate::decisions::context::BooleanContext) -> bool {
+            self.calls += 1;
+            let arrival = game.find_object_by_stable_id(self.target).unwrap();
+            assert_eq!(game.object(arrival).unwrap().zone, Zone::Exile);
+            assert!(game.effect_store.grant_registry.card_can_play_from_zone(game, arrival, Zone::Exile, self.permission_player),
+                "the original exile's permission is complete before added actions");
+            self.pending = self.pause; !self.pending
+        }
+        fn awaiting_choice(&self) -> bool { self.pending }
+    }
+    fn card(game: &mut GameState, owner: PlayerId, zone: Zone) -> ObjectId {
+        game.create_object_from_card(&CardBuilder::new(CardId::new(), "Exile grant fixture")
+            .card_types(vec![CardType::Artifact]).build(), owner, zone)
+    }
+    fn check(mode: u8) {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let parent = card(&mut game, alice, Zone::Battlefield);
+        let source = card(&mut game, bob, Zone::Battlefield);
+        let target = card(&mut game, alice, Zone::Hand);
+        let stable = game.object(target).unwrap().stable_id;
+        let sentinel = ObjectSnapshot::from_object(game.object(parent).unwrap(), &game);
+        let effects = match mode {
+            1 => vec![Effect::gain_life(3), Effect::lose_life(Value::X)],
+            3 => vec![Effect::new(crate::effects::PutCountersEffect::new(CounterType::PlusOnePlusOne, 1, ChooseSpec::tagged("it"))),
+                Effect::may(vec![Effect::gain_life(0)])],
+            _ => vec![Effect::gain_life(3), Effect::may(vec![Effect::gain_life(4)])],
+        };
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(source, bob,
+            crate::events::zones::matchers::WouldChangeZoneMatcher::new(ObjectFilter::specific(target), Some(Zone::Hand), Some(Zone::Exile)),
+            ReplacementAction::Additionally(effects)));
+        game.take_pending_trigger_events(); let before_ids = game.next_object_id_counter();
+        let mut dm = Answers { target: stable, permission_player: alice, pause: mode == 2, pending: false, calls: 0 };
+        let mut ctx = ExecutionContext::new(parent, alice, &mut dm); ctx.set_tagged_objects("it", vec![sentinel.clone()]);
+        let effect = ExileThenGrantPlayEffect::new(ChooseSpec::SpecificObject(target), PlayerFilter::You, GrantDuration::Forever);
+        let result = effect.execute(&mut game, &mut ctx);
+        if mode == 1 { assert!(matches!(result, Err(ExecutionError::UnresolvableValue(_)))); }
+        else if mode == 2 { assert!(ctx.decision_maker.awaiting_choice()); assert!(result.unwrap().events.is_empty()); }
+        else {
+            let outcome = result.unwrap(); assert_eq!(outcome.objects().unwrap().len(), 1);
+            let arrival = outcome.objects().unwrap()[0]; assert_eq!(game.object(arrival).unwrap().zone, Zone::Exile);
+            assert!(game.effect_store.grant_registry.card_can_play_from_zone(&game, arrival, Zone::Exile, alice));
+            assert!(!game.effect_store.grant_registry.card_can_play_from_zone(&game, arrival, Zone::Exile, bob));
+            assert_eq!(game.player(alice).unwrap().life, 20); assert_eq!(game.player(bob).unwrap().life, if mode == 3 {20} else {27});
+            if mode == 3 {
+                assert_eq!(game.counter_count(arrival, CounterType::PlusOnePlusOne), 1);
+                assert!(outcome.execution_facts.iter().filter_map(|fact| match fact { crate::effect::ExecutionFact::AffectedObjectMemory(memory) => Some(memory.as_slice()), _ => None }).flatten().any(|memory| memory.object_id == arrival && memory.zone == Zone::Exile));
+                assert!(!outcome.affected_object_memory().unwrap_or(&[]).iter().any(|memory| memory.object_id == arrival && memory.zone == Zone::Exile), "auxiliary post-move counter memory is not original movement memory");
+            } else {
+                assert_eq!(outcome.events.iter().filter_map(|event| event.downcast::<crate::events::LifeGainEvent>())
+                    .map(|event| (event.player,event.amount)).collect::<Vec<_>>(), vec![(bob,3),(bob,4)]);
+            }
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+        }
+        assert_eq!(ctx.source, parent); assert_eq!(ctx.controller, alice);
+        assert_eq!(ctx.get_tagged_all("it").unwrap()[0].object_id, sentinel.object_id);
+        assert_eq!(game.counter_count(parent, CounterType::PlusOnePlusOne), 0);
+        if mode == 1 || mode == 2 {
+            assert_eq!(game.next_object_id_counter(), before_ids); assert_eq!(game.object(target).unwrap().zone, Zone::Hand);
+            assert!(game.exile.is_empty()); assert_eq!(game.player(bob).unwrap().life, 20);
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_some()); assert!(game.take_pending_trigger_events().is_empty());
+        }
+        drop(ctx);
+        if mode == 0 || mode == 3 { assert_eq!(dm.calls, 1); }
+        if mode == 2 {
+            assert_eq!(dm.calls, 1); dm.pause = false; dm.pending = false;
+            let mut ctx = ExecutionContext::new(parent, alice, &mut dm);
+            let outcome = effect.execute(&mut game, &mut ctx).unwrap(); assert_eq!(outcome.objects().unwrap().len(), 1);
+            assert_eq!(game.player(bob).unwrap().life, 27); assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+            assert!(!ctx.decision_maker.awaiting_choice()); drop(ctx); assert_eq!(dm.calls, 2);
+        }
+    }
+    #[test] fn additions_see_permissions_and_preserve_original_summary() { check(0); }
+    #[test] fn error_restores_exile_permissions_and_resources() { check(1); }
+    #[test] fn pending_replays_entire_exile_and_grant() { check(2); }
+    #[test] fn addition_binds_arrival_and_returns_counter_facts() { check(3); }
 }

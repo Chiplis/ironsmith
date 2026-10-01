@@ -69,7 +69,7 @@ fn cast_by(caster: PlayerId) -> (Vec<usize>, Zone) {
         .unwrap()
         .mana_pool
         .add(ManaSymbol::Red, 1);
-    let action = compute_legal_actions(&game, caster)
+    let action = compute_legal_actions(&game, caster).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))
         .expect("castable");

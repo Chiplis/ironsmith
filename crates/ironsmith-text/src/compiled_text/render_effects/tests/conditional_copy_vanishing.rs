@@ -49,7 +49,7 @@ fn entering_copy_adds_vanishing_only_when_chosen_source_lacks_it() {
         let object = game.create_object_from_definition(&definition, alice, Zone::Hand);
         let mut decisions = ChooseLastCopyOption;
         let entered = game
-            .move_object_with_etb_processing_with_dm(object, Zone::Battlefield, &mut decisions)
+            .move_object_with_etb_processing_with_dm(object, Zone::Battlefield, &mut decisions).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
             .unwrap();
         assert_eq!(
             game.current_name(entered.new_id).as_deref(),
@@ -61,7 +61,7 @@ fn entering_copy_adds_vanishing_only_when_chosen_source_lacks_it() {
                 second,
                 Zone::Battlefield,
                 &mut ChooseLastCopyOption,
-            )
+            ).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
             .unwrap()
             .new_id;
         assert_eq!(
@@ -136,7 +136,7 @@ fn conditional_copy_additions_match_the_chosen_source() {
                 object,
                 Zone::Battlefield,
                 &mut ChooseLastCopyOption,
-            )
+            ).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
             .unwrap();
         assert_eq!(game.current_name(entered.new_id).as_deref(), Some(name));
         assert_eq!(
@@ -167,7 +167,7 @@ fn copied_vanishing_decays_on_its_controllers_upkeep_and_only_last_time_counter(
             source,
             Zone::Battlefield,
             &mut ChooseLastCopyOption,
-        )
+        ).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     let upkeep = |player| {
@@ -266,7 +266,7 @@ fn declining_conditional_copy_does_not_add_vanishing() {
     game.create_object_from_definition(&original, alice, Zone::Battlefield);
     let source = game.create_object_from_definition(&definition, alice, Zone::Hand);
     let source = game
-        .move_object_with_etb_processing_with_dm(source, Zone::Battlefield, &mut DeclineCopyOption)
+        .move_object_with_etb_processing_with_dm(source, Zone::Battlefield, &mut DeclineCopyOption).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     assert_eq!(
@@ -285,4 +285,13 @@ fn declining_conditional_copy_does_not_add_vanishing() {
         crate::provenance::ProvNodeId::default(),
     );
     assert!(crate::triggers::check_triggers(&game, &upkeep).is_empty());
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: crate::game_state::EntryCommitResult)
+    -> Option<crate::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

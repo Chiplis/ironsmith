@@ -1066,7 +1066,7 @@ pub(super) fn parse_oracle_stubborn_denial_ferocious_free_cast_prompts_for_targe
         .expect("generated-style Stubborn Denial block should parse");
     let denial_id = game.create_object_from_definition(&stubborn_denial, alice, Zone::Hand);
 
-    let cast_action = crate::decision::compute_legal_actions(&game, alice)
+    let cast_action = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -1144,7 +1144,7 @@ pub(super) fn generated_registry_stubborn_denial_ferocious_free_cast_prompts_for
         .expect("generated Stubborn Denial should compile");
     let denial_id = game.create_object_from_definition(&stubborn_denial, alice, Zone::Hand);
 
-    let cast_action = crate::decision::compute_legal_actions(&game, alice)
+    let cast_action = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(

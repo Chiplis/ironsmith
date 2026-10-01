@@ -59,7 +59,7 @@ fn setup(players: usize, lands: usize) -> GameState {
 fn announce(g: &mut GameState, def: &CardDefinition, actor: u8, dm: &mut Choices) -> Result<(TriggerQueue,Value),String> {
     g.turn.priority_player=Some(PlayerId(actor));
     let source=g.create_object_from_definition(def,PlayerId(actor),Zone::Hand);
-    let action=compute_legal_actions(g,PlayerId(actor)).into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source)).ok_or("intended cast unavailable")?;
+    let action=compute_legal_actions(g,PlayerId(actor)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source)).ok_or("intended cast unavailable")?;
     let mana=g.player(PlayerId(actor)).unwrap().mana_pool.total();
     let mut q=TriggerQueue::new();
     let mut state=PriorityLoopState::new(g.players_in_game());
@@ -105,14 +105,14 @@ fn run(defs:&HashMap<String,CardDefinition>,x:usize,resources:usize)->Result<(Va
  let cast_evidence=cast(&mut g,&defs["Conflagrate"],0,&mut dm)?;
  if cast_evidence["mana_paid"]!=1+2*x||g.damage_on(guard)!=x as u32||!cast_evidence["resolution_error"].is_null(){return Err(format!("normal cast control failed:{cast_evidence},damage{}",g.damage_on(guard)));}
  let source=*g.player(PlayerId(0)).unwrap().graveyard.iter().find(|id|g.object(**id).is_some_and(|o|o.name=="Conflagrate")).ok_or("actual resolved Conflagrate absent from graveyard")?;
- let actions=compute_legal_actions(&g,PlayerId(0));let offered=actions.iter().any(|a|matches!(a,LegalAction::CastSpell{spell_id,from_zone:Zone::Graveyard,..}if *spell_id==source));
+ let actions=compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state");let offered=actions.iter().any(|a|matches!(a,LegalAction::CastSpell{spell_id,from_zone:Zone::Graveyard,..}if *spell_id==source));
  let check=ironsmith::costs::CostCheckContext::new(source,PlayerId(0)).with_x(0).with_reason(ironsmith::costs::PaymentReason::CastSpell);
  let cost_checks:Vec<_>=defs["Conflagrate"].alternative_casts.iter().flat_map(|a|a.non_mana_costs()).map(|c|format!("{:?}",ironsmith::costs::can_pay_with_check_context(&*c.0,&g,&check))).collect();
  let state=json!({"mana_available":g.player(PlayerId(0)).unwrap().mana_pool.total(),"source_graveyard":true,"legal_actions":format!("{actions:?}"),"flashback_cost_checks_intended_x_zero":cost_checks});
  let mut control=Choices{name:"Firebolt".into(),x:0,targets:vec![Target::Object(guard)],discards:vec![],chosen_count:0,trace:vec![]};
  let firebolt=cast(&mut g,&defs["Firebolt"],0,&mut control)?;if firebolt["mana_paid"]!=1||g.damage_on(guard)!=x as u32+2{return Err(format!("Firebolt normal control failed:{firebolt}"));}
  let bolt=*g.player(PlayerId(0)).unwrap().graveyard.iter().find(|id|g.object(**id).is_some_and(|o|o.name=="Firebolt")).ok_or("actual Firebolt absent from graveyard")?;
- let bolt_action=compute_legal_actions(&g,PlayerId(0)).into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,from_zone:Zone::Graveyard,..}if *spell_id==bolt)).ok_or("fixed Firebolt flashback control unavailable")?;
+ let bolt_action=compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,from_zone:Zone::Graveyard,..}if *spell_id==bolt)).ok_or("fixed Firebolt flashback control unavailable")?;
  let mut q=TriggerQueue::new();let mut st=PriorityLoopState::new(g.players_in_game());let before=g.player(PlayerId(0)).unwrap().mana_pool.total();
  let mut progress=apply_priority_response_with_dm(&mut g,&mut q,&mut st,&PriorityResponse::PriorityAction(bolt_action),&mut control).map_err(|e|e.to_string())?;
  for _ in 0..24 {if st.pending_cast.is_none()&&!g.stack.is_empty(){break;}let GameProgress::NeedsDecisionCtx(ctx)=progress else{return Err(format!("flashback control stopped:{progress:?}"));};progress=apply_decision_context_with_dm(&mut g,&mut q,&mut st,&ctx,&mut control).map_err(|e|e.to_string())?;}

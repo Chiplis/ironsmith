@@ -132,7 +132,7 @@ fn rule_113_6m_legal_menu_matches_source_zones() {
             Zone::Library,
         ] {
             let (game, alice, source) = setup(&def, zone);
-            let offered = compute_legal_actions(&game, alice).iter().any(
+            let offered = compute_legal_actions(&game, alice).expect("fixture has complete replacement state").iter().any(
                 |a| matches!(a, LegalAction::ActivateAbility { source: id, .. } if *id == source),
             );
             assert_eq!(offered, expected.contains(&zone), "{name} in {zone:?}");
@@ -152,7 +152,7 @@ fn rule_113_6m_activations_pay_and_resolve_from_the_required_zone() {
         let (mut game, alice, source) = setup(&def, start_zone);
         let stable_id = game.object(source).unwrap().stable_id;
         let before_mana = game.player(alice).unwrap().mana_pool.total();
-        let action = compute_legal_actions(&game, alice)
+        let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .into_iter()
             .find(|a| matches!(a, LegalAction::ActivateAbility { source: id, .. } if *id == source))
             .expect(name);
@@ -254,7 +254,7 @@ fn compound_exile_cost_requires_two_other_matching_cards_in_your_graveyard() {
         .unwrap();
     game.move_object_by_effect(other, Zone::Hand).unwrap();
     assert!(
-        !compute_legal_actions(&game, alice)
+        !compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .iter()
             .any(|a| matches!(a, LegalAction::ActivateAbility { source: id, .. } if *id == source)),
         "the source is not one of the two other cards, and a copy in hand does not qualify"
@@ -262,7 +262,7 @@ fn compound_exile_cost_requires_two_other_matching_cards_in_your_graveyard() {
     let bob = game.players[1].id;
     game.create_object_from_definition(&def, bob, Zone::Graveyard);
     assert!(
-        !compute_legal_actions(&game, alice)
+        !compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .iter()
             .any(|a| matches!(a, LegalAction::ActivateAbility { source: id, .. } if *id == source)),
         "an opponent's copy cannot pay the cost"

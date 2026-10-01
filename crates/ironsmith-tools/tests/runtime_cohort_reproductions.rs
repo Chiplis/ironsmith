@@ -59,7 +59,7 @@ fn setup(players: usize, lands: usize) -> GameState {
 fn cast(g: &mut GameState, def: &CardDefinition, actor: u8, dm: &mut Choices) -> Result<Value,String> {
     g.turn.priority_player=Some(PlayerId(actor));
     let source=g.create_object_from_definition(def,PlayerId(actor),Zone::Hand);
-    let action=compute_legal_actions(g,PlayerId(actor)).into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source)).ok_or("intended cast unavailable")?;
+    let action=compute_legal_actions(g,PlayerId(actor)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source)).ok_or("intended cast unavailable")?;
     let mana=g.player(PlayerId(actor)).unwrap().mana_pool.total();
     let mut q=TriggerQueue::new();
     let mut state=PriorityLoopState::new(g.players_in_game());
@@ -151,7 +151,7 @@ fn run(defs:&HashMap<String,CardDefinition>,name:&str,mode:&str)->Result<(Value,
     if g.is_summoning_sick(source)!=(mode=="source_new"){return Err("source sickness fixture invalid".into());}
     let before=json!({"source_tapped":g.is_tapped(source),"source_summoning_sick":g.is_summoning_sick(source),"companion_tapped":companion.map(|id|g.is_tapped(id)),"companion_summoning_sick":companion.map(|id|g.is_summoning_sick(id)),"hand":g.player(PlayerId(0)).unwrap().hand.len(),"library":g.player(PlayerId(0)).unwrap().library.len(),"life":g.players.iter().map(|p|p.life).collect::<Vec<_>>()});
     g.turn.priority_player=Some(PlayerId(0));
-    let actions:Vec<_>=compute_legal_actions(&g,PlayerId(0)).into_iter().filter(|a|matches!(a,LegalAction::ActivateAbility{source:id,..}if *id==source)).collect();
+    let actions:Vec<_>=compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state").into_iter().filter(|a|matches!(a,LegalAction::ActivateAbility{source:id,..}if *id==source)).collect();
     let offered=!actions.is_empty();let mut response=Value::Null;
     let error=if let Some(action)=actions.first(){match activate(&mut g,action.clone(),&mut dm){Ok(e)=>{response=e;None},Err(e)=>Some(e)}}else{None};
     let actual=json!({"activation_offered":offered,"activation_error":error,"source_tapped":g.is_tapped(source),"companion_tapped":companion.map(|id|g.is_tapped(id)),"companion_zone":companion.and_then(|id|g.object(id).map(|o|format!("{:?}",o.zone)))});

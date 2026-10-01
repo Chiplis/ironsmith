@@ -371,10 +371,11 @@ fn xt3_exploit_looks_back_only_when_source_is_sacrificed_by_that_exploit() {
             ))
             .build();
         let hand = g.create_object_from_definition(&def, A, Zone::Hand);
-        let id = g
-            .move_object_with_etb_processing(hand, Zone::Battlefield)
-            .unwrap()
-            .new_id;
+        let receipt = g.move_object_with_etb_processing(hand, Zone::Battlefield)
+            .expect("entry execution must succeed in this scenario");
+        assert!(!receipt.pending);
+        assert!(receipt.programs.is_empty(), "fixture must finish added entry programs");
+        let id = receipt.original.into_result().expect("the fixture must enter").new_id;
         g.create_object_from_definition(&creature("Victim", 1).build(), A, Zone::Battlefield);
         let mut q = TriggerQueue::new();
         drain_pending_trigger_events(&mut g, &mut q);

@@ -49,7 +49,7 @@ impl EffectExecutor for DoubleManaPoolEffect {
         ].into_iter().flat_map(|symbol| {
             std::iter::repeat_n(symbol, player.mana_pool.amount(symbol) as usize)
         }).collect::<Vec<_>>();
-        let added = credit_mana_symbols_from_context(game, player_id, symbols, ctx);
+        let added = credit_mana_symbols_from_context(game, player_id, symbols, ctx)?;
 
         Ok(mana_added_value_outcome(ctx, player_id, added))
     }

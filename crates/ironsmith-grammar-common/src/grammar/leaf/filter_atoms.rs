@@ -316,6 +316,7 @@ fn subtype_surface_map() -> &'static HashMap<String, Subtype> {
             ("mice", Subtype::Mouse),
             ("ouphe", Subtype::Ouphe),
             ("oxen", Subtype::Ox),
+            ("pegasi", Subtype::Pegasus),
             ("spacecraft", Subtype::Spacecraft),
         ] {
             surfaces.insert(surface.to_string(), subtype);

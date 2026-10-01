@@ -141,6 +141,19 @@ pub(super) fn post_rule_targeted_object_delayed_leave(
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. }) => {
             Some(tag.clone())
         }
+        // A delayed watcher's explicit target declaration ("Whenever target
+        // creature deals combat damage ... this turn").
+        EffectAst::TagAffected { effect, tag }
+            if matches!(
+                effect.as_ref(),
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::TargetOnly { .. },
+                    ..
+                })
+            ) =>
+        {
+            Some(tag.clone())
+        }
         _ => None,
     }) else {
         return Ok(None);

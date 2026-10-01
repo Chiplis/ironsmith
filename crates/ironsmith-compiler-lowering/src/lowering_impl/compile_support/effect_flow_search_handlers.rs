@@ -1283,10 +1283,33 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 return Ok(Some(compiled));
             }
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-            let (inner_effects, inner_choices) =
+            let (inner_effects, mut inner_choices) =
                 compile_effects_in_iterated_object_context(effects, ctx)?;
-            let effect = Effect::for_each(resolved_filter, inner_effects);
-            (vec![effect], inner_choices)
+            // "put a -1/-1 counter on each creature target player controls"
+            // (Contagion Engine): the iteration filter's own player target
+            // must be declared, since the loop exposes no target of its own.
+            let mut filter_player_targets = Vec::new();
+            super::effect_dispatch::collect_object_filter_player_target_choices(
+                &resolved_filter,
+                &mut filter_player_targets,
+            );
+            let mut compiled = Vec::new();
+            for choice in filter_player_targets {
+                let reuses_prior_player_target =
+                    ctx.last_player_filter.as_ref().is_some_and(|player| {
+                        super::effect_dispatch::player_target_choice_matches_filter(&choice, player)
+                    });
+                if !inner_choices.iter().any(|existing| existing == &choice)
+                    && !reuses_prior_player_target
+                {
+                    compiled.push(Effect::new(crate::effects::TargetOnlyEffect::new(
+                        choice.clone(),
+                    )));
+                    push_choice(&mut inner_choices, choice);
+                }
+            }
+            compiled.push(Effect::for_each(resolved_filter, inner_effects));
+            (compiled, inner_choices)
         }
         EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, effects }) => {
             let effective_tag = if let Some(concrete) = ctx

@@ -78,7 +78,8 @@ fn check_destroyed_count(protection: u8) {
     }
     ctx.snapshot_targets(&game);
     for effect in definition.spell_effect.as_ref().unwrap() {
-        crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
+        let outcome = crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
+        eprintln!("destroyed-count protection={protection} effect={effect:#?} outcome={outcome:#?}");
     }
     assert_eq!(
         game.player(alice).unwrap().life,

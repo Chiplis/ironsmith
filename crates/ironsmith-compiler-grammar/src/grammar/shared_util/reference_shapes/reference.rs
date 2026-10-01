@@ -93,6 +93,8 @@ pub(super) fn filter_keyword_constraint_for_words(
         Some(Marker("disturb"))
     } else if permission_shapes::exact_words(words, &["flashback"]) {
         Some(Marker("flashback"))
+    } else if permission_shapes::exact_words(words, &["awaken"]) {
+        Some(Marker("awaken"))
     } else if permission_shapes::exact_words(words, &["eternalize"]) {
         Some(Marker("eternalize"))
     } else if permission_shapes::exact_words(words, &["embalm"]) {
@@ -106,6 +108,8 @@ pub(super) fn filter_keyword_constraint_for_words(
         Some(Marker("suspend"))
     } else if permission_shapes::exact_words(words, &["toxic"]) {
         Some(Marker("toxic"))
+    } else if permission_shapes::exact_words(words, &["modular"]) {
+        Some(Marker("modular"))
     } else if permission_shapes::exact_words(words, &["doctor's", "companion"])
         || permission_shapes::exact_words(words, &["doctors", "companion"])
     {

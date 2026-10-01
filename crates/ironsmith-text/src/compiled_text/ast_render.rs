@@ -3340,18 +3340,15 @@ fn modeled_conditioned_source_anthem(ability: &Ability) -> Option<(i32, i32, &Co
 /// recognize only the exact otherwise-empty filter here.
 fn describe_structural_noncombat_source_anthem(ability: &Ability, subject: &str) -> Option<String> {
     let (power, toughness, condition) = modeled_conditioned_source_anthem(ability)?;
-    let Condition::Not(inner) = condition else {
+    let Condition::TargetMatches(filter) = condition else {
         return None;
     };
-    let Condition::TargetMatches(filter) = inner.as_ref() else {
-        return None;
-    };
-    if !filter.attacking || !filter.blocking {
+    if !filter.nonattacking || !filter.nonblocking {
         return None;
     }
     let mut remainder = filter.clone();
-    remainder.attacking = false;
-    remainder.blocking = false;
+    remainder.nonattacking = false;
+    remainder.nonblocking = false;
     if remainder != ObjectFilter::default() {
         return None;
     }
@@ -3700,6 +3697,431 @@ mod noncombat_source_anthem_tests {
     const LINE: &str = "This creature gets +2/+0 as long as it isn't attacking or blocking.";
 
     #[test]
+    fn entering_attack_retains_original_attacked_types_across_type_change() {
+        struct ChooseWalker;
+        impl crate::decision::DecisionMaker for ChooseWalker {
+            fn decide_options(&mut self, _: &crate::GameState,
+                ctx: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> {
+                assert_eq!(ctx.options.len(), 2);
+                vec![1]
+            }
+        }
+        let creature = crate::compiler_test_support::CardDefinitionBuilder::new(
+            crate::CardId::new(), "Entry type-history attacker",
+        ).token().card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2)).build();
+        for path in ["primitive", "ordinary token", "configured token", "copied token", "configured copy", "movement"] {
+        for initially_both in [false, true] {
+            let types = if initially_both {vec![CardType::Planeswalker, CardType::Battle]}
+                else {vec![CardType::Planeswalker]};
+            let target_definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+                crate::CardId::new(), "Entry type-history target",
+            ).card_types(types).subtypes(if initially_both {vec![Subtype::Siege]} else {vec![]}).build();
+            let mut game = crate::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = crate::PlayerId::from_index(0);
+            let bob = crate::PlayerId::from_index(1);
+            game.turn.phase = crate::game_state::Phase::Combat;
+            let source = if path == "movement" {
+                let card = crate::compiler_test_support::CardDefinitionBuilder::new(
+                    crate::CardId::new(), "Moved entry-history creature",
+                ).card_types(vec![CardType::Creature])
+                    .power_toughness(crate::card::PowerToughness::fixed(2, 2)).build();
+                game.create_object_from_definition(&card, alice, Zone::Hand)
+            } else {game.create_object_from_definition(&creature, alice, Zone::Battlefield)};
+            let target = game.create_object_from_definition(&target_definition, bob, Zone::Battlefield);
+            if initially_both {assert!(game.set_battle_protector(target, alice));}
+            game.refresh_continuous_state();
+            let mut dm = ChooseWalker;
+            let mut ctx = crate::effects::EffectContext::new(source, alice, &mut dm);
+            let attacker = if path == "primitive" {
+                crate::effects::execute_effect(&mut game,
+                    &Effect::new(crate::effects::EnterAttackingEffect::new(ChooseSpec::Source)), &mut ctx).unwrap();
+                source
+            } else if path == "movement" {
+                let moved = crate::effects::MoveToZoneEffect::new(ChooseSpec::Source, Zone::Battlefield, false).attacking();
+                let outcome = crate::effects::execute_effect(&mut game, &Effect::new(moved), &mut ctx).unwrap();
+                assert_eq!(outcome.output_objects().len(), 1);
+                let moved_id = outcome.output_objects()[0];
+                assert_ne!(moved_id, source, "zone change creates a new object identity");
+                moved_id
+            } else if path == "copied token" || path == "configured copy" {
+                let mut copy = crate::effects::CreateTokenCopyEffect::one(ChooseSpec::SpecificObject(source)).attacking(true);
+                if path == "configured copy" {
+                    copy = copy.attacking_player_or_planeswalker_controlled_by(PlayerFilter::Specific(bob));
+                }
+                let outcome = crate::effects::execute_effect(&mut game, &Effect::new(copy), &mut ctx).unwrap();
+                assert_eq!(outcome.output_objects().len(), 1);
+                outcome.output_objects()[0]
+            } else {
+                let mut token = crate::effects::CreateTokenEffect::one(creature.clone()).attacking();
+                if path == "configured token" {
+                    token = token.attacking_player_or_planeswalker_controlled_by(PlayerFilter::Specific(bob));
+                }
+                let outcome = crate::effects::execute_effect(&mut game, &Effect::new(token), &mut ctx).unwrap();
+                assert_eq!(outcome.output_objects().len(), 1);
+                outcome.output_objects()[0]
+            };
+            assert_eq!(game.combat.as_ref().unwrap().attackers[0].target,
+                crate::combat_state::AttackTarget::Planeswalker(target));
+            // Do not refresh here: the next real instruction changes the target's types.
+            let remove_battle = crate::effects::ApplyContinuousEffect::new(
+                crate::continuous::EffectTarget::Specific(target),
+                crate::continuous::Modification::RemoveCardTypes(vec![CardType::Battle]),
+                Until::EndOfTurn,
+            );
+            crate::effects::execute_effect(&mut game, &Effect::new(remove_battle), &mut ctx).unwrap();
+            game.refresh_continuous_state();
+            assert!(game.current_has_card_type(target, CardType::Planeswalker));
+            assert!(!game.current_has_card_type(target, CardType::Battle));
+            let actual = &game.combat.as_ref().unwrap().attackers[0].target;
+            if initially_both {
+                assert!(matches!(actual, crate::combat_state::AttackTarget::Nothing { .. }),
+                    "original both-type target losing battle is removed when protector differs from controller; got {actual:?}; path={path}");
+            } else {
+                assert_eq!(actual, &crate::combat_state::AttackTarget::Planeswalker(target));
+            }
+            assert!(crate::combat_state::is_attacking(game.combat.as_ref().unwrap(), attacker));
+            assert_eq!(game.object(attacker).unwrap().zone, Zone::Battlefield);
+            assert_eq!(game.object(target).unwrap().zone, Zone::Battlefield);
+        }
+        }
+    }
+
+    #[test]
+    fn token_attack_target_choice_preserves_role_cache_coherence() {
+        struct WarmChoice {calls: usize}
+        impl crate::decision::DecisionMaker for WarmChoice {
+            fn decide_options(&mut self, game: &crate::GameState,
+                ctx: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> {
+                assert_eq!(ctx.options.len(), 2);
+                self.calls += 1;
+                let entering = *game.battlefield.last().unwrap();
+                assert_eq!(game.current_characteristics(entering).unwrap().power, Some(4),
+                    "target chooser observes entering token before combat role commits");
+                vec![1]
+            }
+        }
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+            crate::CardId::new(), "Token choice combat-state probe",
+        ).token().card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+            .parse_text(LINE).unwrap();
+        for configured in [false, true] {
+            let mut game = crate::GameState::new(vec!["Alice".into(), "Bob".into(), "Carol".into()], 20);
+            let alice = crate::PlayerId::from_index(0);
+            let bob = crate::PlayerId::from_index(1);
+            let carol = crate::PlayerId::from_index(2);
+            game.turn.phase = crate::game_state::Phase::Combat;
+            let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+            let mut token = crate::effects::CreateTokenEffect::one(definition.clone()).attacking();
+            let expected = if configured {
+                let pw = crate::compiler_test_support::CardDefinitionBuilder::new(
+                    crate::CardId::new(), "Target choice planeswalker",
+                ).card_types(vec![CardType::Planeswalker]).build();
+                let target = game.create_object_from_definition(&pw, bob, Zone::Battlefield);
+                token = token.attacking_player_or_planeswalker_controlled_by(PlayerFilter::Specific(bob));
+                crate::combat_state::AttackTarget::Planeswalker(target)
+            } else {crate::combat_state::AttackTarget::Player(carol)};
+            let mut dm = WarmChoice {calls: 0};
+            let mut ctx = crate::effects::EffectContext::new(source, alice, &mut dm);
+            let outcome = crate::effects::execute_effect(&mut game, &Effect::new(token), &mut ctx).unwrap();
+            let created = outcome.output_objects();
+            assert_eq!(created.len(), 1);
+            let id = created[0];
+            assert_eq!(game.combat.as_ref().unwrap().attackers.len(), 1);
+            assert_eq!(game.combat.as_ref().unwrap().attackers[0].target, expected);
+            assert_eq!(game.current_characteristics(id).unwrap().power, Some(2),
+                "chosen token role invalidates characteristics warmed by chooser; configured={configured}");
+            assert_eq!(game.controller_of_id(id), Some(alice));
+            assert!(!game.is_tapped(id));
+            drop(ctx);
+            assert_eq!(dm.calls, 1);
+        }
+    }
+
+    #[test]
+    fn token_entry_roles_recalculate_noncombat_bonus() {
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+            crate::CardId::new(), "Token combat-state probe",
+        ).token().card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+            .parse_text(LINE).unwrap();
+        for role in ["ordinary attacking", "configured attacking", "blocking"] {
+            let mut game = crate::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = crate::PlayerId::from_index(0);
+            let bob = crate::PlayerId::from_index(1);
+            game.turn.phase = crate::game_state::Phase::Combat;
+            let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+            let mut token = crate::effects::CreateTokenEffect::one(definition.clone());
+            if role == "blocking" {
+                game.turn.active_player = bob;
+                let attacker = game.create_object_from_definition(&definition, bob, Zone::Battlefield);
+                game.combat = Some(crate::combat_state::CombatState::default());
+                game.combat.as_mut().unwrap().attackers.push(crate::combat_state::AttackerInfo {
+                    creature: attacker, target: crate::combat_state::AttackTarget::Player(alice),
+                });
+                token = token.blocking(ChooseSpec::SpecificObject(attacker));
+            } else {
+                token = token.attacking();
+                if role == "configured attacking" {
+                    token.attack_target_mode = Some(crate::effects::CopyAttackTargetMode::Player(PlayerFilter::Opponent));
+                }
+            }
+            let mut ctx = crate::effects::EffectContext::new_default(source, alice);
+            let outcome = crate::effects::execute_effect(&mut game, &Effect::new(token), &mut ctx).unwrap();
+            let created = outcome.output_objects();
+            assert_eq!(created.len(), 1, "role={role}");
+            let id = created[0];
+            let combat = game.combat.as_ref().unwrap();
+            if role == "blocking" {
+                assert!(crate::combat_state::is_blocking(combat, id));
+            } else {
+                assert!(crate::combat_state::is_attacking(combat, id));
+                assert_eq!(combat.attackers[0].target, crate::combat_state::AttackTarget::Player(bob));
+            }
+            assert_eq!(game.current_characteristics(id).unwrap().power, Some(2),
+                "committed token role must invalidate pre-role characteristics; role={role}");
+            assert_eq!(game.controller_of_id(id), Some(alice));
+            assert_eq!(game.object(id).unwrap().owner, alice);
+            assert_eq!(game.object(id).unwrap().zone, Zone::Battlefield);
+            assert!(!game.is_tapped(id));
+        }
+    }
+
+    #[test]
+    fn enter_attacking_waits_for_target_choice_before_committing() {
+        struct Answers {pause: bool, pending: bool, calls: usize}
+        impl crate::decision::DecisionMaker for Answers {
+            fn decide_options(&mut self, _: &crate::GameState,
+                ctx: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> {
+                assert_eq!(ctx.player, crate::PlayerId::from_index(0));
+                assert_eq!(ctx.options.len(), 2);
+                self.calls += 1;
+                self.pending = self.pause;
+                if self.pause {vec![]} else {vec![1]}
+            }
+            fn awaiting_choice(&self) -> bool {self.pending}
+        }
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+            crate::CardId::new(), "Pending entry combat-state probe",
+        ).card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+            .parse_text(LINE).unwrap();
+        let mut game = crate::GameState::new(vec!["Alice".into(), "Bob".into(), "Carol".into()], 20);
+        let alice = crate::PlayerId::from_index(0);
+        let carol = crate::PlayerId::from_index(2);
+        game.turn.phase = crate::game_state::Phase::Combat;
+        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        game.refresh_continuous_state();
+        assert_eq!(game.current_characteristics(source).unwrap().power, Some(4));
+        game.take_pending_trigger_events();
+        let effect = Effect::new(crate::effects::EnterAttackingEffect::new(ChooseSpec::Source));
+        let mut answers = Answers {pause: true, pending: false, calls: 0};
+        let mut ctx = crate::effects::EffectContext::new(source, alice, &mut answers);
+        let outcome = crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap();
+        assert!(ctx.decision_maker.awaiting_choice());
+        assert!(!game.combat.as_ref().is_some_and(|combat| crate::combat_state::is_attacking(combat, source)),
+            "unanswered attack-target prompt cannot commit its first-option fallback");
+        assert_eq!(game.current_characteristics(source).unwrap().power, Some(4));
+        assert!(outcome.events.is_empty());
+        assert!(game.take_pending_trigger_events().is_empty());
+        drop(ctx);
+        assert_eq!(answers.calls, 1);
+        answers.pause = false;
+        answers.pending = false;
+        let mut ctx = crate::effects::EffectContext::new(source, alice, &mut answers);
+        crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap();
+        assert!(!ctx.decision_maker.awaiting_choice());
+        let combat = game.combat.as_ref().unwrap();
+        assert_eq!(combat.attackers.len(), 1, "one entry commit after resumption");
+        assert_eq!(combat.attackers[0].target, crate::combat_state::AttackTarget::Player(carol));
+        assert_eq!(game.current_characteristics(source).unwrap().power, Some(2));
+        assert_eq!(game.object(source).unwrap().zone, Zone::Battlefield);
+        assert!(!game.is_tapped(source));
+    }
+
+    #[test]
+    fn enter_attacking_recalculates_warmed_bonus_and_preserves_entry_state() {
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+            crate::CardId::new(), "Entering combat-state probe",
+        ).card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+            .parse_text(LINE).unwrap();
+        for in_combat in [true, false] {
+            for active_controller in [true, false] {
+                for tapped in [false, true] {
+                    let mut game = crate::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+                    let alice = crate::PlayerId::from_index(0);
+                    let bob = crate::PlayerId::from_index(1);
+                    game.turn.phase = if in_combat {crate::game_state::Phase::Combat} else {crate::game_state::Phase::FirstMain};
+                    game.turn.step = if in_combat {Some(crate::game_state::Step::DeclareAttackers)} else {None};
+                    let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+                    let controller = if active_controller {alice} else {bob};
+                    game.set_current_controller(source, controller);
+                    if tapped {game.tap(source);}
+                    game.refresh_continuous_state();
+                    assert_eq!(game.current_characteristics(source).unwrap().power, Some(4), "warm just-entered nonattacking view");
+                    game.take_pending_trigger_events();
+                    let mut ctx = crate::effects::EffectContext::new_default(source, controller);
+                    let effect = Effect::new(crate::effects::EnterAttackingEffect::new(ChooseSpec::Source));
+                    let outcome = crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap();
+                    let expected_attacking = in_combat && active_controller;
+                    let attacking = game.combat.as_ref().is_some_and(|combat| crate::combat_state::is_attacking(combat, source));
+                    assert_eq!(attacking, expected_attacking);
+                    assert_eq!(game.current_characteristics(source).unwrap().power, Some(if expected_attacking {2} else {4}),
+                        "entry role must replace warmed characteristics; combat={in_combat}, active={active_controller}, tapped={tapped}");
+                    assert_eq!(game.is_tapped(source), tapped);
+                    assert_eq!(game.controller_of_id(source), Some(controller));
+                    assert_eq!(game.object(source).unwrap().owner, alice);
+                    assert_eq!(game.object(source).unwrap().zone, Zone::Battlefield);
+                    assert!(outcome.events.is_empty(), "entering attacking does not declare an attacker");
+                    assert!(game.take_pending_trigger_events().is_empty());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn turn_runner_endings_restore_warmed_noncombat_bonus() {
+        for vigilance in [false, true] {
+            let text = if vigilance {format!("Vigilance\n{LINE}")} else {LINE.to_string()};
+            let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+                crate::CardId::new(), "Combat-ending probe",
+            ).card_types(vec![CardType::Creature])
+                .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+                .parse_text(&text).unwrap();
+            for ending in ["ordinary", "end combat", "end turn"] {
+                let mut game = crate::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+                let alice = crate::PlayerId::from_index(0);
+                let bob = crate::PlayerId::from_index(1);
+                game.turn.phase = crate::game_state::Phase::Combat;
+                game.turn.step = Some(crate::game_state::Step::EndCombat);
+                let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+                game.remove_summoning_sickness(source);
+                let mut combat = crate::combat_state::CombatState::default();
+                let mut queue = crate::triggers::TriggerQueue::new();
+                let mut dm = crate::decision::AutoPassDecisionMaker;
+                crate::game_loop::apply_attacker_declarations_with_dm(&mut game, &mut combat, &mut queue,
+                    &[crate::decision::AttackerDeclaration {creature: source, target: crate::combat_state::AttackTarget::Player(bob)}], &mut dm).unwrap();
+                assert_eq!(game.current_characteristics(source).unwrap().power, Some(2), "warm attacking view");
+                let mut runner = crate::turn_runner::TurnRunner::from_state_for_sync(crate::turn_runner::TurnState::EndCombatPriority);
+                *runner.combat_mut() = combat;
+                if ending != "ordinary" {
+                    let effect = if ending == "end combat" {Effect::end_combat_phase()} else {Effect::end_turn()};
+                    let mut ctx = crate::effects::EffectContext::new_default(source, alice);
+                    crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap();
+                }
+                let action = runner.advance(&mut game, &mut queue).unwrap();
+                assert!(matches!(action, crate::turn_runner::TurnAction::Continue));
+                assert!(game.combat.as_ref().unwrap().attackers.is_empty());
+                assert_eq!(game.current_characteristics(source).unwrap().power, Some(4),
+                    "ending must discard warmed attacking characteristics; ending={ending}, vigilance={vigilance}");
+                assert_eq!(game.is_tapped(source), !vigilance);
+                assert_eq!(game.object(source).unwrap().zone, Zone::Battlefield);
+                assert_eq!(game.player(alice).unwrap().life, 20);
+                assert_eq!(game.player(bob).unwrap().life, 20);
+            }
+        }
+    }
+
+    #[test]
+    fn live_declaration_paths_recalculate_warmed_noncombat_bonus() {
+        for vigilance in [false, true] {
+            let text = if vigilance {format!("Vigilance\n{LINE}")} else {LINE.to_string()};
+            let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+                crate::CardId::new(), "Declaration-state probe",
+            ).card_types(vec![CardType::Creature])
+                .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+                .parse_text(&text).unwrap();
+            for attacking in [false, true] {
+                let mut game = crate::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+                let alice = crate::PlayerId::from_index(0);
+                let bob = crate::PlayerId::from_index(1);
+                let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+                let enemy = crate::CardDefinitionBuilder::new(crate::CardId::new(), "Enemy")
+                    .card_types(vec![CardType::Creature])
+                    .power_toughness(crate::card::PowerToughness::fixed(2, 2)).build();
+                let enemy = game.create_object_from_definition(&enemy, bob, Zone::Battlefield);
+                game.remove_summoning_sickness(source);
+                game.remove_summoning_sickness(enemy);
+                game.refresh_continuous_state();
+                assert_eq!(game.current_characteristics(source).unwrap().power, Some(4), "warm pre-declaration view");
+                let mut combat = crate::combat_state::CombatState::default();
+                let mut queue = crate::triggers::TriggerQueue::new();
+                let mut dm = crate::decision::AutoPassDecisionMaker;
+                if attacking {
+                    crate::game_loop::apply_attacker_declarations_with_dm(&mut game, &mut combat, &mut queue,
+                        &[crate::decision::AttackerDeclaration {creature: source, target: crate::combat_state::AttackTarget::Player(bob)}], &mut dm).unwrap();
+                } else {
+                    game.turn.active_player = bob;
+                    crate::game_loop::apply_attacker_declarations_with_dm(&mut game, &mut combat, &mut queue,
+                        &[crate::decision::AttackerDeclaration {creature: enemy, target: crate::combat_state::AttackTarget::Player(alice)}], &mut dm).unwrap();
+                    crate::game_loop::apply_blocker_declarations(&mut game, &mut combat, &mut queue,
+                        &[crate::decision::BlockerDeclaration {blocker: source, blocking: enemy}], alice).unwrap();
+                }
+                assert_eq!(game.is_tapped(source), attacking && !vigilance);
+                assert_eq!(game.current_characteristics(source).unwrap().power, Some(2),
+                    "declaration must replace warmed idle characteristics; attacking={attacking}, vigilance={vigilance}");
+                let mut ctx = crate::effects::EffectContext::new_default(source, alice);
+                let remove = Effect::new(crate::effects::RemoveFromCombatEffect::with_spec(ChooseSpec::Source));
+                crate::effects::execute_effect(&mut game, &remove, &mut ctx).unwrap();
+                assert_eq!(game.current_characteristics(source).unwrap().power, Some(4));
+                assert_eq!(game.object(source).unwrap().zone, Zone::Battlefield);
+            }
+        }
+    }
+
+    #[test]
+    fn compiled_noncombat_bonus_tracks_idle_attacking_and_blocking() {
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+            crate::CardId::new(), "Combat-state probe",
+        ).card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+            .parse_text(LINE).unwrap();
+        assert!(matches!(&definition.abilities[0].kind, AbilityKind::Static(_)));
+        for role in ["idle", "attacking", "blocking"] {
+            let mut game = crate::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = crate::PlayerId::from_index(0);
+            let bob = crate::PlayerId::from_index(1);
+            let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+            let enemy = crate::CardDefinitionBuilder::new(crate::CardId::new(), "Enemy")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(crate::card::PowerToughness::fixed(2, 2)).build();
+            let enemy = game.create_object_from_definition(&enemy, bob, Zone::Battlefield);
+            game.remove_summoning_sickness(source);
+            game.remove_summoning_sickness(enemy);
+            let mut combat = crate::combat_state::CombatState::default();
+            match role {
+                "attacking" => {
+                    crate::combat_state::declare_attackers(&mut game, &mut combat,
+                        vec![(source, crate::combat_state::AttackTarget::Player(bob))]).unwrap();
+                }
+                "blocking" => {
+                    game.turn.active_player = bob;
+                    crate::combat_state::declare_attackers(&mut game, &mut combat,
+                        vec![(enemy, crate::combat_state::AttackTarget::Player(alice))]).unwrap();
+                    game.combat = Some(combat.clone());
+                    crate::combat_state::declare_blockers(&game, &mut combat, vec![(source, enemy)]).unwrap();
+                }
+                _ => {}
+            }
+            game.combat = Some(combat);
+            game.refresh_continuous_state();
+            let chars = game.current_characteristics(source).unwrap();
+            assert_eq!(chars.power, Some(if role == "idle" {4} else {2}), "role={role}");
+            assert_eq!(chars.toughness, Some(2));
+            let remove = Effect::new(crate::effects::RemoveFromCombatEffect::with_spec(ChooseSpec::Source));
+            let mut ctx = crate::effects::EffectContext::new_default(source, alice);
+            crate::effects::execute_effect(&mut game, &remove, &mut ctx).unwrap();
+            let combat = game.combat.as_ref().unwrap();
+            assert!(!crate::combat_state::is_attacking(combat, source));
+            assert!(!crate::combat_state::is_blocking(combat, source));
+            game.refresh_continuous_state();
+            assert_eq!(game.current_characteristics(source).unwrap().power, Some(4), "bonus returns after the real remove-from-combat effect; role={role}");
+        }
+    }
+
+    #[test]
     fn exact_compound_negative_renders_but_single_state_near_miss_does_not() {
         let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
@@ -3713,8 +4135,10 @@ mod noncombat_source_anthem_tests {
             vec![LINE.to_string()]
         );
 
+        assert!(describe_structural_noncombat_source_anthem(&definition.abilities[0], "this creature").is_some(),
+            "the typed canonical neither-attacking-nor-blocking condition must be recognized");
         let mut changed = definition.abilities[0].clone();
-        let AbilityKind::Static(static_ability) = &changed.kind else {
+        let AbilityKind::Static(static_ability) = &definition.abilities[0].kind else {
             panic!("expected static ability");
         };
         let mut model = static_ability
@@ -3724,16 +4148,24 @@ mod noncombat_source_anthem_tests {
         let ironsmith_core::StaticAbilityPayload::Anthem(anthem) = &mut model.payload else {
             panic!("expected anthem model");
         };
-        let Some(Condition::Not(inner)) = &mut anthem.condition else {
-            panic!("expected negative condition");
+        let Some(Condition::TargetMatches(filter)) = &mut anthem.condition else {
+            panic!("expected canonical object condition");
         };
-        let Condition::TargetMatches(filter) = inner.as_mut() else {
-            panic!("expected object condition");
-        };
-        filter.blocking = false;
+        assert!(filter.nonattacking && filter.nonblocking);
+        filter.nonblocking = false;
         changed.kind =
             AbilityKind::Static(crate::static_abilities::StaticAbility::from_model(model));
         assert!(describe_structural_noncombat_source_anthem(&changed, "this creature").is_none());
+
+        let mut legacy = static_ability.compiled_model().unwrap().clone();
+        let ironsmith_core::StaticAbilityPayload::Anthem(anthem) = &mut legacy.payload else {unreachable!();};
+        let mut both = ObjectFilter::default();
+        both.attacking = true;
+        both.blocking = true;
+        anthem.condition = Some(Condition::Not(Box::new(Condition::TargetMatches(both))));
+        changed.kind = AbilityKind::Static(crate::static_abilities::StaticAbility::from_model(legacy));
+        assert!(describe_structural_noncombat_source_anthem(&changed, "this creature").is_none(),
+            "not both attacking and blocking is not the same as neither role");
     }
 }
 
@@ -5205,6 +5637,87 @@ mod all_subtypes_scope_ladder_tests {
     use super::*;
 
     #[test]
+    fn source_line_all_type_group_requires_exact_scope_members() {
+        let oracle = "Creatures you control are every creature type. The same is true for creature spells you control and creature cards you own that aren't on the battlefield.";
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+            crate::CardId::new(), "All-types structural controls",
+        ).card_types(vec![CardType::Artifact]).parse_text(oracle).unwrap();
+        assert_eq!(source_line_static_group_count(&definition.abilities[0]), Some(3));
+        let members = definition.abilities[1..4].to_vec();
+        assert_eq!(describe_source_line_static_group(&members, 3, "this artifact"),
+            Some(lowercase_first(oracle.trim_end_matches('.'))));
+        assert_eq!(describe_source_line_static_group(&members, 2, "this artifact"), None);
+        for changed_member in 0..3 {
+            let mut changed = members.clone();
+            let AbilityKind::Static(static_ability) = &changed[changed_member].kind else {panic!("static scope")};
+            let mut model = static_ability.compiled_model().unwrap().clone();
+            let ironsmith_core::StaticAbilityPayload::AddAllSubtypesOfFamily {filter, ..} = &mut model.payload
+                else {panic!("all-type scope")};
+            match changed_member {
+                0 => filter.controller = Some(PlayerFilter::Opponent),
+                1 => filter.zone = Some(Zone::Graveyard),
+                _ => filter.owner = Some(PlayerFilter::Opponent),
+            }
+            changed[changed_member].kind = AbilityKind::Static(crate::static_abilities::StaticAbility::from_model(model));
+            assert_eq!(describe_source_line_static_group(&changed, 3, "this artifact"), None,
+                "changed semantic scope cannot claim the original shared sentence; member={changed_member}");
+        }
+    }
+
+    #[test]
+    fn compiled_all_creature_types_respects_live_and_snapshot_scopes() {
+        let oracle = "Creatures you control are every creature type. The same is true for creature spells you control and creature cards you own that aren't on the battlefield.";
+        let grant = crate::compiler_test_support::CardDefinitionBuilder::new(
+            crate::CardId::new(), "All-types runtime scope probe",
+        ).card_types(vec![CardType::Artifact]).parse_text(oracle).unwrap();
+        let alice = crate::PlayerId::from_index(0);
+        let bob = crate::PlayerId::from_index(1);
+        for zone in [Zone::Battlefield, Zone::Stack, Zone::Hand, Zone::Library, Zone::Graveyard, Zone::Exile, Zone::Command, Zone::Ante, Zone::OutsideGame] {
+            for owner in [alice, bob] {
+                for controller in [alice, bob] {
+                    for is_creature in [false, true] {
+                        let subject = crate::compiler_test_support::CardDefinitionBuilder::new(
+                            crate::CardId::new(), "All-types runtime subject",
+                        ).card_types(vec![if is_creature {CardType::Creature} else {CardType::Artifact}])
+                            .power_toughness(crate::card::PowerToughness::fixed(1, 1)).build();
+                        let mut game = crate::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+                        let grant_id = game.create_object_from_definition(&grant, alice, Zone::Battlefield);
+                        let id = game.create_object_from_definition(&subject, owner, zone);
+                        game.set_current_controller(id, controller);
+                        if zone == Zone::Stack {
+                            game.push_to_stack(crate::game_state::StackEntry::new(id, controller));
+                        }
+                        game.refresh_continuous_state();
+                        let expected = is_creature && match zone {
+                            Zone::Battlefield => controller == alice,
+                            Zone::Stack => controller == alice || owner == alice,
+                            // CR 400.11c: this external static ability cannot affect sideboard cards.
+                            Zone::OutsideGame => false,
+                            _ => owner == alice,
+                        };
+                        let subtypes = game.current_subtypes(id).unwrap();
+                        let snapshot = crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                            game.object(id).unwrap(), &game,
+                        );
+                        let ctx = crate::effects::EffectContext::new_default(grant_id, alice)
+                            .with_targets(vec![crate::effects::ResolvedTarget::Object(id)]);
+                        for subtype in crate::types::SubtypeFamily::Creature.all_subtypes() {
+                            assert_eq!(subtypes.contains(subtype), expected,
+                                "live scope: zone={zone:?}, owner={owner:?}, controller={controller:?}, creature={is_creature}, subtype={subtype:?}");
+                            assert_eq!(snapshot.subtypes.contains(subtype), expected,
+                                "snapshot scope: zone={zone:?}, owner={owner:?}, controller={controller:?}, creature={is_creature}, subtype={subtype:?}");
+                        }
+                        let condition = Condition::TargetMatches(ObjectFilter::default().with_subtype(Subtype::Elf));
+                        assert_eq!(crate::condition_eval::evaluate_condition_resolution(&game, &condition, &ctx).unwrap(), expected);
+                        assert_eq!(game.object(id).unwrap().zone, zone);
+                        assert_eq!(game.object(id).unwrap().owner, owner);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn battlefield_spell_and_owned_card_scopes_rejoin_with_same_is_true() {
         let oracle = "Creatures you control are every creature type. The same is true for creature spells you control and creature cards you own that aren't on the battlefield.";
         let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
@@ -5221,6 +5734,165 @@ mod all_subtypes_scope_ladder_tests {
             "{:#?}",
             definition.abilities,
         );
+    }
+}
+
+
+#[cfg(test)]
+mod explicit_outside_selection_gameplay_tests {
+    use super::*;
+    struct SelectOutsideCard { accept: bool, expected: crate::ObjectId, choices: usize }
+    impl crate::decision::DecisionMaker for SelectOutsideCard {
+        fn decide_boolean(&mut self, _: &crate::GameState, _: &crate::decisions::context::BooleanContext) -> bool { self.accept }
+        fn decide_objects(&mut self, _: &crate::GameState, ctx: &crate::decisions::context::SelectObjectsContext) -> Vec<crate::ObjectId> {
+            self.choices += 1;
+            assert_eq!(ctx.candidates.len(), 1, "only the owned outside-game creature is eligible: {ctx:?}");
+            assert_eq!(ctx.candidates[0].id, self.expected);
+            assert!(ctx.candidates[0].legal);
+            vec![self.expected]
+        }
+    }
+    #[test]
+    fn compiled_outside_selection_decline_and_destination_replacement_commit_actual_result() {
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(crate::CardId::new(), "Outside selection runtime probe")
+            .card_types(vec![CardType::Sorcery]).parse_text("You may reveal a creature card you own from outside the game and put it into your hand.").unwrap();
+        let creature = crate::compiler_test_support::CardDefinitionBuilder::new(crate::CardId::new(), "Selected outside creature")
+            .card_types(vec![CardType::Creature]).build();
+        let artifact = crate::compiler_test_support::CardDefinitionBuilder::new(crate::CardId::new(), "Excluded outside artifact")
+            .card_types(vec![CardType::Artifact]).build();
+        let alice = crate::PlayerId::from_index(0); let bob = crate::PlayerId::from_index(1);
+        for accept in [false, true] { for redirect in [false, true] {
+            let mut game = crate::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let source = game.create_object_from_definition(&definition, alice, Zone::Stack);
+            let selected = game.create_object_from_definition(&creature, alice, Zone::OutsideGame);
+            let stable = game.object(selected).unwrap().stable_id;
+            let exclusions = [game.create_object_from_definition(&creature, bob, Zone::OutsideGame),
+                game.create_object_from_definition(&creature, alice, Zone::Exile),
+                game.create_object_from_definition(&artifact, alice, Zone::OutsideGame)];
+            if redirect {
+                game.effect_store.replacement_effects.add_one_shot_effect(crate::replacement::ReplacementEffect::with_matcher(source, alice,
+                    crate::events::zones::matchers::WouldChangeZoneMatcher::new(ObjectFilter::specific(selected), Some(Zone::OutsideGame), Some(Zone::Hand)),
+                    crate::replacement::ReplacementAction::ChangeDestination(Zone::Exile)));
+            }
+            let mut dm = SelectOutsideCard { accept, expected: selected, choices: 0 };
+            let mut ctx = crate::effects::EffectContext::new(source, alice, &mut dm);
+            let program = definition.spell_effect.as_ref().unwrap();
+            for segment in &program.segments { for effect in &segment.default_effects {
+                let outcome = crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
+                if !accept { assert!(outcome.events.is_empty(), "declined selection cannot publish movement"); }
+            }}
+            drop(ctx);
+            assert_eq!(dm.choices, usize::from(accept));
+            let current = game.find_object_by_stable_id(stable).unwrap();
+            assert_eq!(game.object(current).unwrap().zone, if !accept {Zone::OutsideGame} else if redirect {Zone::Exile} else {Zone::Hand}, "accept={accept}, redirect={redirect}");
+            for (index, excluded) in exclusions.into_iter().enumerate() {
+                assert_eq!(game.object(excluded).unwrap().zone, if index == 1 {Zone::Exile} else {Zone::OutsideGame});
+            }
+            assert_eq!(game.object(source).unwrap().zone, Zone::Stack);
+        }}
+    }
+
+    #[test]
+    fn compiled_outside_selection_pending_boolean_retry_preserves_context_and_one_shot() {
+        assert_compiled_pending_retry(0);
+    }
+    #[test]
+    fn compiled_outside_selection_pending_object_retry_preserves_context_and_one_shot() {
+        assert_compiled_pending_retry(1);
+    }
+    #[test]
+    fn optional_inner_error_restores_prior_actions_and_limit() {
+        let mut game = crate::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = crate::PlayerId::from_index(0);
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(crate::CardId::new(), "Optional failure probe")
+            .card_types(vec![CardType::Artifact]).build();
+        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let trigger_identity = crate::triggers::TriggerIdentity(3150);
+        let mut dm = SelectOutsideCard {accept: true, expected: source, choices: 0};
+        let mut ctx = crate::effects::EffectContext::new(source, alice, &mut dm);
+        ctx.do_this_limit = Some(crate::effects::DoThisLimit {source, trigger_identity, limit: 1});
+        let effect = Effect::may(vec![Effect::gain_life(3), Effect::lose_life(crate::effect::Value::X)]);
+        let before_life = game.player(alice).unwrap().life;
+        let result = crate::effects::execute_effect(&mut game, &effect, &mut ctx);
+        assert!(matches!(result, Err(crate::effects::ExecutionError::UnresolvableValue(_))));
+        assert_eq!(game.player(alice).unwrap().life, before_life, "an internal execution failure cannot retain the prior child action");
+        assert_eq!(game.do_this_action_count_this_turn(source, trigger_identity), 0);
+        assert!(ctx.do_this_limit.is_some());
+        assert!(game.take_pending_trigger_events().is_empty());
+    }
+    fn assert_compiled_pending_retry(pause_at: u8) {
+        use std::{cell::Cell, rc::Rc};
+        struct Answers { pause_at: u8, ready: Rc<Cell<bool>>, pending: bool, expected: crate::ObjectId }
+        impl crate::decision::DecisionMaker for Answers {
+            fn decide_boolean(&mut self, _: &crate::GameState, _: &crate::decisions::context::BooleanContext) -> bool {
+                self.pending = self.pause_at == 0 && !self.ready.get();
+                !self.pending
+            }
+            fn decide_objects(&mut self, _: &crate::GameState, choices: &crate::decisions::context::SelectObjectsContext) -> Vec<crate::ObjectId> {
+                assert_eq!(choices.candidates.len(), 1);
+                assert_eq!(choices.candidates[0].id, self.expected);
+                self.pending = self.pause_at == 1 && !self.ready.get();
+                if self.pending {vec![]} else {vec![self.expected]}
+            }
+            fn awaiting_choice(&self) -> bool {self.pending}
+        }
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(crate::CardId::new(), "Pending outside selection")
+            .card_types(vec![CardType::Sorcery]).parse_text("You may reveal a creature card you own from outside the game and put it into your hand.").unwrap();
+        let creature = crate::compiler_test_support::CardDefinitionBuilder::new(crate::CardId::new(), "Pending outside creature")
+            .card_types(vec![CardType::Creature]).build();
+        let alice = crate::PlayerId::from_index(0);
+            let mut game = crate::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let source = game.create_object_from_definition(&definition, alice, Zone::Stack);
+            let selected = game.create_object_from_definition(&creature, alice, Zone::OutsideGame);
+            let stable = game.object(selected).unwrap().stable_id;
+            let shield = game.effect_store.replacement_effects.add_one_shot_effect(crate::replacement::ReplacementEffect::with_matcher(source, alice,
+                crate::events::zones::matchers::WouldChangeZoneMatcher::new(ObjectFilter::specific(selected), Some(Zone::OutsideGame), Some(Zone::Hand)),
+                crate::replacement::ReplacementAction::ChangeDestination(Zone::Exile)));
+            let before_ids = game.next_object_id_counter();
+            let before_random = game.irreversible_random_count();
+            game.take_pending_trigger_events();
+            let snapshot = crate::snapshot::ObjectSnapshot::from_object(game.object(selected).unwrap(), &game);
+            let ready = Rc::new(Cell::new(false));
+            let mut answers = Answers {pause_at, ready: ready.clone(), pending: false, expected: selected};
+            let mut ctx = crate::effects::EffectContext::new(source, alice, &mut answers);
+            ctx.set_tagged_objects("prior-selection", vec![snapshot]);
+            let trigger_identity = crate::triggers::TriggerIdentity(3140 + u64::from(pause_at));
+            ctx.do_this_limit = Some(crate::effects::DoThisLimit {source, trigger_identity, limit: 1});
+            let before_tags = format!("{:?}", ctx.tagged_objects);
+            let program = definition.spell_effect.as_ref().unwrap();
+            let [segment] = program.segments.as_slice() else {panic!("one program segment")};
+            let [effect] = segment.default_effects.as_slice() else {panic!("one optional instruction")};
+            let pending = crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
+            assert!(ctx.decision_maker.awaiting_choice(), "pause_at={pause_at}");
+            assert!(pending.events.is_empty());
+            assert!(pending.execution_facts.is_empty(), "unanswered choice must not report accepted/declined: {pending:#?}");
+            assert_eq!(format!("{:?}", ctx.tagged_objects), before_tags);
+            assert!(ctx.do_this_limit.is_some(), "retry must retain the instruction's once-per-turn limit");
+            assert_eq!(game.do_this_action_count_this_turn(source, trigger_identity), 0);
+            assert_eq!(game.object(selected).unwrap().zone, Zone::OutsideGame);
+            assert!(!game.is_publicly_revealed_hidden_card(selected));
+            assert_eq!(game.next_object_id_counter(), before_ids);
+            assert_eq!(game.irreversible_random_count(), before_random);
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_some());
+            assert!(game.take_pending_trigger_events().is_empty());
+            ready.set(true);
+            let resolved = crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
+            assert!(!ctx.decision_maker.awaiting_choice());
+            let current = game.find_object_by_stable_id(stable).unwrap();
+            assert_eq!(game.object(current).unwrap().zone, Zone::Exile);
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+            assert_eq!(game.do_this_action_count_this_turn(source, trigger_identity), 1, "retry commits the limited action once");
+            assert_eq!(resolved.events.iter().filter(|event| event.kind() == crate::events::EventKind::CardRevealed).count(), 1,
+                "exactly one reveal after retry");
+            // The movement commit queues its zone notification; its outcome
+            // carries the resulting objects, while Reveal returns its event.
+            let notifications = game.take_pending_trigger_events();
+            let moves = notifications.iter().filter_map(|event| event.downcast::<crate::events::ZoneChangeEvent>()).collect::<Vec<_>>();
+            assert_eq!(moves.len(), 1, "exactly one actual move after retry: {resolved:#?}");
+            assert_eq!(moves[0].from, Zone::OutsideGame);
+            assert_eq!(moves[0].to, Zone::Exile);
+            assert_eq!(ctx.tagged_objects.get(&crate::tag::TagKey::from("prior-selection")).unwrap()[0].stable_id, stable);
+            assert_eq!(game.object(source).unwrap().zone, Zone::Stack);
     }
 }
 
@@ -18237,6 +18909,58 @@ mod reveal_optional_cast_decline_bottom_tests {
     }
 
     #[test]
+    fn conditional_optional_cast_fallback_uses_actual_cast_result() {
+        let program = program();
+        struct Answers { accept: bool, prompts: usize }
+        impl crate::decision::DecisionMaker for Answers {
+            fn decide_boolean(&mut self, _: &crate::GameState,
+                _: &crate::decisions::context::BooleanContext) -> bool {
+                self.prompts += 1;
+                self.accept
+            }
+        }
+        for (is_creature, shares_type) in [(true, true), (true, false), (false, false)] {
+            for accept in [false, true] {
+                let mut game = crate::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+                let alice = crate::PlayerId::from_index(0);
+                let source_def = crate::CardDefinitionBuilder::new(crate::CardId::new(), "Source")
+                    .card_types(vec![CardType::Enchantment]).build();
+                let source = game.create_object_from_definition(&source_def, alice, Zone::Battlefield);
+                let creature = crate::CardDefinitionBuilder::new(crate::CardId::new(), "Controlled creature")
+                    .card_types(vec![CardType::Creature]).subtypes(vec![crate::types::Subtype::Goblin]).build();
+                game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+                let below = crate::CardDefinitionBuilder::new(crate::CardId::new(), "Unrevealed card")
+                    .card_types(vec![CardType::Land]).build();
+                let below = game.create_object_from_definition(&below, alice, Zone::Library);
+                let candidate = crate::CardDefinitionBuilder::new(crate::CardId::new(), "Revealed candidate")
+                    .card_types(vec![if is_creature {CardType::Creature} else {CardType::Sorcery}])
+                    .subtypes(if is_creature {vec![if shares_type {crate::types::Subtype::Goblin} else {crate::types::Subtype::Elf}]} else {vec![]})
+                    .mana_cost(crate::mana::ManaCost::from_symbols(vec![crate::mana::ManaSymbol::Generic(7)]))
+                    .build();
+                let candidate = game.create_object_from_definition(&candidate, alice, Zone::Library);
+                let stable = game.object(candidate).unwrap().stable_id;
+                game.stack.push(crate::game_state::StackEntry::ability(source, alice, program.clone()));
+                let mut answers = Answers {accept, prompts: 0};
+                crate::game_loop::resolve_stack_entry_with(&mut game, &mut answers).unwrap();
+                let was_cast = is_creature && shares_type && accept;
+                assert_eq!(game.stack.len(), usize::from(was_cast));
+                let library = &game.player(alice).unwrap().library;
+                assert_eq!(library.len(), if was_cast {1} else {2});
+                assert_eq!(library.last(), Some(&below), "unrevealed card must remain above a declined or ineligible candidate");
+                if was_cast {
+                    let spell = game.object(game.stack[0].object_id).unwrap();
+                    assert_eq!(spell.stable_id, stable);
+                    assert_eq!(spell.zone, Zone::Stack);
+                    assert_eq!(spell.owner, alice);
+                } else {
+                    assert_eq!(game.object(library[0]).unwrap().stable_id, stable, "fallback moves the revealed card to bottom even when outer eligibility is false");
+                }
+                if !is_creature || !shares_type {assert_eq!(answers.prompts, 0);}
+            }
+        }
+    }
+
+    #[test]
     fn exact_shared_tag_and_result_id_rejoin_the_three_sentences() {
         let program = program();
         assert!(
@@ -22533,10 +23257,31 @@ fn shared_self_replacement_action_target(effects: &[Effect]) -> Option<&ChooseSp
         collect_self_replacement_action_targets(effect, &mut targets);
     }
     let first = *targets.first()?;
-    targets
-        .iter()
-        .all(|target| target_specs_select_same_objects(first, target))
-        .then_some(first)
+    if targets.iter().all(|target| target_specs_select_same_objects(first, target)) {
+        return Some(first);
+    }
+    // A zone move changes object identity. Its result tag can still refer to
+    // the selected card, but only after an exact, ordered producer is proved.
+    // Do not infer identity from surface wording or arbitrary tag reuse.
+    let [effect] = effects else { return None; };
+    let sequence = unwrap_basic_render_wrapper(effect)
+        .downcast_ref::<crate::effects::SequenceEffect>()?;
+    let [producer, consumer] = sequence.effects.as_slice() else { return None; };
+    if targets.len() != 2
+        || !first_self_replacement_action_moves_target_to_card_zone(std::slice::from_ref(producer))
+    {
+        return None;
+    }
+    let tagged = producer.downcast_ref::<crate::effects::TaggedEffect>()?;
+    if !default_effect_tags_exact_target(producer, &tagged.tag, first) {
+        return None;
+    }
+    let returned = unwrap_basic_render_wrapper(consumer)
+        .downcast_ref::<crate::effects::ReturnToHandEffect>()?;
+    match returned.spec.base() {
+        ChooseSpec::Tagged(tag) if tag == &tagged.tag => Some(first),
+        _ => None,
+    }
 }
 
 fn has_matching_implicit_target_declaration(effects: &[Effect], target: &ChooseSpec) -> bool {
@@ -24124,6 +24869,94 @@ mod named_artifacts_damage_replacement_tests {
     }
 }
 
+fn search_result_tags_in(effect: &Effect, tags: &mut Vec<TagKey>) {
+    if effect
+        .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+        .is_some()
+    {
+        return;
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>()
+        && tagged
+            .effect
+            .downcast_ref::<crate::effects::SearchLibraryEffect>()
+            .is_some()
+    {
+        tags.push(tagged.tag.clone());
+        return;
+    }
+    if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        && choose.is_search
+    {
+        tags.push(choose.tag.clone());
+        return;
+    }
+    effect.visit_child_effects(&mut |child| search_result_tags_in(child, tags));
+}
+
+/// "... put that card on top. If you control a Dragon, put that card onto
+/// the battlefield tapped instead": the replacement branch repeats the
+/// default search and then gives the found card a new destination. Render
+/// only the authored destination change.
+fn describe_search_found_card_destination_self_replacement(
+    segment: &crate::resolution::ResolutionSegment,
+    raw_condition_text: &str,
+) -> Option<String> {
+    let branch = segment.self_replacements.first()?;
+    let mut tags = Vec::new();
+    for effect in &segment.default_effects {
+        search_result_tags_in(effect, &mut tags);
+    }
+    tags.dedup();
+    let [search_tag] = tags.as_slice() else {
+        return None;
+    };
+    let mut destination = None;
+    for effect in &branch.replacement_effects {
+        let inner = effect
+            .downcast_ref::<crate::effects::TaggedEffect>()
+            .map(|tagged| tagged.effect.as_ref())
+            .unwrap_or(effect);
+        if let Some(move_to_zone) = inner.downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && matches!(move_to_zone.target.base(), ChooseSpec::Tagged(tag) if tag == search_tag)
+        {
+            if destination.is_some() || move_to_zone.zone != Zone::Battlefield {
+                return None;
+            }
+            destination = Some(move_to_zone.enters_tapped);
+        }
+    }
+    let tapped = destination?;
+    // Every other replacement instruction must be the repeated search or an
+    // instruction the default already performs.
+    let default_debug = segment
+        .default_effects
+        .iter()
+        .map(|effect| format!("{effect:?}"))
+        .collect::<Vec<_>>();
+    for effect in &branch.replacement_effects {
+        let mut produced = Vec::new();
+        search_result_tags_in(effect, &mut produced);
+        let inner = effect
+            .downcast_ref::<crate::effects::TaggedEffect>()
+            .map(|tagged| tagged.effect.as_ref())
+            .unwrap_or(effect);
+        let is_move = inner
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            .is_some_and(|m| matches!(m.target.base(), ChooseSpec::Tagged(tag) if tag == search_tag));
+        if !is_move && !produced.contains(search_tag) && !default_debug.contains(&format!("{effect:?}")) {
+            return None;
+        }
+    }
+    let default_text = describe_effect_list(&segment.default_effects);
+    let default_text = default_text.trim_end_matches('.');
+    let condition_text = normalize_target_quality_condition(default_text, raw_condition_text);
+    let tapped = if tapped { " tapped" } else { "" };
+    Some(format!(
+        "{default_text}. If {condition_text}, put that card onto the battlefield{tapped} instead."
+    ))
+}
+
 pub(crate) fn describe_single_self_replacement_segment(
     segment: &crate::resolution::ResolutionSegment,
 ) -> Option<String> {
@@ -24207,6 +25040,11 @@ pub(crate) fn describe_single_self_replacement_segment(
         return Some(rendered);
     }
     if let Some(rendered) = describe_reveal_hand_choose_discard_self_replacement(segment) {
+        return Some(rendered);
+    }
+    if let Some(rendered) =
+        describe_search_found_card_destination_self_replacement(segment, &raw_condition_text)
+    {
         return Some(rendered);
     }
     let conditional = Effect::conditional(
@@ -34868,6 +35706,10 @@ fn describe_source_line_static_group(
     let members = abilities.get(..member_count)?;
     describe_source_line_additive_type_loss_group(members)
         .or_else(|| {
+            describe_structural_all_subtypes_scope_ladder(members)
+                .and_then(|(text, consumed)| (consumed == member_count).then_some(text))
+        })
+        .or_else(|| {
             describe_structural_attached_subtype_base_pt_keyword_loss_bundle(members)
                 .and_then(|(text, consumed)| (consumed == member_count).then_some(text))
         })
@@ -40558,6 +41400,26 @@ mod self_replacement_rendering_tests {
     }
 
     #[test]
+    fn sequential_result_reference_requires_exact_ordered_target_producer() {
+        let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::permanent()));
+        let producer = Effect::new(crate::effects::TaggedEffect::new(
+            "moved", Effect::new(crate::effects::ExileEffect::with_spec(target.clone())),
+        ));
+        let consumer = |tag: &str| Effect::new(crate::effects::ReturnToHandEffect::with_spec(
+            ChooseSpec::Tagged(tag.into()),
+        ));
+        let sequence = |children| vec![Effect::new(crate::effects::SequenceEffect::new(children))];
+        assert_eq!(shared_self_replacement_action_target(&sequence(vec![producer.clone(), consumer("moved")])), Some(&target));
+        assert!(shared_self_replacement_action_target(&sequence(vec![producer.clone(), consumer("other")])).is_none());
+        assert!(shared_self_replacement_action_target(&sequence(vec![consumer("moved"), producer.clone()])).is_none());
+        assert!(shared_self_replacement_action_target(&sequence(vec![producer.clone(), consumer("moved"), consumer("moved")])).is_none());
+        let independent = Effect::new(crate::effects::ReturnToHandEffect::with_spec(
+            ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature())),
+        ));
+        assert!(shared_self_replacement_action_target(&sequence(vec![producer, independent])).is_none());
+    }
+
+    #[test]
     fn same_target_zone_sequence_uses_pronoun_then_card_referent() {
         let oracle = "{2}{W}: Return target permanent you control to its owner's hand. If it has unearth, instead exile it, then return that card to its owner's hand. Activate only during your turn.";
         let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
@@ -40596,6 +41458,60 @@ mod self_replacement_rendering_tests {
             "a changed target condition must not borrow the original surface: {mismatched_text}"
         );
         assert!(mismatched_text.contains("cycling"), "{mismatched_text}");
+    }
+
+    #[test]
+    fn same_target_zone_sequence_resolves_announced_target_and_owner_destination() {
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(), "Sequential zone source",
+        ).card_types(vec![CardType::Enchantment]).parse_text(
+            "{2}{W}: Return target permanent you control to its owner's hand. If it has unearth, instead exile it, then return that card to its owner's hand. Activate only during your turn."
+        ).unwrap();
+        let program = definition.abilities.iter().find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated.effects.clone()),
+            _ => None,
+        }).unwrap();
+        for has_unearth in [false, true] {
+            for owned_by_opponent in [false, true] {
+                let mut game = crate::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+                let alice = crate::PlayerId::from_index(0);
+                let bob = crate::PlayerId::from_index(1);
+                let owner = if owned_by_opponent { bob } else { alice };
+                let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+                let subject = crate::compiler_test_support::CardDefinitionBuilder::new(
+                    crate::ids::CardId::new(), "Sequential zone subject",
+                ).card_types(vec![CardType::Creature])
+                    .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+                    .parse_text(if has_unearth { "Unearth {1}{B}" } else { "Vigilance" }).unwrap();
+                let target = game.create_object_from_definition(&subject, owner, Zone::Battlefield);
+                game.set_current_controller(target, alice);
+                game.refresh_continuous_state();
+                assert_eq!(game.current_controller(target), Some(alice));
+                let stable = game.object(target).unwrap().stable_id;
+                let before_records = game.turn_store.turn_history.event_records.len();
+                game.push_to_stack(crate::game_state::StackEntry::ability(source, alice, program.clone())
+                    .with_targets(vec![crate::game_state::Target::Object(target)]));
+                crate::game_loop::resolve_stack_entry_with(&mut game,
+                    &mut crate::decision::SelectFirstDecisionMaker).unwrap();
+                assert!(game.stack.is_empty());
+                assert!(game.battlefield.contains(&source));
+                assert!(!game.battlefield.contains(&target));
+                let hand = &game.player(owner).unwrap().hand;
+                assert_eq!(hand.len(), 1);
+                let returned = game.object(hand[0]).unwrap();
+                assert_eq!(returned.stable_id, stable);
+                assert_eq!(returned.owner, owner);
+                assert_eq!(returned.zone, Zone::Hand);
+                assert_ne!(returned.id, target);
+                let moves = game.turn_store.turn_history.event_records[before_records..].iter()
+                    .filter_map(|record| record.event.downcast::<crate::events::ZoneChangeEvent>())
+                    .map(|event| (event.from, event.to)).collect::<Vec<_>>();
+                assert_eq!(moves, if has_unearth {
+                    vec![(Zone::Battlefield, Zone::Exile), (Zone::Exile, Zone::Hand)]
+                } else { vec![(Zone::Battlefield, Zone::Hand)] });
+                assert_eq!(game.player(if owned_by_opponent { alice } else { bob }).unwrap().hand.len(), 0);
+            }
+        }
     }
 
     #[test]
@@ -42742,6 +43658,62 @@ mod conditioned_source_anthem_keyword_bundle_tests {
                 2,
             )),
         );
+    }
+
+    #[test]
+    fn dragons_rage_channeler_refresh_tracks_graveyard_characteristics_and_controller() {
+        use crate::continuous::{ContinuousEffect, EffectTarget, Modification};
+        use crate::static_abilities::StaticAbilityId;
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+            crate::CardId::new(), "Dragon's Rage Channeler")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(1, 1))
+            .parse_text("Whenever you cast a noncreature spell, surveil 1. (Look at the top card of your library. You may put that card into your graveyard.)\nDelirium — As long as there are four or more card types among cards in your graveyard, this creature gets +2/+2, has flying, and attacks each combat if able.").expect("full Channeler Oracle text should compile");
+        let mut game = crate::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = crate::PlayerId::from_index(0);
+        let bob = crate::PlayerId::from_index(1);
+        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let verify = |game: &crate::GameState, active: bool| {
+            assert_eq!(game.current_power(source), Some(if active { 3 } else { 1 }));
+            assert_eq!(game.current_toughness(source), Some(if active { 3 } else { 1 }));
+            assert_eq!(game.current_has_static_ability_id(source, StaticAbilityId::Flying), active);
+            assert_eq!(game.current_has_static_ability_id(source, StaticAbilityId::MustAttack), active);
+        };
+        let mut graveyard = Vec::new();
+        for card_type in [CardType::Land, CardType::Instant, CardType::Sorcery] {
+            let card = crate::compiler_test_support::CardDefinitionBuilder::new(
+                crate::CardId::new(), "Graveyard type")
+                .card_types(vec![card_type]).build();
+            graveyard.push(game.create_object_from_definition(&card, alice, Zone::Graveyard));
+        }
+        game.refresh_continuous_state().unwrap();
+        verify(&game, false);
+        let type_effect = game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+            source, alice, EffectTarget::Specific(graveyard[0]),
+            Modification::AddCardTypes(vec![CardType::Artifact])));
+        game.refresh_continuous_state().unwrap();
+        verify(&game, true);
+        game.effect_store.continuous_effects.remove_effect(type_effect);
+        game.refresh_continuous_state().unwrap();
+        verify(&game, false);
+        let artifact = crate::compiler_test_support::CardDefinitionBuilder::new(
+            crate::CardId::new(), "Fourth graveyard type")
+            .card_types(vec![CardType::Artifact]).build();
+        let artifact = game.create_object_from_definition(&artifact, alice, Zone::Graveyard);
+        game.refresh_continuous_state().unwrap();
+        verify(&game, true);
+        let control_effect = game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+            source, bob, EffectTarget::Specific(source), Modification::ChangeController(bob)));
+        game.refresh_continuous_state().unwrap();
+        assert_eq!(game.current_controller(source), Some(bob));
+        verify(&game, false);
+        game.effect_store.continuous_effects.remove_effect(control_effect);
+        game.refresh_continuous_state().unwrap();
+        assert_eq!(game.current_controller(source), Some(alice));
+        verify(&game, true);
+        game.move_object_by_effect(artifact, Zone::Exile).unwrap();
+        game.refresh_continuous_state().unwrap();
+        verify(&game, false);
     }
 
     #[test]

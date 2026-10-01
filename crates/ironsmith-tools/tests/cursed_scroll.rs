@@ -217,7 +217,7 @@ fn activation_requires_three_mana_and_untapped_source_at_instant_speed() {
                 game.tap(source);
             }
             let available = |player| {
-                compute_legal_actions(&game, player).iter().any(|a| matches!(a, LegalAction::ActivateAbility { source: id, .. } if *id == source))
+                compute_legal_actions(&game, player).expect("fixture has complete replacement state").iter().any(|a| matches!(a, LegalAction::ActivateAbility { source: id, .. } if *id == source))
             };
             // Legal actions deliberately expose activations before mana is
             // floated; affordability belongs to the cost-payment API.
@@ -286,7 +286,7 @@ fn activation_pays_costs_before_name_choice_and_illegal_target_fizzles() {
             .unwrap()
             .mana_pool
             .add(ironsmith::mana::ManaSymbol::Colorless, 3);
-        let action = compute_legal_actions(&game, alice)
+        let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .into_iter()
             .find(|a| matches!(a, LegalAction::ActivateAbility { source: id, .. } if *id == source))
             .unwrap();

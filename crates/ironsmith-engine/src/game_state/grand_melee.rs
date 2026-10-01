@@ -127,7 +127,7 @@ impl GameState {
         GrandMeleeTurnLane {
             turn: self.turn.clone(),
             turn_store: self.turn_store.clone(),
-            stack: self.stack.clone(),
+            stack: self.stack.to_vec(),
             combat: self.combat.clone(),
             range_of_influence: self.range_of_influence.clone(),
         }
@@ -136,7 +136,7 @@ impl GameState {
     fn load_grand_melee_lane(&mut self, lane: &GrandMeleeTurnLane) {
         self.turn = lane.turn.clone();
         self.turn_store = lane.turn_store.clone();
-        self.stack = lane.stack.clone();
+        self.stack = lane.stack.clone().into();
         self.combat = lane.combat.clone();
         self.range_of_influence = lane.range_of_influence.clone();
     }
@@ -327,7 +327,7 @@ impl GameState {
                         marker.lane.turn_store.clone()
                     },
                     stack: if marker.number == state.focused_marker {
-                        self.stack.clone()
+                        self.stack.to_vec()
                     } else {
                         marker.lane.stack.clone()
                     },

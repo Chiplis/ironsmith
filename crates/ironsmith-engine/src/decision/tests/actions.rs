@@ -465,7 +465,7 @@ fn test_compute_legal_actions_includes_kentaro_mana_value_cast_for_samurai() {
         "Kentaro should turn the spell's mana value into a generic hand-cast cost"
     );
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !actions.iter().any(|action| matches!(
             action,
@@ -554,7 +554,7 @@ fn test_compute_legal_actions_includes_rooftop_storm_free_cast_only_for_zombies(
         "Rooftop Storm should turn Zombie creature spells into zero-mana alternative casts"
     );
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !actions.iter().any(|action| matches!(
             action,
@@ -666,7 +666,7 @@ fn test_auto_pass_decision_maker() {
     let game = setup_game();
     let mut dm = AutoPassDecisionMaker;
 
-    let ctx = PriorityContext::new(PlayerId::from_index(0), vec![LegalAction::PassPriority]);
+    let ctx = PriorityContext::new(&game, PlayerId::from_index(0), vec![LegalAction::PassPriority]).expect("fixture has complete replacement state");
 
     let response = dm.decide_priority(&game, &ctx);
     assert!(matches!(response, LegalAction::PassPriority));
@@ -688,7 +688,7 @@ fn test_numeric_input_decision_maker() {
         },
     ];
 
-    let ctx = PriorityContext::new(PlayerId::from_index(0), legal_actions.clone());
+    let ctx = PriorityContext::new(&game, PlayerId::from_index(0), legal_actions.clone()).expect("fixture has complete replacement state");
 
     // "0" should select PassPriority
     assert!(matches!(
@@ -697,14 +697,14 @@ fn test_numeric_input_decision_maker() {
     ));
 
     // "1" should select PlayLand
-    let ctx2 = PriorityContext::new(PlayerId::from_index(0), legal_actions.clone());
+    let ctx2 = PriorityContext::new(&game, PlayerId::from_index(0), legal_actions.clone()).expect("fixture has complete replacement state");
     assert!(matches!(
         dm.decide_priority(&game, &ctx2),
         LegalAction::PlayLand { .. }
     ));
 
     // "" (empty) should default to PassPriority
-    let ctx3 = PriorityContext::new(PlayerId::from_index(0), legal_actions);
+    let ctx3 = PriorityContext::new(&game, PlayerId::from_index(0), legal_actions).expect("fixture has complete replacement state");
     assert!(matches!(
         dm.decide_priority(&game, &ctx3),
         LegalAction::PassPriority
@@ -729,7 +729,7 @@ fn test_numeric_input_priority_commander_shortcut_single() {
         },
     ];
 
-    let ctx = PriorityContext::new(PlayerId::from_index(0), actions);
+    let ctx = PriorityContext::new(&game, PlayerId::from_index(0), actions).expect("fixture has complete replacement state");
     assert!(matches!(
         dm.decide_priority(&game, &ctx),
         LegalAction::CastSpell {
@@ -767,7 +767,7 @@ fn test_numeric_input_priority_commander_shortcut_indexed() {
         },
     ];
 
-    let ctx = PriorityContext::new(PlayerId::from_index(0), actions);
+    let ctx = PriorityContext::new(&game, PlayerId::from_index(0), actions).expect("fixture has complete replacement state");
     assert!(matches!(
         dm.decide_priority(&game, &ctx),
         LegalAction::CastSpell {
@@ -909,7 +909,7 @@ fn test_activated_ability_tap_cost_validation() {
     game.remove_summoning_sickness(creature_id);
 
     // Check legal actions - should include the mana ability
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
             actions
                 .iter()
@@ -921,7 +921,7 @@ fn test_activated_ability_tap_cost_validation() {
     game.tap(creature_id);
 
     // Check legal actions again - should NOT include the mana ability
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
             !actions
                 .iter()
@@ -982,7 +982,7 @@ fn test_activated_ability_mana_cost_validation() {
 
     // Cost payment is validated during the activation flow, so the action
     // should still surface even before the player floats mana.
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(
             |a| matches!(a, LegalAction::ActivateAbility { source, .. } if *source == creature_id)
@@ -1001,7 +1001,7 @@ fn test_activated_ability_mana_cost_validation() {
         .add(ManaSymbol::Colorless, 1);
 
     // Now should be able to activate
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(
             |a| matches!(a, LegalAction::ActivateAbility { source, .. } if *source == creature_id)
@@ -1127,7 +1127,7 @@ fn test_compute_legal_actions_includes_at_least_graveyard_exile_material_cost() 
         game.create_object_from_card(&card, alice, Zone::Graveyard);
     }
 
-    let actions_before = compute_legal_actions(&game, alice);
+    let actions_before = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
             !actions_before
                 .iter()
@@ -1141,7 +1141,7 @@ fn test_compute_legal_actions_includes_at_least_graveyard_exile_material_cost() 
         .build();
     game.create_object_from_card(&bolt, alice, Zone::Graveyard);
 
-    let actions_after = compute_legal_actions(&game, alice);
+    let actions_after = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
             actions_after
                 .iter()
@@ -1187,7 +1187,7 @@ fn test_tayam_wall_of_roots_activation_uses_mana_sequence_solver() {
         .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
         .expect("Tayam should have an activated ability");
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action,
@@ -1242,7 +1242,7 @@ fn test_tayam_wall_of_roots_activation_blocked_when_wall_already_used() {
         .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
         .expect("Tayam should have an activated ability");
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action,
@@ -1314,7 +1314,7 @@ fn test_activated_ability_cost_reduction_respects_minimum_one_mana() {
             ),
         ));
 
-    let actions_without_mana = compute_legal_actions(&game, alice);
+    let actions_without_mana = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions_without_mana.iter().any(|action| matches!(
             action,
@@ -1331,7 +1331,7 @@ fn test_activated_ability_cost_reduction_respects_minimum_one_mana() {
         .mana_pool
         .add(ManaSymbol::Colorless, 1);
 
-    let actions_with_one = compute_legal_actions(&game, alice);
+    let actions_with_one = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions_with_one.iter().any(|action| matches!(
             action,
@@ -1517,7 +1517,7 @@ fn test_activated_ability_summoning_sickness_blocks_tap() {
     game.set_summoning_sick(creature_id);
 
     // Should NOT be able to activate tap mana ability due to summoning sickness
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
             !actions
                 .iter()
@@ -1558,7 +1558,7 @@ fn test_activated_ability_haste_bypasses_summoning_sickness() {
     game.set_summoning_sick(creature_id);
 
     // Should be able to activate tap mana ability despite summoning sickness (has haste)
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
             actions
                 .iter()
@@ -1598,7 +1598,7 @@ fn test_compute_legal_actions_includes_turn_face_up_for_morph() {
         .mana_pool
         .add(crate::mana::ManaSymbol::Green, 1);
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(
             |a| matches!(a, LegalAction::TurnFaceUp { creature_id: id, .. } if *id == creature_id)
@@ -1643,7 +1643,7 @@ fn test_compute_legal_actions_includes_face_down_cast_for_morph_when_normal_cast
         .mana_pool
         .add(crate::mana::ManaSymbol::Colorless, 3);
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action,
@@ -1710,7 +1710,7 @@ fn test_activated_ability_sorcery_speed_timing() {
     // Main phase, empty stack - should be able to activate
     game.turn.phase = Phase::FirstMain;
     game.turn.step = None;
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(
             |a| matches!(a, LegalAction::ActivateAbility { source, .. } if *source == creature_id)
@@ -1721,7 +1721,7 @@ fn test_activated_ability_sorcery_speed_timing() {
     // Combat phase - should NOT be able to activate
     game.turn.phase = Phase::Combat;
     game.turn.step = Some(Step::DeclareAttackers);
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !actions.iter().any(
             |a| matches!(a, LegalAction::ActivateAbility { source, .. } if *source == creature_id)
@@ -1767,7 +1767,7 @@ fn test_compute_legal_actions_includes_hand_activated_ability() {
             functional_zones: vec![Zone::Hand],
         });
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(
             |a| matches!(a, LegalAction::ActivateAbility { source, .. } if *source == source_id)
@@ -1809,7 +1809,7 @@ fn forecast_activation_requires_the_source_owners_upkeep_and_is_once_per_turn() 
         });
 
     let has_forecast_action = |game: &GameState| {
-        compute_legal_actions(game, alice).iter().any(|action| {
+        compute_legal_actions(game, alice).expect("fixture has complete replacement state").iter().any(|action| {
             matches!(action, LegalAction::ActivateAbility { source, .. } if *source == source_id)
         })
     };
@@ -1866,7 +1866,7 @@ fn any_player_mana_activation_uses_the_activators_turn_before_end_step() {
         });
 
     let bob_can_activate = |game: &GameState| {
-        compute_legal_actions(game, bob).iter().any(|action| {
+        compute_legal_actions(game, bob).expect("fixture has complete replacement state").iter().any(|action| {
             matches!(
                 action,
                 LegalAction::ActivateManaAbility { source, .. } if *source == source_id
@@ -1922,7 +1922,7 @@ fn test_compute_legal_actions_excludes_hand_only_ability_from_battlefield() {
     let source_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
     game.remove_summoning_sickness(source_id);
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action,
@@ -2038,7 +2038,7 @@ fn test_compute_legal_actions_excludes_tapped_non_mana_tap_ability() {
         ));
     game.tap(source_id);
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !actions.iter().any(|action| matches!(
             action,
@@ -2079,7 +2079,7 @@ fn test_compute_legal_actions_excludes_summoning_sick_non_mana_untap_ability() {
     game.tap(source_id);
     game.set_summoning_sick(source_id);
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !actions.iter().any(|action| matches!(
             action,
@@ -2089,7 +2089,7 @@ fn test_compute_legal_actions_excludes_summoning_sick_non_mana_untap_ability() {
     );
 
     game.remove_summoning_sickness(source_id);
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action,
@@ -2126,7 +2126,7 @@ fn test_compute_legal_actions_includes_foretell_special_action() {
         .build();
     let card_id = game.create_object_from_definition(&def, alice, Zone::Hand);
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action,
@@ -2158,7 +2158,7 @@ fn test_compute_legal_actions_includes_suspend_special_action() {
         .build();
     let card_id = game.create_object_from_definition(&def, alice, Zone::Hand);
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action,
@@ -2198,7 +2198,20 @@ fn test_suspend_special_action_respects_cant_cast_restrictions() {
         crate::target::ObjectFilter::default().with_type(CardType::Creature),
     );
 
-    let actions = compute_legal_actions(&game, alice);
+    // Register the restriction as a source of the derived prohibition cache.
+    // Legal-action queries rebuild that cache from registered restrictions.
+    game.add_restriction_effect(
+        crate::effect::Restriction::CastSpellsMatching(
+            crate::target::PlayerFilter::Specific(alice),
+            crate::target::ObjectFilter::default().with_type(CardType::Creature),
+        ),
+        crate::effect::Until::EndOfTurn,
+        card_id,
+        alice,
+        None,
+    );
+
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !actions.iter().any(|action| matches!(
             action,
@@ -2229,7 +2242,7 @@ fn test_suspend_only_card_does_not_offer_normal_cast_from_hand() {
             .expect("Lotus Bloom text should parse");
     let card_id = game.create_object_from_definition(&def, alice, Zone::Hand);
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !actions.iter().any(|action| matches!(
             action,
@@ -2327,7 +2340,7 @@ fn test_plot_special_action_enables_cast_on_later_turn_only() {
     .expect("plot special action should resolve");
 
     let exiled_id = *game.exile.first().expect("card should be in exile");
-    let same_turn_actions = compute_legal_actions(&game, alice);
+    let same_turn_actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !same_turn_actions.iter().any(|action| matches!(
             action,
@@ -2347,7 +2360,7 @@ fn test_plot_special_action_enables_cast_on_later_turn_only() {
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
 
-    let later_actions = compute_legal_actions(&game, alice);
+    let later_actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         later_actions.iter().any(|action| matches!(
             action,
@@ -2817,7 +2830,7 @@ fn test_foretell_special_action_enables_cast_from_exile() {
     assert!(game.is_foretold(foretold_id));
 
     // CR 702.143a: castable only after the turn it was foretold has ended.
-    let same_turn = compute_legal_actions(&game, alice);
+    let same_turn = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !same_turn.iter().any(|action| matches!(
             action,
@@ -2827,7 +2840,7 @@ fn test_foretell_special_action_enables_cast_from_exile() {
     );
     game.turn.turn_number += 1;
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action,
@@ -3000,7 +3013,7 @@ fn test_graveyard_play_from_actions_include_variable_mana_sources() {
             game.turn.turn_number,
         );
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let can_cast_from_graveyard = actions.iter().any(|action| {
         matches!(
             action,
@@ -3038,7 +3051,7 @@ fn test_counter_unless_pays_spell_not_castable_without_stack_target() {
     let mana_tithe_def = mana_tithe();
     let mana_tithe_id = game.create_object_from_definition(&mana_tithe_def, alice, Zone::Hand);
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let can_cast = actions.iter().any(|action| {
         matches!(
             action,
@@ -3090,7 +3103,7 @@ fn test_conditional_counter_spell_not_castable_without_stack_target() {
     );
 
     // With no spell on stack, the counterspell must not be castable.
-    let actions_without_stack = compute_legal_actions(&game, alice);
+    let actions_without_stack = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let can_cast_without_stack = actions_without_stack.iter().any(|action| {
         matches!(
             action,
@@ -3114,7 +3127,7 @@ fn test_conditional_counter_spell_not_castable_without_stack_target() {
     let dummy_id = game.create_object_from_card(&dummy_spell, bob, Zone::Stack);
     game.push_to_stack(StackEntry::new(dummy_id, bob));
 
-    let actions_with_stack = compute_legal_actions(&game, alice);
+    let actions_with_stack = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let can_cast_with_stack = actions_with_stack.iter().any(|action| {
         matches!(
             action,
@@ -3190,7 +3203,7 @@ fn optional_cost_can_make_cast_time_targets_legal() {
     let dummy_id = game.create_object_from_card(&dummy_spell, bob, Zone::Stack);
     game.push_to_stack(StackEntry::new(dummy_id, bob));
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let can_cast = actions.iter().any(|action| {
         matches!(
             action,
@@ -3240,7 +3253,7 @@ fn test_if_effect_counter_spell_not_castable_without_stack_target() {
     );
 
     // With no spell on stack, the spell must not be castable.
-    let actions_without_stack = compute_legal_actions(&game, alice);
+    let actions_without_stack = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let can_cast_without_stack = actions_without_stack.iter().any(|action| {
         matches!(
             action,
@@ -3264,7 +3277,7 @@ fn test_if_effect_counter_spell_not_castable_without_stack_target() {
     let dummy_id = game.create_object_from_card(&dummy_spell, bob, Zone::Stack);
     game.push_to_stack(StackEntry::new(dummy_id, bob));
 
-    let actions_with_stack = compute_legal_actions(&game, alice);
+    let actions_with_stack = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let can_cast_with_stack = actions_with_stack.iter().any(|action| {
         matches!(
             action,

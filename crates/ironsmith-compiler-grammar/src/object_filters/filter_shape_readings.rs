@@ -272,9 +272,17 @@ fn read_generic_card_tail_filter(
 /// Whether every "or" of the phrase follows a "that targets" relative clause,
 /// so the disjunction describes the targeted objects.
 pub(super) fn disjunction_is_inside_targets_clause(tokens: &[OwnedLexToken]) -> bool {
+    // "Aura attached to a creature or land" (Enchantment Alteration): the
+    // disjunction names what the Aura is attached to, so it belongs to the
+    // attachment clause rather than splitting the Aura selector.
     let Some(targets) = tokens
         .windows(2)
         .position(|window| window[0].is_word("that") && window[1].is_any_word(&["targets", "target"]))
+        .or_else(|| {
+            tokens
+                .windows(2)
+                .position(|window| window[0].is_word("attached") && window[1].is_word("to"))
+        })
     else {
         return false;
     };

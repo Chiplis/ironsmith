@@ -123,8 +123,8 @@ mod tests {
                                     object,
                                     Zone::Battlefield,
                                     &mut dm,
-                                )
-                                .unwrap()
+                                ).expect("replacement operation must execute successfully in this scenario")
+                                .assert_completed_without_additions().unwrap()
                                 .new_id;
                             assert_eq!(
                                 game.counter_count(entered, CounterType::PlusOnePlusOne),
@@ -169,8 +169,8 @@ mod tests {
             game.next_turn();
             let object = game.create_object_from_card(&card, bob, Zone::Hand);
             let entered = game
-                .move_object_with_etb_processing_with_dm(object, Zone::Battlefield, &mut dm)
-                .unwrap()
+                .move_object_with_etb_processing_with_dm(object, Zone::Battlefield, &mut dm).expect("replacement operation must execute successfully in this scenario")
+                .assert_completed_without_additions().unwrap()
                 .new_id;
             assert_eq!(
                 game.counter_count(entered, CounterType::PlusOnePlusOne),
@@ -218,8 +218,8 @@ mod tests {
             game.move_object_by_effect(source, Zone::Graveyard).unwrap();
             let mut dm = SelectFirstDecisionMaker;
             let unrelated = game
-                .move_object_with_etb_processing_with_dm(unrelated, Zone::Battlefield, &mut dm)
-                .unwrap()
+                .move_object_with_etb_processing_with_dm(unrelated, Zone::Battlefield, &mut dm).expect("replacement operation must execute successfully in this scenario")
+                .assert_completed_without_additions().unwrap()
                 .new_id;
             assert_eq!(
                 game.counter_count(unrelated, CounterType::PlusOnePlusOne),
@@ -231,8 +231,8 @@ mod tests {
                     .unwrap();
             }
             let entered = game
-                .move_object_with_etb_processing_with_dm(current, Zone::Battlefield, &mut dm)
-                .unwrap()
+                .move_object_with_etb_processing_with_dm(current, Zone::Battlefield, &mut dm).expect("replacement operation must execute successfully in this scenario")
+                .assert_completed_without_additions().unwrap()
                 .new_id;
             assert_eq!(
                 game.counter_count(entered, CounterType::PlusOnePlusOne),
@@ -242,8 +242,8 @@ mod tests {
                 .move_object_by_effect(entered, Zone::Graveyard)
                 .unwrap();
             let returned = game
-                .move_object_with_etb_processing_with_dm(graveyard, Zone::Battlefield, &mut dm)
-                .unwrap()
+                .move_object_with_etb_processing_with_dm(graveyard, Zone::Battlefield, &mut dm).expect("replacement operation must execute successfully in this scenario")
+                .assert_completed_without_additions().unwrap()
                 .new_id;
             assert_eq!(game.counter_count(returned, CounterType::PlusOnePlusOne), 0);
         }

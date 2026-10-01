@@ -121,7 +121,7 @@ fn actual_cast_pays_selected_x_and_flashback_exiles_only_own_blue_cards() {
                 .iter()
                 .map(|id| game.object(*id).unwrap().name.to_string())
                 .collect();
-            let action = compute_legal_actions(&game, alice)
+            let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
                 .into_iter()
                 .find(
                     |a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell),
@@ -336,7 +336,7 @@ fn flashback_x_cannot_be_paid_with_itself_or_ineligible_cards() {
             bob,
             Zone::Graveyard,
         );
-        let action = compute_legal_actions(&game, alice)
+        let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .into_iter()
             .find(|a| matches!(a, LegalAction::CastSpell {spell_id, ..} if *spell_id == spell))
             .expect("zero X remains legal");

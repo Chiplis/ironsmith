@@ -810,22 +810,18 @@ impl GameState {
         for (object_id, _) in &owned_objects {
             self.remove_object(*object_id);
         }
+        let departure_batch = (!departing_permanents.is_empty()).then(||
+            self.provenance_graph_mut().alloc_root_event(crate::events::EventKind::ObjectLeavesGame));
         for (object_id, snapshot) in departing_permanents {
-            // Not a zone change into any real zone: only "leaves the
-            // battlefield" matchers accept it, never "dies" or "is exiled".
-            let event = crate::events::zones::ZoneChangeEvent::with_cause(
-                object_id,
-                Zone::Battlefield,
-                Zone::OutsideGame,
-                crate::events::cause::EventCause::from_game_rule(),
-                Some(snapshot),
+            let event = crate::events::zones::ObjectLeavesGameEvent::new(
+                object_id, snapshot, crate::events::cause::EventCause::from_game_rule(),
             );
-            let provenance = self
-                .provenance_graph_mut()
-                .alloc_root_event(crate::events::EventKind::ZoneChange);
+            let provenance = self.provenance_graph_mut()
+                .alloc_root_event(crate::events::EventKind::ObjectLeavesGame);
             self.queue_trigger_event(
                 provenance,
                 crate::triggers::TriggerEvent::new_with_provenance(event, provenance)
+                    .with_simultaneous_batch(departure_batch.expect("departing permanent has a batch"))
                     .with_lookback_source_snapshots(departing_lookback.clone()),
             );
         }
@@ -981,6 +977,9 @@ impl GameState {
 
         {
             let aux = self.auxiliary_tracking_mut();
+            // A pending routing view belongs to the interrupted decision.
+            // Player departure invalidates that view before subsequent choices.
+            aux.pending_decision_controllers = None;
             aux.player_control_effects
                 .retain(|effect| effect.controller != player && effect.target != player);
             aux.scoped_player_control_effects
@@ -1719,6 +1718,43 @@ impl GameState {
         vec![controller, player]
     }
 
+    /// A resumed instruction rebuilds its active scopes from the checkpoint.
+    /// Pending routing must not become another active, independently-lived scope.
+    pub fn clear_pending_decision_controllers(&mut self) {
+        self.auxiliary_tracking_mut().pending_decision_controllers = None;
+    }
+
+    /// Capture routing at the prompt before instruction scopes unwind. Capture
+    /// resolved players, not effect tokens: source departure or a prior prefix
+    /// may change applicability relative to the rolled-back physical state.
+    pub(crate) fn capture_pending_decision_controllers(&mut self) {
+        // The innermost owner captured the actual prompt. An outer owner
+        // observing the same suspension must not replace it after scopes unwind.
+        if self.auxiliary_tracking.pending_decision_controllers.is_some() { return; }
+        let controllers = self.players.iter().map(|player| {
+            (player.id, self.controlling_player_for(player.id))
+        }).collect();
+        self.auxiliary_tracking_mut().pending_decision_controllers = Some(controllers);
+    }
+
+    /// Transfer the actual prompt routing from a staged transaction without
+    /// committing its provisional physical state. The outer owner still rolls
+    /// back its own checkpoint and retains this view only for pending success.
+    pub(crate) fn retain_pending_decision_controllers_from(&mut self, staged: &mut GameState) {
+        self.auxiliary_tracking_mut().pending_decision_controllers =
+            staged.auxiliary_tracking_mut().pending_decision_controllers.take();
+    }
+
+    /// Restore physical state while retaining only an actual pending decision's
+    /// routing view. Errors never retain a partial execution's routing state.
+    pub fn restore_execution_checkpoint(&mut self, checkpoint: GameState, pending: bool) {
+        let controllers = if pending {
+            self.auxiliary_tracking_mut().pending_decision_controllers.take()
+        } else { None };
+        *self = checkpoint;
+        self.auxiliary_tracking_mut().pending_decision_controllers = controllers;
+    }
+
     /// Add a player-control effect for the currently resolving instruction.
     ///
     /// The returned token should be passed to `remove_scoped_player_control`
@@ -1792,7 +1828,10 @@ impl GameState {
             }
         }
 
-        let controller = best.map(|(controller, _)| controller).unwrap_or(player);
+        let controller = self.auxiliary_tracking.pending_decision_controllers.as_ref()
+            .and_then(|controllers| controllers.iter().find(|(target, _)| *target == player))
+            .map(|(_, controller)| *controller)
+            .unwrap_or_else(|| best.map(|(controller, _)| controller).unwrap_or(player));
         if self
             .player(controller)
             .is_some_and(|candidate| candidate.is_in_game())
@@ -2805,7 +2844,12 @@ impl GameState {
         }
         self.record_grand_melee_stack_provenance(entry.provenance);
         self.stack.push(entry);
-        self.update_replacement_effects();
+        // Stack filters inspect the entry, not just the object's zone. The
+        // source snapshot above may have cached characteristics before this
+        // entry existed. Invalidate before regenerating replacement abilities.
+        self.bump_mutation_revision();
+        self.mark_continuous_state_dirty();
+        self.refresh_continuous_state();
     }
 
     /// Reserve a fresh [`StackEntry::ability_id`].
@@ -2890,7 +2934,12 @@ impl GameState {
 
     /// Pops and returns the top item from the stack.
     pub fn pop_from_stack(&mut self) -> Option<StackEntry> {
-        self.stack.pop()
+        let entry = self.stack.pop();
+        if entry.is_some() {
+            self.bump_mutation_revision();
+            self.mark_continuous_state_dirty();
+        }
+        entry
     }
 
     /// Returns true if the stack is empty.
@@ -3952,5 +4001,87 @@ mod last_turn_attack_tests {
                 "expired restriction must allow untapping"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod stack_characteristic_invalidation_tests {
+    use super::*;
+
+    #[test]
+    fn stack_entry_changes_invalidate_characteristics_before_replacement_refresh() {
+        use crate::ability::Ability;
+        use crate::card::CardBuilder;
+        use crate::filter::StackObjectKind;
+        use crate::static_abilities::StaticAbility;
+        use crate::types::{CardType, Subtype, SubtypeFamily};
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id;
+        let grant = CardBuilder::new(CardId::new(), "Stack type grant")
+            .card_types(vec![CardType::Artifact]).build();
+        let source = game.create_object_from_card(&grant, alice, Zone::Battlefield);
+        let mut filter = crate::target::ObjectFilter::creature();
+        filter.zone = Some(Zone::Stack);
+        filter.stack_kind = Some(StackObjectKind::Spell);
+        game.object_mut(source).unwrap().abilities = std::sync::Arc::new(vec![
+            Ability::static_ability(StaticAbility::add_all_subtypes_of_family(
+                filter, SubtypeFamily::Creature))]);
+        let spell = CardBuilder::new(CardId::new(), "Stack type subject")
+            .card_types(vec![CardType::Creature]).build();
+        let id = game.create_object_from_card(&spell, alice, Zone::Stack);
+        game.refresh_continuous_state();
+        assert!(!game.current_subtypes(id).unwrap().contains(&Subtype::Elf));
+        game.push_to_stack(StackEntry::new(id, alice));
+        assert!(game.current_subtypes(id).unwrap().contains(&Subtype::Elf));
+        let checkpoint = game.clone();
+        assert!(checkpoint.current_subtypes(id).unwrap().contains(&Subtype::Elf));
+        assert_eq!(game.pop_from_stack().unwrap().object_id, id);
+        assert!(!game.current_subtypes(id).unwrap().contains(&Subtype::Elf));
+        game.refresh_continuous_state();
+        assert!(!game.current_subtypes(id).unwrap().contains(&Subtype::Elf));
+    }
+    #[test]
+    fn direct_stack_mutation_invalidates_characteristics_and_preserves_checkpoint() {
+        use crate::ability::Ability;
+        use crate::card::CardBuilder;
+        use crate::filter::StackObjectKind;
+        use crate::static_abilities::StaticAbility;
+        use crate::types::{CardType, Subtype, SubtypeFamily};
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id;
+        let grant = CardBuilder::new(CardId::new(), "Stack type grant")
+            .card_types(vec![CardType::Artifact]).build();
+        let source = game.create_object_from_card(&grant, alice, Zone::Battlefield);
+        let mut filter = crate::target::ObjectFilter::creature();
+        filter.zone = Some(Zone::Stack);
+        filter.stack_kind = Some(StackObjectKind::Spell);
+        filter.controller = Some(crate::target::PlayerFilter::You);
+        game.object_mut(source).unwrap().abilities = std::sync::Arc::new(vec![
+            Ability::static_ability(StaticAbility::add_all_subtypes_of_family(
+                filter, SubtypeFamily::Creature))]);
+        let spell = CardBuilder::new(CardId::new(), "Stack type subject")
+            .card_types(vec![CardType::Creature]).build();
+        let id = game.create_object_from_card(&spell, alice, Zone::Stack);
+        game.refresh_continuous_state();
+        assert!(!game.current_subtypes(id).unwrap().contains(&Subtype::Elf));
+        game.stack.push(StackEntry::new(id, alice));
+        assert!(game.current_subtypes(id).unwrap().contains(&Subtype::Elf));
+        let checkpoint = game.clone();
+        assert!(checkpoint.current_subtypes(id).unwrap().contains(&Subtype::Elf));
+        // Changing an existing entry must invalidate as well as insertion.
+        game.stack[0].is_ability = true;
+        assert!(!game.current_subtypes(id).unwrap().contains(&Subtype::Elf));
+        assert!(checkpoint.current_subtypes(id).unwrap().contains(&Subtype::Elf));
+        game.stack[0].is_ability = false;
+        assert!(game.current_subtypes(id).unwrap().contains(&Subtype::Elf));
+        // Restoring an independently cloned stack is another mutation source.
+        game.stack.clear();
+        assert!(!game.current_subtypes(id).unwrap().contains(&Subtype::Elf));
+        game.stack = checkpoint.stack.clone();
+        assert!(game.current_subtypes(id).unwrap().contains(&Subtype::Elf));
+        assert_eq!(game.stack.remove(0).object_id, id);
+        assert!(!game.current_subtypes(id).unwrap().contains(&Subtype::Elf));
+        game.refresh_continuous_state();
+        assert!(!game.current_subtypes(id).unwrap().contains(&Subtype::Elf));
     }
 }

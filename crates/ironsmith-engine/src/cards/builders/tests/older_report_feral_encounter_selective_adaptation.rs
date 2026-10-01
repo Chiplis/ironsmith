@@ -144,7 +144,7 @@ fn feral_encounter_preserves_the_looked_card_permission_and_delayed_damage_targe
         .expect("Alice exists")
         .mana_pool
         .add(ManaSymbol::Colorless, 2);
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let chosen_now = game
         .find_object_by_stable_id(chosen_stable)
         .expect("chosen card should retain stable identity in exile");

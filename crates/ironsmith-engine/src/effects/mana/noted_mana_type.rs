@@ -60,7 +60,7 @@ impl EffectExecutor for AddManaOfNotedTypeEffect {
         if amount == 0 {
             return Ok(EffectOutcome::count(0));
         }
-        let mana = credit_repeated_mana_symbol_from_context(game, player_id, symbol, amount, ctx);
+        let mana = credit_repeated_mana_symbol_from_context(game, player_id, symbol, amount, ctx)?;
         Ok(mana_added_count_outcome(
             ctx,
             player_id,

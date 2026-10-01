@@ -107,7 +107,7 @@ fn transformation_preserves_abilities_and_grants_executable_crew() {
 }
 
 fn crew_action(game: &GameState, player: PlayerId, target: ObjectId) -> Option<LegalAction> {
-    compute_legal_actions(game, player)
+    compute_legal_actions(game, player).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::ActivateAbility { source, .. } if *source == target))
 }
@@ -154,7 +154,7 @@ fn flash_and_enchant_creature_or_vehicle_keep_target_restrictions() {
         );
     }
     assert!(
-        compute_legal_actions(&game, alice).iter().any(
+        compute_legal_actions(&game, alice).expect("fixture has complete replacement state").iter().any(
             |action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == aura)
         ),
         "flash permits opponent-turn casting"

@@ -152,7 +152,7 @@ fn announce(
 ) -> Result<(TriggerQueue, Value), String> {
     g.turn.priority_player = Some(PlayerId(actor));
     let source = g.create_object_from_definition(def, PlayerId(actor), Zone::Hand);
-    let action = compute_legal_actions(g, PlayerId(actor))
+    let action = compute_legal_actions(g, PlayerId(actor)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source))
         .ok_or("intended cast unavailable")?;
@@ -281,7 +281,7 @@ fn action(
     mana: bool,
     dm: &mut Choices,
 ) -> Result<Value, String> {
-    let a = compute_legal_actions(g, PlayerId(0))
+    let a = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| match a {
             LegalAction::ActivateAbility {
@@ -355,7 +355,7 @@ fn next_main(g: &mut GameState) {
 fn play_land(g: &mut GameState, d: &CardDefinition, dm: &mut Choices) -> Result<ObjectId, String> {
     let hand = g.create_object_from_definition(d, g.turn.active_player, Zone::Hand);
     let stable=g.object(hand).unwrap().stable_id;
-    let a = compute_legal_actions(g, g.turn.active_player)
+    let a = compute_legal_actions(g, g.turn.active_player).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::PlayLand{land_id}if *land_id==hand))
         .ok_or("land play missing")?;
@@ -381,7 +381,7 @@ fn run(defs:&HashMap<String,CardDefinition>,name:&str,n:usize,state:&str)->Resul
  if state=="tapped"{dm.targets=vec![Target::Object(resources[0])];producers.push(paid(&mut g,defs,"Twiddle",&mut dm,1)?);if !g.is_tapped(resources[0]){return Err("tap producer failed".into());}}
  let wanted=match name{"Blood Tribute"=>ironsmith::Subtype::Vampire,"Exterminate!"=>ironsmith::Subtype::Dalek,_=>ironsmith::Subtype::Horror};
  if state!="wrong_type"&&resources.iter().any(|id|!g.calculated_subtypes(*id).contains(&wanted)){return Err("paid resource actual subtype mismatch".into());}
- let source=g.create_object_from_definition(&defs[name],PlayerId(0),Zone::Hand);let actions=compute_legal_actions(&g,PlayerId(0));let action=actions.iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,casting_method:ironsmith::alternative_cast::CastingMethod::Normal,..}if *spell_id==source)).cloned().ok_or("normal intendedcast missing beforeoptional prompt")?;
+ let source=g.create_object_from_definition(&defs[name],PlayerId(0),Zone::Hand);let actions=compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state");let action=actions.iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,casting_method:ironsmith::alternative_cast::CastingMethod::Normal,..}if *spell_id==source)).cloned().ok_or("normal intendedcast missing beforeoptional prompt")?;
  let before=json!({"actions":format!("{actions:?}"),"resources":resources.iter().map(|id|json!({"id":id.0,"name":g.object(*id).unwrap().name.to_string(),"tapped":g.is_tapped(*id),"fresh":g.is_summoning_sick(*id),"subtypes":format!("{:?}",g.calculated_subtypes(*id))})).collect::<Vec<_>>()});
  let mut q=TriggerQueue::new();let mut st=PriorityLoopState::new(g.players_in_game());let mana=g.player(PlayerId(0)).unwrap().mana_pool.total();let mut p=apply_priority_response_with_dm(&mut g,&mut q,&mut st,&PriorityResponse::PriorityAction(action),&mut dm).map_err(|e|e.to_string())?;
  for _ in 0..20{

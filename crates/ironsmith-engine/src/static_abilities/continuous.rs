@@ -1653,6 +1653,9 @@ fn describe_static_condition_value(value: &Value) -> String {
             describe_static_condition_value(left),
             describe_static_condition_value(right)
         ),
+        Value::UnlockedDoorsAmong(filter) => {
+            format!("the number of unlocked doors among {}", filter.description())
+        }
         other => format!("{other:?}"),
     }
 }
@@ -5566,7 +5569,13 @@ impl StaticAbilityKind for SetCreatureSubtypesForFilter {
             .iter()
             .map(|subtype| subtype.to_string().to_ascii_lowercase())
             .collect::<Vec<_>>();
-        let mut text = format!("{subject} {verb} {}", join_with_and(&subtypes));
+        // An empty set is "lose all creature types" (Curse of Conformity).
+        let mut text = if subtypes.is_empty() {
+            let lose = if verb == "is" { "loses" } else { "lose" };
+            format!("{subject} {lose} all creature types")
+        } else {
+            format!("{subject} {verb} {}", join_with_and(&subtypes))
+        };
         if let Some(condition) = &self.condition {
             text.push(' ');
             text.push_str(&describe_static_condition(condition));
@@ -6066,10 +6075,40 @@ fn materialize_granting_source_unattach_costs(
     let mut changed = false;
     let mut rebuilt = components.to_vec();
     for idx in 0..components.len() {
+        // "{T}, Sacrifice Blazing Torch:": the sacrifice selects the granting
+        // object by identity.
+        if let Some(effect) = components[idx]
+            .effect_ref()
+            .and_then(|effect| bind_granting_source_sacrifice(effect, source))
+        {
+            rebuilt[idx] = crate::costs::Cost::validated_effect(effect);
+            changed = true;
+            continue;
+        }
         let Some(choose) = crate::cost::tagged_choice_pair_at(components, idx) else {
             continue;
         };
-        if !choose.filter.source {
+        // The compiler binds the choice to the granting object
+        // (`GRANTING_SOURCE_TAG`); older definitions chose "the source".
+        let names_granting_source = choose.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == crate::tag::GRANTING_SOURCE_TAG
+        });
+        if !choose.filter.source && !names_granting_source {
+            continue;
+        }
+        // A choice the compiler bound to the granting object is that object
+        // whatever consumes it (unattach, sacrifice, ...).
+        if names_granting_source {
+            let mut choose = choose.clone();
+            choose
+                .filter
+                .tagged_constraints
+                .retain(|constraint| constraint.tag.as_str() != crate::tag::GRANTING_SOURCE_TAG);
+            choose.filter.specific = Some(source);
+            rebuilt[idx] =
+                crate::costs::Cost::validated_effect(crate::effect::Effect::new(choose));
+            changed = true;
             continue;
         }
         let consumes_by_unattach = components[idx + 1]
@@ -6091,11 +6130,47 @@ fn materialize_granting_source_unattach_costs(
         }
         let mut choose = choose.clone();
         choose.filter.source = false;
+        choose
+            .filter
+            .tagged_constraints
+            .retain(|constraint| constraint.tag.as_str() != crate::tag::GRANTING_SOURCE_TAG);
         choose.filter.specific = Some(source);
         rebuilt[idx] = crate::costs::Cost::validated_effect(crate::effect::Effect::new(choose));
         changed = true;
     }
     changed.then(|| crate::cost::TotalCost::from_costs(rebuilt))
+}
+
+fn filter_names_granting_source(filter: &crate::filter::ObjectFilter) -> bool {
+    filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag.as_str() == crate::tag::GRANTING_SOURCE_TAG
+    })
+}
+
+/// A sacrifice cost (possibly under a result tag) whose filter names the
+/// granting object, rebound to that concrete object.
+fn bind_granting_source_sacrifice(
+    effect: &crate::effect::Effect,
+    source: ObjectId,
+) -> Option<crate::effect::Effect> {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        let inner = bind_granting_source_sacrifice(&tagged.effect, source)?;
+        let mut tagged = tagged.clone();
+        tagged.effect = Box::new(inner);
+        return Some(crate::effect::Effect::new(tagged));
+    }
+    let sacrifice = effect.downcast_ref::<crate::effects::SacrificeEffect>()?;
+    if !filter_names_granting_source(&sacrifice.filter) {
+        return None;
+    }
+    let mut sacrifice = sacrifice.clone();
+    sacrifice
+        .filter
+        .tagged_constraints
+        .retain(|constraint| constraint.tag.as_str() != crate::tag::GRANTING_SOURCE_TAG);
+    sacrifice.filter.specific = Some(source);
+    Some(crate::effect::Effect::new(sacrifice))
 }
 
 fn materialize_named_granting_source(ability: &Ability, source: ObjectId) -> Ability {

@@ -127,7 +127,7 @@ fn announce(
     activate: bool,
     dm: &mut Choices,
 ) -> Result<Value, String> {
-    let action = compute_legal_actions(game, PlayerId(0))
+    let action = compute_legal_actions(game, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| {
             if activate {

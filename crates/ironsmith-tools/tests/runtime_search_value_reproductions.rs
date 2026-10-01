@@ -112,7 +112,7 @@ fn resolve_pending(game: &mut GameState, dm: &mut Decisions) -> Result<usize, St
     Err("fixture stack resolution budget exceeded".into())
 }
 fn announce(game: &mut GameState, source: ObjectId, dm: &mut Decisions) -> Result<String, String> {
-    let action = compute_legal_actions(game, PlayerId(0))
+    let action = compute_legal_actions(game, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| matches!(action,LegalAction::CastSpell{spell_id,..} if *spell_id==source))
         .ok_or("fixture had no legal creature cast")?;

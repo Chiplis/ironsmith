@@ -372,7 +372,47 @@ struct AvailableManaSourceView {
 }
 
 #[derive(Debug, Clone, Serialize)]
+struct ManaPaymentEditorView {
+    payment_pips: Vec<Vec<String>>,
+    transaction_id: String,
+    fixed_excluded_source_ids: Vec<String>,
+    required_activations: Vec<ManaPaymentActivationCommand>,
+    required_alternatives: Vec<ManaPaymentAlternativeCommand>,
+    required_life_pips: Vec<u32>,
+    activation_options: Vec<ManaActivationOptionView>,
+    life_options: Vec<ManaLifeOptionView>,
+    reserved_sources: Vec<ReservedPaymentSourceView>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ManaActivationOptionView {
+    source_id: String,
+    source_name: String,
+    ability_index: usize,
+    color_restriction: Option<Vec<String>>,
+    expected_mana: ManaPoolView,
+    label: String,
+    repeatable: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ManaLifeOptionView {
+    pip_id: u32,
+    life: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ReservedPaymentSourceView {
+    source_id: String,
+    source_name: String,
+    reason: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 struct ManaPaymentView {
+    #[serde(flatten)]
+    editor: ManaPaymentEditorView,
+    cost_context: Vec<String>,
     can_confirm: bool,
     plan_id: String,
     request_hash: String,
@@ -650,6 +690,7 @@ fn mana_symbol_display_code(symbol: &ManaSymbol) -> String {
 fn mana_payment_view_from_pending_cast(
     game: &GameState,
     pending: &ironsmith::game_loop::PendingCast,
+    activation_options: &[ManaActivationOptionView],
 ) -> Option<ManaPaymentView> {
     if !matches!(
         pending.stage,
@@ -680,6 +721,8 @@ fn mana_payment_view_from_pending_cast(
         .unwrap_or_else(|| "spell".to_string());
 
     Some(ManaPaymentView {
+        editor: mana_payment_editor_view(game, payment, activation_options),
+        cost_context: cast_payment_cost_context(game, pending),
         can_confirm: payment.plan.payable,
         plan_id: payment.plan.id.to_string(),
         request_hash: payment.plan.request_hash.to_string(),
@@ -731,6 +774,7 @@ fn mana_payment_view_from_pending_cast(
 fn mana_payment_view_from_pending_activation(
     game: &GameState,
     pending: &ironsmith::game_loop::PendingActivation,
+    activation_options: &[ManaActivationOptionView],
 ) -> Option<ManaPaymentView> {
     if !matches!(pending.stage, ActivationStage::PayingMana) {
         return None;
@@ -750,6 +794,8 @@ fn mana_payment_view_from_pending_activation(
 
     let payment = pending.pending_mana_payment.as_ref()?;
     Some(ManaPaymentView {
+        editor: mana_payment_editor_view(game, payment, activation_options),
+        cost_context: vec!["Activated ability".to_string()],
         can_confirm: payment.plan.payable,
         plan_id: payment.plan.id.to_string(),
         request_hash: payment.plan.request_hash.to_string(),
@@ -801,6 +847,7 @@ fn mana_payment_view_from_pending_activation(
 fn mana_payment_view_from_context(
     game: &GameState,
     context: &ironsmith::decisions::context::ManaPaymentContext,
+    activation_options: &[ManaActivationOptionView],
 ) -> ManaPaymentView {
     let payment = ironsmith::mana_payment::PendingManaPayment::new(
         context.request.clone(),
@@ -811,6 +858,8 @@ fn mana_payment_view_from_context(
         context.request.x_value as usize,
     );
     ManaPaymentView {
+        editor: mana_payment_editor_view(game, &payment, activation_options),
+        cost_context: Vec::new(),
         can_confirm: context.plan.payable,
         plan_id: context.plan.id.to_string(),
         request_hash: context.plan.request_hash.to_string(),
@@ -859,6 +908,209 @@ fn mana_payment_view_from_context(
             .collect(),
         prefer_life: context.request.preferences.prefer_life,
         planning_complete: true,
+    }
+}
+
+fn cast_payment_cost_context(
+    game: &GameState,
+    pending: &ironsmith::game_loop::PendingCast,
+) -> Vec<String> {
+    use ironsmith::alternative_cast::CastingMethod;
+    let object = game.object(pending.spell_id);
+    let method = match &pending.casting_method {
+        CastingMethod::Normal => "Normal cast".to_string(),
+        CastingMethod::FaceDown => "Face down".to_string(),
+        CastingMethod::SplitOtherHalf => "Other half".to_string(),
+        CastingMethod::Fuse => "Fuse".to_string(),
+        CastingMethod::GrantedEscape { .. } => "Escape".to_string(),
+        CastingMethod::GrantedFlashback => "Flashback".to_string(),
+        CastingMethod::Alternative(index)
+        | CastingMethod::PlayFrom {
+            use_alternative: Some(index),
+            ..
+        }
+        | CastingMethod::SplitOtherHalfPlayFrom {
+            use_alternative: index,
+            ..
+        } => object
+            .and_then(|object| object.alternative_casts.get(*index))
+            .map(|method| method.name().to_string())
+            .unwrap_or_else(|| "Alternative cost".to_string()),
+        CastingMethod::PlayFrom { .. } => "Granted cast".to_string(),
+    };
+    let mut result = vec![method];
+    if pending.base_mana_cost_waived {
+        result.push("Base mana cost waived".to_string());
+    }
+    if let Some(x) = pending.x_value {
+        result.push(format!("X = {x}"));
+    }
+    if let Some(object) = object {
+        for (index, cost) in object.optional_costs.iter().enumerate() {
+            let times = pending.optional_costs_paid.times_paid(index);
+            if times > 0 {
+                result.push(format!("{} ×{times}", cost.source_label));
+            }
+        }
+    }
+    result
+}
+
+fn mana_activation_option_views(
+    game: &GameState,
+    request: &ironsmith::mana_payment::ManaPaymentRequest,
+) -> Vec<ManaActivationOptionView> {
+    let counters = snapshot_id_counters();
+    let options = ironsmith::mana_payment::mana_payment_activation_inventory(game, request);
+    let views = options
+        .iter()
+        .filter(|option| {
+            if matches!(
+                request.reason,
+                ironsmith::costs::PaymentReason::ActivateManaAbility
+            ) && option.source == request.source
+            {
+                return false;
+            }
+            // Offer deferred choices only when the reviewed output fully resolves
+            // the activation. Other cost/effect choices use explicit Activate now.
+            let mut staged = game.clone();
+            let mut decision_maker = WasmReplayDecisionMaker::new(&[]);
+            if ironsmith::special_actions::perform_activate_mana_ability_restricted_colors(
+                &mut staged,
+                request.payer,
+                option.source,
+                option.ability_index,
+                option.color_restriction.clone(),
+                &mut decision_maker,
+            )
+            .is_err()
+                || decision_maker.awaiting_choice()
+            {
+                return false;
+            }
+            // An unrestricted simulation uses a fallback color. Offer the explicit
+            // color instead when it produces the same output; manual activation is
+            // still available for instructions needing further choices.
+            option.color_restriction.is_some()
+                || !options.iter().any(|other| {
+                    other.source == option.source
+                        && other.ability_index == option.ability_index
+                        && other.color_restriction.is_some()
+                        && other.expected_mana == option.expected_mana
+                })
+        })
+        .map(|option| ManaActivationOptionView {
+            source_id: option.source.0.to_string(),
+            source_name: game
+                .object(option.source)
+                .map(|o| o.name.to_string())
+                .unwrap_or_else(|| format!("Object #{}", option.source.0)),
+            ability_index: option.ability_index,
+            color_restriction: option.color_restriction.as_deref().map(|colors| {
+                colors
+                    .iter()
+                    .map(|color| format!("{color:?}").to_ascii_lowercase())
+                    .collect()
+            }),
+            expected_mana: (&option.expected_mana).into(),
+            label: current_ability_action_text(game, option.source, option.ability_index)
+                .unwrap_or_else(|| "Mana ability".to_string()),
+            repeatable: option.repeatable,
+        })
+        .collect();
+    restore_id_counters(counters);
+    views
+}
+
+fn mana_payment_editor_view(
+    game: &GameState,
+    payment: &ironsmith::mana_payment::PendingManaPayment,
+    activation_options: &[ManaActivationOptionView],
+) -> ManaPaymentEditorView {
+    let request = &payment.request;
+    let preferences = &request.preferences;
+    let colors = |values: &[ironsmith::color::Color]| {
+        values
+            .iter()
+            .map(|color| format!("{color:?}").to_ascii_lowercase())
+            .collect::<Vec<_>>()
+    };
+    let mut life_request = request.clone();
+    life_request.preferences.prefer_life = false;
+    life_request.preferences.required_life_pips.clear();
+    let source_name = |source| {
+        game.object(source)
+            .map(|o| o.name.to_string())
+            .unwrap_or_else(|| format!("Object #{}", source.0))
+    };
+    ManaPaymentEditorView {
+        payment_pips: ironsmith::mana_payment::mana_payment_expanded_pips(game, request)
+            .into_iter()
+            .map(|pip| pip.iter().map(mana_symbol_display_code).collect())
+            .collect(),
+        transaction_id: ironsmith::mana_payment::mana_payment_transaction_id(request).to_string(),
+        fixed_excluded_source_ids: if matches!(
+            request.reason,
+            ironsmith::costs::PaymentReason::ActivateManaAbility
+        ) {
+            vec![request.source.0.to_string()]
+        } else {
+            Vec::new()
+        },
+        required_activations: preferences
+            .required_activations
+            .iter()
+            .map(|selected| ManaPaymentActivationCommand {
+                source_id: selected.source.0.to_string(),
+                ability_index: selected.ability_index,
+                color_restriction: selected.color_restriction.as_deref().map(colors),
+            })
+            .collect(),
+        required_alternatives: preferences
+            .required_alternatives
+            .iter()
+            .map(|selected| ManaPaymentAlternativeCommand {
+                source_id: selected.source.0.to_string(),
+                payment_kind: format!("{:?}", selected.kind).to_ascii_lowercase(),
+            })
+            .collect(),
+        required_life_pips: preferences
+            .required_life_pips
+            .iter()
+            .map(|pip| pip.0)
+            .collect(),
+        activation_options: activation_options.to_vec(),
+        life_options: ironsmith::mana_payment::mana_payment_life_options(game, &life_request)
+            .into_iter()
+            .map(|(pip, life)| ManaLifeOptionView {
+                pip_id: pip.0,
+                life,
+            })
+            .collect(),
+        reserved_sources: request
+            .reserved_tap_sources
+            .iter()
+            .map(|source| ReservedPaymentSourceView {
+                source_id: source.0.to_string(),
+                source_name: source_name(*source),
+                reason: "Reserved for a tap cost".to_string(),
+            })
+            .chain(request.reserved_graveyard_sources.iter().map(|source| {
+                ReservedPaymentSourceView {
+                    source_id: source.0.to_string(),
+                    source_name: source_name(*source),
+                    reason: "Reserved for an exile cost".to_string(),
+                }
+            }))
+            .chain(request.reserved_permanent_sources.iter().map(|source| {
+                ReservedPaymentSourceView {
+                    source_id: source.0.to_string(),
+                    source_name: source_name(*source),
+                    reason: "Reserved for sacrifice; may tap first".to_string(),
+                }
+            }))
+            .collect(),
     }
 }
 
@@ -2917,10 +3169,10 @@ impl DecisionView {
                 let decision_player = decision_player_for(priority.player);
                 let mut actions: Vec<ActionView> = priority
                     .actions
-                    .iter()
+                    .iter_with_face_up_costs()
                     .enumerate()
-                    .map(|(index, action)| {
-                        build_action_view(game, perspective, viewed_cards, index, action)
+                    .map(|(index, (action, cost))| {
+                        build_action_view(game, perspective, viewed_cards, index, action, cost)
                     })
                     .collect();
                 if decision_player == perspective
@@ -3749,6 +4001,8 @@ enum ReplayRoot {
     Response(PriorityResponse),
     /// The game loop is auto-advancing and hit a decision (e.g. triggered ability targeting).
     Advance,
+    /// A forced reveal needs replay to answer an immediate face-up program.
+    ForceTurnFaceUp { player: PlayerId, object: ObjectId },
     /// A card was injected directly into a zone and needs replay to resolve nested prompts.
     AddCardToZone {
         player: PlayerId,
@@ -3798,6 +4052,7 @@ fn replay_root_kind(root: &ReplayRoot) -> &'static str {
         ReplayRoot::Response(_) => "response",
         ReplayRoot::Advance => "advance",
         ReplayRoot::AddCardToZone { .. } => "add_card_to_zone",
+        ReplayRoot::ForceTurnFaceUp { .. } => "force_turn_face_up",
     }
 }
 
@@ -4350,6 +4605,7 @@ pub struct WasmGame {
     manabrew_next_prompt_id: u32,
     manabrew_open_prompt: Option<ManabrewOpenPrompt>,
     cached_snapshot: Option<CachedSnapshot>,
+    mana_activation_inventory_cache: std::cell::RefCell<Option<(u64, Vec<ManaActivationOptionView>)>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -5275,14 +5531,14 @@ mod native_tests {
         let game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
 
         assert_eq!(
-            describe_action(&game, &LegalAction::KeepOpeningHand),
+            describe_action(&game, &LegalAction::KeepOpeningHand).expect("fixture has complete replacement state"),
             "Keep hand"
         );
         assert_eq!(
-            describe_action(&game, &LegalAction::ContinuePregame),
+            describe_action(&game, &LegalAction::ContinuePregame).expect("fixture has complete replacement state"),
             "Pregame"
         );
-        assert_eq!(describe_action(&game, &LegalAction::BeginGame), "Pregame");
+        assert_eq!(describe_action(&game, &LegalAction::BeginGame).expect("fixture has complete replacement state"), "Pregame");
     }
 
     #[test]

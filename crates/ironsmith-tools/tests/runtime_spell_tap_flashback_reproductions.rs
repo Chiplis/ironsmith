@@ -152,7 +152,7 @@ fn announce(
 ) -> Result<(TriggerQueue, Value), String> {
     g.turn.priority_player = Some(PlayerId(actor));
     let source = g.create_object_from_definition(def, PlayerId(actor), Zone::Hand);
-    let action = compute_legal_actions(g, PlayerId(actor))
+    let action = compute_legal_actions(g, PlayerId(actor)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source))
         .ok_or("intended cast unavailable")?;
@@ -281,7 +281,7 @@ fn action(
     mana: bool,
     dm: &mut Choices,
 ) -> Result<Value, String> {
-    let a = compute_legal_actions(g, PlayerId(0))
+    let a = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| match a {
             LegalAction::ActivateAbility {
@@ -355,7 +355,7 @@ fn next_main(g: &mut GameState) {
 fn play_land(g: &mut GameState, d: &CardDefinition, dm: &mut Choices) -> Result<ObjectId, String> {
     let hand = g.create_object_from_definition(d, g.turn.active_player, Zone::Hand);
     let stable=g.object(hand).unwrap().stable_id;
-    let a = compute_legal_actions(g, g.turn.active_player)
+    let a = compute_legal_actions(g, g.turn.active_player).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::PlayLand{land_id}if *land_id==hand))
         .ok_or("land play missing")?;
@@ -390,7 +390,7 @@ fn run(defs:&HashMap<String,CardDefinition>,name:&str,n:usize,state:&str)->Resul
  let resource_name=if state=="wrong_type"{if name=="Group Project"{"Mind Stone"}else{"Grizzly Bears"}}else{if name=="Group Project"{"Grizzly Bears"}else{"Suntail Hawk"}};
  let mut resources=initial_tokens.clone();for _ in initial_count..n{let before=g.battlefield.clone();producers.push(paid(&mut g,defs,resource_name,&mut dm,if resource_name=="Suntail Hawk"{1}else{2})?);resources.push(g.battlefield.iter().find(|id|!before.contains(id)&&g.object(**id).is_some_and(|o|o.name==resource_name)).copied().ok_or("new paid resource absent")?);}
  if state=="tapped"{dm.targets=vec![Target::Object(resources[0])];producers.push(paid(&mut g,defs,"Twiddle",&mut dm,1)?);if !g.is_tapped(resources[0]){return Err("resource tap failed".into());}}
- dm.targets.clear();dm.names=resources.iter().map(|id|g.object(*id).unwrap().name.to_string()).collect();let actions=compute_legal_actions(&g,PlayerId(0));let offered=actions.iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,from_zone:Zone::Graveyard,casting_method:ironsmith::alternative_cast::CastingMethod::Alternative(0)}if *spell_id==source)).cloned();let required=if name=="Prismatic Strands"{1}else{3};let valid=n>=required&&state=="ready";
+ dm.targets.clear();dm.names=resources.iter().map(|id|g.object(*id).unwrap().name.to_string()).collect();let actions=compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state");let offered=actions.iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,from_zone:Zone::Graveyard,casting_method:ironsmith::alternative_cast::CastingMethod::Alternative(0)}if *spell_id==source)).cloned();let required=if name=="Prismatic Strands"{1}else{3};let valid=n>=required&&state=="ready";
  let before=json!({"actions":format!("{actions:?}"),"initial_tokens":initial_count,"resources":resources.iter().map(|id|json!({"id":id.0,"name":g.object(*id).unwrap().name.to_string(),"tapped":g.is_tapped(*id),"fresh":g.is_summoning_sick(*id)})).collect::<Vec<_>>()});
  if !valid||offered.is_none(){return Ok((json!({"flashback_available":valid}),json!({"flashback_available":offered.is_some()}),json!({"source_cast":source_cast,"producers":producers,"before_cast":before,"cast_dispatched":false,"choice_trace":dm.trace})));}
  let payment=dispatch(&mut g,offered.unwrap(),&mut dm).unwrap_or_else(|e|json!({"error":e}));let source_zone=g.objects_in_deterministic_order().into_iter().find(|o|o.stable_id==stable).map(|o|format!("{:?}",o.zone));

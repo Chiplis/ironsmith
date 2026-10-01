@@ -319,6 +319,30 @@ pub(super) fn read_into_destination(
                 ));
             }
 
+            if zone == Zone::Hand
+                && cca_shapes::parse_rest_destination(shape.destination_tokens)
+                    == Some(cca_shapes::RestDestinationShape::Graveyard)
+                && let Some(filter_tokens) =
+                    singular_revealed_this_way_filter_tokens(shape.target_tokens)
+                && let Some(filter) =
+                    crate::effect_sentences::parse_looked_card_choice_filter(filter_tokens)
+            {
+                // "Put an artifact card revealed this way into your hand and
+                // the rest into your graveyard." (Glint Raker)
+                let dest_player = cca_shapes::parse_destination_player(tokens).unwrap_or(player);
+                let looked_tag = crate::util::helper_tag_for_tokens(tokens, "looked");
+                let chosen_tag = crate::util::helper_tag_for_tokens(tokens, "chosen");
+                return Ok(Some(EffectAst::Sequence {
+                    effects: compose_put_filtered_looked_cards_into_hand_rest_into_graveyard(
+                        dest_player,
+                        filter,
+                        crate::effect::ChoiceCount::exactly(1),
+                        (looked_tag).into(),
+                        (chosen_tag).into(),
+                    ),
+                }));
+            }
+
             if zone == Zone::Hand {
                 if let Some(count) = cca_shapes::parse_counted_those_cards(shape.target_tokens)
                     && cca_shapes::parse_rest_destination(shape.destination_tokens)
@@ -720,4 +744,19 @@ pub(super) fn read_onto_clause(input: &PutClause<'_>) -> Result<Option<EffectAst
         }));
     }
     Ok(None)
+}
+
+/// "an artifact card revealed this way" -> "artifact card": the singular
+/// revealed-card selection whose unchosen siblings form "the rest".
+fn singular_revealed_this_way_filter_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    if tokens.len() < 5 || !tokens[0].is_any_word(&["a", "an"]) {
+        return None;
+    }
+    let end = tokens.len() - 3;
+    let suffix_matches = tokens[end..]
+        .iter()
+        .zip(["revealed", "this", "way"])
+        .all(|(token, word)| token.is_word(word));
+    (suffix_matches && end > 1).then_some(&tokens[1..end])
 }

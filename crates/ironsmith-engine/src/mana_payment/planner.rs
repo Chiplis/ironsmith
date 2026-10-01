@@ -60,6 +60,20 @@ pub fn last_mana_payment_perf() -> ManaPaymentPerfMetrics {
     LAST_MANA_PAYMENT_PERF.with(|slot| *slot.borrow())
 }
 
+/// Expanded, ordered pips shared by allocation IDs and the payment editor.
+pub fn mana_payment_expanded_pips(
+    game: &GameState,
+    request: &ManaPaymentRequest,
+) -> Vec<Vec<ManaSymbol>> {
+    let black_life = request.allow_black_life
+        && game.player_can_pay_black_with_life_for_reason(
+            request.payer,
+            Some(request.source),
+            request.reason,
+        );
+    GameState::expanded_payment_pips(&request.cost, request.x_value, black_life)
+}
+
 /// Individually selectable life alternatives, identified in the expanded cost.
 pub fn mana_payment_life_options(
     game: &GameState,
@@ -68,18 +82,12 @@ pub fn mana_payment_life_options(
     if !request.allow_life_payment || request.preferences.prefer_life {
         return Vec::new();
     }
-    let black_life = request.allow_black_life
-        && game.player_can_pay_black_with_life_for_reason(
-            request.payer,
-            Some(request.source),
-            request.reason,
-        );
-    GameState::expanded_payment_pips(&request.cost, request.x_value, black_life)
+    mana_payment_expanded_pips(game, request)
         .iter()
         .enumerate()
         .filter_map(|(index, pip)| {
             let id = ManaPipId(index as u32);
-            if request.preferences.required_life_pips.contains(&id) {
+            if pip.len() < 2 || request.preferences.required_life_pips.contains(&id) {
                 return None;
             }
             pip.iter().find_map(|symbol| match symbol {
@@ -2243,6 +2251,13 @@ pub fn unfunded_mana_payment_plan(
         score: ManaPaymentScore::default(),
         warnings: Vec::new(),
     }
+}
+
+/// Identity of the announced payment, independent of source preferences.
+pub fn mana_payment_transaction_id(request: &ManaPaymentRequest) -> u64 {
+    let mut announced = request.clone();
+    announced.preferences = Default::default();
+    request_hash(&announced)
 }
 
 fn request_hash(request: &ManaPaymentRequest) -> u64 {

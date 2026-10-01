@@ -191,7 +191,7 @@ fn run(def: &CardDefinition, index: usize, time: &str) -> Result<(Value, Value),
         g.player_mut(PlayerId(0)).unwrap().mana_pool.add(symbol, 12);
     }
     let mut evidence = json!({"island_creature_attacker":island_attacker,"ability_index":index,"phase":format!("{:?}",g.turn.phase),"step":format!("{:?}",g.turn.step),"active_player":g.turn.active_player.index(),"history":history,"turn_history":format!("{:?}",g.turn_store.turn_history),"combat":format!("{:?}",g.combat),"combat_phases_started":g.turn_store.combat_phases_started_this_turn,"main_phases_started":g.turn_store.main_phases_started_this_turn,"source_tapped":g.is_tapped(source),"mana_available":g.player(PlayerId(0)).unwrap().mana_pool.total()});
-    let action=compute_legal_actions(&g,PlayerId(0)).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index} if *s==source&&*ability_index==index));
+    let action=compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index} if *s==source&&*ability_index==index));
     let offered = action.is_some();
     let mut announced = false;
     if let Some(action) = action {

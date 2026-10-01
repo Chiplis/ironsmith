@@ -122,15 +122,15 @@ fn live_fixture_with(
     let spell = g
         .game
         .create_object_from_definition(&spell, alice, Zone::Hand);
-    let actions = compute_legal_actions(&g.game, alice);
+    let actions = compute_legal_actions(&g.game, alice).expect("fixture has complete replacement state");
     let index = actions
         .iter()
         .position(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))
         .unwrap();
     g.dispatch_live_priority_response(
         DecisionContext::Priority(ironsmith::decisions::context::PriorityContext::new(
-            alice, actions,
-        )),
+            &g.game, alice, actions,
+        ).expect("fixture has complete replacement state")),
         UiCommand::PriorityAction {
             action_index: Some(index),
             action_ref: None,

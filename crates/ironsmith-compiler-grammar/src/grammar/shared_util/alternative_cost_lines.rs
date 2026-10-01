@@ -194,13 +194,14 @@ pub fn parse_if_conditional_alternative_cost(
     let Some(method) = parse_you_may_rather_than_spell_cost(tail_tokens, line)? else {
         return Ok(None);
     };
-    if permission_shapes::prefix_tokens(line_tokens, &["freerunning"])
-        && let Some(cost) = method.mana_cost().cloned()
-    {
+    // "Freerunning—Return a blue creature you control to its owner's hand"
+    // (Escape Detection): the freerunning cost may be entirely non-mana.
+    if permission_shapes::prefix_tokens(line_tokens, &["freerunning"]) {
+        let cost = method.mana_cost().cloned();
         return Ok(Some(
             AlternativeCastingMethod::alternative_cost_with_condition(
                 "Freerunning",
-                Some(cost),
+                cost,
                 method.non_mana_costs(),
                 condition,
             ),

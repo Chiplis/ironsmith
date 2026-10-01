@@ -35,7 +35,7 @@ fn base_plus_entry_counters_counts_only_other_controlled_creatures() {
         let source = game.create_object_from_definition(&definition, alice, Zone::Hand);
         let mut dm = crate::decision::SelectFirstDecisionMaker;
         let entered = game
-            .move_object_with_etb_processing_with_dm(source, Zone::Battlefield, &mut dm)
+            .move_object_with_etb_processing_with_dm(source, Zone::Battlefield, &mut dm).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
             .unwrap()
             .new_id;
         assert_eq!(
@@ -120,4 +120,13 @@ fn additional_entry_counter_keeps_a_per_object_basis_as_a_for_each_tail() {
         ),
         "an additional +1/+1 counter on it"
     );
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: crate::game_state::EntryCommitResult)
+    -> Option<crate::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

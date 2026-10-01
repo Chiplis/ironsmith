@@ -464,6 +464,7 @@ impl GameState {
         Some(crate::continuous::CalculatedCharacteristics {
             name: "".into(),
             mana_cost: None,
+            linked_face_mana_value: None,
             compiled_card_text: std::sync::Arc::<str>::from(""),
             ability_labels: Default::default(),
             power: None,

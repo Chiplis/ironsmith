@@ -73,7 +73,7 @@ fn cohort_copy_exceptions_apply_supertypes_and_conditional_counters_as_it_enters
                     entrant,
                     Zone::Battlefield,
                     &mut ChooseCopy(copy),
-                )
+                ).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
                 .unwrap()
                 .new_id;
             let object = game.object(entered).unwrap();
@@ -123,7 +123,7 @@ fn cohort_copy_exceptions_apply_supertypes_and_conditional_counters_as_it_enters
                         other,
                         Zone::Battlefield,
                         &mut ChooseCopy(true),
-                    )
+                    ).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
                     .unwrap()
                     .new_id;
                 let object = game.object(other).unwrap();
@@ -448,7 +448,7 @@ fn cohort_combined_combat_and_activation_restrictions_apply_only_to_the_selected
             crate::effects::execute_effect(&mut game, counter_effect, &mut ctx).unwrap();
         }
         game.refresh_continuous_state();
-        let actions = crate::decision::compute_actions_for_source(&game, alice, Some(source));
+        let actions = crate::decision::compute_actions_for_source(&game, alice, Some(source)).expect("fixture has complete replacement state");
         assert_eq!(actions.iter().any(|action| matches!(action, crate::decision::LegalAction::ActivateAbility { source: id, ability_index: 1 } if *id == source)), counters >= 3);
     }
     let mut ctx = crate::effects::EffectContext::new_default(source, alice)
@@ -496,4 +496,13 @@ fn cohort_combined_combat_and_activation_restrictions_apply_only_to_the_selected
     assert!(game.can_activate_abilities_of(target));
     assert!(!game.effect_store.cant_effects.cant_attack.contains(&target));
     assert!(!game.effect_store.cant_effects.cant_block.contains(&target));
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: crate::game_state::EntryCommitResult)
+    -> Option<crate::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

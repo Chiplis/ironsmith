@@ -145,10 +145,61 @@ fn is_structural_ninjutsu_ability(ability: &crate::ability::Ability) -> bool {
             .is_some()
 }
 
+/// Embalm (CR 702.128a) and eternalize (CR 702.129a) are keyword activated
+/// abilities built without an authored activation label. Recognize them by
+/// their defining structure: a graveyard ability whose only effect creates a
+/// token copy of its source that is a Zombie with no mana cost, white
+/// (embalm) or black and 4/4 (eternalize).
+fn is_structural_graveyard_copy_keyword_ability(
+    ability: &crate::ability::Ability,
+    marker: &str,
+) -> bool {
+    let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {
+        return false;
+    };
+    if ability.functional_zones != [Zone::Graveyard] {
+        return false;
+    }
+    let effects = activated.effects.flattened_default_effects();
+    let [effect] = effects else {
+        return false;
+    };
+    let Some(copy) = effect.downcast_ref::<crate::effects::CreateTokenCopyEffect>() else {
+        return false;
+    };
+    if !matches!(copy.target.base(), crate::target::ChooseSpec::Source)
+        || !copy.clear_mana_cost
+        || !copy.added_subtypes.contains(&crate::types::Subtype::Zombie)
+    {
+        return false;
+    }
+    match marker {
+        "embalm" => {
+            copy.set_colors == Some(crate::color::ColorSet::WHITE)
+                && copy.set_base_power_toughness.is_none()
+        }
+        "eternalize" => {
+            copy.set_colors == Some(crate::color::ColorSet::BLACK)
+                && copy.set_base_power_toughness == Some((4, 4))
+        }
+        _ => false,
+    }
+}
+
 fn activated_ability_has_marker(ability: &crate::ability::Ability, marker: &str) -> bool {
     let marker = normalize_ability_marker(marker);
     if marker.is_empty() {
         return false;
+    }
+    // "an eternalize or embalm ability": a disjunctive marker names an
+    // ability carrying any one of the listed keywords.
+    if marker.contains(" or ") {
+        return marker
+            .split(" or ")
+            .any(|alternative| activated_ability_has_marker(ability, alternative));
+    }
+    if is_structural_graveyard_copy_keyword_ability(ability, &marker) {
+        return true;
     }
     let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {
         return false;

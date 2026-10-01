@@ -140,7 +140,7 @@ fn announce(
 ) -> Result<(TriggerQueue, Value), String> {
     g.turn.priority_player = Some(PlayerId(actor));
     let source = g.create_object_from_definition(def, PlayerId(actor), Zone::Hand);
-    let action = compute_legal_actions(g, PlayerId(actor))
+    let action = compute_legal_actions(g, PlayerId(actor)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source))
         .ok_or("intended cast unavailable")?;
@@ -240,7 +240,7 @@ fn activate_branch(
     index: usize,
     dm: &mut Choices,
 ) -> Result<Value, String> {
-    let action=compute_legal_actions(g,PlayerId(0)).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index}if *s==source&&*ability_index==index));
+    let action=compute_legal_actions(g,PlayerId(0)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index}if *s==source&&*ability_index==index));
     let Some(action) = action else {
         return Ok(json!({"action_offered":false,"branch_offered":null,"resolved":false}));
     };
@@ -406,7 +406,7 @@ fn priority(g: &mut GameState, q: &mut TriggerQueue, p: u8, d: &mut Choices) -> 
     Err("priority unavailable".into())
 }
 fn offered(g: &GameState, s: ObjectId, index: usize) -> bool {
-    compute_legal_actions(g,PlayerId(0)).iter().any(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index}if *source==s&&*ability_index==index))
+    compute_legal_actions(g,PlayerId(0)).expect("fixture has complete replacement state").iter().any(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index}if *source==s&&*ability_index==index))
 }
 
 fn get_stable(g: &GameState, id: ObjectId) -> u64 {
@@ -685,7 +685,7 @@ fn trial(
         return Err("unexpected number of typed alternatives".into());
     }
     let branch_text = branches[branch as usize].display();
-    let diagnostic = json!({"canonical_index":canonical,"live_index":live,"branch_index":branch,"typed_branch_display":branch_text,"branch_count":branches.len(),"legal_actions":format!("{:?}",compute_legal_actions(&g,PlayerId(0)))});
+    let diagnostic = json!({"canonical_index":canonical,"live_index":live,"branch_index":branch,"typed_branch_display":branch_text,"branch_count":branches.len(),"legal_actions":format!("{:?}",compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state"))});
     let trace_start = d.trace.len();
     let action = match activate_branch(&mut g, source, live, &mut d) {
         Ok(a) => a,

@@ -740,8 +740,8 @@ mod entry_completion_tests {
         );
         let card = game.create_object_from_definition(&definition(), alice, Zone::Hand);
         let entered = game
-            .move_object_with_etb_processing(card, Zone::Battlefield)
-            .unwrap()
+            .move_object_with_etb_processing(card, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
+            .assert_completed_without_additions().unwrap()
             .new_id;
         assert_eq!(game.counter_count(entered, CounterType::Lore), 0);
         assert!(game.has_processed_saga_entry_lore(entered));
@@ -771,8 +771,8 @@ mod entry_completion_tests {
         assert!(checkpoint.has_processed_saga_entry_lore(entered));
         assert_eq!(checkpoint.counter_count(entered, CounterType::Lore), 0);
         let returned = game
-            .move_object_with_etb_processing(graveyard, Zone::Battlefield)
-            .unwrap()
+            .move_object_with_etb_processing(graveyard, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
+            .assert_completed_without_additions().unwrap()
             .new_id;
         assert!(game.has_processed_saga_entry_lore(returned));
         assert_eq!(game.counter_count(returned, CounterType::Lore), 1);
@@ -854,8 +854,8 @@ mod entry_eligibility_tests {
             let mut queue = TriggerQueue::new();
             let mut dm = crate::decision::SelectFirstDecisionMaker;
             let saga = if central_entry {
-                game.move_object_with_etb_processing(created, Zone::Battlefield)
-                    .unwrap()
+                game.move_object_with_etb_processing(created, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
+                    .assert_completed_without_additions().unwrap()
                     .new_id
             } else {
                 handle_saga_enters_battlefield(&mut game, created, &mut queue, &mut dm).unwrap();
@@ -918,8 +918,8 @@ mod entry_eligibility_tests {
             );
             game.refresh_continuous_state();
             let entrant = game
-                .move_object_with_etb_processing(card, Zone::Battlefield)
-                .unwrap()
+                .move_object_with_etb_processing(card, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
+                .assert_completed_without_additions().unwrap()
                 .new_id;
             let expected_entry = u32::from(!printed_saga);
             assert_eq!(

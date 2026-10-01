@@ -90,7 +90,7 @@ fn ascendant_acolyte_counts_counters_not_creatures_when_it_enters() {
 
     let hand_id = game.create_object_from_definition(&definition, alice, Zone::Hand);
     let acolyte_id = game
-        .move_object_with_etb_processing(hand_id, Zone::Battlefield)
+        .move_object_with_etb_processing(hand_id, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
         .expect("Ascendant Acolyte should enter")
         .new_id;
     let counters = game

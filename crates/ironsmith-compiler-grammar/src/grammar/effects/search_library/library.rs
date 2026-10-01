@@ -17,9 +17,10 @@ pub fn split_search_named_item_filters_lexed(
         {
             cursor += 1;
         }
-        if filter_tokens
+        // "a card named A and/or a card named B" joins items like "and".
+        while filter_tokens
             .get(cursor)
-            .is_some_and(|token| search_library_token_is_any_word(token, &["and"]))
+            .is_some_and(|token| search_library_token_is_any_word(token, &["and", "or", "and/or"]))
         {
             cursor += 1;
             while filter_tokens
@@ -60,9 +61,9 @@ pub fn split_search_named_item_filters_lexed(
             {
                 probe += 1;
             }
-            if filter_tokens
+            while filter_tokens
                 .get(probe)
-                .is_some_and(|token| search_library_token_is_any_word(token, &["and"]))
+                .is_some_and(|token| search_library_token_is_any_word(token, &["and", "or", "and/or"]))
             {
                 probe += 1;
                 while filter_tokens
@@ -101,7 +102,12 @@ pub fn split_search_named_item_filters_lexed(
             .get(pos + 1)
             .copied()
             .unwrap_or(filter_tokens.len());
-        let item_tokens = trim_commas(&filter_tokens[*start..end]);
+        let mut item_tokens = trim_commas(&filter_tokens[*start..end]);
+        while item_tokens.last().is_some_and(|token| {
+            token.is_comma() || search_library_token_is_any_word(token, &["and", "or", "and/or"])
+        }) {
+            item_tokens.pop();
+        }
         let item_filter = parse_search_library_object_filter_lexed(&item_tokens, clause_display)?;
         if item_filter.name.is_none() {
             return Ok(None);

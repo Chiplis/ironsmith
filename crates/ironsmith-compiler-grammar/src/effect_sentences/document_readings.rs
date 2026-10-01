@@ -870,6 +870,13 @@ fn read_complete_simple_subject_verb(
     }
     Ok(None)
 }
+/// "You may cast X ... as though ..." grants a permission; its `may` is part of
+/// the permission, never an optional wrapper over the sentence's other effects.
+fn leading_may_is_cast_as_though_permission(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    crate::word_primitives::parse_sequence_prefix(&words, &["you", "may", "cast"])
+        && crate::word_primitives::sequence_occurs(&words, &["as", "though"])
+}
 fn read_leading_player_may(
     document: &Document<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -886,6 +893,7 @@ fn read_leading_player_may(
         && first_sentence
             .iter()
             .any(|token| token.kind == TokenKind::Quote)
+        && !leading_may_is_cast_as_though_permission(first_sentence)
         && let Some(player) = super::parse_leading_player_may_lexed(first_sentence)
     {
         let mut stripped = super::chain_carry::remove_through_first_word(first_sentence);

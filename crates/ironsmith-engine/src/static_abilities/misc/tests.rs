@@ -452,7 +452,7 @@ fn test_modify_damage_amount_replacement_respects_max_speed_condition() {
         2,
         false,
         EventCause::from_effect(source, alice),
-    );
+    ).expect("damage test proposal must process successfully");
     assert_eq!(before_max_speed.assignments[0].amount, 2);
 
     game.start_engines(alice);
@@ -467,7 +467,7 @@ fn test_modify_damage_amount_replacement_respects_max_speed_condition() {
         2,
         false,
         EventCause::from_effect(source, alice),
-    );
+    ).expect("damage test proposal must process successfully");
     assert_eq!(player_damage.assignments[0].amount, 3);
 
     let permanent_damage = process_damage_assignments_with_event(
@@ -477,7 +477,7 @@ fn test_modify_damage_amount_replacement_respects_max_speed_condition() {
         4,
         false,
         EventCause::from_effect(source, alice),
-    );
+    ).expect("damage test proposal must process successfully");
     assert_eq!(permanent_damage.assignments[0].amount, 5);
 }
 
@@ -537,7 +537,7 @@ fn harsh_judgment_redirects_chosen_color_spell_damage_to_source_controller() {
         4,
         false,
         EventCause::from_effect(white_spell_id, bob),
-    );
+    ).expect("damage test proposal must process successfully");
 
     assert_eq!(damage.assignments.len(), 1);
     assert_eq!(damage.assignments[0].target, DamageTarget::Player(bob));
@@ -598,7 +598,7 @@ fn harsh_judgment_handles_sorcery_nonchosen_color_and_other_target_branches() {
         3,
         false,
         EventCause::from_effect(red_spell_id, bob),
-    );
+    ).expect("damage test proposal must process successfully");
     assert_eq!(nonchosen_damage.assignments.len(), 1);
     assert_eq!(
         nonchosen_damage.assignments[0].target,
@@ -613,7 +613,7 @@ fn harsh_judgment_handles_sorcery_nonchosen_color_and_other_target_branches() {
         2,
         false,
         EventCause::from_effect(white_spell_id, bob),
-    );
+    ).expect("damage test proposal must process successfully");
     assert_eq!(other_target_damage.assignments.len(), 1);
     assert_eq!(
         other_target_damage.assignments[0].target,
@@ -628,7 +628,7 @@ fn harsh_judgment_handles_sorcery_nonchosen_color_and_other_target_branches() {
         5,
         false,
         EventCause::from_effect(white_spell_id, bob),
-    );
+    ).expect("damage test proposal must process successfully");
     assert_eq!(chosen_sorcery_damage.assignments.len(), 1);
     assert_eq!(
         chosen_sorcery_damage.assignments[0].target,
@@ -708,7 +708,7 @@ fn exile_would_die_follow_up_exiles_matching_creature_and_creates_token_only_the
         EventCause::from_effect(source, alice),
         &mut dm,
     );
-    assert!(matching.is_replaced(), "matching death={matching:?}");
+    assert!(matching.expect("matching zone preparation must succeed").assert_without_additions().is_replaced());
     assert_eq!(game.objects_in_zone(Zone::Exile).len(), 1);
     assert_eq!(zombie_count(&game), 1);
 
@@ -720,7 +720,8 @@ fn exile_would_die_follow_up_exiles_matching_creature_and_creates_token_only_the
         EventCause::from_effect(source, alice),
         &mut dm,
     );
-    assert_eq!(nonmatching, EventOutcome::Proceed(Zone::Graveyard));
+    let nonmatching = nonmatching.expect("nonmatching zone preparation must succeed").assert_without_additions();
+    assert!(matches!(nonmatching, EventOutcome::Proceed(prepared) if prepared.final_zone() == Zone::Graveyard));
     assert_eq!(zombie_count(&game), 1, "nonmatching death created a token");
 }
 
@@ -783,8 +784,7 @@ fn exile_cycling_card_to_graveyard_replacement_matches_battlefield_zone_change()
     );
 
     assert!(
-        matches!(result, EventOutcome::Proceed(Zone::Exile)),
-        "result={result:?}"
+        matches!(result.expect("zone preparation must succeed").assert_without_additions(), EventOutcome::Proceed(prepared) if prepared.final_zone() == Zone::Exile)
     );
 }
 
@@ -1108,8 +1108,8 @@ fn ardenvale_paladin_enters_with_counter_when_three_white_was_spent() {
 
     let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
     let result = game
-        .move_object_with_etb_processing_with_dm(source, Zone::Battlefield, &mut decision_maker)
-        .expect("Ardenvale Paladin should enter the battlefield");
+        .move_object_with_etb_processing_with_dm(source, Zone::Battlefield, &mut decision_maker).expect("replacement operation must execute successfully in this scenario")
+        .assert_completed_without_additions().expect("Ardenvale Paladin should enter the battlefield");
     let permanent = game
         .object(result.new_id)
         .expect("Ardenvale Paladin should exist on battlefield");
@@ -1153,8 +1153,8 @@ fn ardenvale_paladin_does_not_get_counter_without_three_white_spent() {
 
     let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
     let result = game
-        .move_object_with_etb_processing_with_dm(source, Zone::Battlefield, &mut decision_maker)
-        .expect("Ardenvale Paladin should enter the battlefield");
+        .move_object_with_etb_processing_with_dm(source, Zone::Battlefield, &mut decision_maker).expect("replacement operation must execute successfully in this scenario")
+        .assert_completed_without_additions().expect("Ardenvale Paladin should enter the battlefield");
     let permanent = game
         .object(result.new_id)
         .expect("Ardenvale Paladin should exist on battlefield");
@@ -1216,8 +1216,8 @@ fn enters_with_counters_if_kicked_uses_discarded_cost_card_mana_value() {
 
     let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
     let result = game
-        .move_object_with_etb_processing_with_dm(source, Zone::Battlefield, &mut decision_maker)
-        .expect("source should enter the battlefield");
+        .move_object_with_etb_processing_with_dm(source, Zone::Battlefield, &mut decision_maker).expect("replacement operation must execute successfully in this scenario")
+        .assert_completed_without_additions().expect("source should enter the battlefield");
 
     let permanent = game
         .object(result.new_id)
@@ -1854,7 +1854,7 @@ fn separate_sentence_surface_keeps_counter_removal_prevention_executable() {
         5,
         false,
         EventCause::from_effect(damage_source, bob),
-    );
+    ).expect("damage test proposal must process successfully");
 
     assert!(result.replacement_prevented);
     assert!(result.assignments.is_empty());
@@ -1955,7 +1955,7 @@ fn test_umbra_armor_replaces_destroy_effect() {
         .attachments
         .push(aura_id);
 
-    let result = crate::events::processing::process_destroy_full(&mut game, creature_id, None);
+    let result = crate::events::processing::process_destroy_full(&mut game, creature_id, None).expect("destruction succeeds");
     assert_eq!(result, crate::events::processing::DestroyResult::Replaced);
     assert!(
         game.object(creature_id).is_some(),
@@ -2010,7 +2010,7 @@ fn test_umbra_armor_replaces_lethal_damage_state_based_destruction() {
 
     let mut dm = crate::decision::SelectFirstDecisionMaker;
     assert!(
-        apply_state_based_actions_with(&mut game, &mut dm),
+        apply_state_based_actions_with(&mut game, &mut dm).expect("replacement operation must finish without execution error"),
         "lethal damage should apply a state-based action"
     );
     assert!(
@@ -2082,11 +2082,11 @@ fn filtered_enters_counters_if_otherwise_keeps_typed_branch_and_uses_entering_ma
     let high_id = game.create_object_from_definition(&high, alice, Zone::Stack);
     let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
     let low_result = game
-        .move_object_with_etb_processing_with_dm(low_id, Zone::Battlefield, &mut decision_maker)
-        .expect("low-mana creature should enter");
+        .move_object_with_etb_processing_with_dm(low_id, Zone::Battlefield, &mut decision_maker).expect("replacement operation must execute successfully in this scenario")
+        .assert_completed_without_additions().expect("low-mana creature should enter");
     let high_result = game
-        .move_object_with_etb_processing_with_dm(high_id, Zone::Battlefield, &mut decision_maker)
-        .expect("high-mana creature should enter");
+        .move_object_with_etb_processing_with_dm(high_id, Zone::Battlefield, &mut decision_maker).expect("replacement operation must execute successfully in this scenario")
+        .assert_completed_without_additions().expect("high-mana creature should enter");
 
     assert_eq!(
         game.object(low_result.new_id)
@@ -2254,8 +2254,8 @@ fn filtered_enters_counters_count_matching_mana_source_snapshots_on_entering_spe
             creature_id,
             Zone::Battlefield,
             &mut decision_maker,
-        )
-        .expect("creature should enter");
+        ).expect("replacement operation must execute successfully in this scenario")
+        .assert_completed_without_additions().expect("creature should enter");
     assert_eq!(
         game.object(result.new_id)
             .expect("creature should be on the battlefield")
@@ -2386,8 +2386,8 @@ fn self_enters_with_dynamic_count_resolves_matching_permanents() {
 
     let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
     let result = game
-        .move_object_with_etb_processing_with_dm(source, Zone::Battlefield, &mut decision_maker)
-        .expect("source should enter");
+        .move_object_with_etb_processing_with_dm(source, Zone::Battlefield, &mut decision_maker).expect("replacement operation must execute successfully in this scenario")
+        .assert_completed_without_additions().expect("source should enter");
     assert_eq!(
         game.object(result.new_id)
             .expect("source should be on the battlefield")

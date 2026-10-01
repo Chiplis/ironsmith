@@ -130,7 +130,7 @@ fn run(
     if let Some(m) = payment {
         g.player_mut(alice).unwrap().mana_pool.add(m, 1);
     }
-    let actions = compute_legal_actions(&g, alice)
+    let actions = compute_legal_actions(&g, alice).expect("fixture has complete replacement state")
         .into_iter()
         .filter(|a| matches!(a,LegalAction::ActivateManaAbility{source:id,..}if *id==source))
         .collect::<Vec<_>>();

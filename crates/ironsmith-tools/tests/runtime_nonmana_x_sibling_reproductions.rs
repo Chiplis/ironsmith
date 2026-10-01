@@ -145,7 +145,7 @@ fn announce(
 ) -> Result<(TriggerQueue, Value), String> {
     g.turn.priority_player = Some(PlayerId(actor));
     let source = g.create_object_from_definition(def, PlayerId(actor), Zone::Hand);
-    let action = compute_legal_actions(g, PlayerId(actor))
+    let action = compute_legal_actions(g, PlayerId(actor)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source))
         .ok_or("intended cast unavailable")?;
@@ -247,7 +247,7 @@ fn activate(
 ) -> Result<Value, String> {
     let initial_stack_len = g.stack.len();
     g.turn.priority_player = Some(PlayerId(0));
-    let action=compute_legal_actions(g,PlayerId(0)).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index}if *s==source&&*ability_index==index)).ok_or("intended activation unavailable")?;
+    let action=compute_legal_actions(g,PlayerId(0)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index}if *s==source&&*ability_index==index)).ok_or("intended activation unavailable")?;
     let before = g.player(PlayerId(0)).unwrap().mana_pool.total();
     let mut q = TriggerQueue::new();
     let mut st = PriorityLoopState::new(g.players_in_game());
@@ -490,7 +490,7 @@ fn trial(
     let objects_before = board(&g);
     let mana_before = g.player(PlayerId(0)).unwrap().mana_pool.total();
     g.turn.priority_player = Some(PlayerId(0));
-    let offered=compute_legal_actions(&g,PlayerId(0)).iter().any(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index}if *s==source&&*ability_index==index));
+    let offered=compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state").iter().any(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index}if *s==source&&*ability_index==index));
     let ability = g
         .current_ability(source, index)
         .ok_or("missing intended current ability")?;
@@ -499,7 +499,7 @@ fn trial(
     };
     let context = ironsmith::costs::CostCheckContext::new(source, PlayerId(0))
         .with_reason(ironsmith::costs::PaymentReason::ActivateAbility);
-    let diagnostic = json!({"source":source.0,"source_name":g.object(source).unwrap().name.to_string(),"ability_index":index,"source_controller":g.current_controller(source).map(|p|p.index()),"source_tapped":g.is_tapped(source),"source_summoning_sick":g.is_summoning_sick(source),"source_has_haste":g.current_has_static_ability_id(source,ironsmith::static_abilities::StaticAbilityId::Haste),"phase":format!("{:?}",g.turn.phase),"active_player":g.turn.active_player.index(),"priority_player":g.turn.priority_player.map(|p|p.index()),"mana_pool":format!("{:?}",g.player(PlayerId(0)).unwrap().mana_pool),"stack_len":g.stack.len(),"legal_actions":format!("{:?}",compute_legal_actions(&g,PlayerId(0))),"component_checks":activated.mana_cost.costs().iter().map(|c|json!({"cost":format!("{c:?}").chars().take(200).collect::<String>(),"check":format!("{:?}",ironsmith::costs::can_pay_with_check_context(&*c.0,&g,&context)),"references_cost_x":c.effect_ref().map(|e|e.references_cost_x()),"nonmana_x_capacity":c.effect_ref().and_then(|e|e.max_cost_x(&g,source,PlayerId(0)))})).collect::<Vec<_>>()});
+    let diagnostic = json!({"source":source.0,"source_name":g.object(source).unwrap().name.to_string(),"ability_index":index,"source_controller":g.current_controller(source).map(|p|p.index()),"source_tapped":g.is_tapped(source),"source_summoning_sick":g.is_summoning_sick(source),"source_has_haste":g.current_has_static_ability_id(source,ironsmith::static_abilities::StaticAbilityId::Haste),"phase":format!("{:?}",g.turn.phase),"active_player":g.turn.active_player.index(),"priority_player":g.turn.priority_player.map(|p|p.index()),"mana_pool":format!("{:?}",g.player(PlayerId(0)).unwrap().mana_pool),"stack_len":g.stack.len(),"legal_actions":format!("{:?}",compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state")),"component_checks":activated.mana_cost.costs().iter().map(|c|json!({"cost":format!("{c:?}").chars().take(200).collect::<String>(),"check":format!("{:?}",ironsmith::costs::can_pay_with_check_context(&*c.0,&g,&context)),"references_cost_x":c.effect_ref().map(|e|e.references_cost_x()),"nonmana_x_capacity":c.effect_ref().and_then(|e|e.max_cost_x(&g,source,PlayerId(0)))})).collect::<Vec<_>>()});
     let mut action = Value::Null;
     let mut error = None;
     if capacity > 0 || name != "Ruthless Technomancer" {

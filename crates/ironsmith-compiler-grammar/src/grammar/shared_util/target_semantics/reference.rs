@@ -962,6 +962,26 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
             TrailingPlayerTargetKind::Any => PlayerFilter::Any,
             TrailingPlayerTargetKind::Opponent => PlayerFilter::Opponent,
         };
+        // "spell or ability that targets only a single permanent or player"
+        // (Radiant Performer): the trailing player arm belongs to the
+        // targets-only clause of a stack-object selector, not to the target.
+        if filter.targets_only_object.is_some() && filter.targets_only_player.is_none() {
+            filter.targets_only_player = Some(player_filter);
+            filter.targets_only_any_of = true;
+            let object_words = crate::lexer::token_word_refs(union.object_tokens);
+            if object_words
+                .windows(3)
+                .any(|window| window == ["spell", "or", "ability"])
+            {
+                filter.zone = Some(Zone::Stack);
+                filter.stack_kind = Some(crate::filter::StackObjectKind::SpellOrAbility);
+                filter.has_mana_cost = false;
+            }
+            return Ok(wrap_target_count(
+                TargetAst::Object(filter, target_span, None),
+                target_count,
+            ));
+        }
         return Ok(wrap_target_count(
             TargetAst::ObjectOrPlayer(filter, player_filter, target_span),
             target_count,

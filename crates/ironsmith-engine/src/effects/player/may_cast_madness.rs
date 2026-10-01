@@ -32,20 +32,17 @@ fn put_madness_card_into_graveyard(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     card_id: crate::ids::ObjectId,
-) {
-    // This is a zone change caused by the resolving madness ability and
-    // must see the same replacements as any other graveyard movement.
-    crate::effects::zones::apply_zone_change(
-        game,
-        card_id,
-        Zone::Exile,
-        Zone::Graveyard,
-        ctx.cause.clone(),
-        ctx.decision_maker,
-    );
+) -> Result<EffectOutcome, ExecutionError> {
+    // Use the full zone-changing instruction owner: it consumes deferred
+    // replacement programs and rolls the entire movement back on suspension
+    // or failure before this linked madness marker is cleared.
+    let outcome = crate::effects::MoveToZoneEffect::to_graveyard(
+        crate::target::ChooseSpec::SpecificObject(card_id),
+    ).execute(game, ctx)?;
     if !ctx.decision_maker.awaiting_choice() {
         game.clear_madness_exiled(card_id);
     }
+    Ok(outcome)
 }
 
 impl EffectExecutor for MayCastForMadnessCostEffect {
@@ -74,8 +71,7 @@ impl EffectExecutor for MayCastForMadnessCostEffect {
                 _ => None,
             })
         else {
-            put_madness_card_into_graveyard(game, ctx, card_id);
-            return Ok(EffectOutcome::resolved());
+            return put_madness_card_into_graveyard(game, ctx, card_id);
         };
 
         let wants_to_cast = crate::decisions::make_decision(
@@ -89,8 +85,7 @@ impl EffectExecutor for MayCastForMadnessCostEffect {
             return Ok(EffectOutcome::count(0));
         }
         if !wants_to_cast {
-            put_madness_card_into_graveyard(game, ctx, card_id);
-            return Ok(EffectOutcome::resolved());
+            return put_madness_card_into_graveyard(game, ctx, card_id);
         }
 
         let casting_method = CastingMethod::Alternative(madness_index);
@@ -107,7 +102,7 @@ impl EffectExecutor for MayCastForMadnessCostEffect {
             &mut ctx.decision_maker,
         );
         game.revoke_madness_cast(card_id);
-        let result = result.map_err(|error| ExecutionError::Impossible(error.to_string()))?;
+        let result = result.map_err(super::runtime_helpers::effect_driven_cast_error)?;
         if let Some(new_id) = result {
             return Ok(with_spell_cast_event(
                 EffectOutcome::with_objects(vec![new_id]),
@@ -127,8 +122,90 @@ impl EffectExecutor for MayCastForMadnessCostEffect {
             .object(card_id)
             .is_some_and(|object| object.zone == Zone::Exile)
         {
-            put_madness_card_into_graveyard(game, ctx, card_id);
+            return put_madness_card_into_graveyard(game, ctx, card_id);
         }
         Ok(EffectOutcome::resolved())
     }
+}
+
+
+#[cfg(test)]
+mod replacement_receipt_contract_tests {
+    use super::*;
+    use crate::effect::{Effect, Value};
+    use crate::ids::{CardId, ObjectId, PlayerId, StableId};
+    use crate::replacement::{ReplacementAction, ReplacementEffect};
+    use crate::target::{ObjectFilter, PlayerFilter};
+
+    struct Answers { stable: StableId, pause: bool, pending: bool, calls: usize }
+    impl crate::decision::DecisionMaker for Answers {
+        fn decide_boolean(&mut self, game: &GameState, _: &crate::decisions::context::BooleanContext) -> bool {
+            self.calls += 1;
+            let arrived = game.find_object_by_stable_id(self.stable).unwrap();
+            assert_eq!(game.object(arrived).unwrap().zone, Zone::Graveyard);
+            assert_eq!(game.player(PlayerId::from_index(1)).unwrap().life, 23);
+            self.pending = self.pause;
+            !self.pending
+        }
+        fn awaiting_choice(&self) -> bool { self.pending }
+    }
+    fn card(game: &mut GameState, owner: PlayerId, zone: Zone, name: &str) -> ObjectId {
+        let card = crate::card::CardBuilder::new(CardId::new(), name)
+            .card_types(vec![crate::types::CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2)).build();
+        game.create_object_from_card(&card, owner, zone)
+    }
+    fn check(mode: u8) {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let source = card(&mut game, bob, Zone::Battlefield, "Madness replacement probe");
+        let exiled = card(&mut game, alice, Zone::Exile, "Madness fallback probe");
+        game.set_madness_exiled(exiled);
+        let stable = game.object(exiled).unwrap().stable_id;
+        let mut effects = vec![Effect::gain_life(3)];
+        if mode == 2 { effects.push(Effect::lose_life(Value::X)); }
+        else { effects.push(Effect::new(crate::effects::MayEffect::new_for_player(
+            vec![Effect::gain_life(4)], PlayerFilter::You))); }
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(
+            source, bob, crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+                ObjectFilter::specific(exiled), Some(Zone::Exile), Some(Zone::Graveyard)),
+            ReplacementAction::Additionally(effects)));
+        game.take_pending_trigger_events();
+        let before_ids = game.next_object_id_counter();
+        let mut dm = Answers { stable, pause: mode == 1, pending: false, calls: 0 };
+        let mut ctx = ExecutionContext::new(exiled, alice, &mut dm);
+        let result = MayCastForMadnessCostEffect::new().execute(&mut game, &mut ctx);
+        if mode == 0 {
+            result.unwrap();
+            assert_eq!(game.player(bob).unwrap().life, 27);
+            assert_eq!(game.object(game.find_object_by_stable_id(stable).unwrap()).unwrap().zone, Zone::Graveyard);
+            assert!(!game.is_madness_exiled(exiled));
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+        } else {
+            if mode == 2 { assert!(matches!(result, Err(ExecutionError::UnresolvableValue(_)))); }
+            else { result.unwrap(); assert!(ctx.decision_maker.awaiting_choice()); }
+            assert_eq!(game.object(exiled).unwrap().zone, Zone::Exile);
+            assert!(game.is_madness_exiled(exiled));
+            assert_eq!(game.player(bob).unwrap().life, 20);
+            assert_eq!(game.next_object_id_counter(), before_ids);
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_some());
+            assert!(game.take_pending_trigger_events().is_empty());
+        }
+        drop(ctx);
+        if mode == 1 {
+            assert_eq!(dm.calls, 1);
+            let mut resumed = Answers { stable, pause: false, pending: false, calls: 0 };
+            let mut fresh = ExecutionContext::new(exiled, alice, &mut resumed);
+            MayCastForMadnessCostEffect::new().execute(&mut game, &mut fresh).unwrap();
+            assert_eq!(game.player(bob).unwrap().life, 27);
+            assert!(!game.is_madness_exiled(exiled));
+            assert_eq!(game.players[0].graveyard.len(), 1);
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+            assert!(!fresh.decision_maker.awaiting_choice());
+            drop(fresh); assert_eq!(resumed.calls, 1);
+        }
+    }
+    #[test] fn madness_fallback_executes_added_replacement_program() { check(0); }
+    #[test] fn madness_fallback_added_pending_rolls_back_and_fresh_resume_commits_once() { check(1); }
+    #[test] fn madness_fallback_added_error_restores_card_marker_life_and_shield() { check(2); }
 }

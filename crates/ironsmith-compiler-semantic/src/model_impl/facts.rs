@@ -149,6 +149,9 @@ pub struct TriggerFunctionalZoneFacts {
 pub struct TriggerFrequencyFacts {
     pub first_time_each_or_this_turn: bool,
     pub first_time_during_each_of_your_turns: bool,
+    /// "for the first time during each of their turns": the triggering
+    /// player's own turn (Valgavoth, Harrower of Souls).
+    pub first_time_during_each_of_their_turns: bool,
     pub becomes_crewed: bool,
     pub do_this_limit_each_turn: Option<u32>,
 }

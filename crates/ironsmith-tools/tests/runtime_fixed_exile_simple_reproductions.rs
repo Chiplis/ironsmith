@@ -195,7 +195,7 @@ fn cast_announce(
 ) -> Result<(), String> {
     g.turn.priority_player = Some(alice());
     let id = g.create_object_from_definition(d, alice(), Zone::Hand);
-    let a = compute_legal_actions(g, alice())
+    let a = compute_legal_actions(g, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or("fixture source cast absent")?;
@@ -276,7 +276,7 @@ fn run(
         dm.chosen = vec![id];
         dm.targets = vec![Target::Player(PlayerId(1))];
         dm.stage = format!("actual_resource_sacrifice_{i}");
-        let a=compute_legal_actions(&g,alice()).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index:0,..}if *s==altar)).ok_or("resource Altar activation absent")?;
+        let a=compute_legal_actions(&g,alice()).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index:0,..}if *s==altar)).ok_or("resource Altar activation absent")?;
         announce(&mut g, a, &mut q, dm)?;
         finish(&mut g, &mut q, dm)?;
         assert_eq!(g.object(current(&g, stable)).unwrap().zone, Zone::Graveyard);
@@ -308,7 +308,7 @@ fn run(
     } else {
         None
     };
-    let legal = compute_legal_actions(&g, alice());
+    let legal = compute_legal_actions(&g, alice()).expect("fixture has complete replacement state");
     let action=legal.iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index:i,..}if *s==source&&*i==index)).cloned();
     let ability = match &defs[n].0.abilities[index].kind {
         ironsmith::ability::AbilityKind::Activated(a) => a,

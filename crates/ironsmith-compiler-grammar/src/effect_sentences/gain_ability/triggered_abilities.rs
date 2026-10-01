@@ -313,6 +313,18 @@ fn parse_granted_composable_event_trigger(
         return Ok(None);
     }
     let effect_tokens = trim_lexed_commas(&ability_tokens[split_idx + 1..]);
+    // "Whenever ..., if <condition>, A. B." is an intervening-if over the
+    // whole multi-sentence body (Agent of the Shadow Thieves); the complete
+    // triggered-line reader keeps that scope, this sentence composer doesn't.
+    if effect_tokens.first().is_some_and(|token| token.is_word("if"))
+        && crate::lexer::split_lexed_sentences(effect_tokens)
+            .iter()
+            .filter(|sentence| !sentence.is_empty())
+            .count()
+            > 1
+    {
+        return Ok(None);
+    }
     // "it deals 1 damage to target player or planeswalker and you gain 1
     // life" is a damage clause coordinated with a second player-subject
     // clause. The single-clause damage reader would read the whole tail as
@@ -456,14 +468,46 @@ fn recognize_granted_trigger_ability(
             else {
                 return Ok(None);
             };
+            let frequency = trigger_surface::parse_trigger_frequency_condition_tokens(
+                tokens,
+                max_triggers_per_turn,
+            );
+            // A leading "if" right after the trigger comma that governs the
+            // whole body is the ability's intervening-if (CR 603.4).
+            let leads_with_if = tokens
+                .iter()
+                .position(|token| token.is_comma())
+                .and_then(|comma| tokens.get(comma + 1))
+                .is_some_and(|token| token.is_word("if"));
+            let (effects, intervening_if) = match effects.as_slice() {
+                [
+                    EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                        predicate,
+                        if_true,
+                        if_false,
+                    }),
+                ] if leads_with_if
+                    && if_false.is_empty()
+                    // A source condition ("if Cosima is exiled") is what
+                    // binds the body's "it" to the source; keep it in place.
+                    && !predicate.establishes_source_object_antecedent() =>
+                {
+                    let intervening_if = match frequency {
+                        Some(right) => Some(crate::cards::builders::PredicateAst::And(
+                            Box::new(predicate.clone()),
+                            Box::new(right),
+                        )),
+                        None => Some(predicate.clone()),
+                    };
+                    (if_true.clone(), intervening_if)
+                }
+                _ => (effects, frequency),
+            };
             Ok(Some(parsed_triggered_ability(
                 trigger,
                 effects,
                 vec![Zone::Battlefield],
-                trigger_surface::parse_trigger_frequency_condition_tokens(
-                    tokens,
-                    max_triggers_per_turn,
-                ),
+                intervening_if,
                 None,
                 ReferenceImports::default(),
             )))

@@ -229,6 +229,24 @@ pub fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value>
         }
     }
 
+    // "the number of Treasure tokens you created this turn" (Vazi, Keen
+    // Negotiator): typed tokens that entered under your control this turn,
+    // counted from the turn's history even after they leave.
+    if words.len() > 5
+        && matches!(words[words.len() - 5], "token" | "tokens")
+        && matches!(words[words.len() - 4], "you" | "youve" | "you've")
+        && words[words.len() - 3..] == ["created", "this", "turn"]
+        && let Some(mut filter) =
+            history_filter_from_word_prefix(&tokens, &word_view, words.len() - 4)
+        && (!filter.subtypes.is_empty() || !filter.card_types.is_empty() || filter.colors.is_some())
+    {
+        filter.token = true;
+        filter.controller = Some(PlayerFilter::You);
+        return Some(Value::TurnHistoryCount(
+            TurnHistoryCount::EnteredBattlefield(filter),
+        ));
+    }
+
     if crate::word_primitives::parse_choice_sequence_complete(
         &words,
         &[
@@ -300,6 +318,32 @@ pub fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value>
             TurnHistoryCount::PutIntoGraveyard {
                 owner: PlayerFilter::You,
                 from: vec![Zone::Hand, Zone::Library],
+            },
+        ));
+    }
+    // "cards that were put into target player's graveyard from their
+    // library this turn" (Cruel Calculations).
+    if valid_graveyard_card_prefix
+        && matches!(
+            graveyard_tail,
+            Some([
+                "put",
+                "into",
+                "target",
+                "player's" | "players",
+                "graveyard",
+                "from",
+                "their",
+                "library",
+                "this",
+                "turn"
+            ])
+        )
+    {
+        return Some(Value::TurnHistoryCount(
+            TurnHistoryCount::PutIntoGraveyard {
+                owner: PlayerFilter::Target(Box::new(PlayerFilter::Any)),
+                from: vec![Zone::Library],
             },
         ));
     }

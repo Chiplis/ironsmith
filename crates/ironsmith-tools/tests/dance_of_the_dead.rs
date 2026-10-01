@@ -79,7 +79,7 @@ fn reanimate() -> Board {
         .add(ManaSymbol::Black, 2);
     let hand = game.create_object_from_definition(&def, alice, Zone::Hand);
     let aura_stable = game.object(hand).unwrap().stable_id;
-    let action = compute_legal_actions(&game, alice)
+    let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == hand))
         .expect("castable on a graveyard creature card");

@@ -51,11 +51,21 @@ pub struct ReplacementEffect {
     /// Stable identity of the static ability that generated this effect.
     /// Resolution-created effects leave this unset.
     pub static_ability_instance: Option<StaticAbilityInstanceId>,
+    /// Stable originating occurrence plus generated branch, when produced
+    /// from an object's abilities. Controller and mutable payload are not identity.
+    pub ability_origin: Option<ReplacementAbilityOrigin>,
 
     /// Whether the affected player may decline this replacement effect.
     /// Optional effects are expanded into an explicit no-op CR 616 choice
     /// carrying the declined effect's stable application key.
     pub optional: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ReplacementAbilityOrigin {
+    pub ability: crate::continuous::AbilityOrigin,
+    pub printed_face: Option<crate::ids::CardId>,
+    pub branch: usize,
 }
 
 /// Unique identifier for a replacement effect.
@@ -78,6 +88,8 @@ impl ReplacementEffectId {
 pub enum ReplacementEffectKey {
     /// Separate resolutions remain separate even when their source and text match.
     Registered(ReplacementEffectId),
+    /// The same ability occurrence survives regeneration and mutable bindings.
+    Ability { source: ObjectId, origin: ReplacementAbilityOrigin },
     /// Regenerated and event-local effects retain their structural identity.
     Regenerated {
         source: ObjectId,
@@ -89,6 +101,17 @@ pub enum ReplacementEffectKey {
 }
 
 impl ReplacementEffect {
+    pub fn with_ability_origin(mut self, ability: crate::continuous::AbilityOrigin,
+        printed_face: Option<crate::ids::CardId>, branch: usize) -> Self {
+        let origin = ReplacementAbilityOrigin { ability, printed_face, branch };
+        // Accepting/declining and copy alternatives retain one parent identity,
+        // even when the decline carrier was constructed before origin binding.
+        if let ReplacementAction::DeclineOptional(key) = &mut self.replacement {
+            *key = ReplacementEffectKey::Ability { source: self.source, origin: origin.clone() };
+        }
+        self.ability_origin = Some(origin);
+        self
+    }
     pub fn application_key(&self) -> ReplacementEffectKey {
         // Accepting and declining are two choices for the same effect, not
         // independent opportunities to replace the event.
@@ -97,6 +120,9 @@ impl ReplacementEffect {
         }
         if let Some(id) = self.registration_id {
             return ReplacementEffectKey::Registered(id);
+        }
+        if let Some(origin) = &self.ability_origin {
+            return ReplacementEffectKey::Ability { source: self.source, origin: origin.clone() };
         }
         ReplacementEffectKey::Regenerated {
             source: self.source,
@@ -1038,6 +1064,7 @@ impl ReplacementEffect {
             priority_override: None,
             matcher: Some(Box::new(matcher)),
             static_ability_instance: None,
+            ability_origin: None,
             optional: false,
         }
     }
@@ -1058,6 +1085,7 @@ impl ReplacementEffect {
             priority_override: None,
             matcher: Some(matcher),
             static_ability_instance: None,
+            ability_origin: None,
             optional: false,
         }
     }
@@ -1092,6 +1120,7 @@ impl ReplacementEffect {
             priority_override: self.priority_override,
             matcher: self.matcher.as_ref().map(|matcher| matcher.clone_box()),
             static_ability_instance: self.static_ability_instance,
+            ability_origin: self.ability_origin.clone(),
             optional: false,
         })
     }
@@ -1366,5 +1395,28 @@ mod tests {
             effect.priority_override,
             Some(ReplacementPriority::CopyEffect)
         );
+    }
+}
+
+#[cfg(test)]
+mod ability_origin_identity_tests {
+    use super::*;
+    #[test]
+    fn originating_occurrences_survive_controller_payload_and_optional_changes() {
+        let source=ObjectId::from_raw(90100); let alice=PlayerId::from_index(0);
+        let ability=crate::static_abilities::StaticAbility::double_life_change_replacement(
+            PlayerFilter::You, false, "Double life gain");
+        let first=ability.generate_replacement_effect(source, alice).unwrap()
+            .with_ability_origin(crate::continuous::AbilityOrigin::Printed(0), None, 0);
+        let second=ability.generate_replacement_effect(source, alice).unwrap()
+            .with_ability_origin(crate::continuous::AbilityOrigin::Printed(1), None, 0);
+        assert_ne!(first.application_key(), second.application_key(), "cloned static values are distinct originating slots");
+        let mut changed=first.clone(); changed.controller=PlayerId::from_index(1);
+        changed.replacement=ReplacementAction::Prevent;
+        assert_eq!(changed.application_key(), first.application_key());
+        let decline=first.clone().optional().optional_decline_effect().unwrap();
+        assert_eq!(decline.application_key(), first.application_key());
+        let sibling=first.clone().with_ability_origin(crate::continuous::AbilityOrigin::Printed(0), None, 1);
+        assert_ne!(sibling.application_key(), first.application_key(), "generated siblings retain branch identity");
     }
 }

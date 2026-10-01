@@ -23,6 +23,8 @@ pub enum EventKind {
     DamagePrevented,
     /// Object changing zones
     ZoneChange,
+    /// Notification that an object left the game, with no destination zone.
+    ObjectLeavesGame,
     /// Player drawing cards
     Draw,
     /// Player gaining life
@@ -202,6 +204,10 @@ where
 pub trait GameEventType: Debug + Send + Sync + GameEventTypeClone {
     /// Get the event kind for fast dispatch without downcasting.
     fn event_kind(&self) -> EventKind;
+
+    /// Whether this carrier proposes an operation that replacements may alter.
+    /// A completed non-zone departure notification cannot be replaced.
+    fn is_replacement_proposal(&self) -> bool { true }
 
     /// Clone this event into a boxed trait object.
     fn clone_box(&self) -> Box<dyn GameEventType> {

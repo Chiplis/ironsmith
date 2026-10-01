@@ -110,7 +110,7 @@ fn setup() -> (GameState, ObjectId, ObjectId, ObjectId, ObjectId) {
 
 fn cast(game: &mut GameState, spell: ObjectId, dm: &mut Choices) {
     let alice = PlayerId::from_index(0);
-    let action = compute_legal_actions(game, alice)
+    let action = compute_legal_actions(game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))
         .expect("castable");

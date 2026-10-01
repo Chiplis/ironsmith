@@ -101,7 +101,7 @@ fn cast(x: u32, both: bool, first_share: u32) -> (u32, u32, Vec<(u32, usize)>) {
         .mana_pool
         .add(ManaSymbol::Red, x + 2);
     let hand = game.create_object_from_definition(&def, alice, Zone::Hand);
-    let action = compute_legal_actions(&game, alice)
+    let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == hand))
         .expect("castable");

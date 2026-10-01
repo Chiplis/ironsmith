@@ -912,6 +912,10 @@ fn finalize_public_object_filter(
     split_enchanted_or_equipped_disjunction(&mut filter, tokens);
     super::grammar::filters::apply_supertype_or_mana_capability_union(&mut filter, tokens);
     preserve_combat_role_disjunction(&mut filter, tokens);
+    crate::util::split_cross_dimension_adjective_disjunction(
+        &mut filter,
+        &parser_token_word_refs(tokens),
+    );
     preserve_public_spell_filter_facts(&mut filter, tokens);
     preserve_terminal_characteristic_union_domain(&mut filter, tokens);
     preserve_chosen_object_reference_noun(&mut filter, tokens);
@@ -924,42 +928,54 @@ fn finalize_public_object_filter(
 /// creature`, but its flat boolean representation would otherwise require a
 /// candidate to be both attacking and blocking at once.
 fn preserve_combat_role_disjunction(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
-    if !filter.any_of.is_empty() || !filter.attacking || !filter.blocking {
+    if !filter.any_of.is_empty() {
         return;
     }
+    // "attacking or blocking creature", "attacking or tapped creature"
+    // (Dire Downdraft): two state adjectives sharing one terminal noun are
+    // alternatives, not an intersection.
     let words = parser_token_word_refs(tokens);
-    let attacking_first =
-        crate::word_primitives::sequence_occurs(&words, &["attacking", "or", "blocking"]);
-    let blocking_first =
-        crate::word_primitives::sequence_occurs(&words, &["blocking", "or", "attacking"]);
-    if !attacking_first && !blocking_first {
+    let state_word = |word: &str| matches!(word, "attacking" | "blocking" | "tapped");
+    let Some(pair) = words.windows(3).find_map(|window| {
+        (state_word(window[0]) && window[1] == "or" && state_word(window[2])
+            && window[0] != window[2])
+            .then(|| (window[0], window[2]))
+    }) else {
+        return;
+    };
+    // The noun after the pair must be shared: "tapped or attacking creature".
+    let flag = |filter: &ObjectFilter, word: &str| match word {
+        "attacking" => filter.attacking,
+        "blocking" => filter.blocking,
+        _ => filter.tapped,
+    };
+    if !flag(filter, pair.0) && !flag(filter, pair.1) {
+        return;
+    }
+    if pair.0 != "tapped" && pair.1 != "tapped" && !(filter.attacking && filter.blocking) {
         return;
     }
 
     filter.attacking = false;
     filter.blocking = false;
+    filter.tapped = false;
     let card_types = std::mem::take(&mut filter.card_types);
     let all_card_types = std::mem::take(&mut filter.all_card_types);
     let explicit_card_type_noun = filter.explicit_card_type_noun();
     filter.set_explicit_card_type_noun(None);
-    let mut attacking = ObjectFilter {
-        attacking: true,
-        ..ObjectFilter::default()
-    };
-    let mut blocking = ObjectFilter {
-        blocking: true,
-        ..ObjectFilter::default()
-    };
-    for branch in [&mut attacking, &mut blocking] {
+    let branch = |word: &str| {
+        let mut branch = ObjectFilter::default();
+        match word {
+            "attacking" => branch.attacking = true,
+            "blocking" => branch.blocking = true,
+            _ => branch.tapped = true,
+        }
         branch.card_types = card_types.clone();
         branch.all_card_types = all_card_types.clone();
         branch.set_explicit_card_type_noun(explicit_card_type_noun);
-    }
-    filter.any_of = if attacking_first {
-        vec![attacking, blocking]
-    } else {
-        vec![blocking, attacking]
+        branch
     };
+    filter.any_of = vec![branch(pair.0), branch(pair.1)];
     filter.set_union_connective(ObjectFilterUnionConnective::Or);
 }
 
@@ -1160,10 +1176,76 @@ pub(crate) fn clear_zone_for_referenced_cards(filter: &mut ObjectFilter) {
     }
 }
 
+/// "the number of cards named Aether Burst in all graveyards as you cast
+/// this spell": the trailing clause is the time the count is read, not a
+/// "cast by you" relation on the counted objects.
+fn strip_as_you_cast_this_spell_suffix(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    const SUFFIX: [&str; 5] = ["as", "you", "cast", "this", "spell"];
+    let mut end = tokens.len();
+    while end > 0 && tokens[end - 1].kind == super::lexer::TokenKind::Period {
+        end -= 1;
+    }
+    if end <= SUFFIX.len() {
+        return None;
+    }
+    let start = end - SUFFIX.len();
+    tokens[start..end]
+        .iter()
+        .zip(SUFFIX)
+        .all(|(token, word)| token.is_word(word))
+        .then(|| crate::util::trim_edge_punctuation_tokens(&tokens[..start]))
+        .filter(|base| !base.is_empty())
+}
+
+/// "lands that player controls that could produce any type of mana that
+/// land could produce" (Mana Web): the trailing capability clause relates each
+/// candidate to the triggering land.
+fn split_shares_producible_mana_type_suffix(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    const SUFFIX: &[&str] = &[
+        "that", "could", "produce", "any", "type", "of", "mana", "that", "land", "could",
+        "produce",
+    ];
+    let word_positions = tokens
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.as_word().is_some())
+        .collect::<Vec<_>>();
+    if word_positions.len() <= SUFFIX.len() {
+        return None;
+    }
+    let tail = &word_positions[word_positions.len() - SUFFIX.len()..];
+    if !tail
+        .iter()
+        .zip(SUFFIX)
+        .all(|((_, token), expected)| token.is_word(expected))
+    {
+        return None;
+    }
+    let start = tail[0].0;
+    Some(crate::lexer::trim_lexed_commas(&tokens[..start]))
+}
+
+fn shares_producible_mana_type_with_triggering() -> crate::filter::TaggedObjectConstraint {
+    crate::filter::TaggedObjectConstraint {
+        tag: crate::tag::CompilerReferenceTag::Triggering.key(),
+        relation: crate::filter::TaggedOpbjectRelation::SharesProducibleManaTypeWithTagged,
+    }
+}
+
 pub fn parse_object_filter(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some(base) = strip_as_you_cast_this_spell_suffix(tokens) {
+        return parse_object_filter(base, other);
+    }
+    if let Some(base) = split_shares_producible_mana_type_suffix(tokens) {
+        let mut filter = parse_object_filter(base, other)?;
+        filter
+            .tagged_constraints
+            .push(shares_producible_mana_type_with_triggering());
+        return Ok(filter);
+    }
     if let Some(base) = split_from_among_those_cards_suffix(tokens) {
         let mut filter = parse_object_filter(&base, other)?;
         clear_zone_for_referenced_cards(&mut filter);
@@ -1467,6 +1549,16 @@ pub fn parse_object_filter_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some(base) = strip_as_you_cast_this_spell_suffix(tokens) {
+        return parse_object_filter_lexed(base, other);
+    }
+    if let Some(base) = split_shares_producible_mana_type_suffix(tokens) {
+        let mut filter = parse_object_filter_lexed(base, other)?;
+        filter
+            .tagged_constraints
+            .push(shares_producible_mana_type_with_triggering());
+        return Ok(filter);
+    }
     if let Some((base, host)) = split_could_enchant_suffix(tokens)? {
         let mut filter = parse_object_filter_lexed(&base, other)?;
         filter.could_enchant_object = Some(Box::new(host));
@@ -1784,6 +1876,16 @@ pub fn is_comparison_or_delimiter(tokens: &[OwnedLexToken], idx: usize) -> bool 
     }
     if previous_word.is_some_and(|word| word == "than")
         && next_word.is_some_and(|word| word == "equal")
+    {
+        return true;
+    }
+    // "mana value 2 or 3": a numeric alternative list is one comparison.
+    let previous_immediate = idx
+        .checked_sub(1)
+        .and_then(|i| tokens.get(i))
+        .and_then(OwnedLexToken::as_word);
+    if previous_immediate.is_some_and(|word| word.parse::<i32>().is_ok())
+        && next_word.is_some_and(|word| word.parse::<i32>().is_ok())
     {
         return true;
     }

@@ -1568,7 +1568,7 @@ pub(super) fn temporal_aperture_runtime_grants_free_cast_only_while_revealed_car
         "Temporal Aperture should keep revealing while the revealed card remains on top"
     );
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action,
@@ -1625,7 +1625,7 @@ pub(super) fn temporal_aperture_runtime_grants_free_cast_only_while_revealed_car
         ),
         "Temporal Aperture's reveal permission should not resume if the tagged card later becomes top again"
     );
-    let actions_after_top_changed = compute_legal_actions(&game, alice);
+    let actions_after_top_changed = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !actions_after_top_changed.iter().any(|action| matches!(
             action,
@@ -2205,7 +2205,7 @@ pub(super) fn archon_of_valors_reach_blocks_only_spells_of_the_chosen_card_type(
 
     let archon_in_hand = game.create_object_from_definition(&archon, alice, Zone::Hand);
     let archon_id = game
-        .move_object_with_etb_processing(archon_in_hand, Zone::Battlefield)
+        .move_object_with_etb_processing(archon_in_hand, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
         .expect("Archon should enter with its card-type choice")
         .new_id;
     assert_eq!(
@@ -2240,7 +2240,7 @@ pub(super) fn archon_of_valors_reach_blocks_only_spells_of_the_chosen_card_type(
 
     game.set_chosen_card_type(archon_id, CardType::Instant);
     game.refresh_continuous_state();
-    let instant_banned_actions = compute_legal_actions(&game, bob);
+    let instant_banned_actions = compute_legal_actions(&game, bob).expect("fixture has complete replacement state");
     assert!(
         !has_cast_action(&instant_banned_actions, instant_id),
         "Archon choosing instant should remove instant spell cast actions, got {instant_banned_actions:?}"
@@ -2252,7 +2252,7 @@ pub(super) fn archon_of_valors_reach_blocks_only_spells_of_the_chosen_card_type(
 
     game.set_chosen_card_type(archon_id, CardType::Sorcery);
     game.refresh_continuous_state();
-    let sorcery_banned_actions = compute_legal_actions(&game, bob);
+    let sorcery_banned_actions = compute_legal_actions(&game, bob).expect("fixture has complete replacement state");
     assert!(
         has_cast_action(&sorcery_banned_actions, instant_id),
         "Archon choosing sorcery should still allow nonchosen instant spells, got {sorcery_banned_actions:?}"

@@ -1,4 +1,7 @@
 pub fn parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
+    if let Some(actions) = crate::clause_support::parse_hexproof_from_type_list_line(tokens) {
+        return Some(actions);
+    }
     if let Some(actions) = parse_flashback_keyword_line(tokens) {
         return Some(actions);
     }

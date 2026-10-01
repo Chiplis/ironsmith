@@ -1,5 +1,6 @@
 //! Surveil effect implementation.
 
+use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
 use crate::decisions::{SurveilSpec, context::ViewCardsContext, make_decision};
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
@@ -109,6 +110,10 @@ impl EffectExecutor for SurveilEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = (|| {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
 
@@ -188,23 +193,26 @@ impl EffectExecutor for SurveilEffect {
         // ordinary zone change, so "would be put into a graveyard"
         // replacements (Rest in Peace, Leyline of the Void, Dauthi
         // Voidwalker) apply to it, exactly as they do for mill.
+        let mut receipts = Vec::new();
+        let opened_batch = game.open_simultaneous_action();
         for &card_id in &cards_to_graveyard {
             let Some(from_zone) = game.object(card_id).map(|object| object.zone) else {
                 continue;
             };
             let additional_effects = ctx.additional_replacement_effects_snapshot();
-            let _ = crate::effects::zones::apply_zone_change_with_additional_effects(
-                game,
-                card_id,
-                from_zone,
-                Zone::Graveyard,
-                ctx.cause.clone(),
-                &mut *ctx.decision_maker,
-                &additional_effects,
-            );
+            let receipt = crate::effects::zones::apply_zone_change_with_context_and_additional_effects(
+    game,
+    card_id,
+    from_zone,
+    Zone::Graveyard,
+    ctx.cause.clone(),
+    ctx,
+    &additional_effects
+)?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
             }
+            receipts.push((card_id, receipt));
         }
 
         // Put the rest back on top
@@ -229,10 +237,11 @@ impl EffectExecutor for SurveilEffect {
             );
         }
 
+        game.close_simultaneous_action(opened_batch);
         let mut object_tags = HashMap::new();
         object_tags.insert(TagKey::from(SURVEILLED_THIS_TURN_TAG), surveilled_snapshots);
 
-        Ok(EffectOutcome::count(surveil_count as i32).with_event(
+        let original_outcome = EffectOutcome::count(surveil_count as i32).with_event(
             TriggerEvent::new_with_provenance(
                 KeywordActionEvent::new(
                     KeywordActionKind::Surveil,
@@ -243,7 +252,15 @@ impl EffectExecutor for SurveilEffect {
                 .with_object_tags(object_tags),
                 ctx.provenance,
             ),
-        ))
+        );
+        crate::effects::zones::finish_zone_change_receipts(game, ctx, original_outcome, receipts)
+        })();
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
+        }
+        if ctx.decision_maker.awaiting_choice() { return result.map(|_| EffectOutcome::count(0)); }
+        result
     }
 }
 

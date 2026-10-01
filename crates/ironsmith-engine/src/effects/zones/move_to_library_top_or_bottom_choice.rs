@@ -12,7 +12,7 @@ use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
 
-use super::{apply_zone_change_with_additional_effects, maybe_prompt_for_split_result_order};
+use super::{apply_zone_change_with_context_and_additional_effects, maybe_prompt_for_split_result_order};
 
 pub type MoveToLibraryTopOrBottomChoiceEffect =
     ironsmith_core::MoveToLibraryTopOrBottomChoiceEffect;
@@ -103,6 +103,11 @@ impl EffectExecutor for MoveToLibraryTopOrBottomChoiceEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let mut receipts = Vec::new();
+        let result = (|| -> Result<EffectOutcome, ExecutionError> {
+        let original = (|| -> Result<EffectOutcome, ExecutionError> {
         let moves_source = matches!(self.target.base(), ChooseSpec::Source);
         let mut object_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
         if let ChooseSpec::Tagged(tag) = &self.target
@@ -117,6 +122,7 @@ impl EffectExecutor for MoveToLibraryTopOrBottomChoiceEffect {
                 }
             }
         }
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
         if object_ids.is_empty() {
             return Ok(EffectOutcome::target_invalid());
         }
@@ -124,13 +130,13 @@ impl EffectExecutor for MoveToLibraryTopOrBottomChoiceEffect {
         let mut moved_ids = Vec::new();
         let mut affected_ids = Vec::new();
         let mut any_replaced = false;
+        let mut any_prevented = false;
         let mut moved_source_lki = None;
 
         for object_id in object_ids {
             let Some(obj) = game.object(object_id) else {
                 continue;
             };
-            let stable_id = obj.stable_id;
             let from_zone = obj.zone;
             let chooser = match &self.chooser {
                 Some(chooser) => {
@@ -160,18 +166,21 @@ impl EffectExecutor for MoveToLibraryTopOrBottomChoiceEffect {
             }
 
             let additional_effects = ctx.additional_replacement_effects_snapshot();
-            let result = apply_zone_change_with_additional_effects(
-                game,
-                object_id,
-                from_zone,
-                Zone::Library,
-                ctx.cause.clone(),
-                &mut ctx.decision_maker,
-                &additional_effects,
-            );
+            let result = apply_zone_change_with_context_and_additional_effects(
+    game,
+    object_id,
+    from_zone,
+    Zone::Library,
+    ctx.cause.clone(),
+    ctx,
+    &additional_effects
+)?;
 
-            match result {
-                EventOutcome::Prevented => return Ok(EffectOutcome::prevented()),
+            let original = result.original.clone();
+            receipts.push((object_id, result));
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            match original {
+                EventOutcome::Prevented => { any_prevented = true; }
                 EventOutcome::Proceed(mut result) => {
                     if result.new_object_ids.is_empty() {
                         continue;
@@ -200,6 +209,7 @@ impl EffectExecutor for MoveToLibraryTopOrBottomChoiceEffect {
                                 &ctx.cause,
                                 &mut result,
                             );
+                            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
                             game.record_zone_change_results(
                                 object_id,
                                 result.new_object_ids.clone(),
@@ -212,8 +222,8 @@ impl EffectExecutor for MoveToLibraryTopOrBottomChoiceEffect {
                 }
                 EventOutcome::Replaced => {
                     any_replaced = true;
-                    if let Some(result_id) = game.find_object_by_stable_id(stable_id) {
-                        affected_ids.push(result_id);
+                    if let Some(result) = super::take_recorded_zone_change(game, object_id) {
+                        affected_ids.extend(result.new_object_ids);
                     }
                 }
                 EventOutcome::NotApplicable => {}
@@ -233,7 +243,18 @@ impl EffectExecutor for MoveToLibraryTopOrBottomChoiceEffect {
         if any_replaced {
             return Ok(EffectOutcome::replaced().with_affected_objects(affected_ids));
         }
+        if any_prevented { return Ok(EffectOutcome::prevented()); }
         Ok(EffectOutcome::target_invalid())
+        })()?;
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        super::finish_zone_change_receipts(game, ctx, original, receipts)
+        })();
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
+        }
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        result
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

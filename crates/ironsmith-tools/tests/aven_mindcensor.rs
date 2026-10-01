@@ -76,7 +76,7 @@ fn crack_wilds(searcher: PlayerId, forest_depth: usize) -> bool {
     }
     let wilds: ObjectId =
         game.create_object_from_definition(&load("Evolving Wilds"), searcher, Zone::Battlefield);
-    let action = compute_legal_actions(&game, searcher)
+    let action = compute_legal_actions(&game, searcher).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::ActivateAbility { source, .. } if *source == wilds))
         .expect("Evolving Wilds activates");

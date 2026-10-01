@@ -129,7 +129,7 @@ fn exiled_cards_are_playable_on_your_turn_for_life() {
     let alice = PlayerId::from_index(0);
     let (mut game, [sorcery, bobs, _]) = setup();
     let cast = |game: &GameState, card: ObjectId| {
-        compute_legal_actions(game, PlayerId::from_index(0))
+        compute_legal_actions(game, PlayerId::from_index(0)).expect("fixture has complete replacement state")
             .into_iter()
             .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == card))
     };
@@ -171,7 +171,7 @@ fn exiled_cards_are_playable_on_your_turn_for_life() {
 fn not_during_an_opponents_turn() {
     let (mut game, [sorcery, _, _]) = setup();
     game.turn.active_player = PlayerId::from_index(1);
-    let actions = compute_legal_actions(&game, PlayerId::from_index(0));
+    let actions = compute_legal_actions(&game, PlayerId::from_index(0)).expect("fixture has complete replacement state");
     assert!(
         !actions
             .iter()

@@ -66,7 +66,7 @@ fn trespassers_curse_drains_the_enchanted_player_and_gains_its_controllers_life(
         game.create_object_from_definition(&vanilla_creature("Bob Creature"), bob, Zone::Hand);
 
     let entered = game
-        .move_object_with_etb_processing(entering, Zone::Battlefield)
+        .move_object_with_etb_processing(entering, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
         .expect("Bob's creature should enter the battlefield")
         .new_id;
     let mut queue = crate::triggers::TriggerQueue::new();
@@ -132,7 +132,7 @@ fn trespassers_curse_ignores_other_players_creatures_and_noncreatures() {
         game.create_object_from_definition(&bob_artifact_definition, bob, Zone::Hand);
 
     for object in [alice_creature, charlie_creature, bob_artifact] {
-        game.move_object_with_etb_processing(object, Zone::Battlefield)
+        game.move_object_with_etb_processing(object, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
             .expect("the negative-case permanent should enter the battlefield");
     }
     let mut queue = crate::triggers::TriggerQueue::new();

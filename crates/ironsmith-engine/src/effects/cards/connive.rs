@@ -225,57 +225,28 @@ impl EffectExecutor for ConniveEffect {
                         .with_snapshot(Some(instruction.snapshot.clone())),
                         ctx.provenance,
                     );
-                    let applied_effects = ctx.replacement.suppressed_replacement_effects.clone();
-                    let applied_effect_keys =
-                        ctx.replacement.suppressed_replacement_effect_keys.clone();
-                    if applied_effects.is_empty() && applied_effect_keys.is_empty() {
-                        game.update_replacement_effects();
-                    }
-                    match crate::events::processing::process_trait_event_with_dm_and_applied_effects(
-                        game,
-                        would_event,
-                        ctx.decision_maker,
-                        &applied_effects,
-                        &applied_effect_keys,
-                    ) {
-                        crate::events::processing::TraitEventResult::Replaced {
-                            effects,
-                            effect_id,
-                            ..
-                        } => {
-                            let replacement_outcome = crate::effects::composition::mechanic_actions::execute_keyword_action_replacement_effects(
-                            game,
-                            ctx,
-                            effects,
-                            effect_id,
-                            Some(instruction.snapshot.clone()),
-                        )?;
-                            for event in &replacement_outcome.events {
-                                if let Some(keyword) = event.downcast::<KeywordActionEvent>()
-                                    && keyword.action == KeywordActionKind::Connive
-                                {
-                                    connived_objects.push(keyword.source);
-                                }
+                    let replacement_result = crate::events::processing::process_trait_event_with_execution_context(game, would_event, ctx)?;
+                    let iteration_outcome = crate::effects::replacement::execute_event_expansion_with_bindings(game, ctx, replacement_result, |game, ctx, original| {
+                        let mut events = Vec::new();
+                        let mut connived_objects = Vec::new();
+                        let mut counter_facts = Vec::new();
+                        match original {
+                            crate::events::processing::TraitEventResult::Replaced { effects, source, controller, context, .. } => {
+                                let snapshot = context.event.inner().snapshot().cloned();
+                                let mut outcome = crate::effects::composition::mechanic_actions::execute_keyword_action_replacement_effects(game, ctx, effects, source, controller, &context, snapshot)?;
+                                let objects = outcome.events.iter().filter_map(|event| event.downcast::<KeywordActionEvent>())
+                                    .filter(|action| action.action == KeywordActionKind::Connive).map(|action| action.source).collect();
+                                outcome.value = crate::effect::OutcomeValue::Objects(objects);
+                                return Ok(outcome);
                             }
-                            events.extend(replacement_outcome.events);
-                            if ctx.decision_maker.awaiting_choice() {
-                                return Ok(EffectOutcome::with_objects(connived_objects)
-                                    .with_events(events));
+                            crate::events::processing::TraitEventResult::Prevented => return Ok(EffectOutcome::prevented()),
+                            crate::events::processing::TraitEventResult::NeedsChoice { .. } | crate::events::processing::TraitEventResult::NeedsInteraction { .. } => {
+                                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                                return Err(ExecutionError::InternalError("connive suspended without a captured decision".into()));
                             }
-                            continue;
+                            crate::events::processing::TraitEventResult::Proceed(_) | crate::events::processing::TraitEventResult::Modified(_) => {}
+                            crate::events::processing::TraitEventResult::Expanded { .. } => return Err(ExecutionError::InternalError("connive commit received an unflattened result".into())),
                         }
-                        crate::events::processing::TraitEventResult::Prevented => continue,
-                        crate::events::processing::TraitEventResult::NeedsChoice { .. }
-                        | crate::events::processing::TraitEventResult::NeedsInteraction {
-                            ..
-                        } => {
-                            return Ok(
-                                EffectOutcome::with_objects(connived_objects).with_events(events)
-                            );
-                        }
-                        crate::events::processing::TraitEventResult::Proceed(_)
-                        | crate::events::processing::TraitEventResult::Modified(_) => {}
-                    }
 
                     // Rule 701.50e: connive N draws N, discards N, then counts nonlands discarded this way.
                     let draw_outcome =
@@ -298,7 +269,7 @@ impl EffectExecutor for ConniveEffect {
                     if required > 0 {
                         use crate::decisions::make_decision;
                         use crate::decisions::specs::ChooseObjectsSpec;
-                        use crate::events::processing::execute_discard;
+                        use crate::events::processing::execute_discard_with_scope;
 
                         let spec = ChooseObjectsSpec::new(
                             ctx.source,
@@ -334,15 +305,16 @@ impl EffectExecutor for ConniveEffect {
                             );
                         }
                         let selected = normalize_object_selection(chosen, &hand_cards, required);
-                        let mut discarded_nonlands = 0;
+                        let mut discarded_nonlands: u32 = 0;
                         let mut successful_discards = Vec::new();
+                        let mut receipts = Vec::new();
                         let cause = EventCause::from_effect(ctx.source, ctx.controller);
                         for card_to_discard in selected {
                             let snapshot = game.object(card_to_discard)
                                 .map(|object| ObjectSnapshot::from_object(object, game));
                             let discarded_nonland = snapshot.as_ref()
                                 .is_some_and(|snapshot| !snapshot.card_types.contains(&CardType::Land));
-                            let discard_result = execute_discard(
+                            let receipt = execute_discard_with_scope(
                                 game,
                                 card_to_discard,
                                 controller,
@@ -350,21 +322,35 @@ impl EffectExecutor for ConniveEffect {
                                 false,
                                 ctx.provenance,
                                 &mut *ctx.decision_maker,
-                            );
+                                &ctx.replacement,
+                                ctx.source_snapshot.as_ref(),
+                            )?;
 
                             if ctx.decision_maker.awaiting_choice() {
                                 return Ok(EffectOutcome::count(0));
                             }
+                            let discard_result = &receipt.result;
                             if !discard_result.prevented && discard_result.new_id.is_some() {
                                 if discarded_nonland {
                                     discarded_nonlands += 1;
                                 }
-                                successful_discards.push((card_to_discard, snapshot, discard_result.final_zone));
+                                let event = receipt.resolved_event.as_ref()
+                                    .ok_or_else(|| ExecutionError::InternalError("connive discard lost its resolved event".into()))?;
+                                if event.player != controller || event.card != card_to_discard || event.cause != cause {
+                                    return Err(ExecutionError::InternalError("connive discard changed an unsupported batch identity".into()));
+                                }
+                                successful_discards.push((event.card, snapshot, discard_result.final_zone));
                             }
+                            receipts.push(receipt);
                         }
-                        events.extend(super::discard::completed_discard_events(
+                        let discard_events = super::discard::completed_discard_events(
                             game, controller, cause, ctx.provenance, successful_discards,
-                        ));
+                        );
+                        let discard_outcome = super::discard::finish_discard_receipts(game, ctx,
+                            EffectOutcome::count(i32::try_from(discarded_nonlands).map_err(|_| ExecutionError::InternalError("connive discard count overflow".into()))?).with_events(discard_events), receipts)?;
+                        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                        events.extend(discard_outcome.events);
+                        counter_facts.extend(discard_outcome.execution_facts);
 
                         if discarded_nonlands > 0 {
                             let event = crate::events::Event::put_counters(
@@ -397,6 +383,28 @@ impl EffectExecutor for ConniveEffect {
                         ctx.provenance,
                     ));
                     connived_objects.push(target_id);
+                        Ok(EffectOutcome::with_objects(connived_objects).with_events(events)
+                            .with_execution_facts(EffectOutcome::merge_execution_facts(counter_facts)))
+                    }, |_, context, receipt| {
+                        let captured = crate::events::downcast_event::<KeywordActionEvent>(context.event.inner())
+                            .filter(|action| action.action == KeywordActionKind::Connive)
+                            .ok_or_else(|| ExecutionError::InternalError("connive addition captured an incompatible event".into()))?;
+                        let action = receipt.events.iter().rev().filter_map(|event| event.downcast::<KeywordActionEvent>())
+                            .find(|action| action.action == KeywordActionKind::Connive && action.source == captured.source).unwrap_or(captured);
+                        let mut tags = action.object_tags.clone();
+                        if let Some(snapshot) = action.snapshot.as_ref().or(captured.snapshot.as_ref()) {
+                            tags.insert(crate::tag::TagKey::from("it"), vec![snapshot.clone()]);
+                            tags.insert(crate::tag::TagKey::from("__it__"), vec![snapshot.clone()]);
+                        }
+                        Ok(crate::effects::replacement::ReplacementProgramBindings { targets: None,
+                            object_tags: tags.into_iter().map(|(name,snapshots)| (name.as_str().to_owned(),snapshots)).collect(),
+                        })
+                    })?;
+                    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                    if let Some(objects) = iteration_outcome.objects() { connived_objects.extend_from_slice(objects); }
+                    events.extend(iteration_outcome.events);
+                    counter_facts.extend(iteration_outcome.execution_facts);
+
                 }
             }
 

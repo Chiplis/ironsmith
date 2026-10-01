@@ -230,7 +230,7 @@ fn cast_announce(
 ) -> Result<(), String> {
     g.turn.priority_player = Some(dm.actor);
     let id = g.create_object_from_definition(d, dm.actor, Zone::Hand);
-    let a = compute_legal_actions(g, dm.actor)
+    let a = compute_legal_actions(g, dm.actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or("fixture source cast absent")?;
@@ -321,7 +321,7 @@ fn paid_land(
 ) -> Result<ironsmith::ids::StableId, String> {
     let id = g.create_object_from_definition(d, alice(), Zone::Hand);
     let s = g.object(id).unwrap().stable_id;
-    let a = compute_legal_actions(g, alice())
+    let a = compute_legal_actions(g, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::PlayLand{land_id}if *land_id==id))
         .ok_or("source land play absent")?;
@@ -339,7 +339,7 @@ fn sacrifice(
 ) -> Result<(), String> {
     dm.chosen = vec![current(g, m)];
     dm.targets = vec![Target::Player(PlayerId(2))];
-    let a=compute_legal_actions(g,dm.actor).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index:0,..}if *source==current(g,altar))).ok_or("Altar producer absent")?;
+    let a=compute_legal_actions(g,dm.actor).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index:0,..}if *source==current(g,altar))).ok_or("Altar producer absent")?;
     announce(g, a, q, dm)?;
     finish(g, q, dm)?;
     dm.targets.clear();
@@ -578,7 +578,7 @@ fn run(
         "Defacing Duskmage" => {
             if negative {
                 let bell = paid_cast(&mut g, &linked, "Temple Bell", 3, &mut q, dm)?;
-                let a=compute_legal_actions(&g,alice()).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,..}if *source==current(&g,bell))).ok_or("Bell action unavailable")?;
+                let a=compute_legal_actions(&g,alice()).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,..}if *source==current(&g,bell))).ok_or("Bell action unavailable")?;
                 announce(&mut g, a, &mut q, dm)?;
                 finish(&mut g, &mut q, dm)?;
             } else {
@@ -728,7 +728,7 @@ fn run(
     own_main(&mut g, false, &mut q, dm)?;
     seed_mana(&mut g);
     let copy_ids = copies(&g);
-    let a=compute_legal_actions(&g,alice()).into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,from_zone:Zone::Exile,..}if copy_ids.contains(spell_id)));
+    let a=compute_legal_actions(&g,alice()).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,from_zone:Zone::Exile,..}if copy_ids.contains(spell_id)));
     let pre = json!({"prepared":true,"copy_count":1,"cast_available":true});
     let observed = json!({"prepared":g.is_prepared(sid),"copy_count":copy_ids.len(),"cast_available":a.is_some()});
     if mode == "hold_prepared" || a.is_none() {

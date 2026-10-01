@@ -150,7 +150,7 @@ fn perform(
         .ok_or("missing action source")?;
     let initial_stack_len = game.stack.len();
     game.turn.priority_player = Some(actor);
-    let action = compute_legal_actions(game, actor)
+    let action = compute_legal_actions(game, actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| match a {
             LegalAction::CastSpell { spell_id, .. } => ability.is_none() && *spell_id == source,
@@ -270,7 +270,7 @@ fn report_equipment_cast_restriction(){
  for name in names {for board in [0,2,5]{
  let result=(||->Result<(Value,Value),String>{
   let mut g=setup_players(2);if board>0{let mut b=CardDefinitionBuilder::new(CardId::new(),"Equipment restriction witness").card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(board,board));if board==5{b=b.supertypes(vec![ironsmith::Supertype::Legendary]);}g.create_object_from_definition(&b.build(),alice(),Zone::Battlefield);}
-  let source=g.create_object_from_definition(&defs[&name],alice(),Zone::Hand);let legal=compute_legal_actions(&g,alice()).iter().any(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source));let mut paid=0;let mut dm=dm(0,true);let mut error=None;
+  let source=g.create_object_from_definition(&defs[&name],alice(),Zone::Hand);let legal=compute_legal_actions(&g,alice()).expect("fixture has complete replacement state").iter().any(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source));let mut paid=0;let mut dm=dm(0,true);let mut error=None;
   if legal{let(mut q,cost)=perform(&mut g,source,None,&mut dm)?;paid=cost;error=resolve(&mut g,&mut q,&mut dm).err();}
   let actual=json!({"cast_available":legal,"mana_paid":paid,"resolution_error":error,"source_battlefield":count(&g,&name,Zone::Battlefield),"source_attached":g.objects_in_deterministic_order().iter().any(|o|o.zone==Zone::Battlefield&&o.name==name&&o.attached_to.is_some())});Ok((actual,json!({"choices":dm.trace})))
  })();

@@ -1,5 +1,6 @@
 //! Sacrifice effect implementation.
 
+use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
 use crate::effect::{EffectOutcome, ExecutionFact, OutcomeObjectMemory, Value};
 use crate::effects::helpers::{
     normalize_object_selection, resolve_player_filter, resolve_single_object_for_effect,
@@ -20,7 +21,6 @@ use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 pub use ironsmith_core::SacrificePlayerEffect;
 
-use super::apply_zone_change_with_additional_effects;
 
 fn players_in_turn_order(game: &GameState) -> Vec<PlayerId> {
     game.team_apnap_player_order()
@@ -331,6 +331,10 @@ impl EffectExecutor for SacrificeEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
         let explicit_targets: Vec<ObjectId> = ctx
@@ -371,6 +375,13 @@ impl EffectExecutor for SacrificeEffect {
             &self.event_source_tags,
             to_sacrifice,
         )
+        })();
+        if instruction.is_err() || ctx.decision_maker.awaiting_choice() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
+        }
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        instruction
     }
 
     fn cost_description(&self) -> Option<String> {
@@ -539,11 +550,21 @@ fn sacrifice_selected_objects(
     event_source_tags: &[TagKey],
     to_sacrifice: Vec<ObjectId>,
 ) -> Result<EffectOutcome, ExecutionError> {
+    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+    let checkpoint = game.clone();
+    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+    let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
     let chosen_to_sacrifice = to_sacrifice.clone();
     let chosen_memory: Vec<_> = chosen_to_sacrifice
         .iter()
         .filter_map(|id| OutcomeObjectMemory::from_object_id(game, *id))
         .collect();
+    let original_snapshots = chosen_to_sacrifice.iter().filter_map(|id| game.object(*id).map(|object|
+        (*id, ObjectSnapshot::from_object_with_calculated_characteristics(object, game))))
+        .collect::<std::collections::HashMap<_, _>>();
+    let original_source_snapshot = game.object(ctx.source).map(|object|
+        ObjectSnapshot::from_object_with_calculated_characteristics(object, game)).or_else(|| ctx.source_snapshot.clone());
+    let mut receipts = Vec::new();
     let mut sacrificed_count = 0;
     let mut sacrificed_objects = Vec::new();
     let mut sacrificed_memory = Vec::new();
@@ -551,13 +572,12 @@ fn sacrifice_selected_objects(
     let (batch_lookback, pinned_lookback) =
         begin_sacrifice_batch_lookback(game, to_sacrifice.len());
 
+    let original = (|| -> Result<EffectOutcome, ExecutionError> {
     for id in to_sacrifice {
         if !game.can_be_sacrificed_with_cause(id, &ctx.cause) {
             continue;
         }
-        let pre_snapshot = game
-            .object(id)
-            .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
+        let pre_snapshot = original_snapshots.get(&id).cloned();
         let source_snapshot_for_event = if event_source_tags.is_empty() {
             None
         } else if pre_snapshot
@@ -566,25 +586,26 @@ fn sacrifice_selected_objects(
         {
             pre_snapshot.clone()
         } else {
-            game.object(ctx.source)
-                .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game))
-                .or_else(|| ctx.source_snapshot.clone())
+            original_source_snapshot.clone()
         };
         let sacrificing_player = pre_snapshot.as_ref().map(|snapshot| snapshot.controller);
         let additional_effects = ctx.additional_replacement_effects_snapshot();
 
         // Process each sacrifice through replacement effects with decision maker
-        let result = apply_zone_change_with_additional_effects(
-            game,
-            id,
-            Zone::Battlefield,
-            Zone::Graveyard,
-            ctx.cause.clone(),
-            &mut *ctx.decision_maker,
-            &additional_effects,
-        );
+        let result = apply_zone_change_with_context_and_additional_effects(
+    game,
+    id,
+    Zone::Battlefield,
+    Zone::Graveyard,
+    ctx.cause.clone(),
+    ctx,
+    &additional_effects
+)?;
 
-        match result {
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        let verdict = result.original.clone();
+        receipts.push((id, result));
+        match verdict {
             EventOutcome::Prevented => {
                 // Sacrifice was prevented (unusual but possible)
                 continue;
@@ -645,7 +666,6 @@ fn sacrifice_selected_objects(
             }
         }
     }
-    end_sacrifice_batch_lookback(game, pinned_lookback);
     let sacrifice_events = with_sacrifice_batch_lookback(sacrifice_events, batch_lookback);
 
     let mut outcome = EffectOutcome::count(sacrificed_count)
@@ -657,6 +677,18 @@ fn sacrifice_selected_objects(
         outcome = outcome.with_affected_object_memory(sacrificed_memory);
     }
     Ok(outcome)
+    })();
+    end_sacrifice_batch_lookback(game, pinned_lookback);
+    let original = original?;
+    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+    super::finish_zone_change_receipts(game, ctx, original, receipts)
+    })();
+    if instruction.is_err() || ctx.decision_maker.awaiting_choice() {
+        *game = checkpoint;
+        context_checkpoint.restore(ctx);
+    }
+    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+    instruction
 }
 
 impl CostExecutableEffect for SacrificeEffect {
@@ -780,6 +812,10 @@ impl EffectExecutor for EachPlayerSacrificesEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
         let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
         if count == 0 {
             return Ok(EffectOutcome::count(0));
@@ -794,9 +830,7 @@ impl EffectExecutor for EachPlayerSacrificesEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        let mut chosen_by_player = Vec::new();
         let mut all_chosen = Vec::new();
-        let mut chosen_memory = Vec::new();
         for player_id in players {
             let chosen = ctx.with_temp_iterated_player(Some(player_id), |ctx| {
                 choose_objects_to_sacrifice(game, ctx, player_id, &self.filter, count)
@@ -804,70 +838,18 @@ impl EffectExecutor for EachPlayerSacrificesEffect {
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
             }
-            chosen_memory.extend(
-                chosen
-                    .iter()
-                    .filter_map(|id| OutcomeObjectMemory::from_object_id(game, *id)),
-            );
             all_chosen.extend(chosen.iter().copied());
-            chosen_by_player.push((player_id, chosen));
         }
 
-        let additional_effects = ctx.additional_replacement_effects_snapshot();
-        let mut sacrificed_count = 0;
-        let mut sacrificed_objects = Vec::new();
-        let mut sacrificed_memory = Vec::new();
-        let mut sacrifice_events = Vec::new();
-        let (batch_lookback, pinned_lookback) =
-            begin_sacrifice_batch_lookback(game, all_chosen.len());
+        sacrifice_selected_objects(game, ctx, &[], &[], all_chosen)
 
-        for (_player_id, chosen) in chosen_by_player {
-            for id in chosen {
-                let pre_snapshot = game.object(id).map(|obj| {
-                    ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
-                });
-                let sacrificing_player = pre_snapshot.as_ref().map(|snapshot| snapshot.controller);
-
-                let result = apply_zone_change_with_additional_effects(
-                    game,
-                    id,
-                    Zone::Battlefield,
-                    Zone::Graveyard,
-                    ctx.cause.clone(),
-                    &mut *ctx.decision_maker,
-                    &additional_effects,
-                );
-
-                match result {
-                    EventOutcome::Prevented | EventOutcome::NotApplicable => continue,
-                    EventOutcome::Proceed(_) | EventOutcome::Replaced => {
-                        sacrificed_count += 1;
-                        sacrificed_objects.push(id);
-                        if let Some(snapshot) = pre_snapshot.as_ref() {
-                            sacrificed_memory.push(OutcomeObjectMemory::from_snapshot(snapshot));
-                        }
-                        sacrifice_events.push(TriggerEvent::new_with_provenance(
-                            SacrificeEvent::new(id, Some(ctx.source))
-                                .with_snapshot(pre_snapshot, sacrificing_player),
-                            ctx.provenance,
-                        ));
-                    }
-                }
-            }
+        })();
+        if instruction.is_err() || ctx.decision_maker.awaiting_choice() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
         }
-        end_sacrifice_batch_lookback(game, pinned_lookback);
-        let sacrifice_events = with_sacrifice_batch_lookback(sacrifice_events, batch_lookback);
-
-        let mut outcome = EffectOutcome::count(sacrificed_count)
-            .with_events(sacrifice_events)
-            .with_execution_fact(ExecutionFact::ChosenObjects(all_chosen))
-            .with_chosen_object_memory(chosen_memory);
-        if !sacrificed_objects.is_empty() {
-            outcome =
-                outcome.with_execution_fact(ExecutionFact::AffectedObjects(sacrificed_objects));
-            outcome = outcome.with_affected_object_memory(sacrificed_memory);
-        }
-        Ok(outcome)
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        instruction
     }
 }
 
@@ -884,65 +866,6 @@ impl EffectExecutor for EachPlayerSacrificesEffect {
 /// ```
 pub type SacrificeTargetEffect = ironsmith_core::SacrificeTargetEffect;
 
-fn sacrifice_target_object(
-    game: &mut GameState,
-    ctx: &mut ExecutionContext,
-    object_id: ObjectId,
-) -> Result<(bool, Option<TriggerEvent>), ExecutionError> {
-    if !game.can_be_sacrificed_with_cause(object_id, &ctx.cause) {
-        return Ok((false, None));
-    }
-    if !game.battlefield.contains(&object_id) {
-        return Ok((false, None));
-    }
-
-    let pre_snapshot = game
-        .object(object_id)
-        .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
-    let sacrificing_player = pre_snapshot.as_ref().map(|snapshot| snapshot.controller);
-    let additional_effects = ctx.additional_replacement_effects_snapshot();
-
-    let result = apply_zone_change_with_additional_effects(
-        game,
-        object_id,
-        Zone::Battlefield,
-        Zone::Graveyard,
-        ctx.cause.clone(),
-        &mut *ctx.decision_maker,
-        &additional_effects,
-    );
-
-    match result {
-        EventOutcome::Prevented => Ok((false, None)),
-        EventOutcome::Proceed(result) => {
-            if let Some(snapshot) = pre_snapshot.clone() {
-                ctx.refresh_target_snapshot(snapshot);
-            }
-            if let Some(snapshot) = pre_snapshot.clone()
-                && snapshot.object_id == ctx.source
-            {
-                ctx.refresh_source_snapshot(snapshot);
-            }
-            let _ = result;
-            let event = Some(TriggerEvent::new_with_provenance(
-                SacrificeEvent::new(object_id, Some(ctx.source))
-                    .with_snapshot(pre_snapshot, sacrificing_player),
-                ctx.provenance,
-            ));
-            Ok((true, event))
-        }
-        EventOutcome::Replaced => Ok((
-            true,
-            Some(TriggerEvent::new_with_provenance(
-                SacrificeEvent::new(object_id, Some(ctx.source))
-                    .with_snapshot(pre_snapshot, sacrificing_player),
-                ctx.provenance,
-            )),
-        )),
-        EventOutcome::NotApplicable => Ok((false, None)),
-    }
-}
-
 impl EffectExecutor for SacrificeTargetEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
@@ -953,6 +876,10 @@ impl EffectExecutor for SacrificeTargetEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
         // Resolve through ChooseSpec helpers (targets, source, tagged, specific object, etc.).
         let object_id = match resolve_single_object_for_effect(game, ctx, &self.target) {
             Ok(id) => id,
@@ -961,31 +888,23 @@ impl EffectExecutor for SacrificeTargetEffect {
         };
 
         // CR 701.21a: a player can't sacrifice a permanent they don't control.
-        if let Some(player) = &self.player
-            && let Ok(sacrificing_player) = resolve_player_filter(game, player, ctx)
-            && game
-                .object(object_id)
-                .is_some_and(|object| game.controller_of(object) != sacrificing_player)
-        {
-            return Ok(EffectOutcome::count(0));
-        }
-        let object_memory = OutcomeObjectMemory::from_object_id(game, object_id);
-        let (sacrificed, event) = sacrifice_target_object(game, ctx, object_id)?;
-        let mut outcome = EffectOutcome::count(if sacrificed { 1 } else { 0 });
-        if let Some(event) = event {
-            outcome = outcome.with_event(event);
-        }
-        outcome = outcome.with_execution_fact(ExecutionFact::ChosenObjects(vec![object_id]));
-        if let Some(memory) = object_memory.clone() {
-            outcome = outcome.with_chosen_object_memory(vec![memory]);
-        }
-        if sacrificed {
-            outcome = outcome.with_execution_fact(ExecutionFact::AffectedObjects(vec![object_id]));
-            if let Some(memory) = object_memory {
-                outcome = outcome.with_affected_object_memory(vec![memory]);
+        if let Some(player) = &self.player {
+            let sacrificing_player = resolve_player_filter(game, player, ctx)?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            if game.object(object_id).is_some_and(|object| game.controller_of(object) != sacrificing_player) {
+                return Ok(EffectOutcome::count(0));
             }
         }
-        Ok(outcome)
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        sacrifice_selected_objects(game, ctx, &[], &[], vec![object_id])
+
+        })();
+        if instruction.is_err() || ctx.decision_maker.awaiting_choice() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
+        }
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        instruction
     }
 
     // "Target creature's controller sacrifices it": the targeted object is
@@ -1453,4 +1372,86 @@ mod tests {
         assert_eq!(game.players[0].graveyard.len(), 1);
         assert_eq!(game.players[1].graveyard.len(), 0);
     }
+}
+
+#[cfg(test)]
+mod replacement_sacrifice_owner_contract_tests {
+    use super::*;
+    use crate::card::CardBuilder;
+    use crate::decision::DecisionMaker;
+    use crate::effect::Effect;
+    use crate::ids::CardId;
+    use crate::object::CounterType;
+    use crate::replacement::{ReplacementAction, ReplacementEffect};
+    use crate::types::CardType;
+    struct Answers { originals: Vec<ObjectId>, stable: crate::ids::StableId, pause: bool, pending: bool, calls: usize, binding: bool }
+    impl DecisionMaker for Answers {
+        fn decide_boolean(&mut self, game: &GameState, _: &crate::decisions::context::BooleanContext) -> bool {
+            self.calls += 1;
+            for id in &self.originals { assert!(game.object(*id).is_none(), "all original sacrifices precede additions"); }
+            if self.binding { let arrival = game.objects_in_deterministic_order().into_iter().find(|object| object.stable_id == self.stable).unwrap(); assert_eq!(arrival.zone, Zone::Graveyard); assert_eq!(game.counter_count(arrival.id, CounterType::PlusOnePlusOne), 1); }
+            self.pending = self.pause; !self.pending
+        }
+        fn awaiting_choice(&self) -> bool { self.pending }
+    }
+    fn card(game: &mut GameState, owner: PlayerId, creature: bool) -> ObjectId {
+        game.create_object_from_card(&CardBuilder::new(CardId::new(), "Sacrifice owner fixture")
+            .card_types(vec![if creature { CardType::Creature } else { CardType::Artifact }]).build(), owner, Zone::Battlefield)
+    }
+    fn check(path: u8, mode: u8) {
+        let mut game = crate::tests::test_helpers::setup_two_player_game(); let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let source = card(&mut game, alice, false); let replacement_source = card(&mut game, bob, false); let sentinel = card(&mut game, alice, false);
+        let first = card(&mut game, alice, true); let stable = game.object(first).unwrap().stable_id;
+        let mut victims = vec![first]; if path != 2 { victims.push(card(&mut game, if path == 1 { bob } else { alice }, true)); }
+        let snapshots = victims.iter().map(|id| ObjectSnapshot::from_object(game.object(*id).unwrap(), &game)).collect::<Vec<_>>();
+        let sentinel_snapshot = ObjectSnapshot::from_object(game.object(sentinel).unwrap(), &game);
+        let actions = match mode { 1 => vec![Effect::gain_life(3), Effect::lose_life(Value::X)],
+            3 => vec![Effect::new(crate::effects::PutCountersEffect::new(CounterType::PlusOnePlusOne, 1, ChooseSpec::tagged("it"))), Effect::may(vec![Effect::gain_life(0)])],
+            _ => vec![Effect::gain_life(3), Effect::may(vec![Effect::gain_life(4)])] };
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(replacement_source, bob,
+            crate::events::zones::matchers::WouldChangeZoneMatcher::new(ObjectFilter::specific(first), Some(Zone::Battlefield), Some(Zone::Graveyard)), ReplacementAction::Additionally(actions)));
+        let effect = match path { 0 => Effect::new(SacrificeEffect::you(ObjectFilter::tagged("victims"), 2)),
+            1 => Effect::new(EachPlayerSacrificesEffect::new(ObjectFilter::tagged("victims"), 1, PlayerFilter::Any)),
+            _ => Effect::new(SacrificeTargetEffect::new(ChooseSpec::SpecificObject(first))) };
+        game.take_pending_trigger_events(); let ids = game.next_object_id_counter(); let objects = game.objects_in_deterministic_order().len();
+        let mut dm = Answers { originals: victims.clone(), stable, pause: mode == 2, pending: false, calls: 0, binding: mode == 3 };
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm); ctx.set_tagged_objects("victims", snapshots.clone()); ctx.set_tagged_objects("it", vec![sentinel_snapshot.clone()]);
+        let result = crate::effects::execute_effect(&mut game, &effect, &mut ctx);
+        if mode == 1 { assert!(matches!(result, Err(ExecutionError::UnresolvableValue(_)))); }
+        else if mode == 2 { assert!(ctx.decision_maker.awaiting_choice()); assert!(result.unwrap().events.is_empty()); }
+        else {
+            let outcome = result.unwrap(); assert_eq!(outcome.count_or_zero(), victims.len() as i32);
+            for id in &victims { assert!(game.object(*id).is_none()); }
+            assert_eq!(outcome.events.iter().filter(|event| event.downcast::<SacrificeEvent>().is_some()).count(), victims.len());
+            assert_eq!(game.player(alice).unwrap().life, 20); assert_eq!(game.player(bob).unwrap().life, if mode == 3 { 20 } else { 27 });
+            if mode == 3 { let arrival = game.objects_in_deterministic_order().into_iter().find(|object| object.stable_id == stable).unwrap(); assert_eq!(arrival.zone, Zone::Graveyard); assert_eq!(game.counter_count(arrival.id, CounterType::PlusOnePlusOne), 1); }
+            else { assert_eq!(outcome.events.iter().filter_map(|event| event.downcast::<crate::events::LifeGainEvent>()).map(|event| (event.player, event.amount)).collect::<Vec<_>>(), vec![(bob, 3), (bob, 4)]); }
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+        }
+        assert_eq!(ctx.source, source); assert_eq!(ctx.controller, alice); assert!(ctx.targets.is_empty()); assert_eq!(ctx.get_tagged_all("it").unwrap()[0].object_id, sentinel_snapshot.object_id);
+        assert_eq!(game.counter_count(sentinel, CounterType::PlusOnePlusOne), 0);
+        if mode == 1 || mode == 2 {
+            for id in &victims { assert_eq!(game.object(*id).unwrap().zone, Zone::Battlefield); }
+            assert!(game.player(alice).unwrap().graveyard.is_empty()); assert!(game.player(bob).unwrap().graveyard.is_empty()); assert_eq!(game.player(bob).unwrap().life, 20);
+            assert_eq!(game.next_object_id_counter(), ids); assert_eq!(game.objects_in_deterministic_order().len(), objects); assert!(game.effect_store.replacement_effects.get_effect(shield).is_some()); assert!(game.take_pending_trigger_events().is_empty());
+        }
+        drop(ctx); if mode == 0 || mode == 3 { assert_eq!(dm.calls, 1); }
+        if mode == 2 { assert_eq!(dm.calls, 1); dm.pause = false; dm.pending = false;
+            let mut ctx = ExecutionContext::new(source, alice, &mut dm); ctx.set_tagged_objects("victims", snapshots);
+            let outcome = crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap(); assert_eq!(outcome.count_or_zero(), victims.len() as i32);
+            for id in &victims { assert!(game.object(*id).is_none()); } assert_eq!(game.player(bob).unwrap().life, 27); assert!(!ctx.decision_maker.awaiting_choice()); drop(ctx); assert_eq!(dm.calls, 2);
+        }
+    }
+    #[test] fn selected_additions_follow_all_sacrifices() { check(0, 0); }
+    #[test] fn selected_error_restores_batch() { check(0, 1); }
+    #[test] fn selected_pending_replays_once() { check(0, 2); }
+    #[test] fn selected_addition_binds_arrival() { check(0, 3); }
+    #[test] fn each_player_additions_follow_all_sacrifices() { check(1, 0); }
+    #[test] fn each_player_error_restores_batch() { check(1, 1); }
+    #[test] fn each_player_pending_replays_once() { check(1, 2); }
+    #[test] fn each_player_addition_binds_arrival() { check(1, 3); }
+    #[test] fn target_additions_follow_sacrifice() { check(2, 0); }
+    #[test] fn target_error_restores_sacrifice() { check(2, 1); }
+    #[test] fn target_pending_replays_once() { check(2, 2); }
+    #[test] fn target_addition_binds_arrival() { check(2, 3); }
 }

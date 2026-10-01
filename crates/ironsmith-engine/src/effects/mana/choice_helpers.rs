@@ -6,46 +6,39 @@ use crate::effect::{EffectOutcome, OutcomeValue};
 use crate::effects::ExecutionContext;
 use crate::events::ManaAddedEvent;
 use crate::game_state::GameState;
-use crate::ids::ObjectId;
 use crate::ids::PlayerId;
 use crate::mana::ManaSymbol;
 use crate::snapshot::ObjectSnapshot;
-use crate::types::Subtype;
+
+/// Complete receipt for a resolved mana operation. Additional instruction
+/// outcomes never substitute for the original instruction's mana quantity.
+pub(crate) struct ManaCreditReceipt {
+    mana: Vec<ManaSymbol>,
+    original_committed: bool,
+    outcome: EffectOutcome,
+}
+
+impl ManaCreditReceipt {
+    pub(crate) fn mana_count(&self) -> i32 { self.mana.len() as i32 }
+}
 
 pub(crate) fn mana_added_value_outcome(
-    ctx: &ExecutionContext,
-    player_id: PlayerId,
-    mana: Vec<ManaSymbol>,
+    _ctx: &ExecutionContext,
+    _player_id: PlayerId,
+    mut receipt: ManaCreditReceipt,
 ) -> EffectOutcome {
-    mana_added_outcome_with_value(ctx, player_id, mana.clone(), OutcomeValue::ManaAdded(mana))
+    receipt.outcome.set_value(OutcomeValue::ManaAdded(receipt.mana));
+    receipt.outcome
 }
 
 pub(crate) fn mana_added_count_outcome(
-    ctx: &ExecutionContext,
-    player_id: PlayerId,
-    mana: Vec<ManaSymbol>,
+    _ctx: &ExecutionContext,
+    _player_id: PlayerId,
+    mut receipt: ManaCreditReceipt,
     count: i32,
 ) -> EffectOutcome {
-    mana_added_outcome_with_value(ctx, player_id, mana, OutcomeValue::Count(count))
-}
-
-pub(crate) fn mana_added_outcome_with_value(
-    ctx: &ExecutionContext,
-    player_id: PlayerId,
-    mana: Vec<ManaSymbol>,
-    value: OutcomeValue,
-) -> EffectOutcome {
-    let outcome = EffectOutcome::from_value(value);
-    if mana.is_empty() {
-        outcome
-    } else {
-        outcome.with_event(
-            ManaAddedEvent::new(ctx.source, ctx.controller, player_id, mana)
-                .with_production_provenance(ctx.mana.production_provenance)
-                .with_snapshot(ctx.source_snapshot.clone())
-                .into_trigger_event(),
-        )
-    }
+    receipt.outcome.set_value(OutcomeValue::Count(if receipt.original_committed { count } else { 0 }));
+    receipt.outcome
 }
 
 /// Choose one or more mana colors through the decision system with stable
@@ -81,6 +74,16 @@ pub(crate) fn choose_mana_colors(
         .as_deref()
         .and_then(|colors| colors.first().copied())
         .unwrap_or(default_color);
+
+    // An exact output selected in the payment plan is already a choice. Manual
+    // activations keep their ordinary prompt, and distinct-color instructions
+    // still ask when one color cannot satisfy them.
+    if ctx.mana.mana_color_restriction.is_some()
+        && let Some([color]) = effective_available.as_deref()
+        && (same_color || !distinct_colors || count == 1)
+    {
+        return vec![*color; count as usize];
+    }
 
     let spec = if let Some(colors) = effective_available.as_deref() {
         if colors.is_empty() {
@@ -151,81 +154,96 @@ pub(crate) fn credit_mana_symbols_from_context<I>(
     player_id: PlayerId,
     symbols: I,
     ctx: &mut ExecutionContext,
-) -> Vec<ManaSymbol>
+) -> Result<ManaCreditReceipt, crate::effects::ExecutionError>
 where
     I: IntoIterator<Item = ManaSymbol>,
 {
-    credit_mana_symbols_with_context(
-        game,
-        player_id,
-        symbols,
-        Some(ctx.source),
-        ctx.controller,
-        &ctx.mana.mana_usage_restrictions,
-        ctx.mana.mana_source_chosen_creature_type,
-        ctx.mana.retention,
-        ctx.mana.production_provenance,
-        ctx.source_snapshot.clone(),
-        &mut *ctx.decision_maker,
-    )
+    use crate::effects::ExecutionError;
+    use crate::events::processing::process_trait_event_with_execution_context;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(ManaCreditReceipt { mana: Vec::new(), original_committed: false, outcome: EffectOutcome::count(0) });
+    }
+    game.clear_pending_decision_controllers();
+    let checkpoint = game.clone();
+    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+    let result = (|| {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(ManaCreditReceipt { mana: Vec::new(), original_committed: false, outcome: EffectOutcome::count(0) });
+        }
+        let mana = symbols.into_iter().collect::<Vec<_>>();
+        if mana.is_empty() {
+            return Ok(ManaCreditReceipt { mana, original_committed: true, outcome: EffectOutcome::count(0) });
+        }
+        let snapshot = ctx.source_snapshot.clone().or_else(|| game.object(ctx.source)
+            .map(|object| ObjectSnapshot::from_object(object, game)));
+        let event = crate::events::Event::new_with_provenance(
+            ManaAddedEvent::new(ctx.source, ctx.controller, player_id, mana)
+                .with_production_provenance(ctx.mana.production_provenance)
+                .with_snapshot(snapshot), ctx.provenance);
+        let result = process_trait_event_with_execution_context(game, event, ctx)?;
+        let mut primary_mana = Vec::new();
+        let mut primary_committed = false;
+        let outcome = crate::effects::replacement::execute_event_expansion(game, ctx, result, |game, ctx, original| {
+            let receipt = commit_mana_result(game, ctx, original)?;
+            primary_mana = receipt.mana;
+            primary_committed = receipt.original_committed;
+            Ok(receipt.outcome)
+        })?;
+        Ok(ManaCreditReceipt { mana: primary_mana, original_committed: primary_committed, outcome })
+    })();
+    let pending = ctx.decision_maker.awaiting_choice();
+    if pending || result.is_err() {
+        game.restore_execution_checkpoint(checkpoint, result.is_ok() && pending);
+        context_checkpoint.restore(ctx);
+    }
+    if pending && result.is_ok() { return Ok(ManaCreditReceipt { mana: Vec::new(), original_committed: false, outcome: EffectOutcome::count(0) }); }
+    result
 }
 
-fn credit_mana_symbols_with_context<I>(
+fn commit_mana_result(
     game: &mut GameState,
-    player_id: PlayerId,
-    symbols: I,
-    source: Option<ObjectId>,
-    controller: PlayerId,
-    restrictions: &[crate::ability::ManaUsageRestriction],
-    source_chosen_creature_type: Option<Subtype>,
-    retention: Option<ironsmith_core::ManaRetentionDuration>,
-    production_provenance: crate::events::mana::ManaProductionProvenance,
-    source_snapshot: Option<ObjectSnapshot>,
-    decision_maker: &mut dyn crate::decision::DecisionMaker,
-) -> Vec<ManaSymbol>
-where
-    I: IntoIterator<Item = ManaSymbol>,
-{
-    let source = source.unwrap_or(ObjectId::from_raw(0));
-    let mana = symbols.into_iter().collect::<Vec<_>>();
-    let snapshot = source_snapshot.or_else(|| {
-        game.object(source)
-            .map(|object| ObjectSnapshot::from_object(object, game))
-    });
-    let mana = crate::events::mana::apply_mana_replacements(
-        game,
-        source,
-        controller,
-        player_id,
-        mana,
-        production_provenance,
-        snapshot.clone(),
-        decision_maker,
-    );
-    if let Some(player) = game.player_mut(player_id) {
-        for symbol in mana.iter().copied() {
-            if restrictions.is_empty() {
-                player.add_unrestricted_mana_with_retention(
-                    symbol,
-                    source,
-                    snapshot.clone(),
-                    retention,
-                );
-            } else {
-                player.add_restricted_mana_with_snapshot_and_retention(
-                    crate::ability::RestrictedManaUnit {
-                        symbol,
-                        source,
-                        source_chosen_creature_type,
-                        restrictions: restrictions.to_vec(),
-                    },
-                    snapshot.clone(),
-                    retention,
-                );
+    ctx: &mut ExecutionContext,
+    result: crate::events::processing::TraitEventResult,
+) -> Result<ManaCreditReceipt, crate::effects::ExecutionError> {
+    use crate::effects::ExecutionError;
+    use crate::events::processing::TraitEventResult;
+    match result {
+            TraitEventResult::Proceed(event) | TraitEventResult::Modified(event) => {
+                let resolved = crate::events::downcast_event::<ManaAddedEvent>(event.inner())
+                    .ok_or_else(|| ExecutionError::InternalError("mana replacement returned an incompatible event".into()))?;
+                let player = game.player_mut(resolved.player).ok_or(ExecutionError::PlayerNotFound(resolved.player))?;
+                for symbol in resolved.mana.iter().copied() {
+                    if ctx.mana.mana_usage_restrictions.is_empty() {
+                        player.add_unrestricted_mana_with_retention(symbol, resolved.source, resolved.snapshot.clone(), ctx.mana.retention);
+                    } else {
+                        player.add_restricted_mana_with_snapshot_and_retention(crate::ability::RestrictedManaUnit {
+                            symbol, source: resolved.source,
+                            source_chosen_creature_type: ctx.mana.mana_source_chosen_creature_type,
+                            restrictions: ctx.mana.mana_usage_restrictions.clone(),
+                        }, resolved.snapshot.clone(), ctx.mana.retention);
+                    }
+                }
+                let outcome = if resolved.mana.is_empty() { EffectOutcome::count(0) } else {
+                    EffectOutcome::count(resolved.mana.len() as i32).with_event(
+                        crate::triggers::TriggerEvent::new_with_provenance(resolved.clone(), event.provenance()))
+                };
+                Ok(ManaCreditReceipt { mana: resolved.mana.clone(), original_committed: true, outcome })
             }
-        }
+            TraitEventResult::Replaced { effects, source, controller, context, .. } => {
+                let mut outcome = crate::effects::replacement::execute_replacement_payload(game, ctx, &effects, source, controller, &context, None)?;
+                let mut original = EffectOutcome::replaced();
+                original.set_value(OutcomeValue::Count(0));
+                let outcome = EffectOutcome::aggregate_replacement_outcomes(original, [outcome]);
+                Ok(ManaCreditReceipt { mana: Vec::new(), original_committed: false, outcome })
+            }
+            TraitEventResult::Prevented => Ok(ManaCreditReceipt { mana: Vec::new(), original_committed: false, outcome: EffectOutcome::prevented() }),
+            TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. } => {
+                if ctx.decision_maker.awaiting_choice() {
+                    Ok(ManaCreditReceipt { mana: Vec::new(), original_committed: false, outcome: EffectOutcome::count(0) })
+                } else { Err(ExecutionError::InternalError("mana replacement suspended without a captured decision".into())) }
+            }
+        TraitEventResult::Expanded { .. } => Err(ExecutionError::InternalError("mana commit requires a flattened replacement result".into())),
     }
-    mana
 }
 
 pub(crate) fn credit_repeated_mana_symbol_from_context(
@@ -234,50 +252,8 @@ pub(crate) fn credit_repeated_mana_symbol_from_context(
     symbol: ManaSymbol,
     count: u32,
     ctx: &mut ExecutionContext,
-) -> Vec<ManaSymbol> {
-    credit_repeated_mana_symbol_with_context(
-        game,
-        player_id,
-        symbol,
-        count,
-        Some(ctx.source),
-        ctx.controller,
-        &ctx.mana.mana_usage_restrictions,
-        ctx.mana.mana_source_chosen_creature_type,
-        ctx.mana.retention,
-        ctx.mana.production_provenance,
-        ctx.source_snapshot.clone(),
-        &mut *ctx.decision_maker,
-    )
-}
-
-fn credit_repeated_mana_symbol_with_context(
-    game: &mut GameState,
-    player_id: PlayerId,
-    symbol: ManaSymbol,
-    count: u32,
-    source: Option<ObjectId>,
-    controller: PlayerId,
-    restrictions: &[crate::ability::ManaUsageRestriction],
-    source_chosen_creature_type: Option<Subtype>,
-    retention: Option<ironsmith_core::ManaRetentionDuration>,
-    production_provenance: crate::events::mana::ManaProductionProvenance,
-    source_snapshot: Option<ObjectSnapshot>,
-    decision_maker: &mut dyn crate::decision::DecisionMaker,
-) -> Vec<ManaSymbol> {
-    credit_mana_symbols_with_context(
-        game,
-        player_id,
-        std::iter::repeat_n(symbol, count as usize),
-        source,
-        controller,
-        restrictions,
-        source_chosen_creature_type,
-        retention,
-        production_provenance,
-        source_snapshot,
-        decision_maker,
-    )
+) -> Result<ManaCreditReceipt, crate::effects::ExecutionError> {
+    credit_mana_symbols_from_context(game, player_id, std::iter::repeat_n(symbol, count as usize), ctx)
 }
 
 /// Choose one or more mana symbols through the decision system with stable

@@ -704,6 +704,28 @@ pub(super) fn apply_mana_payment_plan_response(
     response: &crate::mana_payment::ManaPaymentResponse,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
+    // A captured nested decision replays this response against the same
+    // authoritative payment. Cancellation retains its existing action rollback.
+    let checkpoint = state.pending_mana_ability.as_ref()
+        .filter(|_| !matches!(response, crate::mana_payment::ManaPaymentResponse::Cancel))
+        .map(|_| (game.clone(), trigger_queue.clone(), state.clone()));
+    let result = apply_mana_payment_plan_response_inner(game, trigger_queue, state, response, decision_maker);
+    if let Some((before_game, before_queue, before_state)) = checkpoint {
+        if decision_maker.awaiting_choice() || matches!(&result, Err(GameLoopError::ExecutionFailed(_))) {
+            *game = before_game; *trigger_queue = before_queue; *state = before_state;
+        }
+        if decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
+    }
+    result
+}
+
+fn apply_mana_payment_plan_response_inner(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    state: &mut PriorityLoopState,
+    response: &crate::mana_payment::ManaPaymentResponse,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<GameProgress, GameLoopError> {
     use crate::mana_payment::ManaPaymentResponse;
     game.refresh_continuous_state();
 
@@ -876,6 +898,7 @@ pub(super) fn apply_mana_payment_plan_response(
             state.rollback_action(game);
             return Err(error);
         }
+        if decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
         return advance_priority_with_dm(game, trigger_queue, decision_maker);
     }
 
@@ -1625,6 +1648,8 @@ pub(super) fn execute_pending_mana_ability(
     pending: &PendingManaAbility,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<(), GameLoopError> {
+    let checkpoint = (game.clone(), trigger_queue.clone());
+    let result = (|| -> Result<(), GameLoopError> {
     use crate::costs::CostContext;
     use crate::effects::ExecutionContext;
 
@@ -1655,57 +1680,30 @@ pub(super) fn execute_pending_mana_ability(
     for c in &pending.other_costs {
         crate::special_actions::pay_cost_component_with_choice(game, c, &mut cost_ctx)
             .map_err(|e| GameLoopError::InvalidState(format!("Failed to pay cost: {e}")))?;
+        if cost_ctx.decision_maker.awaiting_choice() { return Ok(()); }
     }
     // X is bound by the announced {X} or by a cost that fixes it as it is
     // paid ("Remove X storage counters"); the effect reads that value.
     let x_value_from_costs = cost_ctx.x_value;
+    let cost_tagged_objects = cost_ctx.tagged_objects.clone();
     drop(cost_ctx);
     drain_pending_trigger_events(game, trigger_queue);
 
-    // Add fixed mana to player's pool
-    let mana_to_add = crate::events::mana::apply_mana_replacements(
-        game,
-        pending.source,
-        pending.activator,
-        pending.activator,
-        pending.mana_to_add.clone(),
-        pending.mana_production_provenance,
-        source_snapshot.clone(),
-        decision_maker,
-    );
-    if !mana_to_add.is_empty() {
-        if let Some(player_obj) = game.player_mut(pending.activator) {
-            for symbol in &mana_to_add {
-                if pending.mana_usage_restrictions.is_empty() {
-                    player_obj.add_unrestricted_mana(
-                        *symbol,
-                        pending.source,
-                        source_snapshot.clone(),
-                    );
-                } else {
-                    player_obj.add_restricted_mana_with_snapshot(
-                        crate::ability::RestrictedManaUnit {
-                            symbol: *symbol,
-                            source: pending.source,
-                            source_chosen_creature_type: pending.mana_source_chosen_creature_type,
-                            restrictions: pending.mana_usage_restrictions.clone(),
-                        },
-                        source_snapshot.clone(),
-                    );
-                }
-            }
-        }
-        let event = crate::events::ManaAddedEvent::new(
-            pending.source,
-            pending.activator,
-            pending.activator,
-            mana_to_add,
-        )
-        .with_production_provenance(pending.mana_production_provenance)
-        .with_snapshot(source_snapshot.clone())
-        .into_trigger_event();
-        queue_triggers_from_event(game, trigger_queue, event, false);
-    }
+    let mut mana_ctx = ExecutionContext::new(pending.source, pending.activator, &mut *decision_maker)
+        .with_provenance(pending.provenance)
+        .with_mana_usage_restrictions(pending.mana_usage_restrictions.clone())
+        .with_mana_source_chosen_creature_type(pending.mana_source_chosen_creature_type)
+        .with_mana_production_provenance(pending.mana_production_provenance)
+        .with_tagged_objects(cost_tagged_objects.clone());
+    if let Some(snapshot) = source_snapshot.clone() { mana_ctx = mana_ctx.with_source_snapshot(snapshot); }
+    if let Some(x) = x_value_from_costs { mana_ctx = mana_ctx.with_x(x); }
+    let outcome = crate::effects::EffectExecutor::execute(
+        &crate::effects::AddManaEffect::new(pending.mana_to_add.clone(), crate::target::PlayerFilter::Specific(pending.activator)),
+        game, &mut mana_ctx,
+    )?;
+    if mana_ctx.decision_maker.awaiting_choice() { return Ok(()); }
+    drop(mana_ctx);
+    queue_triggers_for_events(game, trigger_queue, outcome.events);
 
     // Execute additional effects (for complex mana abilities)
     if !pending.effects.is_empty() {
@@ -1720,6 +1718,7 @@ pub(super) fn execute_pending_mana_ability(
         if let Some(x) = x_value_from_costs {
             ctx = ctx.with_x(x);
         }
+        ctx = ctx.with_tagged_objects(cost_tagged_objects);
         let emitted_events = crate::game_loop::execute_resolution_program(
             game,
             &mut ctx,
@@ -1728,8 +1727,8 @@ pub(super) fn execute_pending_mana_ability(
             &pending.effects,
             None,
             &[],
-        )
-        .map_err(|err| GameLoopError::InvalidState(err.to_string()))?;
+        )?;
+        if ctx.decision_maker.awaiting_choice() { return Ok(()); }
         queue_triggers_for_events(game, trigger_queue, emitted_events);
         drain_pending_trigger_events(game, trigger_queue);
     }
@@ -1750,6 +1749,12 @@ pub(super) fn execute_pending_mana_ability(
     );
 
     Ok(())
+    })();
+    if result.is_err() || decision_maker.awaiting_choice() {
+        *game = checkpoint.0;
+        *trigger_queue = checkpoint.1;
+    }
+    result
 }
 
 /// Apply a mana payment response for a pending activation.
@@ -2687,6 +2692,21 @@ pub(crate) fn propose_spell_cast(
         ),
         _ => None,
     });
+    let selected_grant = game.object(spell_id).and_then(|obj| match casting_method {
+        CastingMethod::PlayFrom {use_alternative: Some(idx), zone, ..}
+        | CastingMethod::SplitOtherHalfPlayFrom {use_alternative: idx, zone, ..} =>
+            crate::decision::resolve_play_from_alternative_grant(game, caster, obj, *zone, *idx),
+        _ => None,
+    });
+    if let Some(grant) = &selected_grant {
+        let source = match casting_method {
+            CastingMethod::PlayFrom {source, ..} | CastingMethod::SplitOtherHalfPlayFrom {source, ..} => *source,
+            _ => unreachable!(),
+        };
+        if grant.source_id != source {
+            return Err(GameLoopError::InvalidState("Selected alternative permission source does not match cast action".into()));
+        }
+    }
     let selected_method_for_overlay = selected_method.clone();
     // The public face-down cast kind, read before the card moves: in peer
     // matches it comes from the cast command, so peers holding only a
@@ -2709,25 +2729,29 @@ pub(crate) fn propose_spell_cast(
     let cast_origin_snapshot = game.object(spell_id).map(|obj| {
         crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
     });
+    let selected_plain_grant = if selected_grant.is_none() {
+        match casting_method {
+            CastingMethod::PlayFrom {source, zone, ..} | CastingMethod::SplitOtherHalfPlayFrom {source, zone, ..} =>
+                game.effect_store.grant_registry.selected_play_from_grant_for_card(game, spell_id, *zone, caster, *source),
+            _ => None,
+        }
+    } else { None };
+    let once_limit = |limit| matches!(limit,
+        Some(crate::grant::GrantUsageLimit::OnceEachTurn | crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns));
+    let usage_identity = if let Some(grant) = &selected_grant {
+        once_limit(grant.usage_limit).then(|| grant.permission_identity.clone()).flatten()
+    } else {
+        selected_plain_grant.as_ref().filter(|grant| once_limit(grant.usage_limit))
+            .and_then(|grant| grant.permission_identity.clone())
+    };
     let play_from_constraints = match casting_method {
-        CastingMethod::PlayFrom { source, zone, .. }
-        | CastingMethod::SplitOtherHalfPlayFrom { source, zone, .. } => {
-            let constraints = game
-                .effect_store
-                .grant_registry
-                .play_from_constraints_for_card(game, spell_id, *zone, caster, *source);
+        CastingMethod::PlayFrom {source, zone, ..} | CastingMethod::SplitOtherHalfPlayFrom {source, zone, ..} => {
+            let constraints = selected_plain_grant.as_ref().map(|grant| grant.play_from_constraints.clone()).unwrap_or_default();
             Some(Box::new((*source, *zone, constraints)))
         }
         _ => None,
     };
-    let shared_usage_to_consume = match casting_method {
-        CastingMethod::PlayFrom { source, zone, .. }
-        | CastingMethod::SplitOtherHalfPlayFrom { source, zone, .. } => game
-            .effect_store
-            .grant_registry
-            .shared_usage_to_consume_for_play_from(game, spell_id, *zone, caster, Some(*source)),
-        _ => None,
-    };
+    let shared_usage_to_consume = selected_plain_grant.as_ref().and_then(|grant| grant.shared_usage_id);
 
     let new_id = game
         .move_object_by_effect(spell_id, Zone::Stack)
@@ -2736,6 +2760,7 @@ pub(crate) fn propose_spell_cast(
         })?;
     if let Some(spell) = game.object_mut(new_id) {
         spell.cast_play_from_constraints = play_from_constraints;
+        spell.cast_grant_usage_identity = usage_identity.map(Box::new);
     }
     if let Some(kind) = face_down_kind {
         // A peer that holds only a placeholder must later check that the
@@ -2940,7 +2965,7 @@ pub(crate) fn propose_spell_cast(
         game.set_face_down(new_id);
     }
 
-    apply_play_from_cast_this_way_grants(game, new_id, caster, casting_method);
+    apply_play_from_cast_this_way_grants(game, new_id, caster, casting_method, selected_grant, selected_plain_grant);
 
     // CR 601.2a / 610.5: one-shot effects that make the next matching spell
     // gain an ability apply while the spell is being put on the stack.  The
@@ -2965,6 +2990,8 @@ fn apply_play_from_cast_this_way_grants(
     stack_id: ObjectId,
     caster: PlayerId,
     casting_method: &CastingMethod,
+    selected_grant: Option<crate::grant_registry::GrantedAlternativeCast>,
+    selected_plain_grant: Option<crate::grant_registry::Grant>,
 ) {
     let (source_id, zone) = match casting_method {
         CastingMethod::PlayFrom { source, zone, .. }
@@ -2979,24 +3006,6 @@ fn apply_play_from_cast_this_way_grants(
         return;
     };
     spell_as_cast.zone = zone;
-    let selected_play_from_alternative = match casting_method {
-        CastingMethod::PlayFrom {
-            use_alternative: Some(idx),
-            ..
-        }
-        | CastingMethod::SplitOtherHalfPlayFrom {
-            use_alternative: idx,
-            ..
-        } => crate::decision::resolve_play_from_alternative_method(
-            game,
-            caster,
-            &spell_as_cast,
-            zone,
-            *idx,
-        )
-        .or_else(|| spell_as_cast.cast_alternative_method_owned()),
-        _ => None,
-    };
     let mut ctx = game.filter_context_for(caster, Some(source.id));
     // Moving a card from exile to the stack clears its live source-exile
     // linkage, but cast-this-way riders are selected immediately afterward.
@@ -3009,69 +3018,19 @@ fn apply_play_from_cast_this_way_grants(
         ctx.tagged_objects
             .insert(crate::tag::SOURCE_EXILED_TAG.into(), vec![origin]);
     }
-    let mut granted = Vec::new();
-    let mut specs = Vec::new();
-    for grant in game.effect_store.grant_registry.active_grants(game) {
-        if grant.source.source_id() == source_id
-            && grant.player == caster
-            && grant.zone == zone
-            && !grant.cast_this_way_grants.is_empty()
-        {
-            let mut spec = crate::grant::GrantSpec::new(
-                grant.grantable,
-                grant.filter.unwrap_or_default(),
-                zone,
-            );
-            spec.cast_this_way_grants = grant.cast_this_way_grants;
-            spec.cast_this_way_filter = grant.cast_this_way_filter;
-            specs.push(spec);
-        }
-    }
-    for ability in source.abilities.iter() {
-        let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
-            continue;
-        };
-        if !static_ability.is_active(game, source.id) {
-            continue;
-        }
-        let Some(spec) = static_ability.grant_spec() else {
-            continue;
-        };
-        specs.push(spec.clone());
-    }
-    for spec in specs {
-        let grantable_matches_cast = match &spec.grantable {
-            crate::grant::Grantable::PlayFrom => true,
-            crate::grant::Grantable::AlternativeCast(method) => {
-                selected_play_from_alternative.as_ref() == Some(method)
-            }
-            crate::grant::Grantable::DerivedAlternativeCast(derived) => {
-                selected_play_from_alternative
-                    .as_ref()
-                    .is_some_and(|selected| {
-                        derived.materialize_for(&spell_as_cast).as_ref() == Some(selected)
-                    })
-            }
-            crate::grant::Grantable::Ability(_) => false,
-        };
-        if spec.zone == zone
-            && grantable_matches_cast
-            && !spec.cast_this_way_grants.is_empty()
-            && spec.filter.matches(&spell_as_cast, &ctx, game)
-            && spec
-                .cast_this_way_filter
-                .as_ref()
-                .is_none_or(|filter| filter.matches(&spell_as_cast, &ctx, game))
-        {
-            granted.extend(spec.cast_this_way_grants.iter().cloned());
-        }
-    }
-    for ability in granted {
-        game.grant_temporary_static_ability_payload_to_object_until_end_of_turn(
-            stack_id,
-            ability.id(),
-            Some(ability),
-        );
+    // Both indexed and source-only proposals capture one concrete permission
+    // before movement. Its constraints, usage and riders share this identity.
+    let (permission_source, permission_zone, expected_zone, rider_filter, riders) = if let Some(selected) = selected_grant {
+        (selected.source_id, selected.zone, crate::grant_registry::alternative_cast_grant_zone(zone),
+            selected.cast_this_way_filter, selected.cast_this_way_grants)
+    } else if let Some(selected) = selected_plain_grant {
+        (selected.source.source_id(), selected.zone, zone, selected.cast_this_way_filter, selected.cast_this_way_grants)
+    } else { return; };
+    if permission_source != source_id || permission_zone != expected_zone
+        || !rider_filter.as_ref().is_none_or(|filter| filter.matches(&spell_as_cast, &ctx, game))
+    { return; }
+    for ability in riders {
+        game.grant_temporary_static_ability_payload_to_object_until_end_of_turn(stack_id, ability.id(), Some(ability));
     }
 }
 
@@ -3333,46 +3292,8 @@ pub(super) fn finalize_spell_cast(
         }
     }
 
-    if let CastingMethod::PlayFrom { source, .. } = &casting_method {
-        let source_has_selected_once_grant = game.object(*source).is_some_and(|source_obj| {
-            source_obj.abilities.iter().any(|ability| {
-                let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
-                    return false;
-                };
-                static_ability.grant_spec().is_some_and(|spec| {
-                    if matches!(
-                        spec.usage_limit,
-                        Some(
-                            crate::grant::GrantUsageLimit::OnceEachTurn
-                                | crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns
-                        )
-                    ) && matches!(spec.grantable, crate::grant::Grantable::PlayFrom)
-                    {
-                        return true;
-                    }
-
-                    let Some(label) = selected_alternative_label.as_deref() else {
-                        return false;
-                    };
-                    matches!(
-                        spec.grantable,
-                        crate::grant::Grantable::DerivedAlternativeCast(ref derived)
-                            if matches!(
-                                derived.usage_limit(),
-                                Some(
-                                    crate::grant::GrantUsageLimit::OnceEachTurn
-                                        | crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns
-                                )
-                            ) && derived.display_name().eq_ignore_ascii_case(label)
-                    )
-                })
-            })
-        });
-        if source_has_selected_once_grant {
-            game.turn_store
-                .grant_cast_uses_this_turn
-                .insert((caster, *source));
-        }
+    if let Some(identity) = game.object(new_id).and_then(|spell| spell.cast_grant_usage_identity.as_deref()).cloned() {
+        game.turn_store.grant_cast_uses_this_turn.insert((caster, identity));
     }
 
     // Preserve mana-source LKI on the stack entry so the resolved permanent can
@@ -4099,7 +4020,7 @@ pub(super) fn apply_priority_action_with_dm(
                         .collect::<Vec<_>>();
                     if let Some(controllers) = state
                         .mandatory_loop
-                        .observe_resolution(resolved_signature, queued_signatures)
+                        .observe_resolution(resolved_signature, queued_signatures)?
                     {
                         game.mark_mandatory_loop_draw_for(controllers);
                         perf.priority_result = "game_over".to_string();
@@ -4164,3 +4085,149 @@ pub(super) fn get_priority_player_from_ctx(
 
 #[cfg(test)]
 mod tests;
+
+
+#[cfg(test)]
+mod replacement_owner_tests {
+    use super::*;
+    use crate::effect::{Effect, Value};
+    use crate::replacement::{ReplacementAction, ReplacementEffect};
+    struct PausePayload { pause: bool, pending: bool, questions: usize }
+    impl DecisionMaker for PausePayload {
+        fn decide_boolean(&mut self, _game: &GameState, _ctx: &crate::decisions::context::BooleanContext) -> bool {
+            self.questions += 1;
+            if self.pause { self.pending=true; false } else { true }
+        }
+        fn awaiting_choice(&self) -> bool { self.pending }
+    }
+    fn perform_probe(
+        game: &mut GameState, queue: &mut TriggerQueue, state: &mut PriorityLoopState,
+        source: ObjectId, paid: bool, dm: &mut PausePayload,
+    ) -> Result<(),GameLoopError> {
+        let alice=PlayerId::from_index(0);
+        if paid {
+            execute_pending_mana_ability(game,queue,&PendingManaAbility {
+                source,ability_index:0,activator:alice,provenance:ProvNodeId::default(),
+                mana_cost:crate::mana::ManaCost::new().add_generic(1),
+                other_costs:vec![crate::costs::Cost::tap()],
+                mana_to_add:vec![crate::mana::ManaSymbol::Green],effects:Default::default(),
+                mana_usage_restrictions:vec![],mana_source_chosen_creature_type:None,
+                mana_production_provenance:crate::events::mana::ManaProductionProvenance::TappedSourceForMana,
+                undo_locked_by_mana:false,pending_mana_payment:None,x_value:None,
+            },dm)
+        } else {
+            apply_priority_response_with_dm(game,queue,state,
+                &PriorityResponse::PriorityAction(LegalAction::ActivateManaAbility { source,ability_index:0 }),dm).map(|_|())
+        }
+    }
+    fn check_priority_mana_owner(paid: bool,mode:u8) {
+        let mut game=crate::tests::test_helpers::setup_two_player_game();
+        let alice=PlayerId::from_index(0);let bob=PlayerId::from_index(1);
+        game.turn.priority_player=Some(alice);game.turn.active_player=alice;
+        let definition=crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(),"Priority mana probe")
+            .card_types(vec![crate::types::CardType::Artifact])
+            .with_ability(crate::ability::Ability::mana(crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()),vec![crate::mana::ManaSymbol::Green])).build();
+        let source=game.create_object_from_definition(&definition,alice,Zone::Battlefield);
+        if paid { game.player_mut(alice).unwrap().mana_pool.add(crate::mana::ManaSymbol::Colorless,1); }
+        let mut effects=vec![Effect::gain_life(2)];
+        if mode==1 { effects.push(Effect::lose_life(Value::X)); }
+        if mode==2 { effects.push(Effect::may(vec![Effect::gain_life(4)])); }
+        effects.push(Effect::gain_life(8));
+        let shield=game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(source,bob,
+            crate::events::mana::matchers::ManaProducedBySourceMatcher::new(ObjectFilter::default()),ReplacementAction::Instead(effects)));
+        game.take_pending_trigger_events();
+        // Existing unpublished observations must survive a failed/suspended owner.
+        game.queue_trigger_event(ProvNodeId::default(),crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::LifeGainEvent::new(alice,1),ProvNodeId::default()));
+        let mut queue=TriggerQueue::new();let mut state=PriorityLoopState::new(game.players_in_game());
+        let before_state=format!("{state:?}");let before_queue=format!("{queue:?}");
+        let before_id=game.next_object_id_counter();let before_objects=game.objects_in_deterministic_order().len();
+        let mut dm=PausePayload { pause:mode==2,pending:false,questions:0 };
+        let result=perform_probe(&mut game,&mut queue,&mut state,source,paid,&mut dm);
+        if mode==1 { assert!(matches!(result,Err(GameLoopError::ExecutionFailed(crate::effects::ExecutionError::UnresolvableValue(_)))),"mana replacement error remains typed"); }
+        else {
+            result.expect("valid replacement succeeds or suspends");
+            if mode==2 { assert!(dm.awaiting_choice(),"pending payload exposes its decision"); }
+            else { assert_eq!(game.player(bob).unwrap().life,30);assert!(game.is_tapped(source)); }
+        }
+        assert_eq!(game.player(alice).unwrap().life,20);
+        assert_eq!(game.player(alice).unwrap().mana_pool.green,0);assert_eq!(game.player(bob).unwrap().mana_pool.green,0);
+        assert_eq!(game.objects_in_deterministic_order().len(),before_objects);assert_eq!(game.next_object_id_counter(),before_id);
+        assert_eq!(game.effect_store.replacement_effects.get_effect(shield).is_some(),mode!=0);
+        if mode!=0 {
+            assert!(!game.is_tapped(source));assert_eq!(game.player(bob).unwrap().life,20);
+            assert_eq!(game.player(alice).unwrap().mana_pool.colorless,if paid {1}else{0});
+            assert_eq!(format!("{state:?}"),before_state);assert_eq!(format!("{queue:?}"),before_queue);
+            let events=game.take_pending_trigger_events();assert_eq!(events.len(),1);
+            let sentinel=events[0].downcast::<crate::events::LifeGainEvent>().unwrap();assert_eq!(sentinel.player,alice);assert_eq!(sentinel.amount,1);
+        } else { assert_eq!(game.player(alice).unwrap().mana_pool.colorless,0); }
+        if mode==2 {
+            assert_eq!(dm.questions,1);
+            let mut replay=PausePayload { pause:false,pending:false,questions:0 };
+            perform_probe(&mut game,&mut queue,&mut state,source,paid,&mut replay).unwrap();
+            assert_eq!(replay.questions,1);assert!(!replay.awaiting_choice());
+            assert!(game.is_tapped(source));assert_eq!(game.player(bob).unwrap().life,34);
+            assert_eq!(game.player(alice).unwrap().mana_pool.green,0);assert_eq!(game.player(alice).unwrap().mana_pool.colorless,0);
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+        }
+    }
+    #[test] fn immediate_mana_replacement_uses_payload_controller() { check_priority_mana_owner(false,0); }
+    #[test] fn immediate_mana_replacement_error_restores_owner() { check_priority_mana_owner(false,1); }
+    #[test] fn immediate_mana_replacement_pending_restores_then_replays() { check_priority_mana_owner(false,2); }
+    #[test] fn paid_mana_replacement_uses_payload_controller() { check_priority_mana_owner(true,0); }
+    #[test] fn paid_mana_replacement_error_restores_costs_and_queue() { check_priority_mana_owner(true,1); }
+    #[test] fn paid_mana_replacement_pending_restores_then_replays() { check_priority_mana_owner(true,2); }
+
+    fn check_public_payment_confirmation(pending: bool) {
+        let mut game=crate::tests::test_helpers::setup_two_player_game();
+        let alice=PlayerId::from_index(0);let bob=PlayerId::from_index(1);
+        game.turn.priority_player=Some(alice);game.turn.active_player=alice;
+        let definition=crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(),"Paid priority owner probe")
+            .card_types(vec![crate::types::CardType::Artifact])
+            .with_ability(crate::ability::Ability::mana(crate::cost::TotalCost::from_costs(vec![
+                crate::costs::Cost::mana(crate::mana::ManaCost::new().add_generic(1)),crate::costs::Cost::tap()]),vec![crate::mana::ManaSymbol::Green])).build();
+        let source=game.create_object_from_definition(&definition,alice,Zone::Battlefield);
+        game.player_mut(alice).unwrap().mana_pool.add(crate::mana::ManaSymbol::Colorless,1);
+        let mut effects=vec![Effect::gain_life(2)];
+        if pending { effects.push(Effect::may(vec![Effect::gain_life(4)])); }
+        else { effects.push(Effect::lose_life(Value::X)); }
+        effects.push(Effect::gain_life(8));
+        let shield=game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(source,bob,
+            crate::events::mana::matchers::ManaProducedBySourceMatcher::new(ObjectFilter::default()),ReplacementAction::Instead(effects)));
+        game.take_pending_trigger_events();
+        let mut state=PriorityLoopState::new(game.players_in_game());let mut queue=TriggerQueue::new();
+        let mut initial=PausePayload { pause:false,pending:false,questions:0 };
+        let prompt=apply_priority_response_with_dm(&mut game,&mut queue,&mut state,
+            &PriorityResponse::PriorityAction(LegalAction::ActivateManaAbility { source,ability_index:0 }),&mut initial).unwrap();
+        assert!(matches!(prompt,GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::ManaPayment(_))));
+        let payment=state.pending_mana_ability.as_ref().unwrap().pending_mana_payment.as_ref().unwrap();
+        assert!(payment.plan.payable);
+        let response=PriorityResponse::ManaPaymentPlan(crate::mana_payment::ManaPaymentResponse::Confirm {
+            plan_id:payment.plan.id,request_hash:payment.plan.request_hash,
+        });
+        let before_state=format!("{state:?}");let before_queue=format!("{queue:?}");let before_id=game.next_object_id_counter();
+        game.queue_trigger_event(ProvNodeId::default(),crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::LifeGainEvent::new(alice,1),ProvNodeId::default()));
+        let mut dm=PausePayload { pause:pending,pending:false,questions:0 };
+        let result=apply_priority_response_with_dm(&mut game,&mut queue,&mut state,&response,&mut dm);
+        if pending { result.unwrap();assert!(dm.awaiting_choice());assert_eq!(dm.questions,1); }
+        else { assert!(matches!(result,Err(GameLoopError::ExecutionFailed(crate::effects::ExecutionError::UnresolvableValue(_))))); }
+        assert_eq!(format!("{state:?}"),before_state,"confirmation must retain authoritative payment for replay");
+        assert_eq!(format!("{queue:?}"),before_queue);
+        assert!(!game.is_tapped(source));assert_eq!(game.player(alice).unwrap().mana_pool.colorless,1);
+        assert_eq!(game.player(alice).unwrap().mana_pool.green,0);assert_eq!(game.player(bob).unwrap().life,20);
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_some());assert_eq!(game.next_object_id_counter(),before_id);
+        let events=game.take_pending_trigger_events();assert_eq!(events.len(),1);
+        assert_eq!(events[0].downcast::<crate::events::LifeGainEvent>().unwrap().amount,1);
+        if pending {
+            let mut replay=PausePayload { pause:false,pending:false,questions:0 };
+            apply_priority_response_with_dm(&mut game,&mut queue,&mut state,&response,&mut replay).unwrap();
+            assert_eq!(replay.questions,1);assert!(!replay.awaiting_choice());assert!(state.pending_mana_ability.is_none());
+            assert!(game.is_tapped(source));assert_eq!(game.player(alice).unwrap().mana_pool.colorless,0);
+            assert_eq!(game.player(alice).unwrap().mana_pool.green,0);assert_eq!(game.player(bob).unwrap().life,34);
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+        }
+    }
+    #[test] fn public_mana_confirmation_error_retains_payment_and_restores_costs() { check_public_payment_confirmation(false); }
+    #[test] fn public_mana_confirmation_pending_retains_payment_and_replays_once() { check_public_payment_confirmation(true); }
+}

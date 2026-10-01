@@ -1010,12 +1010,102 @@ fn read_cant_effect(input: &Statement<'_>) -> Result<Option<Vec<EffectAst>>, Car
     }
     Ok(None)
 }
+fn parse_result_consequence_get_then_gain(
+    sentence: &[OwnedLexToken],
+    prefix: &crate::grammar::structure::LeadingResultPrefixSpec<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let numeric = crate::grammar::structure::split_leading_numeric_result_prefix_lexed(sentence)
+        .is_some();
+    let label = if numeric {
+        crate::grammar::document_shapes::parse_statement_label_split_tokens(prefix.trailing_tokens)
+    } else {
+        None
+    };
+    let mut body = label.map_or(prefix.trailing_tokens, |label| label.body_tokens);
+    // The sentence's own terminal period is not part of the ability list.
+    while let Some((last, rest)) = body.split_last()
+        && matches!(last.kind, crate::lexer::TokenKind::Period)
+    {
+        body = rest;
+    }
+    if body
+        .first()
+        .is_some_and(|token| token.is_any_word(&["if", "unless", "then"]))
+        || crate::grammar::structure::split_trailing_if_clause_lexed(body).is_some()
+        || super::lex_chain_helpers::has_explicit_comma_then_boundary_lexed(body)
+        || effect_grammar::dispatch_entry_shapes::parse_where_x_usage_shape_tokens(body).is_some()
+    {
+        return Ok(None);
+    }
+    // Only the three-way "gets X and gains A and B" coordination needs the
+    // shared owner; a definite description subject ("the creature you
+    // control") must keep its reference binding from the generic reading.
+    if body.iter().filter(|token| token.is_word("and")).count() < 2
+        || body.first().is_some_and(|token| token.is_word("the"))
+    {
+        return Ok(None);
+    }
+    let Some(shape) = effect_grammar::gain_ability_shapes::parse_get_then_ability_shape(body) else {
+        return Ok(None);
+    };
+    if shape.ability_verb == effect_grammar::gain_ability_shapes::SharedAbilityVerb::Lose
+        || shape
+            .ability_tokens
+            .iter()
+            .any(|token| matches!(token.kind, crate::lexer::TokenKind::Period | crate::lexer::TokenKind::Comma))
+    {
+        return Ok(None);
+    }
+    let Some(mut effects) =
+        super::gain_ability::parse_gain_ability_sentence_with_typed_subject(body, shape.subject_tokens)?
+    else {
+        return Ok(None);
+    };
+    if effects.is_empty() {
+        return Ok(None);
+    }
+    if let Some(label) = label {
+        effects = vec![EffectAst::ResultBranchLabel {
+            label: crate::lexer::render_token_slice(label.label_tokens)
+                .trim()
+                .to_string(),
+            effects,
+        }];
+    }
+    let conditional = if numeric {
+        ConditionalEffectAst::IfResult {
+            predicate: prefix.predicate.clone(),
+            effects,
+        }
+    } else {
+        match prefix.kind {
+            LeadingResultPrefixKind::If => ConditionalEffectAst::IfResult {
+                predicate: prefix.predicate.clone(),
+                effects,
+            },
+            LeadingResultPrefixKind::When => ConditionalEffectAst::WhenResult {
+                predicate: prefix.predicate.clone(),
+                effects,
+            },
+        }
+    };
+    Ok(Some(vec![EffectAst::Conditionals(conditional)]))
+}
+
 fn read_leading_result_prefix(
     input: &Statement<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(prefix) = split_leading_result_prefix_lexed(input.sentence) else {
         return Ok(None);
     };
+    // "If you do, it gets +3/+0 and gains first strike and deathtouch until
+    // end of turn": a pump coordinated with an ability list shares one
+    // subject and one duration. Read it with the shared get-then-gain owner,
+    // as the top-level sentence does, before a generic `and` split hands the
+    // trailing duration to the last keyword only.
+    if let Some(effects) = parse_result_consequence_get_then_gain(input.sentence, &prefix)? {
+        return Ok(Some(effects));
+    }
     // A value definition can sit between two actions in this consequence.
     // The single-verb shortcut below cannot consume that whole action chain.
     if effect_grammar::dispatch_entry_shapes::parse_where_x_usage_shape_tokens(

@@ -138,6 +138,23 @@ impl TokenReminderFacts {
     ) -> Option<&crate::model::token_definition::TokenCombatRestrictionShape> {
         self.definition.creature_rules.combat_restriction.as_ref()
     }
+
+    /// Drop keyword facts read from inside a quoted triggered or activated
+    /// rule. "Whenever this token attacks, target attacking creature gains
+    /// flying" mentions flying as part of its effect; the keyword is neither
+    /// the token's own ability nor evidence that the rule was captured by the
+    /// compact token blueprint.
+    pub fn without_rule_effect_keywords(mut self) -> Self {
+        self.definition.keywords.clear();
+        self.definition.vehicle_flying = false;
+        let rules = &mut self.definition.creature_rules;
+        rules.hexproof = false;
+        rules.indestructible = false;
+        rules.first_strike = false;
+        rules.double_strike = false;
+        self.has_haste = false;
+        self
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]

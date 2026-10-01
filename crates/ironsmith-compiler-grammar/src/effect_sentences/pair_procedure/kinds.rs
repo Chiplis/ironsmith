@@ -175,6 +175,82 @@ pub(super) fn open_target_chooses_cant_block(
     Ok(None)
 }
 
+/// "copy the next [instant or sorcery] spell [with mana value 2 or less]
+/// you cast this turn when you cast it": the spell filter, if any. `None`
+/// when the sentence is not this shape; `Some(None)` for any spell.
+fn copy_next_spell_filter(
+    sentence: &SentenceInput,
+) -> Result<Option<Option<crate::target::ObjectFilter>>, CardTextError> {
+    const HEAD: [&str; 3] = ["copy", "the", "next"];
+    const TAIL: [&str; 8] = ["you", "cast", "this", "turn", "when", "you", "cast", "it"];
+    let tokens = crate::util::trim_edge_punctuation_tokens(sentence.lowered());
+    let words = crate::lexer::token_word_refs(tokens);
+    if words.len() <= HEAD.len() + TAIL.len()
+        || words.len() != tokens.len()
+        || words[..HEAD.len()] != HEAD
+        || words[words.len() - TAIL.len()..] != TAIL
+    {
+        return Ok(None);
+    }
+    let middle = &tokens[HEAD.len()..tokens.len() - TAIL.len()];
+    let middle_words = &words[HEAD.len()..words.len() - TAIL.len()];
+    if middle_words == ["spell"] {
+        return Ok(Some(None));
+    }
+    if !middle_words.contains(&"spell") {
+        return Ok(None);
+    }
+    let Ok(mut filter) = crate::object_filters::parse_object_filter(middle, false) else {
+        return Ok(None);
+    };
+    filter.zone = None;
+    Ok(Some(Some(filter)))
+}
+
+fn is_copy_retarget_sentence(sentence: &SentenceInput) -> bool {
+    let words = crate::lexer::token_word_refs(sentence.lowered());
+    crate::word_primitives::parse_sequence_complete(
+        &words,
+        &["you", "may", "choose", "new", "targets", "for", "the", "copy"],
+    ) || crate::word_primitives::parse_sequence_complete(
+        &words,
+        &["you", "may", "choose", "new", "targets", "for", "the", "copies"],
+    )
+}
+
+fn copy_next_spell_delayed_trigger(
+    filter: Option<crate::target::ObjectFilter>,
+    effects: Vec<EffectAst>,
+) -> EffectAst {
+    EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
+        trigger: crate::cards::builders::TriggerSpec::SpellCast {
+            filter,
+            mana_source_filter: None,
+            caster: crate::target::PlayerFilter::You,
+            timing: None,
+            during_turn: None,
+            min_spells_this_turn: None,
+            exact_spells_this_turn: None,
+            from_not_hand: false,
+        },
+        effects,
+        one_shot: true,
+        until_end_of_combat: false,
+        attach_to_previous_ability: false,
+    })
+}
+
+fn copy_triggering_spell(count: i32) -> EffectAst {
+    EffectAst::subject_verb_copy_spell(
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None),
+        crate::effect::Value::Fixed(count),
+        PlayerAst::You,
+        true,
+        false,
+        Vec::new(),
+    )
+}
+
 pub(super) fn open_copy_next_spell_retarget(
     sentences: &[SentenceInput],
     sentence_idx: usize,
@@ -185,51 +261,82 @@ pub(super) fn open_copy_next_spell_retarget(
     let Some(next) = sentences.get(sentence_idx + 1) else {
         return Ok(None);
     };
-    let first_word = crate::lexer::token_word_refs(sentence.lowered())
-        .first()
-        .copied();
-    if first_word == Some("copy")
-        && crate::word_primitives::parse_sequence_complete(
-            &crate::lexer::token_word_refs(sentence.lowered()),
-            &[
-                "copy", "the", "next", "spell", "you", "cast", "this", "turn", "when", "you",
-                "cast", "it",
-            ],
-        )
-        && crate::word_primitives::parse_sequence_complete(
-            &crate::lexer::token_word_refs(next.lowered()),
-            &[
-                "you", "may", "choose", "new", "targets", "for", "the", "copy",
-            ],
-        )
+    if let Some(filter) = copy_next_spell_filter(sentence)?
+        && is_copy_retarget_sentence(next)
     {
-        return Ok(Some(Pair::CopyNextSpellRetarget(EffectAst::Delayed(
-            DelayedEffectAst::DelayedTriggerThisTurn {
-                trigger: crate::cards::builders::TriggerSpec::SpellCast {
-                    filter: None,
-                    mana_source_filter: None,
-                    caster: crate::target::PlayerFilter::You,
-                    timing: None,
-                    during_turn: None,
-                    min_spells_this_turn: None,
-                    exact_spells_this_turn: None,
-                    from_not_hand: false,
-                },
-                effects: vec![EffectAst::subject_verb_copy_spell(
-                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None),
-                    crate::effect::Value::Fixed(1),
-                    PlayerAst::You,
-                    true,
-                    false,
-                    Vec::new(),
-                )],
-                one_shot: true,
-                until_end_of_combat: false,
-                attach_to_previous_ability: false,
-            },
-        ))));
+        return Ok(Some(Pair::CopyNextSpellRetarget(
+            copy_next_spell_delayed_trigger(filter, vec![copy_triggering_spell(1)]),
+        )));
     }
     Ok(None)
+}
+
+/// "Copy the next instant or sorcery spell with mana value 2 or less you
+/// cast this turn when you cast it. If this creature was kicked, copy that
+/// spell twice instead. You may choose new targets for the copies." (Sea Gate
+/// Stormcaller)
+pub(super) fn copy_next_spell_kicked_retarget(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let (Some(sentence), Some(kicked), Some(retarget)) = (
+        sentences.get(sentence_idx),
+        sentences.get(sentence_idx + 1),
+        sentences.get(sentence_idx + 2),
+    ) else {
+        return Ok(None);
+    };
+    let Some(filter) = copy_next_spell_filter(sentence)? else {
+        return Ok(None);
+    };
+    if !is_copy_retarget_sentence(retarget) {
+        return Ok(None);
+    }
+    let kicked_tokens: Vec<_> = crate::util::trim_edge_punctuation_tokens(kicked.lowered())
+        .iter()
+        .filter(|token| token.kind != crate::lexer::TokenKind::Comma)
+        .cloned()
+        .collect();
+    let kicked_tokens = kicked_tokens.as_slice();
+    let kicked_words = crate::lexer::token_word_refs(kicked_tokens);
+    const TAIL: [&str; 5] = ["copy", "that", "spell", "twice", "instead"];
+    if kicked_words.len() != kicked_tokens.len()
+        || kicked_words.len() < 4 + TAIL.len()
+        || kicked_words[0] != "if"
+        || kicked_words[kicked_words.len() - TAIL.len()..] != TAIL
+    {
+        return Ok(None);
+    }
+    let condition_tokens = crate::util::trim_edge_punctuation_tokens(
+        &kicked_tokens[1..kicked_tokens.len() - TAIL.len()],
+    );
+    let Ok(predicate) = crate::grammar::filters::parse_condition_predicate_lexed(condition_tokens)
+    else {
+        return Ok(None);
+    };
+    if !matches!(
+        predicate,
+        crate::cards::builders::PredicateAst::TurnHistory(
+            crate::cards::builders::TurnHistoryPredicateAst::SourceWasKicked { .. }
+        )
+    ) {
+        return Ok(None);
+    }
+    // The kicked check runs while the enters trigger resolves, so it reads
+    // this creature's own cast record rather than a delayed source's; the
+    // twice-copy arm replaces the default one-copy delayed trigger.
+    Ok(Some(vec![EffectAst::SelfReplacement {
+        predicate,
+        if_true: vec![copy_next_spell_delayed_trigger(
+            filter.clone(),
+            vec![copy_triggering_spell(2)],
+        )],
+        if_false: vec![copy_next_spell_delayed_trigger(
+            filter,
+            vec![copy_triggering_spell(1)],
+        )],
+        attach_to_previous_ability: false,
+    }]))
 }
 
 pub(super) fn open_destroy_then_search_shuffle(

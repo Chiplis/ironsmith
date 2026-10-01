@@ -154,7 +154,7 @@ fn perform(
         .ok_or("missing action source")?;
     let initial_stack_len = game.stack.len();
     game.turn.priority_player = Some(actor);
-    let action = compute_legal_actions(game, actor)
+    let action = compute_legal_actions(game, actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| match a {
             LegalAction::CastSpell { spell_id, .. } => ability.is_none() && *spell_id == source,
@@ -276,7 +276,7 @@ fn play_land(
         return Err(format!("land checkpoint {name} no longer in hand"));
     }
     g.turn.priority_player = Some(actor);
-    let actions = compute_legal_actions(g, actor);
+    let actions = compute_legal_actions(g, actor).expect("fixture has complete replacement state");
     let action = actions
         .into_iter()
         .find(|a| matches!(a, LegalAction::PlayLand {land_id} if *land_id==id));
@@ -405,7 +405,7 @@ fn trial(
         let flags = [alice(), PlayerId(1)]
             .iter()
             .map(|p| {
-                compute_legal_actions(&g, *p)
+                compute_legal_actions(&g, *p).expect("fixture has complete replacement state")
                     .iter()
                     .any(|a| matches!(a,LegalAction::ActivateAbility{source:id,..}if *id==source))
             })

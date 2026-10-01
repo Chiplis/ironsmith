@@ -932,7 +932,31 @@ fn is_comparison_or_delimiter(previous_word: Option<&str>, next_word: Option<&st
         return true;
     }
 
-    previous_word == Some(THAN_WORD) && next_word == Some(EQUAL_WORD)
+    if previous_word == Some(THAN_WORD) && next_word == Some(EQUAL_WORD) {
+        return true;
+    }
+
+    // "mana value 2 or 3": a numeric alternative list belongs to one
+    // comparison, not two filter branches.
+    let is_numeric = |word: &str| {
+        word.parse::<i32>().is_ok()
+            || matches!(
+                word,
+                "zero"
+                    | "one"
+                    | "two"
+                    | "three"
+                    | "four"
+                    | "five"
+                    | "six"
+                    | "seven"
+                    | "eight"
+                    | "nine"
+                    | "ten"
+            )
+    };
+    previous_word.is_some_and(|word| word.parse::<i32>().is_ok())
+        && next_word.is_some_and(is_numeric)
 }
 
 pub fn split_lexed_slices_on_or(tokens: &[LexToken]) -> Vec<&[LexToken]> {

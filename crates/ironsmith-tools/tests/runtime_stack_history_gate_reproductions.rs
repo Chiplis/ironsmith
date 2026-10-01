@@ -77,7 +77,7 @@ fn announce(g: &mut GameState, action: LegalAction, dm: &mut Choices) -> Result<
 fn cast(g: &mut GameState, def: &CardDefinition, dm: &mut Choices) -> Result<ObjectId, String> {
     let id = g.create_object_from_definition(def, PlayerId(0), Zone::Hand);
     g.turn.priority_player = Some(PlayerId(0));
-    let action = compute_legal_actions(g, PlayerId(0))
+    let action = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..} if *spell_id==id))
         .ok_or("normal paid cast unavailable")?;
@@ -191,7 +191,7 @@ fn scenario(def: &CardDefinition, n: usize) -> Result<(Value, Value), String> {
     }
     g.turn.priority_player = Some(PlayerId(0));
     let mut evidence = json!({"ability_index":index,"source":source.0,"source_power":g.calculated_power(source),"source_tapped":g.is_tapped(source),"turn":g.turn.turn_number,"active_player":g.turn.active_player.index(),"spells_cast_this_turn":g.turn_store.turn_history.spells_cast_by_player(PlayerId(0)),"turn_history":format!("{:?}",g.turn_store.turn_history),"source_state":format!("{:?}",g.object(source)),"stack_before":format!("{:?}",g.stack),"target":format!("{:?}",dm.target)});
-    let action=compute_legal_actions(&g,PlayerId(0)).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index:i} if *s==source&&*i==index));
+    let action=compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index:i} if *s==source&&*i==index));
     let offered = action.is_some();
     let mut announced = false;
     if let Some(action) = action {

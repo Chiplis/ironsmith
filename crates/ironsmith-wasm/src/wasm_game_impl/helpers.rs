@@ -10,6 +10,7 @@ pub(super) fn build_action_view(
     viewed_cards: Option<&ActiveViewedCards>,
     index: usize,
     action: &LegalAction,
+    face_up_cost: Option<&str>,
 ) -> ActionView {
     let (kind, object_id, ability_index, from_zone, mut to_zone) = action_drag_metadata(action);
     let (drag_requires_targets, drag_requires_modes) =
@@ -31,7 +32,7 @@ pub(super) fn build_action_view(
     ActionView {
         index,
         label: if source_visible {
-            describe_action(game, action)
+            describe_action_with_face_up_cost(game, action, face_up_cost)
         } else {
             redacted_action_label(action)
         },
@@ -490,7 +491,21 @@ fn pregame_action_kind(
     static_ability.pregame_action_kind()
 }
 
-pub(super) fn describe_action(game: &GameState, action: &LegalAction) -> String {
+pub(super) fn describe_action(game: &GameState, action: &LegalAction)
+    -> Result<String, ironsmith::static_ability_processor::StaticEffectDiscoveryError> {
+    let checked = game.continuous_query_snapshot()?;
+    let game = &checked;
+    let cost = match action {
+        LegalAction::TurnFaceUp { creature_id, method } =>
+            ironsmith::special_actions::turn_face_up_cost_display(game, *creature_id, *method)?,
+        LegalAction::SpecialAction(ironsmith::special_actions::SpecialAction::TurnFaceUp { permanent_id, method }) =>
+            ironsmith::special_actions::turn_face_up_cost_display(game, *permanent_id, *method)?,
+        _ => None,
+    };
+    Ok(describe_action_with_face_up_cost(game, action, cost.as_deref()))
+}
+
+fn describe_action_with_face_up_cost(game: &GameState, action: &LegalAction, face_up_cost: Option<&str>) -> String {
     match action {
         LegalAction::PassPriority => "Pass priority".to_string(),
         LegalAction::KeepOpeningHand => "Keep hand".to_string(),
@@ -686,7 +701,7 @@ pub(super) fn describe_action(game: &GameState, action: &LegalAction) -> String 
             method,
         } => {
             let cost_prefix =
-                ironsmith::special_actions::turn_face_up_cost_display(game, *creature_id, *method)
+                face_up_cost
                     .map(|cost| format!("{cost}: "))
                     .unwrap_or_default();
             format!(
@@ -703,11 +718,7 @@ pub(super) fn describe_action(game: &GameState, action: &LegalAction) -> String 
                 permanent_id,
                 method,
             } => {
-                let cost_prefix = ironsmith::special_actions::turn_face_up_cost_display(
-                    game,
-                    *permanent_id,
-                    *method,
-                )
+                let cost_prefix = face_up_cost
                 .map(|cost| format!("{cost}: "))
                 .unwrap_or_default();
                 format!(
@@ -1202,11 +1213,11 @@ pub(super) fn resolve_priority_action(
     priority: &ironsmith::decisions::context::PriorityContext,
     action_index: Option<usize>,
     action_ref: Option<&PriorityActionRef>,
-) -> Option<LegalAction> {
+) -> Result<Option<LegalAction>, ironsmith::effects::ExecutionError> {
     if let Some(action_ref) = action_ref {
         let action_ref = &action_ref_for_matching(action_ref);
         if let Some(action) = priority.actions.iter().find(|action| priority_action_ref(action) == *action_ref) {
-            return Some(action.clone());
+            return Ok(Some(action.clone()));
         }
         // Foretell never opens the hand card. An explicit reference may be
         // replayed on a committed placeholder after all public timing, owner,
@@ -1221,7 +1232,7 @@ pub(super) fn resolve_priority_action(
                 if game.priority_team_players().into_iter().any(|player| {
                     ironsmith::special_actions::can_perform_check(&action, game, player).is_ok()
                 }) {
-                    return Some(LegalAction::SpecialAction(action));
+                    return Ok(Some(LegalAction::SpecialAction(action)));
                 }
             }
         }
@@ -1240,11 +1251,11 @@ pub(super) fn resolve_priority_action(
             _ => None,
         };
         if let Some(spell) = face_down_claim_source {
-            return game
-                .priority_team_players()
-                .into_iter()
-                .flat_map(|player| ironsmith::decision::compute_actions_for_source(game, player, Some(spell)))
-                .find(|action| priority_action_ref(action) == *action_ref);
+            for player in game.priority_team_players() {
+                if let Some(action) = ironsmith::decision::compute_actions_for_source(game, player, Some(spell))?
+                    .into_iter().find(|action| priority_action_ref(action) == *action_ref) { return Ok(Some(action)); }
+            }
+            return Ok(None);
         }
         if !priority.analysis_complete {
             let source = match action_ref {
@@ -1254,13 +1265,15 @@ pub(super) fn resolve_priority_action(
                 PriorityActionRef::TurnFaceUp { creature_id, .. } => Some(ObjectId::from_raw(*creature_id)),
                 _ => None,
             };
-            return game.priority_team_players().into_iter()
-                .flat_map(|player| ironsmith::decision::compute_actions_for_source(game, player, source))
-                .find(|action| priority_action_ref(action) == *action_ref);
+            for player in game.priority_team_players() {
+                if let Some(action) = ironsmith::decision::compute_actions_for_source(game, player, source)?
+                    .into_iter().find(|action| priority_action_ref(action) == *action_ref) { return Ok(Some(action)); }
+            }
+            return Ok(None);
         }
-        return None;
+        return Ok(None);
     }
-    action_index.and_then(|index| priority.actions.get(index).cloned())
+    Ok(action_index.and_then(|index| priority.actions.get(index).cloned()))
 }
 
 /// Derive a short structured reason label from a DecisionContext.

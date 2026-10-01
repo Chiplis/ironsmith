@@ -14,6 +14,7 @@ use std::collections::HashSet;
 #[derive(Debug, Clone, Default)]
 pub(crate) struct TaggedRuntimeState {
     pre_snapshots: Vec<ObjectSnapshot>,
+    pre_snapshots_from_decision_hints: bool,
     stable_id_fallback: Option<StableIdFallback>,
     pub(crate) outcome_only: bool,
 }
@@ -47,11 +48,19 @@ pub(crate) fn capture_all_effect_target_snapshots(
     effect: &Effect,
     ctx: &ExecutionContext,
 ) -> Vec<ObjectSnapshot> {
+    capture_effect_snapshots_with_provenance(game, effect, ctx).0
+}
+
+fn capture_effect_snapshots_with_provenance(
+    game: &GameState,
+    effect: &Effect,
+    ctx: &ExecutionContext,
+) -> (Vec<ObjectSnapshot>, bool) {
     let explicit_target_spec = effect.0.get_target_spec();
     if explicit_target_spec.is_some_and(|spec| spec.is_target()) {
         let snapshots = capture_target_object_snapshots(game, ctx);
         if !snapshots.is_empty() {
-            return snapshots;
+            return (snapshots, false);
         }
     }
     let mut seen = HashSet::new();
@@ -81,10 +90,11 @@ pub(crate) fn capture_all_effect_target_snapshots(
             }
         }
     }
+    let from_decision_hints = explicit_target_spec.is_none() && !snapshots.is_empty();
     if snapshots.is_empty() && explicit_target_spec.is_none() {
         snapshots = capture_target_object_snapshots(game, ctx);
     }
-    snapshots
+    (snapshots, from_decision_hints)
 }
 
 /// Capture pre-resolution tagging state for a tagged effect execution.
@@ -93,7 +103,8 @@ pub(crate) fn capture_tagged_runtime_state(
     effect: &Effect,
     ctx: &ExecutionContext,
 ) -> TaggedRuntimeState {
-    let mut pre_snapshots = capture_all_effect_target_snapshots(game, effect, ctx);
+    let (mut pre_snapshots, pre_snapshots_from_decision_hints) =
+        capture_effect_snapshots_with_provenance(game, effect, ctx);
     if pre_snapshots.is_empty()
         && let Some(object_id) = ctx.iteration.iterated_object
         && let Some(obj) = game.object(object_id)
@@ -110,6 +121,7 @@ pub(crate) fn capture_tagged_runtime_state(
 
     TaggedRuntimeState {
         pre_snapshots,
+        pre_snapshots_from_decision_hints,
         stable_id_fallback: capture_stable_id_fallback(game, effect, ctx),
         outcome_only: false,
     }
@@ -123,6 +135,7 @@ pub(crate) fn apply_tagged_runtime_state(
     outcome: &EffectOutcome,
     state: TaggedRuntimeState,
 ) {
+    let outcome = outcome.instruction_result();
     // An explicit object payload or ResultObjects fact is a result-object
     // contract: the inner effect is returning the identities that subsequent
     // effects should use. This is distinct from affected-object facts and
@@ -145,6 +158,59 @@ pub(crate) fn apply_tagged_runtime_state(
             ctx.set_tagged_objects(tag, snapshots);
             return;
         }
+    }
+
+    // Decision hints describe candidates, not the objects actually selected.
+    // Resolve these from exact instruction facts before a destination-based
+    // fallback: a replacement may redirect some or all selected objects.
+    // Explicit target snapshots retain their existing LKI contract.
+    if state.pre_snapshots_from_decision_hints {
+        let chosen = !state.outcome_only
+            && outcome.execution_facts.iter().any(|fact| matches!(
+                fact, crate::effect::ExecutionFact::ChosenObjectMemory(_)
+                    | crate::effect::ExecutionFact::ChosenObjects(_)
+            ));
+        let mut seen = HashSet::new();
+        let mut snapshots = outcome.execution_facts.iter().filter_map(|fact| match fact {
+            crate::effect::ExecutionFact::ChosenObjectMemory(memory) if chosen => Some(memory),
+            crate::effect::ExecutionFact::AffectedObjectMemory(memory) if !chosen => Some(memory),
+            _ => None,
+        }).flatten().filter(|memory| seen.insert(memory.object_id))
+            .map(|memory| memory.to_snapshot_with_fallback(game,
+                state.pre_snapshots.iter().find(|snapshot| snapshot.object_id == memory.object_id)))
+            .collect::<Vec<_>>();
+        // Some producers return exact IDs without memories. Their pre-effect
+        // candidate snapshots can supply LKI, but only for those exact IDs.
+        for object_id in outcome.execution_facts.iter().filter_map(|fact| match fact {
+            crate::effect::ExecutionFact::ChosenObjects(ids) if chosen => Some(ids),
+            crate::effect::ExecutionFact::AffectedObjects(ids) if !chosen => Some(ids),
+            _ => None,
+        }).flatten() {
+            if seen.insert(*object_id) {
+                if let Some(snapshot) = state.pre_snapshots.iter()
+                    .find(|snapshot| snapshot.object_id == *object_id).cloned()
+                    .or_else(|| game.object(*object_id).and_then(|object| {
+                        state.pre_snapshots.iter().find(|snapshot|
+                            snapshot.stable_id == object.stable_id).cloned()
+                    }))
+                    .or_else(|| snapshot_for_object_reference(game, ctx, *object_id)) {
+                    snapshots.push(snapshot);
+                }
+            }
+        }
+        // A declined or empty instruction has no chosen/affected set. Display
+        // candidates must never become its result through generic fallback.
+        // "Moved/exiled this way" tags qualify successful instruction
+        // results by the authored destination. Ordinary reference tags still
+        // retain exact selected LKI when replacements redirect the movement.
+        if state.outcome_only && let Some(fallback) = state.stable_id_fallback.as_ref() {
+            snapshots.retain(|snapshot| game.find_object_by_stable_id(snapshot.stable_id)
+                .and_then(|id| game.object(id)).is_some_and(|object| object.zone == fallback.zone));
+        }
+        let mut distinct_snapshots = HashSet::new();
+        snapshots.retain(|snapshot| distinct_snapshots.insert(snapshot.object_id));
+        ctx.set_tagged_objects(tag, snapshots);
+        return;
     }
 
     // Zone changes create a new object, but later references such as "that
@@ -390,6 +456,90 @@ mod tests {
             .build();
         game.add_object(Object::from_card(id, &card, owner, Zone::Battlefield));
         id
+    }
+
+    fn assert_candidate_preview_uses_exact_results(kind: u8) {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let selected = [create_creature(&mut game, alice), create_creature(&mut game, alice)];
+        let unchosen = create_creature(&mut game, alice);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let effect = Effect::new(crate::effects::SacrificeEffect::player(
+            crate::filter::ObjectFilter::creature(), 2, crate::target::PlayerFilter::You));
+        let mut runtime = capture_tagged_runtime_state(&game, &effect, &ctx);
+        assert!(runtime.pre_snapshots_from_decision_hints);
+        runtime.outcome_only = kind == 1;
+        let memories = selected.iter().map(|id| crate::effect::OutcomeObjectMemory::from_snapshot(
+            &ObjectSnapshot::from_object(game.object(*id).unwrap(), &game))).collect();
+        if kind != 3 {
+            game.move_object_by_effect(selected[0], Zone::Graveyard).unwrap();
+            game.move_object_by_effect(selected[1], Zone::Exile).unwrap();
+        }
+        let outcome = match kind {
+            0 => EffectOutcome::count(2).with_chosen_object_memory(memories),
+            1 => EffectOutcome::count(2).with_affected_object_memory(memories)
+                .with_affected_objects(vec![game.player(alice).unwrap().graveyard[0], game.exile[0]]),
+            2 => EffectOutcome::count(2).with_execution_fact(crate::effect::ExecutionFact::ChosenObjects(selected.to_vec())),
+            3 => EffectOutcome::declined(),
+            _ => unreachable!(),
+        };
+        apply_tagged_runtime_state(&game, &mut ctx, TagKey::new("chosen"), &outcome, runtime);
+        let snapshots = ctx.get_tagged_all("chosen").cloned().unwrap_or_default();
+        let actual = snapshots.iter().map(|snapshot| snapshot.object_id).collect::<HashSet<_>>();
+        let expected = if kind == 3 {HashSet::new()} else {HashSet::from(selected)};
+        assert_eq!(actual, expected);
+        assert!(!actual.contains(&unchosen));
+        assert!(snapshots.iter().all(|snapshot| snapshot.zone == Zone::Battlefield && snapshot.controller == alice));
+        assert_eq!(snapshots.len(), expected.len());
+        assert!(snapshots.iter().all(|snapshot| snapshot.card.is_some()));
+    }
+
+    #[test]
+    fn preview_chosen_memory_preserves_both_original_and_redirected_destinations() {
+        assert_candidate_preview_uses_exact_results(0);
+    }
+
+    #[test]
+    fn preview_outcome_only_memory_preserves_both_destinations() {
+        assert_candidate_preview_uses_exact_results(1);
+    }
+
+    #[test]
+    fn preview_chosen_ids_preserve_exact_selection_without_memory() {
+        assert_candidate_preview_uses_exact_results(2);
+    }
+
+    #[test]
+    fn preview_declined_action_does_not_tag_candidates() {
+        assert_candidate_preview_uses_exact_results(3);
+    }
+
+    #[test]
+    fn preview_exile_outcome_tag_qualifies_destination_but_reference_tag_keeps_redirected_lki() {
+        for outcome_only in [false, true] {
+            let mut game = setup_game();
+            let alice = PlayerId::from_index(0);
+            let first = create_creature(&mut game, alice);
+            let second = create_creature(&mut game, alice);
+            let source = game.new_object_id();
+            let mut ctx = ExecutionContext::new_default(source, alice);
+            let effect = Effect::new(crate::effects::ExileEffect::all(crate::filter::ObjectFilter::creature()));
+            let mut runtime = capture_tagged_runtime_state(&game, &effect, &ctx);
+            runtime.outcome_only = outcome_only;
+            let memories = [first,second].iter().map(|id| crate::effect::OutcomeObjectMemory::from_snapshot(
+                &ObjectSnapshot::from_object(game.object(*id).unwrap(), &game))).collect();
+            let exile = game.move_object_by_effect(first, Zone::Exile).unwrap();
+            let grave = game.move_object_by_effect(second, Zone::Graveyard).unwrap();
+            let outcome = EffectOutcome::count(1).with_affected_object_memory(memories)
+                .with_affected_objects(vec![exile,grave]);
+            apply_tagged_runtime_state(&game, &mut ctx, TagKey::new("exiled"), &outcome, runtime);
+            let snapshots = ctx.get_tagged_all("exiled").unwrap();
+            assert_eq!(snapshots.len(), if outcome_only {1} else {2});
+            assert_eq!(snapshots[0].object_id, first);
+            assert!(snapshots.iter().all(|snapshot| snapshot.zone == Zone::Battlefield && snapshot.card.is_some()));
+            assert_eq!(snapshots.iter().any(|snapshot| snapshot.object_id == second), !outcome_only);
+        }
     }
 
     #[test]

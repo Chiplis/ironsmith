@@ -196,6 +196,9 @@ pub fn parse_object_or_player_union_target(
 ) -> Option<ObjectOrPlayerUnionTarget<'_>> {
     let view = TokenWordView::new(tokens);
     let words = view.to_word_refs();
+    if let Some(leading) = parse_leading_player_object_union_target(tokens, &view, &words) {
+        return Some(leading);
+    }
     let (&player_word, before_player) = words.split_last()?;
     let player_kind = match player_word {
         "player" | "players" => TrailingPlayerTargetKind::Any,
@@ -211,6 +214,64 @@ pub fn parse_object_or_player_union_target(
     };
     let connector_token = view.map_word_to_token_boundary(connector_start)?;
     let object_tokens = trim_comma_edges(tokens.get(..connector_token)?);
+    (!object_tokens.is_empty()).then_some(ObjectOrPlayerUnionTarget {
+        object_tokens,
+        player_kind,
+    })
+}
+
+/// "player or battle", "player, planeswalker, or Sliver creature": the
+/// player arm leads and the object arms follow. Single-noun arms with their
+/// own fixed union shapes ("player or creature", "player or permanent",
+/// "player or planeswalker") keep those shapes.
+fn parse_leading_player_object_union_target<'a>(
+    tokens: &'a [OwnedLexToken],
+    view: &TokenWordView<'_>,
+    words: &[&str],
+) -> Option<ObjectOrPlayerUnionTarget<'a>> {
+    let (&player_word, after_player) = words.split_first()?;
+    let player_kind = match player_word {
+        "player" | "players" => TrailingPlayerTargetKind::Any,
+        "opponent" | "opponents" => TrailingPlayerTargetKind::Opponent,
+        _ => return None,
+    };
+    let object_start = match after_player {
+        ["or", rest @ ..] | ["and/or", rest @ ..] if !rest.is_empty() => 2,
+        // A serial list: "player, planeswalker, or Sliver creature". Commas
+        // are not words, so the list's final connective must follow later.
+        [_, rest @ ..] if rest.iter().any(|word| matches!(*word, "or" | "and/or")) => {
+            let first_token = view.map_word_to_token_boundary(1)?;
+            if !tokens
+                .get(..first_token)?
+                .iter()
+                .any(OwnedLexToken::is_comma)
+            {
+                return None;
+            }
+            1
+        }
+        _ => return None,
+    };
+    let object_words = &words[object_start..];
+    if object_words.iter().any(|word| {
+        matches!(
+            *word,
+            "player" | "players" | "opponent" | "opponents" | "you" | "your" | "that" | "its"
+        )
+    }) {
+        return None;
+    }
+    if let [single] = object_words
+        && (matches!(
+            *single,
+            "creature" | "creatures" | "permanent" | "permanents" | "planeswalker" | "planeswalkers"
+        ) || (player_kind == TrailingPlayerTargetKind::Opponent
+            && matches!(*single, "battle" | "battles")))
+    {
+        return None;
+    }
+    let object_token = view.map_word_to_token_boundary(object_start)?;
+    let object_tokens = trim_comma_edges(tokens.get(object_token..)?);
     (!object_tokens.is_empty()).then_some(ObjectOrPlayerUnionTarget {
         object_tokens,
         player_kind,

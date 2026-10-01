@@ -56,7 +56,7 @@ fn setup(players: usize, lands: usize) -> GameState {
 fn cast(g: &mut GameState, def: &CardDefinition, dm: &mut Choices) -> Result<Value,String> {
     g.turn.priority_player=Some(PlayerId(0));
     let source=g.create_object_from_definition(def,PlayerId(0),Zone::Hand);
-    let action=compute_legal_actions(g,PlayerId(0)).into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source)).ok_or("intended cast unavailable")?;
+    let action=compute_legal_actions(g,PlayerId(0)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source)).ok_or("intended cast unavailable")?;
     let mana=g.player(PlayerId(0)).unwrap().mana_pool.total();
     let mut q=TriggerQueue::new();
     let mut state=PriorityLoopState::new(g.players_in_game());

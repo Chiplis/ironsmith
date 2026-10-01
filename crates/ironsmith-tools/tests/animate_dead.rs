@@ -44,7 +44,7 @@ fn setup_with_protection(protected: bool) -> (GameState, ObjectId, ObjectId, Tri
         .add(ironsmith::mana::ManaSymbol::Black, 2);
     let hand = game.create_object_from_definition(&definition, alice, Zone::Hand);
     let aura_stable = game.object(hand).unwrap().stable_id;
-    let action = ironsmith::decision::compute_legal_actions(&game, alice).into_iter().find(|action|
+    let action = ironsmith::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state").into_iter().find(|action|
         matches!(action, ironsmith::decision::LegalAction::CastSpell { spell_id, .. } if *spell_id == hand)
     ).expect("Aura can target opponent's creature card in graveyard");
     let mut queue = TriggerQueue::new();

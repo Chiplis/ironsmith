@@ -58,6 +58,8 @@ pub enum AttackUnlessSurface {
     OtherCreaturesAttack,
     CreatureWithGreaterPowerAttacks,
     BlackOrGreenCreatureAttacks,
+    OtherCreaturesBlock,
+    CreatureWithGreaterPowerBlocks,
     OpponentDealtDamageThisTurn,
     SacrificeLand,
     SacrificeIslands,
@@ -193,6 +195,8 @@ fn parse_requirement_lexed(
         ))
         .parse_next(input),
         AttackUnlessScope::AttackOrBlock | AttackUnlessScope::Block => alt((
+            parse_blocking_group_requirement,
+            alt((
             parse_paired_partner_requirement,
             parse_source_status_requirement,
             parse_source_characteristic_requirement,
@@ -202,6 +206,7 @@ fn parse_requirement_lexed(
             parse_counted_controller_control_requirement,
             parse_controller_control_requirement,
             alt((parse_there_are_exile_count, parse_there_are_filtered_cards)),
+            )),
         ))
         .parse_next(input),
     }
@@ -577,6 +582,33 @@ fn parse_defending_player_controls(input: &mut LexStream<'_>) -> WResult<ParsedR
         surface: AttackUnlessSurface::DefendingPlayerControls,
         condition: CantAttackUnlessConditionSpec::DefendingPlayerCondition(
             DefendingPlayerAttackCondition::Controls(filter),
+        ),
+    })
+}
+
+fn parse_blocking_group_requirement(input: &mut LexStream<'_>) -> WResult<ParsedRequirement> {
+    alt((parse_other_creatures_block, parse_greater_power_blocks)).parse_next(input)
+}
+
+fn parse_other_creatures_block(input: &mut LexStream<'_>) -> WResult<ParsedRequirement> {
+    let count = parse_minimum_count_lexed.parse_next(input)?;
+    primitives::phrase(&["other", "creatures", "block"]).parse_next(input)?;
+    Ok(ParsedRequirement {
+        surface: AttackUnlessSurface::OtherCreaturesBlock,
+        condition: CantAttackUnlessConditionSpec::AttackingGroupCondition(
+            AttackingGroupAttackCondition::AtLeastNOtherCreaturesBlock(count),
+        ),
+    })
+}
+
+fn parse_greater_power_blocks(input: &mut LexStream<'_>) -> WResult<ParsedRequirement> {
+    opt(parse_indefinite_article).parse_next(input)?;
+    primitives::phrase(&["creature", "with", "greater", "power", "also", "blocks"])
+        .parse_next(input)?;
+    Ok(ParsedRequirement {
+        surface: AttackUnlessSurface::CreatureWithGreaterPowerBlocks,
+        condition: CantAttackUnlessConditionSpec::AttackingGroupCondition(
+            AttackingGroupAttackCondition::CreatureWithGreaterPowerAlsoBlocks,
         ),
     })
 }

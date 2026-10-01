@@ -505,6 +505,46 @@ fn color_only_hexproof_filter_words(words: &[&str]) -> Option<ObjectFilter> {
     clause_grammar::parse_color_only_hexproof_filter_words(words)
 }
 
+/// "Hexproof from artifacts, creatures, and enchantments" (Nevinyrral): a
+/// whole keyword line whose comma list belongs to one hexproof quality list,
+/// so it must not be split into keyword segments first.
+pub(crate) fn parse_hexproof_from_type_list_line(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<KeywordAction>> {
+    let words = TokenWordView::new(tokens).word_refs();
+    if words.len() < 4 || words[0] != "hexproof" || words[1] != "from" {
+        return None;
+    }
+    let list_only = words[2..].iter().all(|word| {
+        matches!(
+            *word,
+            "artifacts"
+                | "creatures"
+                | "enchantments"
+                | "planeswalkers"
+                | "lands"
+                | "instants"
+                | "sorceries"
+                | "battles"
+                | "and"
+                | "or"
+                | "and/or"
+        )
+    });
+    if !list_only || !tokens.iter().any(|token| token.is_comma()) {
+        return None;
+    }
+    let mut actions = parse_hexproof_from_chain(tokens)?;
+    // The quality applies to spells and abilities from those sources
+    // wherever they are, not only to permanents.
+    for action in &mut actions {
+        if let KeywordAction::HexproofFrom(filter) = action {
+            filter.zone = None;
+        }
+    }
+    Some(actions)
+}
+
 pub(crate) fn parse_hexproof_from_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     let words_view = TokenWordView::new(tokens);
     let words = words_view.word_refs();
@@ -675,6 +715,9 @@ pub fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordA
 
     fn parse_hexproof_from_chain_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
         parse_hexproof_from_chain(tokens)
+    }
+    if let Some(actions) = parse_hexproof_from_type_list_line(tokens) {
+        return Some(actions);
     }
     let input = keyword_line_readings::KeywordLine { tokens };
     match keyword_line_readings::read(&input) {
@@ -1179,6 +1222,48 @@ fn parse_triggered_line_lexed_inner(tokens: &[OwnedLexToken]) -> Result<LineAst,
                 });
             }
         }
+    }
+
+    // "Whenever ..., if <condition>, A. B.": the `if` right after the trigger
+    // comma governs the whole multi-sentence body (CR 603.4), even when the
+    // structural splitter's modeled predicates don't cover the condition
+    // (Agent of the Shadow Thieves' granted trigger). Parsing the body as
+    // effects would scope the condition to the first sentence only.
+    if let Some(trigger_comma) = tokens
+        .iter()
+        .enumerate()
+        .skip(start_idx)
+        .find_map(|(idx, token)| token.is_comma().then_some(idx))
+        && tokens
+            .get(trigger_comma + 1)
+            .is_some_and(|token| token.is_word("if"))
+        && let Some(after_if) = tokens.get(trigger_comma + 2..)
+        && let Some(predicate_comma) = after_if.iter().position(|token| token.is_comma())
+        && !after_if[..predicate_comma]
+            .iter()
+            .any(|token| token.kind == crate::lexer::TokenKind::Period)
+        && split_lexed_sentences(&after_if[predicate_comma + 1..]).len() > 1
+        && let Ok(trigger) = parse_trigger_clause_lexed(&trim_commas(&tokens[start_idx..trigger_comma]))
+        && let Ok(predicate) =
+            crate::grammar::filters::parse_condition_predicate_lexed(&after_if[..predicate_comma])
+        // A source condition ("if Cosima is exiled") rebinds "it" in the
+        // body to the source; the structural routes own that rebinding.
+        && !predicate.establishes_source_object_antecedent()
+        && let Ok(effects) =
+            parse_effect_sentences_or_single_sentence_lexed(&after_if[predicate_comma + 1..])
+        && !effects.is_empty()
+    {
+        return Ok(LineAst::Triggered {
+            trigger,
+            effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate,
+                if_true: effects,
+                if_false: Vec::new(),
+            })],
+            max_triggers_per_turn: parse_triggered_times_each_turn_lexed_from_sentences(
+                &after_if[predicate_comma + 1..],
+            ),
+        });
     }
 
     let delimiter_facts = clause_grammar::parse_trigger_delimiters_tokens(tokens);

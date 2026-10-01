@@ -11,7 +11,7 @@ use crate::target::ChooseSpec;
 use crate::zone::Zone;
 
 use super::{
-    apply_zone_change_with_additional_effects, maybe_prompt_for_split_result_order,
+    apply_zone_change_with_context_and_additional_effects, maybe_prompt_for_split_result_order,
     take_recorded_zone_change,
 };
 pub type MoveToLibraryNthFromTopEffect = ironsmith_core::MoveToLibraryNthFromTopEffect;
@@ -22,7 +22,13 @@ impl EffectExecutor for MoveToLibraryNthFromTopEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let mut receipts = Vec::new();
+        let result = (|| -> Result<EffectOutcome, ExecutionError> {
+        let original = (|| -> Result<EffectOutcome, ExecutionError> {
         let object_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
         if object_ids.is_empty() {
             return Ok(EffectOutcome::target_invalid());
         }
@@ -33,6 +39,7 @@ impl EffectExecutor for MoveToLibraryNthFromTopEffect {
         let mut moved_ids = Vec::new();
         let mut affected_ids = Vec::new();
         let mut any_replaced = false;
+        let mut any_prevented = false;
 
         for object_id in object_ids {
             let Some(obj) = game.object(object_id) else {
@@ -43,20 +50,21 @@ impl EffectExecutor for MoveToLibraryNthFromTopEffect {
                 ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
             let additional_effects = ctx.additional_replacement_effects_snapshot();
 
-            let result = apply_zone_change_with_additional_effects(
-                game,
-                object_id,
-                from_zone,
-                Zone::Library,
-                ctx.cause.clone(),
-                &mut ctx.decision_maker,
-                &additional_effects,
-            );
+            let result = apply_zone_change_with_context_and_additional_effects(
+    game,
+    object_id,
+    from_zone,
+    Zone::Library,
+    ctx.cause.clone(),
+    ctx,
+    &additional_effects
+)?;
 
-            match result {
-                EventOutcome::Prevented => {
-                    return Ok(EffectOutcome::prevented());
-                }
+            let original = result.original.clone();
+            receipts.push((object_id, result));
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            match original {
+                EventOutcome::Prevented => { any_prevented = true; }
                 EventOutcome::Proceed(mut result) => {
                     if !result.new_object_ids.is_empty() {
                         ctx.refresh_target_snapshot(pre_snapshot.clone());
@@ -86,6 +94,7 @@ impl EffectExecutor for MoveToLibraryNthFromTopEffect {
                                     &ctx.cause,
                                     &mut result,
                                 );
+                            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
                                 game.record_zone_change_results(
                                     object_id,
                                     result.new_object_ids.clone(),
@@ -112,7 +121,18 @@ impl EffectExecutor for MoveToLibraryNthFromTopEffect {
         if any_replaced {
             return Ok(EffectOutcome::replaced().with_affected_objects(affected_ids));
         }
+        if any_prevented { return Ok(EffectOutcome::prevented()); }
         Ok(EffectOutcome::target_invalid())
+        })()?;
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        super::finish_zone_change_receipts(game, ctx, original, receipts)
+        })();
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
+        }
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        result
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

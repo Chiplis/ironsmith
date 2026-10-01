@@ -1633,6 +1633,50 @@ fn maybe_append_trailing_that_much_life_loss(
     }
 }
 
+/// "Round up each time." follows a sentence whose halves state no rounding.
+/// Such a half defaults to rounding down, so lift each one to rounding up.
+fn round_up_unstated_half_values_in_effects(effects: &mut [EffectAst]) {
+    fn round_up(value: &mut Value) {
+        match value {
+            Value::SurfaceHinted { value, .. } => round_up(value),
+            Value::HalfRoundedDown(base) => {
+                let already_up = matches!(
+                    base.as_ref(),
+                    Value::Add(_, one) if matches!(one.as_ref(), Value::Fixed(1))
+                );
+                if !already_up {
+                    let inner = std::mem::replace(base.as_mut(), Value::Fixed(0));
+                    **base = Value::Add(Box::new(inner), Box::new(Value::Fixed(1)));
+                }
+            }
+            Value::HalfLifeTotalRoundedDown(player) => {
+                let player = player.clone();
+                *value = Value::HalfLifeTotalRoundedUp(player);
+            }
+            _ => {}
+        }
+    }
+    for effect in effects.iter_mut() {
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect {
+            match action {
+                SubjectVerbActionAst::LifeResources(
+                    LifeResourceActionAst::Draw { count: value }
+                    | LifeResourceActionAst::LoseLife { amount: value }
+                    | LifeResourceActionAst::GainLife { amount: value },
+                )
+                | SubjectVerbActionAst::Library(LibraryActionAst::Mill { count: value })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard {
+                    count: value, ..
+                }) => round_up(value),
+                _ => {}
+            }
+        }
+        for_each_nested_effects_mut(effect, true, |nested| {
+            round_up_unstated_half_values_in_effects(nested);
+        });
+    }
+}
+
 fn maybe_append_reexile_returned_objects(
     sentence_effects: &mut Vec<EffectAst>,
     sentence_tokens: &[OwnedLexToken],
@@ -1672,13 +1716,22 @@ fn append_reexile_returned_objects_if_missing(effects: &mut Vec<EffectAst>) {
 }
 
 fn effect_is_life_loss(effect: &EffectAst) -> bool {
-    matches!(
+    if matches!(
         effect,
         EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
             action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { .. }),
             ..
         })
-    )
+    ) {
+        return true;
+    }
+    // "you draw that many cards, create ..., then lose that much life": the
+    // chained clause may already sit inside a nested sequence.
+    let mut nested_life_loss = false;
+    for_each_nested_effects(effect, false, |nested| {
+        nested_life_loss |= nested.iter().any(effect_is_life_loss);
+    });
+    nested_life_loss
 }
 
 fn maybe_bind_that_player_gain_control_if_do_rewards(
@@ -2503,6 +2556,17 @@ fn parse_effect_sentences_from_sentence_inputs(
         let sentence_text = crate::lexer::token_word_refs(sentence).join(" ");
         let _sentence_scope = parse_trace::scope(format!("effect sentence: \"{}\"", sentence_text));
 
+        // "Each opponent who lost life this turn sacrifices ..." (Papalymo
+        // Totolymo): the relative clause restricts which players act. Parse
+        // the ordinary quantified sentence without it, then narrow the
+        // iterated player set.
+        if let Some(narrowed) = parse_each_player_who_lost_life_sentence(sentence)? {
+            effects.extend(narrowed);
+            carried_context = None;
+            sentence_idx += 1;
+            continue;
+        }
+
         // A named vote-option sentence owns its comma-delimited `for each
         // <option> vote` prefix. In a multi-sentence program, `SentenceInput`
         // normalization can otherwise expose that prefix to generic sequence
@@ -3154,6 +3218,11 @@ fn parse_effect_sentences_from_sentence_inputs(
                 "sentence parsed to no semantic effects (clause: '{}')",
                 crate::lexer::token_word_refs(&parse_plan.tokens).join(" ")
             )));
+        }
+        if sentence_effects.is_empty() && is_round_up_each_time_sentence(&parse_plan.tokens) {
+            // "... draws cards equal to half ... and loses half their life.
+            // Round up each time.": every unstated half rounds up.
+            round_up_unstated_half_values_in_effects(&mut effects);
         }
         for effect in &mut sentence_effects {
             if let Some(context) = carried_context {
@@ -5831,6 +5900,7 @@ fn parse_direct_typed_coordination(
     }
 
     let mut effects = Vec::with_capacity(plan.members.len());
+    let mut member_subjects = Vec::with_capacity(plan.members.len());
     for member in &plan.members {
         let member_tokens = crate::util::trim_edge_punctuation_tokens(member.tokens);
         let Some((verb, verb_word_idx)) = super::find_verb(member_tokens) else {
@@ -5851,10 +5921,32 @@ fn parse_direct_typed_coordination(
             return Ok(None);
         };
         effects.push(effect);
+        member_subjects.push(subject);
     }
 
     for (boundary_index, boundary) in plan.boundaries.iter().enumerate() {
         if boundary.omission != effect_grammar::coordination::CoordinationOmissionAst::Subject {
+            continue;
+        }
+        // "That player untaps Karona and gains control of it": the shared
+        // player subject is the new controller even when the first verb
+        // (untap, tap, ...) does not itself record a player.
+        if let Some(Some(SubjectAst::Player(player))) = member_subjects.get(boundary_index)
+            && !matches!(player, PlayerAst::Implicit)
+            && let Some(EffectAst::SubjectVerb(next)) = effects.get_mut(boundary_index + 1)
+            && matches!(
+                next.action,
+                SubjectVerbActionAst::Control(ControlActionAst::GainControl {
+                    controller_reference: None,
+                    ..
+                })
+            )
+            && matches!(next.subject.player, PlayerAst::Implicit)
+        {
+            next.subject.player = match player {
+                PlayerAst::Target | PlayerAst::TargetOpponent => PlayerAst::That,
+                other => *other,
+            };
             continue;
         }
         let Some(context) = super::chain_carry::explicit_player_for_carry(&effects[boundary_index])
@@ -5940,9 +6032,150 @@ pub fn parse_effect_sentences_lexed(
             let mut effects = parse_effect_sentences_lexed_unfinalized(tokens)?;
             transport_coin_flip_outcomes_into_owner(&mut effects);
             preserve_linked_target_fanout_group(tokens, &mut effects);
+            bind_where_x_threshold_conditions(tokens, &mut effects);
+            merge_cast_this_way_tax_into_play_permission(tokens, &mut effects);
             Ok(effects)
         },
     )
+}
+
+/// "For as long as that card remains exiled, its owner may play it. A spell
+/// cast by an opponent this way costs {2} more to cast." (Soul Partition):
+/// the tax belongs on the play permission. A static granted to the exiled
+/// card stays behind when the card moves to the stack, so it never applies.
+fn merge_cast_this_way_tax_into_play_permission(
+    tokens: &[OwnedLexToken],
+    effects: &mut Vec<EffectAst>,
+) {
+    let Some(tax) = crate::lexer::split_lexed_sentences(tokens)
+        .into_iter()
+        .find_map(effect_grammar::parse_spell_cast_this_way_tax_tokens)
+    else {
+        return;
+    };
+    let owner = match tax.taxed_caster {
+        Some(PlayerFilter::Opponent) => PlayerFilter::Opponent,
+        Some(PlayerFilter::You) => PlayerFilter::You,
+        _ => return,
+    };
+    fn is_tax_grant(effect: &EffectAst) -> bool {
+        match effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { .. }),
+                ..
+            }) => true,
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate: PredicateAst::TaggedMatches(..),
+                if_true,
+                if_false,
+            }) => if_false.is_empty() && matches!(if_true.as_slice(), [grant] if is_tax_grant(grant)),
+            _ => false,
+        }
+    }
+    let Some(index) = effects.windows(2).position(|pair| {
+        matches!(
+            &pair[0],
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
+                    allow_land: true,
+                    without_paying_mana_cost: false,
+                    filter: None,
+                    during_turns_counter_put_on_source: None,
+                    spell_cost_increase: None,
+                    lands_enter_tapped: false,
+                    ..
+                }),
+                ..
+            })
+        ) && is_tax_grant(&pair[1])
+    }) else {
+        return;
+    };
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
+                tag, player, ..
+            }),
+        ..
+    }) = &effects[index]
+    else {
+        return;
+    };
+    let (tag, player) = (tag.clone(), *player);
+    let permission = |cost: Option<crate::mana::ManaCost>| {
+        EffectAst::subject_verb_grant_play_tagged_with_play_constraints(
+            tag.clone(),
+            player,
+            cost,
+            false,
+        )
+    };
+    let mut owned_by_taxed_caster = ObjectFilter::default();
+    owned_by_taxed_caster.owner = Some(owner);
+    let merged = EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+        predicate: PredicateAst::TaggedMatches(tag.clone(), owned_by_taxed_caster),
+        if_true: vec![permission(Some(tax.additional_cost.clone()))],
+        if_false: vec![permission(None)],
+    });
+    effects.remove(index + 1);
+    effects[index] = merged;
+}
+
+/// "..., where X is the number of permanents you've sacrificed this turn. If
+/// X is three or more, ..." (Obsessive Pursuit): the later "if X is N or more"
+/// compares the where-X value, not an announced X the ability never has.
+fn bind_where_x_threshold_conditions(tokens: &[OwnedLexToken], effects: &mut [EffectAst]) {
+    let is_phrase = |window: &[OwnedLexToken], first: &str| {
+        window[0].is_word(first) && window[1].is_word("x") && window[2].is_word("is")
+    };
+    let Some(where_idx) = tokens.windows(3).position(|window| is_phrase(window, "where")) else {
+        return;
+    };
+    if !tokens.windows(3).any(|window| is_phrase(window, "if")) {
+        return;
+    }
+    let end = tokens[where_idx..]
+        .iter()
+        .position(|token| token.kind == crate::lexer::TokenKind::Period)
+        .map_or(tokens.len(), |offset| where_idx + offset);
+    // An anaphoric definition ("mana spent to cast that spell") is bound by
+    // its own sentence's context; re-reading it alone would lose the referent.
+    if tokens[where_idx..end]
+        .iter()
+        .any(|token| token.is_any_word(&["that", "those", "it", "its", "they", "their"]))
+    {
+        return;
+    }
+    let Some(value) = parse_value_binding_clause(&tokens[where_idx..end]) else {
+        return;
+    };
+    fn rewrite(effect: &mut EffectAst, value: &Value) {
+        if let EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. }) = effect {
+            match predicate {
+                PredicateAst::XValueAtLeast(threshold) => {
+                    *predicate = PredicateAst::ValueComparison {
+                        left: value.clone(),
+                        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                        right: Value::Fixed(*threshold as i32),
+                    };
+                }
+                PredicateAst::ValueComparison { left, .. }
+                    if matches!(left.unhinted(), Value::X) =>
+                {
+                    *left = value.clone();
+                }
+                _ => {}
+            }
+        }
+        crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+            for effect in nested {
+                rewrite(effect, value);
+            }
+        });
+    }
+    for effect in effects {
+        rewrite(effect, &value);
+    }
 }
 
 fn parse_effect_sentences_lexed_unfinalized(
@@ -5952,6 +6185,17 @@ fn parse_effect_sentences_lexed_unfinalized(
         return Ok(vec![effect]);
     }
     if let Some(effects) = parse_coin_batch_and_counted_turn_skip(tokens)? {
+        return Ok(effects);
+    }
+    // The complete outside-game selection owns its optional choice, reveal,
+    // and movement. Generic may/and decomposition cannot lower those steps
+    // independently without losing their shared selected-object identity.
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    if split_lexed_sentences(tokens).len() == 1
+        && words.starts_with(&["you", "may", "reveal"])
+        && words.ends_with(&["and", "put", "it", "into", "your", "hand"])
+        && let Some(effects) = super::bundle_rules::parse_reveal_from_outside_game_to_hand(tokens)?
+    {
         return Ok(effects);
     }
     // A demonstrative leave watcher in resolving instructions retains its event header.
@@ -8071,13 +8315,51 @@ fn split_leading_amass_comma_then_sentences(
         {
             let split = super::lex_chain_helpers::split_segments_on_comma_then_lexed(vec![segment]);
             if split.len() > 1 {
-                result.extend(split);
+                for piece in split {
+                    push_amass_comma_list_pieces(&mut result, piece);
+                }
                 continue;
             }
+            push_amass_comma_list_pieces(&mut result, segment);
+            continue;
         }
         result.push(segment);
     }
     result
+}
+
+/// "amass Orcs 5, mill five cards, then return ...": the amass instruction is
+/// complete before a bare list comma, so the next list member is its own
+/// instruction. A trailing "where X is ..." binding stays attached.
+fn push_amass_comma_list_pieces<'a>(
+    result: &mut Vec<&'a [OwnedLexToken]>,
+    piece: &'a [OwnedLexToken],
+) {
+    let starts_with_amass = piece
+        .iter()
+        .find_map(OwnedLexToken::as_word)
+        .is_some_and(|word| word.eq_ignore_ascii_case("amass"));
+    let boundary = starts_with_amass
+        .then(|| piece.iter().position(OwnedLexToken::is_comma))
+        .flatten()
+        .filter(|&comma| {
+            piece[comma + 1..]
+                .iter()
+                .find_map(OwnedLexToken::as_word)
+                .is_some_and(|word| {
+                    !matches!(
+                        word.to_ascii_lowercase().as_str(),
+                        "where" | "then" | "and" | "or" | "if" | "unless"
+                    )
+                })
+        });
+    match boundary {
+        Some(comma) => {
+            result.push(&piece[..comma]);
+            result.push(&piece[comma + 1..]);
+        }
+        None => result.push(piece),
+    }
 }
 
 /// "Look at the top ten cards of your library, then exile any number of
@@ -13633,4 +13915,46 @@ fn parse_coin_batch_and_counted_turn_skip(
             effects: vec![EffectAst::subject_verb_skip_turn(player)],
         }),
     ]))
+}
+
+fn parse_each_player_who_lost_life_sentence(
+    sentence: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    const CLAUSE: [&str; 5] = ["who", "lost", "life", "this", "turn"];
+    if sentence.len() <= 2 + CLAUSE.len()
+        || !sentence[0].is_word("each")
+        || !sentence[1].is_any_word(&["opponent", "player"])
+        || !sentence[2..2 + CLAUSE.len()]
+            .iter()
+            .zip(CLAUSE)
+            .all(|(token, word)| token.is_word(word))
+    {
+        return Ok(None);
+    }
+    let mut stripped = sentence[..2].to_vec();
+    stripped.extend_from_slice(&sentence[2 + CLAUSE.len()..]);
+    let Ok(parsed) = super::parse_effect_chain_lexed(&stripped) else {
+        return Ok(None);
+    };
+    let [single] = parsed.as_slice() else {
+        return Ok(None);
+    };
+    let narrowed = match single {
+        EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }) => {
+            EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+                sequential: false,
+                filter: PlayerFilter::lost_life_this_turn(PlayerFilter::Opponent),
+                effects: effects.clone(),
+            })
+        }
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }) => {
+            EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+                sequential: false,
+                filter: PlayerFilter::lost_life_this_turn(PlayerFilter::Any),
+                effects: effects.clone(),
+            })
+        }
+        _ => return Ok(None),
+    };
+    Ok(Some(vec![narrowed]))
 }

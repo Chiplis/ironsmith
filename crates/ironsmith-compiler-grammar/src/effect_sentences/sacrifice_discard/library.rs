@@ -102,6 +102,39 @@ pub fn parse_discard(
     let uses_all_count = cards_shape.uses_all_count;
     let mut count = cards_shape.count;
     let any_number = cards_shape.any_number;
+    // "an instant or sorcery card or a creature card with flying": a
+    // trailing "or ... card" arm continues the card selector itself, so the
+    // whole list is one disjunctive filter rather than a trailing qualifier
+    // that replaces the first arm.
+    let trailing_words = crate::lexer::token_word_refs(cards_shape.trailing_tokens);
+    if trailing_words.first() == Some(&"or")
+        && trailing_words
+            .iter()
+            .any(|word| matches!(*word, "card" | "cards"))
+        && !trailing_words
+            .iter()
+            .any(|word| matches!(*word, "unless" | "if" | "then" | "sacrifice" | "exile"))
+        && let Some(qualifier_start) = tokens
+            .len()
+            .checked_sub(cards_shape.trailing_tokens.len() + 1 + cards_shape.qualifier_tokens.len())
+        && let Ok(mut filter) = parse_object_filter(&tokens[qualifier_start..], false)
+        && !filter.any_of.is_empty()
+    {
+        filter.zone = Some(Zone::Hand);
+        // The arms are all hand cards; a noun's battlefield default on one
+        // arm ("a creature card with flying") would make it unmatchable.
+        for branch in &mut filter.any_of {
+            branch.zone = None;
+        }
+        return Ok(EffectAst::subject_verb_discard(
+            player,
+            count,
+            false,
+            any_number,
+            Some(filter),
+            None,
+        ));
+    }
     let qualifier_tokens = trim_commas(cards_shape.qualifier_tokens);
     let qualifier_shape =
         sacrifice_discard_grammar::parse_discard_qualifier_shape(&qualifier_tokens);

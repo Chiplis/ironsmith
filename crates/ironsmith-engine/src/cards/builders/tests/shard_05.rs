@@ -2969,7 +2969,7 @@ pub(super) fn dust_animus_enters_with_both_counters_when_untapped_land_condition
 
     let old_id = game.create_object_from_definition(&def, alice, Zone::Hand);
     let animus_id = game
-        .move_object_with_etb_processing_with_dm(old_id, Zone::Battlefield, &mut dm)
+        .move_object_with_etb_processing_with_dm(old_id, Zone::Battlefield, &mut dm).expect("replacement operation must execute successfully in this scenario")
         .expect("Dust Animus should enter")
         .new_id;
 
@@ -3014,7 +3014,7 @@ pub(super) fn dust_animus_enters_without_counters_when_fewer_than_five_lands_are
 
     let old_id = game.create_object_from_definition(&def, alice, Zone::Hand);
     let animus_id = game
-        .move_object_with_etb_processing_with_dm(old_id, Zone::Battlefield, &mut dm)
+        .move_object_with_etb_processing_with_dm(old_id, Zone::Battlefield, &mut dm).expect("replacement operation must execute successfully in this scenario")
         .expect("Dust Animus should enter")
         .new_id;
 

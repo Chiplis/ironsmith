@@ -64,7 +64,7 @@ impl EffectExecutor for AddColorlessManaEffect {
             ManaSymbol::Colorless,
             count,
             ctx,
-        );
+        )?;
 
         Ok(mana_added_value_outcome(ctx, player_id, mana_added))
     }

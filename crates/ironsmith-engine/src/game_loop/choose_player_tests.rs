@@ -109,8 +109,7 @@ fn move_definition_to_battlefield_with_dm(
     decision_maker: &mut impl DecisionMaker,
 ) -> ObjectId {
     let old_id = game.create_object_from_definition(definition, owner, Zone::Hand);
-    game.move_object_with_etb_processing_with_dm(old_id, Zone::Battlefield, decision_maker)
-        .expect("object should enter the battlefield")
+    crate::tests::test_helpers::enter_fixture_with_dm(game, old_id, decision_maker, "object should enter the battlefield")
         .new_id
 }
 

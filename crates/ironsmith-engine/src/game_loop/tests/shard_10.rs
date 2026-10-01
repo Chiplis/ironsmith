@@ -353,7 +353,7 @@ fn setup_zero_cost_mutate_cast(
     game.turn.priority_player = Some(controller);
 
     assert!(
-        compute_legal_actions(game, controller)
+        compute_legal_actions(game, controller).expect("fixture has complete replacement state")
             .iter()
             .any(|action| matches!(
                 action,
@@ -634,7 +634,7 @@ fn merged_face_status_uses_the_top_component_and_obeys_turn_restrictions() {
             .iter()
             .all(|component| component.face_down)
     );
-    assert!(game.set_face_up(host_id));
+    assert!(game.set_face_up(host_id).expect("fixture has complete replacement state"));
     let merged = game
         .merged_permanent(game.object(host_id).expect("merged permanent").stable_id)
         .expect("component state");
@@ -680,7 +680,7 @@ fn merged_face_status_uses_the_top_component_and_obeys_turn_restrictions() {
     game.merge_mutating_creature_spell(instant_id, hidden_id, false)
         .expect("fixture creates a merged instant component");
     assert!(
-        !game.set_face_up(hidden_id),
+        !game.set_face_up(hidden_id).expect("fixture has complete replacement state"),
         "a face-down merged permanent containing an instant card cannot turn face up"
     );
     assert!(game.is_face_down(hidden_id));
@@ -736,7 +736,7 @@ fn merged_transform_and_flip_actions_update_every_applicable_component() {
     let under_id = game.create_object_from_definition(&under_front, alice, Zone::Stack);
     game.merge_mutating_creature_spell(under_id, host_id, false)
         .expect("transform fixture merges");
-    assert!(game.transform_permanent(host_id));
+    assert!(game.transform_permanent(host_id).expect("transform discovery must succeed in this scenario"));
     assert_eq!(
         game.object(host_id)
             .expect("live merged object")
@@ -879,6 +879,9 @@ fn merged_exile_order_sets_relative_timestamps_in_the_exiling_players_order() {
         Zone::Exile,
         cause,
         &mut ReverseMergedOrder,
+    ).unwrap();
+    let outcome = crate::tests::test_helpers::finish_fixture_zone_change(
+        &mut game, host_id, alice, outcome, &mut ReverseMergedOrder,
     );
     let crate::events::processing::EventOutcome::Proceed(result) = outcome else {
         panic!("merged exile should proceed");
@@ -941,6 +944,9 @@ fn token_top_merged_permanent_partitions_card_only_zone_replacement() {
         Zone::Graveyard,
         cause,
         &mut SelectFirstDecisionMaker,
+    ).unwrap();
+    let outcome = crate::tests::test_helpers::finish_fixture_zone_change(
+        &mut game, host_id, alice, outcome, &mut SelectFirstDecisionMaker,
     );
     let crate::events::processing::EventOutcome::Proceed(result) = outcome else {
         panic!("partitioned merged zone change should proceed");
@@ -1569,7 +1575,7 @@ pub(super) fn test_cleanup_discard_decision() {
     // Simulate player choosing specific cards to discard
     let cards_to_discard = vec![spec.hand[0], spec.hand[1]];
     let mut dm = crate::decision::AutoPassDecisionMaker;
-    apply_cleanup_discard(&mut game, &cards_to_discard, &mut dm);
+    apply_cleanup_discard(&mut game, &cards_to_discard, &mut dm).expect("cleanup discard should execute");
 
     // Verify hand size is now 7
     assert_eq!(game.player(alice).unwrap().hand.len(), 7);
@@ -1622,7 +1628,7 @@ pub(super) fn necropotence_cleanup_discard_exiles_discarded_card() {
     assert_eq!(player, alice);
     assert_eq!(spec.count, 1);
 
-    apply_cleanup_discard(&mut game, &[hand_ids[0]], &mut decision_maker);
+    apply_cleanup_discard(&mut game, &[hand_ids[0]], &mut decision_maker).expect("cleanup discard should execute");
     drain_pending_trigger_events(&mut game, &mut trigger_queue);
     assert_eq!(
         trigger_queue.entries.len(),
@@ -2125,7 +2131,7 @@ pub(super) fn test_once_per_turn_in_legal_actions() {
     game.remove_summoning_sickness(creature_id);
 
     // Get legal actions - ability should be available
-    let actions1 = compute_legal_actions(&game, alice);
+    let actions1 = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let can_activate1 = actions1.iter().any(|a| {
         matches!(
             a,
@@ -2141,7 +2147,7 @@ pub(super) fn test_once_per_turn_in_legal_actions() {
     game.record_ability_activation(creature_id, 0);
 
     // Get legal actions again - ability should NOT be available
-    let actions2 = compute_legal_actions(&game, alice);
+    let actions2 = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let can_activate2 = actions2.iter().any(|a| {
         matches!(
             a,
@@ -2216,7 +2222,7 @@ pub(super) fn test_loyalty_activation_is_tracked_per_permanent_without_text_cap(
             },
         ]);
 
-    let actions_before = compute_legal_actions(&game, alice);
+    let actions_before = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions_before.iter().any(|action| matches!(
             action,
@@ -2268,7 +2274,7 @@ pub(super) fn test_loyalty_activation_is_tracked_per_permanent_without_text_cap(
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
 
-    let actions_after = compute_legal_actions(&game, alice);
+    let actions_after = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !actions_after.iter().any(|action| matches!(
             action,
@@ -2318,7 +2324,7 @@ pub(super) fn test_negative_loyalty_cost_requires_enough_loyalty_in_legal_action
             functional_zones: vec![Zone::Battlefield],
         });
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !actions.iter().any(|action| matches!(
             action,
@@ -2455,7 +2461,7 @@ pub(super) fn test_nonactive_player_keeps_priority_after_activating_ability() {
             functional_zones: vec![Zone::Battlefield],
         });
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let activate_action = actions
         .into_iter()
         .find(|action| {
@@ -2542,7 +2548,7 @@ pub(super) fn test_once_per_turn_restriction_survives_control_change() {
 
     game.turn.priority_player = Some(bob);
 
-    let same_turn_actions = compute_legal_actions(&game, bob);
+    let same_turn_actions = compute_legal_actions(&game, bob).expect("fixture has complete replacement state");
     assert!(
         !same_turn_actions.iter().any(|action| {
             matches!(
@@ -2559,7 +2565,7 @@ pub(super) fn test_once_per_turn_restriction_survives_control_change() {
     game.turn.step = None;
     game.turn.priority_player = Some(bob);
 
-    let next_turn_actions = compute_legal_actions(&game, bob);
+    let next_turn_actions = compute_legal_actions(&game, bob).expect("fixture has complete replacement state");
     assert!(
         next_turn_actions.iter().any(|action| {
             matches!(
@@ -2596,7 +2602,7 @@ pub(super) fn test_wall_of_roots_once_per_turn_mana_ability_fast_path() {
         .position(|ability| ability.is_mana_ability())
         .expect("wall of roots should have a mana ability");
 
-    let actions_before = compute_legal_actions(&game, alice);
+    let actions_before = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(actions_before.iter().any(|a| {
         matches!(
             a,
@@ -2630,7 +2636,7 @@ pub(super) fn test_wall_of_roots_once_per_turn_mana_ability_fast_path() {
         "wall of roots activation should be recorded for this turn"
     );
 
-    let actions_after = compute_legal_actions(&game, alice);
+    let actions_after = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(!actions_after.iter().any(|a| {
         matches!(
             a,
@@ -3011,7 +3017,7 @@ pub(super) fn maestros_graveyard_cast_action(
     source_id: ObjectId,
     spell_id: ObjectId,
 ) -> Option<LegalAction> {
-    compute_legal_actions(game, player)
+    compute_legal_actions(game, player).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -3310,7 +3316,7 @@ pub(super) fn demilich_graveyard_cast_action(
     player: PlayerId,
     spell_id: ObjectId,
 ) -> Option<LegalAction> {
-    compute_legal_actions(game, player)
+    compute_legal_actions(game, player).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -3634,7 +3640,7 @@ pub(super) fn demon_of_fates_design_life_cost_casts_only_enchantments_once_durin
 
     game.player_mut(alice).expect("Alice exists").life = 20;
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action,
@@ -3705,7 +3711,7 @@ pub(super) fn demon_of_fates_design_life_cost_casts_only_enchantments_once_durin
     );
 
     resolve_stack_entry(&mut game).expect("enchantment spell should resolve");
-    let actions_after_use = compute_legal_actions(&game, alice);
+    let actions_after_use = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !actions_after_use.iter().any(|action| matches!(
             action,
@@ -3791,7 +3797,7 @@ pub(super) fn eye_of_duskmantle_casts_only_surveilled_graveyard_spells_for_life(
         .turn_history
         .record_event(&event, None, None);
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let seen_spell_casts = actions
         .iter()
         .filter(|action| {
@@ -3829,7 +3835,7 @@ pub(super) fn eye_of_duskmantle_casts_only_surveilled_graveyard_spells_for_life(
         .expect("Eye should offer the surveilled spell with the life alternative");
 
     assert!(
-        !compute_legal_actions(&game, alice)
+        !compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .iter()
             .any(|action| matches!(
                 action,
@@ -3846,7 +3852,7 @@ pub(super) fn eye_of_duskmantle_casts_only_surveilled_graveyard_spells_for_life(
         "Eye should not also allow the surveilled spell for its normal mana cost"
     );
     assert!(
-        !compute_legal_actions(&game, alice)
+        !compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .iter()
             .any(|action| matches!(
                 action,
@@ -3855,7 +3861,7 @@ pub(super) fn eye_of_duskmantle_casts_only_surveilled_graveyard_spells_for_life(
         "Eye should not allow non-surveilled graveyard spells"
     );
     assert!(
-        compute_legal_actions(&game, alice)
+        compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .iter()
             .any(|action| matches!(
                 action,
@@ -3904,7 +3910,7 @@ pub(super) fn demon_of_fates_design_life_cost_requires_enough_life() {
     let enchantment_id = game.create_object_from_card(&enchantment, alice, Zone::Hand);
     game.player_mut(alice).expect("Alice exists").life = 2;
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !actions.iter().any(|action| matches!(
             action,
@@ -3944,7 +3950,7 @@ pub(super) fn demon_of_fates_design_life_cost_is_only_during_your_turn() {
     let enchantment_id = game.create_object_from_definition(&flash_enchantment, alice, Zone::Hand);
     game.player_mut(alice).expect("Alice exists").life = 20;
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !actions.iter().any(|action| matches!(
             action,
@@ -3975,7 +3981,7 @@ pub(super) fn demon_of_fates_design_sacrificed_enchantment_mana_value_sets_pump_
         Zone::Battlefield,
     );
     assert!(
-        !compute_legal_actions(&game, alice)
+        !compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .iter()
             .any(|action| matches!(
                 action,

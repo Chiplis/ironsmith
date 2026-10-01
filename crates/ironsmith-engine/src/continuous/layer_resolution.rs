@@ -43,7 +43,7 @@ pub(super) fn calculate_with_layers(
     if chars.world_supertype_since.is_some() {
         chars.world_supertype_since = ctx.effects.get_entry_timestamp(object.id).or(Some(0));
     }
-    let calc_guard = CharacteristicCalculationGuard::begin(object.id, &chars);
+    let calc_guard = CharacteristicCalculationGuard::begin(ctx.game, object.id, &chars);
     let mut started_groups = HashSet::new();
 
     // Get all effects sorted by layer/sublayer/timestamp
@@ -366,13 +366,13 @@ pub(super) fn calculate_with_layers(
 
                 // Layer 6: Ability changes
                 Modification::AddAbility(ability) => {
-                    push_static_ability_once(&mut chars, ability.clone());
+                    push_granted_static_ability(&mut chars, ability.clone());
                 }
                 Modification::AddAbilityGeneric(ability) => {
                     let bound_ability =
                         bind_effect_controller_in_ability(ability, effect.controller);
                     if let AbilityKind::Static(static_ability) = &bound_ability.kind {
-                        push_static_ability_once(&mut chars, static_ability.clone());
+                        push_granted_static_ability(&mut chars, static_ability.clone());
                     } else {
                         chars.abilities.push(bound_ability);
                     }
@@ -493,8 +493,7 @@ pub(super) fn calculate_with_layers(
                         ctx.battlefield,
                         ctx.game.commander_objects(),
                         ctx.game,
-                        effect.controller,
-                        effect.source,
+                        effect,
                     );
                 }
                 Modification::CopyTriggeredAbilities {
@@ -558,6 +557,10 @@ pub(super) fn calculate_with_layers(
                     ));
                 }
                 Modification::RemoveAbility(ability) => {
+                    chars.abilities.retain(|candidate| {
+                        !matches!(&candidate.kind, AbilityKind::Static(existing)
+                            if static_ability_matches_loss(existing, ability))
+                    });
                     chars
                         .static_abilities
                         .retain(|candidate| !static_ability_matches_loss(candidate, ability));
@@ -660,12 +663,12 @@ pub(super) fn calculate_with_layers(
     // Now handle Layer 7 (P/T) with proper sublayer ordering
     // We need to collect P/T effects and apply them in sublayer order
 
-    // Check for LevelAbilities if abilities weren't removed
-    let level_pt = if !abilities_removed {
-        get_level_ability_pt(object)
-    } else {
-        None
-    };
+    // The surviving layer-six view, including grants after an earlier loss,
+    // controls the level symbol. A historical remove-all flag is not its state.
+    let level_pt = get_level_ability_pt(object, &chars.abilities);
+    apply_level_granted_abilities(object, &mut chars);
+    prune_ability_gain_prohibitions(&mut chars);
+    calc_guard.update(&chars);
 
     // Apply Layer 7 effects in sublayer order. A level symbol's "base P/T"
     // is a layer-7b effect with the leveler's timestamp (CR 711.2b, 613.4b).
@@ -678,13 +681,6 @@ pub(super) fn calculate_with_layers(
         &mut started_groups,
         level_pt,
     );
-
-    // Add abilities from level tiers if not removed
-    if !abilities_removed {
-        apply_level_granted_abilities(object, &mut chars);
-        prune_ability_gain_prohibitions(&mut chars);
-        calc_guard.update(&chars);
-    }
 
     add_intrinsic_basic_land_mana_abilities(&mut chars);
     prune_ability_gain_prohibitions(&mut chars);
@@ -1906,30 +1902,30 @@ pub(super) fn add_temporary_static_ability_grants(
     object: &Object,
     chars: &mut CalculatedCharacteristics,
 ) {
-    for grant in &object.temporary_static_ability_grants {
+    for (index, grant) in object.temporary_static_ability_grants.iter().enumerate() {
         let Some(ability) = grant.materialize() else {
             continue;
         };
-        if chars
-            .static_abilities
-            .iter()
-            .any(|existing| existing == &ability)
-        {
-            continue;
-        }
-        push_static_ability_once(chars, ability);
+        // Materialize each registered grant as its own ability occurrence.
+        // Equal definitions (including cloned runtime values) are not one
+        // grant: their replacement effects can each apply to the same event.
+        let origin = object.temporary_static_ability_grants.origin(index)
+            .expect("temporary grant and origin remain paired").clone();
+        chars.abilities.push_with_origin(Ability::static_ability(ability.clone()),
+            super::AbilityOrigin::Temporary(origin));
+        chars.static_abilities.push(ability);
     }
 }
 
 /// Get P/T override from level abilities if applicable.
-pub(super) fn get_level_ability_pt(object: &Object) -> Option<(i32, i32)> {
+pub(super) fn get_level_ability_pt(object: &Object, abilities: &CalculatedAbilities) -> Option<(i32, i32)> {
     let level_count = object
         .counters
         .get(&CounterType::Level)
         .copied()
         .unwrap_or(0);
 
-    for ability in object.abilities.iter() {
+    for ability in abilities.iter() {
         if let AbilityKind::Static(s) = &ability.kind
             && let Some(levels) = s.level_abilities()
         {
@@ -1944,30 +1940,6 @@ pub(super) fn get_level_ability_pt(object: &Object) -> Option<(i32, i32)> {
     None
 }
 
-/// Get abilities granted by the current level tier.
-pub(super) fn get_level_granted_abilities(object: &Object) -> Vec<StaticAbility> {
-    let level_count = object
-        .counters
-        .get(&CounterType::Level)
-        .copied()
-        .unwrap_or(0);
-
-    for ability in object.abilities.iter() {
-        if let AbilityKind::Static(s) = &ability.kind
-            && let Some(levels) = s.level_abilities()
-        {
-            // Find the matching tier
-            for tier in levels.iter().rev() {
-                if tier.applies_at_level(level_count) {
-                    // Abilities are now stored as the new type directly
-                    return tier.abilities.clone();
-                }
-            }
-        }
-    }
-    Vec::new()
-}
-
 /// Apply the active level tier, including object abilities stored inside a
 /// source-filtered static carrier because `LevelAbility` itself stores only
 /// static abilities.
@@ -1975,17 +1947,26 @@ pub(super) fn apply_level_granted_abilities(
     object: &Object,
     chars: &mut CalculatedCharacteristics,
 ) {
-    for ability in get_level_granted_abilities(object) {
-        for granted in ability.source_granted_inline_abilities() {
-            match &granted.kind {
-                AbilityKind::Static(static_ability) => {
-                    push_static_ability_once(chars, static_ability.clone());
-                }
-                _ if !chars.abilities.contains(granted) => chars.abilities.push(granted.clone()),
-                _ => {}
-            }
+    let level = object.counters.get(&CounterType::Level).copied().unwrap_or(0);
+    // Layer six owns which level descriptions survive. Snapshot them before
+    // adding their tier abilities, keeping each independent paired occurrence.
+    let active = chars.abilities.iter().enumerate().filter_map(|(index, ability)| {
+        let AbilityKind::Static(ability) = &ability.kind else { return None; };
+        let tiers = ability.level_abilities()?;
+        let parent = chars.abilities.origin(index)?.clone();
+        let (tier, band) = tiers.iter().enumerate().rev()
+            .find(|(_, band)| band.applies_at_level(level))?;
+        Some((parent, tier, band.abilities.clone()))
+    }).collect::<Vec<_>>();
+    for (parent, tier, abilities) in active {
+        for (slot, granted) in abilities.into_iter().enumerate() {
+            let origin = AbilityOrigin::Level { printed_face: object.card,
+                parent: Box::new(parent.clone()), tier, slot };
+            // Source-filtered inline carriers are materialized by their
+            // generated continuous effect, once; they are not expanded here.
+            chars.abilities.push_with_origin(Ability::static_ability(granted.clone()), origin);
+            chars.static_abilities.push(granted);
         }
-        push_static_ability_once(chars, ability);
     }
 }
 

@@ -1,6 +1,6 @@
 //! Commit player counters from the complete replacement event and retain its outcomes.
 
-use crate::effect::{EffectOutcome, OutcomeStatus, OutcomeValue};
+use crate::effect::{EffectOutcome, OutcomeValue};
 use crate::effects::{
     ExecutionContext, ExecutionContextCheckpoint, ExecutionError, ResolvedTarget,
 };
@@ -21,6 +21,8 @@ pub(crate) fn execute_player_counter_placement(
     ctx: &mut ExecutionContext,
     event: Event,
 ) -> Result<EffectOutcome, ExecutionError> {
+    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+    game.clear_pending_decision_controllers();
     let checkpoint = game.clone();
     let context_checkpoint = ExecutionContextCheckpoint::capture(ctx);
     let result = (|| {
@@ -52,133 +54,154 @@ pub(crate) fn execute_player_counter_placement(
         {
             return Ok(prevented());
         }
-        let processed = process_trait_event_with_execution_context(game, event, ctx);
+        let processed = process_trait_event_with_execution_context(game, event, ctx)?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
         }
-        match processed {
-            TraitEventResult::Proceed(event) | TraitEventResult::Modified(event) => {
-                let resolved =
-                    downcast_event::<PutCountersEvent>(event.inner()).ok_or_else(|| {
-                        ExecutionError::InternalError(
-                            "player counter replacement returned an incompatible event".into(),
-                        )
-                    })?;
-                let Target::Player(player) = resolved.target else {
-                    return Err(ExecutionError::InternalError(
-                        "player counter replacement returned an incompatible recipient".into(),
-                    ));
-                };
-                // A replacement may establish a lock as it modifies this very
-                // event. Only a lock present before the proposal prevents it.
-                if checkpoint
-                    .turn_store
-                    .turn_history
-                    .player_counter_is_locked_this_turn(player, resolved.counter_type)
-                    || (resolved.counter_type == CounterType::Poison
-                        && !game.can_get_poison_counters(player))
-                {
-                    return Ok(prevented());
-                }
-                let before = game
-                    .player(player)
-                    .ok_or(ExecutionError::PlayerNotFound(player))?
-                    .counter_count(resolved.counter_type);
-                let proposed_after = before.checked_add(resolved.count).ok_or_else(|| {
-                    ExecutionError::InternalError(
-                        "player counter placement exceeds the supported counter range".into(),
-                    )
-                })?;
-                i32::try_from(resolved.count).map_err(|_| {
-                    ExecutionError::InternalError(
-                        "player counter outcome exceeds the supported count range".into(),
-                    )
-                })?;
-                if resolved.counter_type == CounterType::Poison {
-                    game.write_shared_poison(player, proposed_after);
-                } else {
-                    game.player_mut(player)
-                        .ok_or(ExecutionError::PlayerNotFound(player))?
-                        .add_counters(resolved.counter_type, resolved.count);
-                }
-                let after = game
-                    .player(player)
-                    .ok_or(ExecutionError::PlayerNotFound(player))?
-                    .counter_count(resolved.counter_type);
-                let actual = after.saturating_sub(before);
-                if actual == 0 {
-                    return Ok(prevented());
-                }
-                let count = i32::try_from(actual).map_err(|_| {
-                    ExecutionError::InternalError(
-                        "player counter outcome exceeds the supported count range".into(),
-                    )
-                })?;
-                let mut notification = TriggerEvent::new_with_provenance(
-                    MarkersChangedEvent::added(
-                        resolved.counter_type,
-                        player,
-                        actual,
-                        resolved.cause.source,
-                        resolved.cause.source_controller,
-                    )
-                    .with_count_after(after),
-                    event.provenance(),
-                );
-                if game.object(ctx.source).is_none()
-                    && let Some(snapshot) = &ctx.source_snapshot
-                {
-                    notification = notification.with_source_snapshot(snapshot.clone());
-                }
-                Ok(EffectOutcome::count(count).with_event(notification))
-            }
-            TraitEventResult::Replaced {
-                effects,
-                source,
-                controller,
-                context,
-                ..
-            } => {
-                let resolved = downcast_event::<PutCountersEvent>(context.event.inner())
-                    .ok_or_else(|| {
-                        ExecutionError::InternalError(
-                            "player counter replacement lost its counter event".into(),
-                        )
-                    })?;
-                let Target::Player(player) = resolved.target else {
-                    return Err(ExecutionError::InternalError(
-                        "player counter replacement lost its player recipient".into(),
-                    ));
-                };
-                let mut outcome = crate::effects::replacement::execute_replacement_payload(
-                    game,
-                    ctx,
-                    &effects,
-                    source,
-                    controller,
-                    &context,
-                    Some(vec![ResolvedTarget::Player(player)]),
-                )?;
-                outcome.value = OutcomeValue::Count(0);
-                outcome.status = OutcomeStatus::Replaced;
-                Ok(outcome)
-            }
-            TraitEventResult::Prevented => Ok(prevented()),
-            TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. } => {
-                Err(ExecutionError::InternalError(
-                    "player counter replacement suspended without a captured decision".into(),
-                ))
-            }
-        }
+        commit_player_counter_placement(game, ctx, processed, &checkpoint)
     })();
     if result.is_err() || ctx.decision_maker.awaiting_choice() {
-        *game = checkpoint;
+        game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
         context_checkpoint.restore(ctx);
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
         }
     }
     result
+}
+
+fn commit_player_counter_placement(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    processed: TraitEventResult,
+    pre_event_game: &GameState,
+) -> Result<EffectOutcome, ExecutionError> {
+    match processed {
+        expanded @ TraitEventResult::Expanded { .. } =>
+            crate::effects::replacement::execute_event_expansion_with_targets(
+                game, ctx, expanded, |game, ctx, result| commit_player_counter_placement(game, ctx, result, pre_event_game),
+                |_game, context, _original_outcome| {
+                    let captured = downcast_event::<PutCountersEvent>(context.event.inner())
+                        .ok_or_else(|| ExecutionError::InternalError("added counter program lost its captured event".into()))?;
+                    let Target::Player(recipient) = captured.target else {
+                        return Err(ExecutionError::InternalError("added counter program has an incompatible recipient".into()));
+                    };
+                    Ok(Some(vec![ResolvedTarget::Player(recipient)]))
+                },
+            ),
+        TraitEventResult::Proceed(event) | TraitEventResult::Modified(event) => {
+            let resolved =
+                downcast_event::<PutCountersEvent>(event.inner()).ok_or_else(|| {
+                    ExecutionError::InternalError(
+                        "player counter replacement returned an incompatible event".into(),
+                    )
+                })?;
+            let Target::Player(player) = resolved.target else {
+                return Err(ExecutionError::InternalError(
+                    "player counter replacement returned an incompatible recipient".into(),
+                ));
+            };
+            // A replacement may establish a lock as it modifies this very
+            // event. Only a lock present before the proposal prevents it.
+            if pre_event_game
+                .turn_store
+                .turn_history
+                .player_counter_is_locked_this_turn(player, resolved.counter_type)
+                || (resolved.counter_type == CounterType::Poison
+                    && !game.can_get_poison_counters(player))
+            {
+                return Ok(prevented());
+            }
+            let before = game
+                .player(player)
+                .ok_or(ExecutionError::PlayerNotFound(player))?
+                .counter_count(resolved.counter_type);
+            let proposed_after = before.checked_add(resolved.count).ok_or_else(|| {
+                ExecutionError::InternalError(
+                    "player counter placement exceeds the supported counter range".into(),
+                )
+            })?;
+            i32::try_from(resolved.count).map_err(|_| {
+                ExecutionError::InternalError(
+                    "player counter outcome exceeds the supported count range".into(),
+                )
+            })?;
+            if resolved.counter_type == CounterType::Poison {
+                game.write_shared_poison(player, proposed_after);
+            } else {
+                game.player_mut(player)
+                    .ok_or(ExecutionError::PlayerNotFound(player))?
+                    .add_counters(resolved.counter_type, resolved.count);
+            }
+            let after = game
+                .player(player)
+                .ok_or(ExecutionError::PlayerNotFound(player))?
+                .counter_count(resolved.counter_type);
+            let actual = after.saturating_sub(before);
+            if actual == 0 {
+                return Ok(prevented());
+            }
+            let count = i32::try_from(actual).map_err(|_| {
+                ExecutionError::InternalError(
+                    "player counter outcome exceeds the supported count range".into(),
+                )
+            })?;
+            let mut notification = TriggerEvent::new_with_provenance(
+                MarkersChangedEvent::added(
+                    resolved.counter_type,
+                    player,
+                    actual,
+                    resolved.cause.source,
+                    resolved.cause.source_controller,
+                )
+                .with_count_after(after),
+                event.provenance(),
+            );
+            if game.object(ctx.source).is_none()
+                && let Some(snapshot) = &ctx.source_snapshot
+            {
+                notification = notification.with_source_snapshot(snapshot.clone());
+            }
+            Ok(EffectOutcome::count(count).with_event(notification))
+        }
+        TraitEventResult::Replaced {
+            effects,
+            source,
+            controller,
+            context,
+            ..
+        } => {
+            let resolved = downcast_event::<PutCountersEvent>(context.event.inner())
+                .ok_or_else(|| {
+                    ExecutionError::InternalError(
+                        "player counter replacement lost its counter event".into(),
+                    )
+                })?;
+            let Target::Player(player) = resolved.target else {
+                return Err(ExecutionError::InternalError(
+                    "player counter replacement lost its player recipient".into(),
+                ));
+            };
+            let payload = crate::effects::replacement::execute_replacement_payload(
+                game,
+                ctx,
+                &effects,
+                source,
+                controller,
+                &context,
+                Some(vec![ResolvedTarget::Player(player)]),
+            )?;
+            let mut original = EffectOutcome::replaced();
+            original.set_value(OutcomeValue::Count(0));
+            Ok(EffectOutcome::aggregate_replacement_outcomes(original, [payload]))
+        }
+        TraitEventResult::Prevented => Ok(prevented()),
+        TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. } => {
+            Err(ExecutionError::InternalError(
+                "player counter replacement suspended without a captured decision".into(),
+            ))
+        }
+    }
 }
 
 #[cfg(test)]

@@ -48,13 +48,14 @@ use super::tagging_runtime::{
 /// Tag the execution context (and runtime tag state) from an inner effect's
 /// outcome — shared by live execution and batched simultaneous commits.
 /// (Free function because `TaggedEffect` aliases a foreign core type.)
-fn apply_outcome_tags(
+pub(super) fn apply_outcome_tags(
     effect: &TaggedEffect,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     outcome: &EffectOutcome,
     mut runtime: TaggedRuntimeState,
 ) {
+    let outcome = outcome.instruction_result();
     runtime.outcome_only = effect.outcome_only;
     let drawn_snapshots = outcome
         .events_of_type::<crate::events::CardsDrawnEvent>()
@@ -175,7 +176,11 @@ impl EffectExecutor for TaggedEffect {
         apply_outcome_tags(self, game, ctx, &outcome, runtime);
         if let Some(previous) = accumulated_declarations {
             let mut merged = previous;
-            for snapshot in ctx.get_tagged_all(self.tag.as_str()).cloned().unwrap_or_default() {
+            for snapshot in ctx
+                .get_tagged_all(self.tag.as_str())
+                .cloned()
+                .unwrap_or_default()
+            {
                 if !merged
                     .iter()
                     .any(|existing| existing.object_id == snapshot.object_id)

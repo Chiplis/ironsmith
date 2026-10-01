@@ -99,7 +99,7 @@ fn cast(
     eprintln!("AUDIT_STAGE cast {}", def.name());
     g.turn.priority_player = Some(actor);
     let id = g.create_object_from_definition(def, actor, Zone::Hand);
-    let action = compute_legal_actions(g, actor)
+    let action = compute_legal_actions(g, actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or_else(|| format!("{} normal cast unavailable", def.name()))?;
@@ -283,7 +283,7 @@ fn activation(
     source: ObjectId,
 ) -> Result<Value, String> {
     g.turn.priority_player = Some(PlayerId(0));
-    let a = compute_legal_actions(g, PlayerId(0))
+    let a = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::ActivateAbility{source:s,..}|LegalAction::ActivateManaAbility{source:s,..}if *s==source));
     let before = g.player(PlayerId(0)).unwrap().mana_pool.total() as i64;
@@ -322,7 +322,7 @@ fn run(def:&CardDefinition,defs:&std::collections::HashMap<&str,CardDefinition>,
  let first_loyalty=g.counter_count(source,ironsmith::CounterType::Loyalty);
  let vigilance=g.object_has_static_ability_id(host,K::Vigilance);
  advance_turn(&mut g,&mut q,&mut dm)?;if g.turn.active_player!=PlayerId(1){return Err("opponent turn fixture".into());}
- let opposing=characteristics(&g,source,host);let off_actions=compute_legal_actions(&g,PlayerId(0));let off_loyalty=off_actions.iter().any(|a|matches!(a,LegalAction::ActivateAbility{source:s,..}if *s==source));
+ let opposing=characteristics(&g,source,host);let off_actions=compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state");let off_loyalty=off_actions.iter().any(|a|matches!(a,LegalAction::ActivateAbility{source:s,..}if *s==source));
  advance_turn(&mut g,&mut q,&mut dm)?;if g.turn.active_player!=PlayerId(0){return Err("own return fixture".into());}
  let own_return=characteristics(&g,source,host);
  let stats=|on:bool,kaito_boost:i32|{let creature=on&&def.name()!="Sorin, Vengeful Bloodlord";let (p,t)=if !creature{(None,None)}else if def.name()=="Gideon Blackblade"{(Some(4),Some(4))}else{(Some(3+kaito_boost),Some(4+kaito_boost))};json!({"source_creature":creature,"source_planeswalker":!(on&&def.name()=="Kaito, Bane of Nightmares"),"source_power":p,"source_toughness":t,"source_indestructible":on&&def.name()=="Gideon Blackblade","source_hexproof":on&&def.name()=="Kaito, Bane of Nightmares","source_lifelink":on&&def.name()=="Sorin, Vengeful Bloodlord","bear_lifelink":on&&def.name()=="Sorin, Vengeful Bloodlord"})};

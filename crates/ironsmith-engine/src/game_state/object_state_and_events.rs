@@ -884,8 +884,29 @@ impl GameState {
     }
 
     /// Turn an object face up, including every face-down merged component.
-    pub fn set_face_up(&mut self, id: ObjectId) -> bool {
-        self.refresh_continuous_state();
+    pub fn set_face_up(&mut self, id: ObjectId)
+        -> Result<bool, crate::static_ability_processor::StaticEffectDiscoveryError> {
+        let checkpoint = self.clone();
+        let result = (|| {
+            self.refresh_continuous_state()?;
+            let changed = self.set_face_up_with_current_restrictions(id);
+            if changed { self.refresh_continuous_state()?; }
+            Ok(changed)
+        })();
+        if result.is_err() { self.restore_execution_checkpoint(checkpoint, false); }
+        result
+    }
+
+    /// Calculate the face-up view for a query, without executing immediate
+    /// programmes or rules procedures belonging to an actual game action.
+    pub(crate) fn hypothetical_face_up(&self, id: ObjectId)
+        -> Result<Option<Self>, crate::static_ability_processor::StaticEffectDiscoveryError> {
+        let mut snapshot = self.continuous_query_snapshot()?;
+        if !snapshot.set_face_up_with_current_restrictions(id) { return Ok(None); }
+        Ok(Some(snapshot.continuous_query_snapshot()?))
+    }
+
+    fn set_face_up_with_current_restrictions(&mut self, id: ObjectId) -> bool {
         if self
             .effect_store
             .cant_effects
@@ -985,9 +1006,23 @@ impl GameState {
     }
 
     /// Transform a transform-like permanent in place.
-    pub fn transform_permanent(&mut self, id: ObjectId) -> bool {
-        self.refresh_continuous_state();
-        self.transform_permanent_with_current_restrictions(id)
+    pub fn transform_permanent(&mut self, id: ObjectId)
+        -> Result<bool, crate::static_ability_processor::StaticEffectDiscoveryError> {
+        let checkpoint = self.clone();
+        let result = (|| {
+            self.refresh_continuous_state()?;
+            let transformed = self.transform_permanent_with_current_restrictions(id);
+            if transformed {
+                // The new face can introduce a failing discovery graph. Do not
+                // return success with its face, timestamp or notification committed.
+                self.refresh_continuous_state()?;
+            }
+            Ok(transformed)
+        })();
+        if result.is_err() {
+            self.restore_execution_checkpoint(checkpoint, false);
+        }
+        result
     }
 
     fn transform_permanent_with_current_restrictions(&mut self, id: ObjectId) -> bool {
@@ -1544,12 +1579,44 @@ impl GameState {
         }
     }
 
+    /// Commit an already-chosen "enters attacking" role. The caller owns
+    /// eligibility and any pending choice; this does not declare an attacker
+    /// or publish declaration triggers.
+    pub(crate) fn add_entering_attacker(
+        &mut self,
+        creature: ObjectId,
+        target: crate::combat_state::AttackTarget,
+    ) {
+        let attacked_permanent = target.attacked_permanent();
+        let as_battle = matches!(target, crate::combat_state::AttackTarget::Battle(_));
+        self.combat.get_or_insert_with(Default::default).attackers.push(
+            crate::combat_state::AttackerInfo { creature, target },
+        );
+        // Combat roles can change characteristics and replacement eligibility.
+        self.mark_continuous_state_dirty();
+        // Capture history at the role commit. Waiting until a later refresh
+        // can record the next instruction's changed types as the original
+        // attacked types (CR 506.4e).
+        if let Some(permanent) = attacked_permanent {
+            let original_types = crate::combat_state::AttackedPermanentTypes {
+                planeswalker: !as_battle
+                    || self.object_has_card_type(permanent, crate::types::CardType::Planeswalker),
+                battle: as_battle
+                    || self.object_has_card_type(permanent, crate::types::CardType::Battle),
+            };
+            self.combat.as_mut().expect("role committed").attacked_permanent_types
+                .entry(permanent).or_insert(original_types);
+        }
+    }
+
     /// Remove an attacking or blocking permanent from combat (CR 506.4).
     /// Creatures it blocked stay blocked (CR 509.1h).
     pub(crate) fn remove_object_from_combat(&mut self, id: ObjectId) {
         let Some(combat) = self.combat.as_mut() else {
             return;
         };
+        let was_participating = combat.attackers.iter().any(|attacker| attacker.creature == id)
+            || combat.blockers.values().any(|blockers| blockers.contains(&id));
         combat.remember_blocked_attackers();
         combat.attackers.retain(|attacker| attacker.creature != id);
         combat.blockers.remove(&id);
@@ -1568,6 +1635,11 @@ impl GameState {
             order.retain(|object| *object != id);
         }
         self.clear_ninjutsu_attack_targets_for(id);
+        if was_participating {
+            // Combat roles can condition abilities and replacement matchers.
+            // Publish their removal to every calculated-characteristic cache.
+            self.mark_continuous_state_dirty();
+        }
     }
 
     /// CR 506.4 / 506.4c: stop a planeswalker or battle from being attacked.
@@ -1613,6 +1685,7 @@ impl GameState {
                 ref other => other.clone(),
             };
         }
+        self.mark_continuous_state_dirty();
     }
 
     /// Check if a card is exiled via madness.
@@ -1823,12 +1896,15 @@ impl GameState {
             return None;
         }
         Some(crate::grant_registry::GrantedAlternativeCast {
+            permission_identity: None,
             method: AlternativeCastingMethod::Plot {
                 cost: crate::mana::ManaCost::new(),
             },
             source_id: id,
             zone,
             usage_limit: None,
+            cast_this_way_grants: Vec::new(),
+            cast_this_way_filter: None,
         })
     }
 
@@ -2631,7 +2707,7 @@ impl GameState {
                 (object_id, return_zone)
             })
             .collect::<Vec<_>>();
-        self.return_exiled_cards_at_duration_end(source_id, returns, None);
+        self.return_exiled_cards_at_duration_end(source_id, returns);
     }
 
     /// CR 610.3 / 610.3c: when an "exile ... until" duration ends, the cards
@@ -2651,22 +2727,26 @@ impl GameState {
         &mut self,
         source_id: ObjectId,
         returns: Vec<(ObjectId, Zone)>,
-        decision_maker: Option<&mut dyn crate::decision::DecisionMaker>,
     ) {
-        if returns.is_empty() {
-            return;
+        if !returns.is_empty() {
+            self.auxiliary_tracking_mut().pending_duration_end_returns.push((source_id, returns));
         }
-        let Some(decision_maker) = decision_maker else {
-            self.auxiliary_tracking_mut()
-                .pending_duration_end_returns
-                .push((source_id, returns));
-            return;
-        };
+    }
+
+    fn execute_duration_end_returns(
+        &mut self,
+        source_id: ObjectId,
+        returns: Vec<(ObjectId, Zone)>,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Result<(), crate::effects::ExecutionError> {
+        if returns.is_empty() {
+            return Ok(());
+        }
         let Some(controller) = returns
             .iter()
             .find_map(|(object_id, _)| self.object(*object_id).map(|object| object.owner))
         else {
-            return;
+            return Ok(());
         };
         let mut ctx = crate::effects::ExecutionContext::new(source_id, controller, decision_maker);
         let mut battlefield_requests = Vec::new();
@@ -2684,14 +2764,15 @@ impl GameState {
                     return_zone,
                     ctx.cause.clone(),
                     &mut *ctx.decision_maker,
-                );
+                )?;
             }
         }
         let _ = crate::effects::zones::move_to_battlefield_batch_with_options(
             self,
             &mut ctx,
             battlefield_requests,
-        );
+        )?;
+        Ok(())
     }
 
     pub(crate) fn has_pending_duration_end_returns(&self) -> bool {
@@ -2707,7 +2788,19 @@ impl GameState {
     pub(crate) fn process_pending_duration_end_returns(
         &mut self,
         decision_maker: &mut dyn crate::decision::DecisionMaker,
-    ) {
+    ) -> Result<(), crate::effects::ExecutionError> {
+        let checkpoint = self.clone();
+        let result = self.process_pending_duration_end_returns_inner(decision_maker);
+        if result.is_err() || decision_maker.awaiting_choice() {
+            *self = checkpoint;
+        }
+        result
+    }
+
+    fn process_pending_duration_end_returns_inner(
+        &mut self,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Result<(), crate::effects::ExecutionError> {
         let pending =
             std::mem::take(&mut self.auxiliary_tracking_mut().pending_duration_end_returns);
         let mut pending = pending.into_iter();
@@ -2719,20 +2812,16 @@ impl GameState {
                         .is_some_and(|object| object.zone == Zone::Exile)
                 })
                 .collect::<Vec<_>>();
-            self.return_exiled_cards_at_duration_end(
+            self.execute_duration_end_returns(
                 source_id,
                 returns,
-                Some(&mut *decision_maker),
-            );
+                &mut *decision_maker,
+            )?;
             if decision_maker.awaiting_choice() {
-                // Keep the rest queued behind the choice being surfaced.
-                let rest = pending.collect::<Vec<_>>();
-                self.auxiliary_tracking_mut()
-                    .pending_duration_end_returns
-                    .splice(0..0, rest);
-                return;
+                return Ok(());
             }
         }
+        Ok(())
     }
 
     /// Track a one-shot exile duration that ends the next time one of the
@@ -2789,7 +2878,7 @@ impl GameState {
             let Some(source_id) = returns.first().map(|(object_id, _)| *object_id) else {
                 continue;
             };
-            self.return_exiled_cards_at_duration_end(source_id, returns, None);
+            self.return_exiled_cards_at_duration_end(source_id, returns);
         }
     }
 
@@ -3033,7 +3122,9 @@ impl GameState {
         let mut all_abilities = Vec::new();
         let mut all_alternative_casts = Vec::new();
         let mut all_optional_costs = Vec::new();
-        let mut all_temporary_grants = Vec::new();
+        let Some(mut all_temporary_grants) = self.object(permanent_id)
+            .map(|object| object.temporary_static_ability_grants.empty_with_allocator())
+        else { return false; };
         let mut merged_text = Vec::new();
         let mut merged_labels = Vec::new();
         let mut labels_aligned = true;
@@ -3044,12 +3135,8 @@ impl GameState {
             merged_labels.extend(component.object.ability_labels.iter().cloned());
             all_alternative_casts.extend(component.object.alternative_casts.iter().cloned());
             all_optional_costs.extend(component.object.optional_costs.iter().cloned());
-            all_temporary_grants.extend(
-                component
-                    .object
-                    .temporary_static_ability_grants
-                    .iter()
-                    .cloned(),
+            all_temporary_grants.extend_existing(
+                &component.object.temporary_static_ability_grants,
             );
             if !component.object.compiled_card_text.trim().is_empty() {
                 merged_text.push(component.object.compiled_card_text.to_string());

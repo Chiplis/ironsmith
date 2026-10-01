@@ -89,7 +89,7 @@ fn cast_drake(target_ogre: bool) -> Board {
     let ogre = game.create_object_from_definition(&ogre_def, bob, Zone::Battlefield);
     let hand = game.create_object_from_definition(&def, alice, Zone::Hand);
     let drake = game.object(hand).unwrap().stable_id;
-    let action = compute_legal_actions(&game, alice)
+    let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == hand))
         .expect("castable");

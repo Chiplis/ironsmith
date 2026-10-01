@@ -162,7 +162,7 @@ fn announce(
 ) -> Result<(TriggerQueue, Value), String> {
     g.turn.priority_player = Some(PlayerId(actor));
     let source = g.create_object_from_definition(def, PlayerId(actor), Zone::Hand);
-    let action = compute_legal_actions(g, PlayerId(actor))
+    let action = compute_legal_actions(g, PlayerId(actor)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source))
         .ok_or("intended cast unavailable")?;
@@ -264,7 +264,7 @@ fn activate(
 ) -> Result<Value, String> {
     let initial_stack_len = g.stack.len();
     g.turn.priority_player = Some(PlayerId(0));
-    let action=compute_legal_actions(g,PlayerId(0)).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index}if *s==source&&*ability_index==index)).ok_or("intended activation unavailable")?;
+    let action=compute_legal_actions(g,PlayerId(0)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index}if *s==source&&*ability_index==index)).ok_or("intended activation unavailable")?;
     let before = g.player(PlayerId(0)).unwrap().mana_pool.total();
     let mut q = TriggerQueue::new();
     let mut st = PriorityLoopState::new(g.players_in_game());
@@ -409,7 +409,7 @@ fn priority(g: &mut GameState, q: &mut TriggerQueue, p: u8, d: &mut Choices) -> 
     Err("priority unavailable".into())
 }
 fn offered(g: &GameState, s: ObjectId, index: usize) -> bool {
-    compute_legal_actions(g,PlayerId(0)).iter().any(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index}if *source==s&&*ability_index==index))
+    compute_legal_actions(g,PlayerId(0)).expect("fixture has complete replacement state").iter().any(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index}if *source==s&&*ability_index==index))
 }
 
 fn get_stable(g: &GameState, id: ObjectId) -> u64 {
@@ -539,7 +539,7 @@ fn land(
     let stable = g.object(id).unwrap().stable_id;
     let mut q = TriggerQueue::new();
     priority(g, &mut q, p, d)?;
-    let action = compute_legal_actions(g, PlayerId(p))
+    let action = compute_legal_actions(g, PlayerId(p)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::PlayLand{land_id}if *land_id==id))
         .ok_or("land play unavailable")?;
@@ -571,7 +571,7 @@ fn announce_existing(
     dm: &mut Choices,
 ) -> Result<(TriggerQueue, Value), String> {
     g.turn.priority_player = Some(PlayerId(actor));
-    let action = compute_legal_actions(g, PlayerId(actor))
+    let action = compute_legal_actions(g, PlayerId(actor)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source))
         .ok_or("intended cast unavailable")?;
@@ -631,7 +631,7 @@ fn produce(
     fund(g, actor);
     if defs[name].card.card_types.contains(&CardType::Land) {
         let probe = g.create_object_from_definition(&defs[name], PlayerId(actor), Zone::Hand);
-        let can = compute_legal_actions(g, PlayerId(actor))
+        let can = compute_legal_actions(g, PlayerId(actor)).expect("fixture has complete replacement state")
             .iter()
             .any(|a| matches!(a,LegalAction::PlayLand{land_id}if *land_id==probe));
         // The probe remains an ordinary duplicate hand card. It grants no permissions or resources.
@@ -741,7 +741,7 @@ fn trial(
     );
     let before_hand = g.player(PlayerId(0)).unwrap().hand.len();
     let before_library = g.player(PlayerId(0)).unwrap().library.len();
-    let offered = compute_legal_actions(&g, PlayerId(0))
+    let offered = compute_legal_actions(&g, PlayerId(0)).expect("fixture has complete replacement state")
         .iter()
         .any(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==spell));
     let total_check = format!(

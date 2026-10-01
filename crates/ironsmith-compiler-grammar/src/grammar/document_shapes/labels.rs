@@ -140,7 +140,7 @@ fn preserved_keyword_label(input: &mut LexStream<'_>) -> WResult<PreservedKeywor
     let head = primitives::word_parser_text.parse_next(input)?;
     match head {
         "buyback" | "blitz" | "bestow" | "cumulative" | "cycling" | "echo" | "equip" | "epic"
-        | "escape" | "escalate" | "eternalize" | "evoke" | "flashback" | "kicker"
+        | "escape" | "escalate" | "eternalize" | "evoke" | "flashback" | "freerunning" | "kicker"
         | "multikicker" | "modular" | "morph" | "megamorph" | "prototype" | "replicate"
         | "reinforce" | "splice" | "squad" | "spectacle" | "strive" | "surge" | "suspend"
         | "ward" => Ok(PreservedKeywordLabelKind::CostOrCasting),

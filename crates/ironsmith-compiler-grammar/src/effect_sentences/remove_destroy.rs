@@ -643,6 +643,30 @@ pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
                         )),
                     ],
                 }
+            } else if let Some(and_index) = target_tokens.iter().position(|token| {
+                token.is_word("and")
+            }) && and_index > 0
+                && target_tokens
+                    .get(and_index + 1)
+                    .is_some_and(|token| token.is_word("this"))
+                && target_tokens.len() > and_index + 2
+                && !target_tokens[..and_index]
+                    .iter()
+                    .any(|token| token.is_any_word(&["target", "this", "all", "each"]))
+            {
+                // "Destroy it and this creature" (Goblin Sappers), "destroy
+                // that creature and this creature" (Loyal Sentry): a
+                // referenced object and the source, each destroyed.
+                EffectAst::Sequence {
+                    effects: vec![
+                        EffectAst::subject_verb_destroy(parse_target_phrase(
+                            &target_tokens[..and_index],
+                        )?),
+                        EffectAst::subject_verb_destroy(parse_target_phrase(
+                            &target_tokens[and_index + 1..],
+                        )?),
+                    ],
+                }
             } else {
                 EffectAst::subject_verb_destroy(parse_target_phrase(target_tokens)?)
             }

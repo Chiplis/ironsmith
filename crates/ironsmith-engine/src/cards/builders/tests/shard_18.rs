@@ -798,7 +798,7 @@ pub(super) fn calamity_bearer_runtime_doubles_giant_source_damage_to_players_and
         3,
         false,
         crate::events::cause::EventCause::effect(),
-    );
+    ).expect("damage test proposal must process successfully");
     assert_eq!(player_damage.assignments.len(), 1);
     assert_eq!(player_damage.assignments[0].amount, 6);
 
@@ -809,7 +809,7 @@ pub(super) fn calamity_bearer_runtime_doubles_giant_source_damage_to_players_and
         1,
         false,
         crate::events::cause::EventCause::effect(),
-    );
+    ).expect("damage test proposal must process successfully");
     assert_eq!(controller_damage.assignments.len(), 1);
     assert_eq!(controller_damage.assignments[0].amount, 2);
 
@@ -820,7 +820,7 @@ pub(super) fn calamity_bearer_runtime_doubles_giant_source_damage_to_players_and
         2,
         false,
         crate::events::cause::EventCause::effect(),
-    );
+    ).expect("damage test proposal must process successfully");
     assert_eq!(permanent_damage.assignments.len(), 1);
     assert_eq!(permanent_damage.assignments[0].amount, 4);
 
@@ -832,7 +832,7 @@ pub(super) fn calamity_bearer_runtime_doubles_giant_source_damage_to_players_and
             1,
             false,
             crate::events::cause::EventCause::effect(),
-        );
+        ).expect("damage test proposal must process successfully");
     assert_eq!(controller_permanent_damage.assignments.len(), 1);
     assert_eq!(controller_permanent_damage.assignments[0].amount, 2);
 }
@@ -871,7 +871,7 @@ pub(super) fn calamity_bearer_runtime_ignores_non_giant_and_opposing_giant_sourc
         3,
         false,
         crate::events::cause::EventCause::effect(),
-    );
+    ).expect("damage test proposal must process successfully");
     assert_eq!(non_giant_damage.assignments.len(), 1);
     assert_eq!(non_giant_damage.assignments[0].amount, 3);
 
@@ -882,7 +882,7 @@ pub(super) fn calamity_bearer_runtime_ignores_non_giant_and_opposing_giant_sourc
         3,
         false,
         crate::events::cause::EventCause::effect(),
-    );
+    ).expect("damage test proposal must process successfully");
     assert_eq!(opposing_giant_damage.assignments.len(), 1);
     assert_eq!(opposing_giant_damage.assignments[0].amount, 3);
 }
@@ -933,7 +933,7 @@ pub(super) fn torture_pit_adds_two_to_noncombat_damage_to_opponents_only() {
         3,
         false,
         crate::events::cause::EventCause::effect(),
-    );
+    ).expect("damage test proposal must process successfully");
     assert_eq!(noncombat_to_opponent.assignments.len(), 1);
     assert_eq!(noncombat_to_opponent.assignments[0].amount, 5);
 
@@ -944,7 +944,7 @@ pub(super) fn torture_pit_adds_two_to_noncombat_damage_to_opponents_only() {
         3,
         true,
         crate::events::cause::EventCause::effect(),
-    );
+    ).expect("damage test proposal must process successfully");
     assert_eq!(combat_to_opponent.assignments.len(), 1);
     assert_eq!(combat_to_opponent.assignments[0].amount, 3);
 
@@ -955,7 +955,7 @@ pub(super) fn torture_pit_adds_two_to_noncombat_damage_to_opponents_only() {
         3,
         false,
         crate::events::cause::EventCause::effect(),
-    );
+    ).expect("damage test proposal must process successfully");
     assert_eq!(noncombat_to_controller.assignments.len(), 1);
     assert_eq!(noncombat_to_controller.assignments[0].amount, 3);
 }
@@ -1056,7 +1056,7 @@ pub(super) fn charging_tuskodon_runtime_doubles_only_its_combat_damage_to_player
         4,
         true,
         crate::events::cause::EventCause::effect(),
-    );
+    ).expect("damage test proposal must process successfully");
     assert_eq!(combat_to_player.assignments.len(), 1);
     assert_eq!(combat_to_player.assignments[0].amount, 8);
 
@@ -1067,7 +1067,7 @@ pub(super) fn charging_tuskodon_runtime_doubles_only_its_combat_damage_to_player
         4,
         false,
         crate::events::cause::EventCause::effect(),
-    );
+    ).expect("damage test proposal must process successfully");
     assert_eq!(noncombat_to_player.assignments.len(), 1);
     assert_eq!(noncombat_to_player.assignments[0].amount, 4);
 
@@ -1078,7 +1078,7 @@ pub(super) fn charging_tuskodon_runtime_doubles_only_its_combat_damage_to_player
         4,
         true,
         crate::events::cause::EventCause::effect(),
-    );
+    ).expect("damage test proposal must process successfully");
     assert_eq!(combat_to_permanent.assignments.len(), 1);
     assert_eq!(combat_to_permanent.assignments[0].amount, 4);
 
@@ -1090,7 +1090,7 @@ pub(super) fn charging_tuskodon_runtime_doubles_only_its_combat_damage_to_player
             4,
             true,
             crate::events::cause::EventCause::effect(),
-        );
+        ).expect("damage test proposal must process successfully");
     assert_eq!(other_source_combat_to_player.assignments.len(), 1);
     assert_eq!(other_source_combat_to_player.assignments[0].amount, 4);
 }
@@ -3633,7 +3633,7 @@ pub(super) fn creeping_peeper_restricted_mana_runtime_branches() {
         .iter()
         .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
         .expect("ordinary Room should have an activated ability");
-    let ordinary_room_action = crate::decision::compute_legal_actions(&game, alice)
+    let ordinary_room_action = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -3668,7 +3668,7 @@ pub(super) fn creeping_peeper_restricted_mana_runtime_branches() {
         "failed Room activation should leave Creeping Peeper mana available for a real unlock-door payment"
     );
 
-    let unlock_room_action = crate::decision::compute_legal_actions(&game, alice)
+    let unlock_room_action = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -3727,7 +3727,7 @@ pub(super) fn creeping_peeper_restricted_mana_runtime_branches() {
             &game,
             face_up_probe_id,
             crate::special_actions::TurnFaceUpMethod::TurnFaceUpAbility,
-        )
+        ).expect("fixture has complete replacement state")
         .as_deref(),
         Some("{U}")
     );

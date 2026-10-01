@@ -164,7 +164,7 @@ fn catalog_graveyard_permissions_allow_only_the_named_alternative() {
             .unwrap()
             .mana_pool
             .add(ManaSymbol::Black, 5);
-        let actions = engine::decision::compute_legal_actions(&game, alice);
+        let actions = engine::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
         let casts: Vec<_> = actions
             .iter()
             .filter_map(|action| match action {
@@ -189,11 +189,11 @@ fn catalog_graveyard_permissions_allow_only_the_named_alternative() {
             ),
             "{casts:?}"
         );
-        assert!(engine::decision::compute_legal_actions(&game, PlayerId::from_index(1)).iter().all(|action| !matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == source)));
+        assert!(engine::decision::compute_legal_actions(&game, PlayerId::from_index(1)).expect("fixture has complete replacement state").iter().all(|action| !matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == source)));
         let mut insufficient = game.clone();
         insufficient.move_object_by_effect(evidence, Zone::Exile);
         insufficient.player_mut(alice).unwrap().life = 1;
-        assert!(engine::decision::compute_legal_actions(&insufficient, alice).iter().all(|action| !matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == source)), "{name} cannot ignore the nonmana cost");
+        assert!(engine::decision::compute_legal_actions(&insufficient, alice).expect("fixture has complete replacement state").iter().all(|action| !matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == source)), "{name} cannot ignore the nonmana cost");
         let cast = actions.into_iter().find(|action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == source)).unwrap();
         let mut dm = ObjectChoices::default();
         let mut state = engine::game_loop::PriorityLoopState::new(2);
@@ -1237,21 +1237,21 @@ fn catalog_wish_allows_one_normal_play_and_independent_resolutions_stack() {
             LegalAction::PlayLand { land_id } => *land_id == id,
             _ => false,
         };
-        let actions = engine::decision::compute_legal_actions(&game, alice);
+        let actions = engine::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
         assert!(actions.iter().any(|a| identifies(a, first)), "{actions:?}");
         assert!(actions.iter().any(|a| identifies(a, second)));
         assert!(!actions.iter().any(|a| identifies(a, opposing)));
         let mut expired = game.clone();
         expired.turn.turn_number += 1;
         assert!(
-            !engine::decision::compute_legal_actions(&expired, alice)
+            !engine::decision::compute_legal_actions(&expired, alice).expect("fixture has complete replacement state")
                 .iter()
                 .any(|a| identifies(a, first))
         );
         let mut wrong_timing = game.clone();
         wrong_timing.turn.active_player = bob;
         assert!(
-            !engine::decision::compute_legal_actions(&wrong_timing, alice)
+            !engine::decision::compute_legal_actions(&wrong_timing, alice).expect("fixture has complete replacement state")
                 .iter()
                 .any(|a| identifies(a, first))
         );
@@ -1270,7 +1270,7 @@ fn catalog_wish_allows_one_normal_play_and_independent_resolutions_stack() {
             engine::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
         }
         assert_eq!(
-            engine::decision::compute_legal_actions(&game, alice)
+            engine::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
                 .iter()
                 .any(|a| identifies(a, second)),
             copies == 2
@@ -1592,7 +1592,7 @@ fn catalog_escape_counts_distinct_card_types_across_the_selected_set() {
             .collect::<std::collections::HashSet<_>>()
             .len()
             >= 4;
-        let cast = engine::decision::compute_legal_actions(&game, alice).into_iter()
+        let cast = engine::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state").into_iter()
             .find(|action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == source));
         assert_eq!(cast.is_some(), legal, "types: {types:?}");
         if let Some(cast) = cast {
@@ -1682,7 +1682,7 @@ fn catalog_forage_permission_pays_its_cost_and_adds_finality_only_when_used() {
             .mana_pool
             .add(engine::mana::ManaSymbol::Black, 3);
         let cast_for = |game: &GameState| {
-            engine::decision::compute_legal_actions(game, alice).into_iter()
+            engine::decision::compute_legal_actions(game, alice).expect("fixture has complete replacement state").into_iter()
             .find(|action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))
         };
         assert!(cast_for(&game).is_none(), "forage cannot be free");
@@ -2452,7 +2452,7 @@ fn catalog_oven_uses_the_sacrificed_creatures_last_known_toughness() {
         .power_toughness(engine::card::PowerToughness::fixed(1, toughness))
         .build();
         game.create_object_from_definition(&creature, alice, Zone::Battlefield);
-        let action = engine::decision::compute_legal_actions(&game, alice)
+        let action = engine::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .into_iter()
             .find(|a| {
                 matches!(a,

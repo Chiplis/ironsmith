@@ -1,3 +1,4 @@
+use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
@@ -20,6 +21,9 @@ impl EffectExecutor for EndTurnEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = (|| {
         let player = resolve_player_filter(game, &self.player, ctx)?;
         if !game.is_active_player(player) {
             return Ok(EffectOutcome::resolved());
@@ -36,13 +40,20 @@ impl EffectExecutor for EndTurnEffect {
         // GameState::stack, so include its concrete stack object explicitly.
         // Ordinary ability entries have no separate zone object; spell and
         // ability copies do, and therefore move to exile before the SBA pass.
-        exile_stack_for_ending_procedure(game, ctx);
+        exile_stack_for_ending_procedure(game, ctx)?;
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
 
         // CR 724.1c-f require turn-runner state (including resumable SBA and
         // cleanup decisions), so yield the remainder of the procedure to it.
         game.turn_store.end_turn_procedure_pending = true;
         game.turn.priority_player = None;
         Ok(EffectOutcome::resolved())
+        })();
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
+        }
+        result
     }
 }
 
@@ -50,7 +61,10 @@ impl EffectExecutor for EndTurnEffect {
 ///
 /// Both CR 724.1b and 724.2b use this exact transaction. Ordinary ability
 /// entries whose source is elsewhere have no independent zone object to move.
-pub(crate) fn exile_stack_for_ending_procedure(game: &mut GameState, ctx: &mut ExecutionContext) {
+pub(crate) fn exile_stack_for_ending_procedure(game: &mut GameState, ctx: &mut ExecutionContext) -> Result<(), ExecutionError> {
+    let checkpoint = game.clone();
+    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+    let result = (|| {
     use crate::zone::Zone;
 
     let mut stack_objects = Vec::with_capacity(game.stack.len() + 1);
@@ -62,18 +76,30 @@ pub(crate) fn exile_stack_for_ending_procedure(game: &mut GameState, ctx: &mut E
     let mut seen = std::collections::HashSet::new();
     stack_objects.retain(|object_id| seen.insert(*object_id));
     for object_id in stack_objects {
+        if ctx.decision_maker.awaiting_choice() { return Ok(()); }
         if game
             .object(object_id)
             .is_some_and(|object| object.zone == Zone::Stack)
         {
-            let _ = crate::effects::zones::apply_zone_change(
-                game,
-                object_id,
-                Zone::Stack,
-                Zone::Exile,
-                crate::events::cause::EventCause::from_game_rule(),
-                &mut *ctx.decision_maker,
-            );
+            let _ = {
+    let zone_additional_effects = ctx.additional_replacement_effects_snapshot();
+    crate::effects::zones::apply_zone_change_with_context_and_additional_effects(
+        game,
+        object_id,
+        Zone::Stack,
+        Zone::Exile,
+        crate::events::cause::EventCause::from_game_rule(),
+        ctx,
+        &zone_additional_effects
+    )
+}?;
         }
     }
+        Ok(())
+    })();
+    if result.is_err() || ctx.decision_maker.awaiting_choice() {
+        *game = checkpoint;
+        context_checkpoint.restore(ctx);
+    }
+    result
 }

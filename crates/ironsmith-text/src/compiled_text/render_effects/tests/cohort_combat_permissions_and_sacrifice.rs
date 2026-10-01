@@ -435,7 +435,7 @@ fn cohort_exiled_spell_permission_checks_cast_face_and_expires_at_next_turn_star
             .find(|id| game.object(*id).unwrap().stable_id == stable)
             .unwrap();
         let can_cast = |game: &GameState| {
-            crate::decision::compute_legal_actions(game, alice).iter().any(|action| matches!(action, crate::decision::LegalAction::CastSpell { spell_id, .. } if *spell_id == exiled))
+            crate::decision::compute_legal_actions(game, alice).expect("fixture has complete replacement state").iter().any(|action| matches!(action, crate::decision::LegalAction::CastSpell { spell_id, .. } if *spell_id == exiled))
         };
         let expected = adventure || matches!(kind, CardType::Instant | CardType::Sorcery);
         assert_eq!(can_cast(&game), expected, "{kind:?} adventure={adventure}");

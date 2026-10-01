@@ -9,20 +9,116 @@ use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
 pub type ExecuteWithSourceEffect = ironsmith_core::ExecuteWithSourceEffect<Effect>;
 
+/// Freeze the source and LKI used by the complete child action.
+pub(super) fn resolve_source_binding(
+    effect: &ExecuteWithSourceEffect, game: &mut GameState, ctx: &mut ExecutionContext,
+) -> Option<(crate::ids::ObjectId, Option<ObjectSnapshot>)> {
+    let resolved = resolve_effect_source_with_lki(game, ctx, &effect.source);
+    finish_source_binding(effect, game, ctx, resolved)
+}
+
+fn finish_source_binding(
+    effect: &ExecuteWithSourceEffect, game: &GameState, ctx: &ExecutionContext,
+    resolved: Option<(crate::ids::ObjectId, Option<ObjectSnapshot>)>,
+) -> Option<(crate::ids::ObjectId, Option<ObjectSnapshot>)> {
+    // The source can leave the battlefield before this effect runs: a
+    // sacrifice and its own reflexive trigger are the printed case. The
+    // ability still resolves from the source's last known information
+    // (CR 608.2h), which the stack entry already carries, so rebinding is
+    // simply a no-op there rather than a failure.
+    let rebind_to_own_source_lki = matches!(effect.source.base(), ChooseSpec::Source)
+        && ctx.source_snapshot.is_some()
+        && game.object(ctx.source).is_none();
+    let Some((source_id, tagged_snapshot)) = resolved
+    else {
+        if rebind_to_own_source_lki {
+            return Some((ctx.source, ctx.source_snapshot.clone()));
+        }
+        return None;
+    };
+    let source_snapshot = match game.object(source_id) {
+        // A tagged source keeps its tagged last known information even
+        // after it left (CR 608.2h); that snapshot is authoritative.
+        _ if tagged_snapshot.is_some() => tagged_snapshot,
+        Some(source_obj) => match effect.source.base() {
+            ChooseSpec::Source => ctx.source_snapshot.as_ref().and_then(|snapshot| {
+                // Rebinding an effect to its own source must not replace the
+                // stack entry's battlefield LKI with the counter-cleared card
+                // object now in a graveyard (or another destination zone).
+                (snapshot.stable_id == source_obj.stable_id
+                    && (snapshot.object_id != source_obj.id || snapshot.zone != source_obj.zone))
+                    .then(|| snapshot.clone())
+            }),
+            _ => None,
+        }
+        .or_else(|| Some(ObjectSnapshot::from_object(source_obj, game))),
+        None if rebind_to_own_source_lki => return Some((ctx.source, ctx.source_snapshot.clone())),
+        None => return None,
+    };
+
+    Some((source_id, source_snapshot))
+}
+
+pub(super) fn with_source_binding<T>(
+    ctx: &mut ExecutionContext,
+    binding: &(crate::ids::ObjectId, Option<ObjectSnapshot>),
+    f: impl FnOnce(&mut ExecutionContext) -> T,
+) -> T {
+    let source = ctx.source;
+    let snapshot = ctx.source_snapshot.clone();
+    ctx.source = binding.0;
+    ctx.source_snapshot = binding.1.clone();
+    let result = f(ctx);
+    ctx.source = source;
+    ctx.source_snapshot = snapshot;
+    result
+}
+
+#[derive(Debug)]
+struct SourceProposal {
+    binding: Option<(crate::ids::ObjectId, Option<ObjectSnapshot>)>,
+    inner: Option<Box<dyn crate::effects::SimultaneousEffectProposal>>,
+}
+impl crate::effects::SimultaneousEffectProposal for SourceProposal {
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let (Some(binding), Some(inner)) = (self.binding, self.inner) else {
+            return Ok(EffectOutcome::target_invalid());
+        };
+        with_source_binding(ctx, &binding, |ctx| inner.commit(game, ctx))
+    }
+}
+
 impl EffectExecutor for ExecuteWithSourceEffect {
     fn supports_simultaneous_player_action(&self) -> bool {
-        true
+        (self.source.is_target() || matches!(self.source.base(), ChooseSpec::Source | ChooseSpec::SpecificObject(_) | ChooseSpec::Tagged(_)))
+            && self.effect.0.supports_simultaneous_player_action()
+    }
+    fn is_read_only_simultaneous_player_action(&self) -> bool {
+        (self.source.is_target() || matches!(self.source.base(), ChooseSpec::Source | ChooseSpec::SpecificObject(_) | ChooseSpec::Tagged(_)))
+            && self.effect.0.is_read_only_simultaneous_player_action()
     }
 
     fn prepare_simultaneous_player_action(
         &self,
-        _game: &GameState,
+        game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
-            effect: crate::effect::Effect::new(self.clone()),
-            iterated_player: ctx.iteration.iterated_player,
-        }))
+        if !self.supports_simultaneous_player_action() {
+            return Err(ExecutionError::Impossible("chooser-bearing source scope requires the mutable action-program preparation owner".into()));
+        }
+        let resolved = crate::effects::helpers::resolve_effect_source_from_spec_with_lki(game, ctx, &self.source);
+        let binding = finish_source_binding(self, game, ctx, resolved);
+        let inner = match &binding {
+            Some(binding) => Some(with_source_binding(ctx, binding, |ctx| {
+                self.effect.0.prepare_simultaneous_player_action(game, ctx)
+            })?),
+            None => None,
+        };
+        Ok(Box::new(SourceProposal { binding, inner }))
     }
 
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
@@ -42,53 +138,10 @@ impl EffectExecutor for ExecuteWithSourceEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        // The source can leave the battlefield before this effect runs: a
-        // sacrifice and its own reflexive trigger are the printed case. The
-        // ability still resolves from the source's last known information
-        // (CR 608.2h), which the stack entry already carries, so rebinding is
-        // simply a no-op there rather than a failure.
-        let rebind_to_own_source_lki = matches!(self.source.base(), ChooseSpec::Source)
-            && ctx.source_snapshot.is_some()
-            && game.object(ctx.source).is_none();
-        let Some((source_id, tagged_snapshot)) =
-            resolve_effect_source_with_lki(game, ctx, &self.source)
-        else {
-            if rebind_to_own_source_lki {
-                return execute_effect(game, &self.effect, ctx);
-            }
+        let Some(binding) = resolve_source_binding(self, game, ctx) else {
             return Ok(EffectOutcome::target_invalid());
         };
-        let source_snapshot = match game.object(source_id) {
-            // A tagged source keeps its tagged last known information even
-            // after it left (CR 608.2h); that snapshot is authoritative.
-            _ if tagged_snapshot.is_some() => tagged_snapshot,
-            Some(source_obj) => match self.source.base() {
-                ChooseSpec::Source => ctx.source_snapshot.as_ref().and_then(|snapshot| {
-                    // Rebinding an effect to its own source must not replace the
-                    // stack entry's battlefield LKI with the counter-cleared card
-                    // object now in a graveyard (or another destination zone).
-                    (snapshot.stable_id == source_obj.stable_id
-                        && (snapshot.object_id != source_obj.id
-                            || snapshot.zone != source_obj.zone))
-                        .then(|| snapshot.clone())
-                }),
-                _ => None,
-            }
-            .or_else(|| Some(ObjectSnapshot::from_object(source_obj, game))),
-            None if rebind_to_own_source_lki => return execute_effect(game, &self.effect, ctx),
-            None => return Ok(EffectOutcome::target_invalid()),
-        };
-
-        let original_source = ctx.source;
-        let original_source_snapshot = ctx.source_snapshot.clone();
-        ctx.source = source_id;
-        ctx.source_snapshot = source_snapshot;
-
-        let outcome = execute_effect(game, &self.effect, ctx);
-
-        ctx.source = original_source;
-        ctx.source_snapshot = original_source_snapshot;
-        outcome
+        with_source_binding(ctx, &binding, |ctx| execute_effect(game, &self.effect, ctx))
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

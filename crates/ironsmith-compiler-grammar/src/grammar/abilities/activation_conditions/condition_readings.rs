@@ -140,7 +140,10 @@ const READINGS: &[Reading] = &[
     Reading {
         id: RuleId::new("activate-only-if-predicate"),
         head: HeadDiscriminator::Any,
-        admits: |_| true,
+        // The dedicated graveyard-threshold reading owns "there are N or more
+        // ... cards in your graveyard"; the generic predicate reading of the
+        // same words would only make the registry ambiguous (and drop it).
+        admits: |input| !input.read_by("graveyard-condition"),
         read: |input| input.outcome(read_activate_only_if_predicate(input)),
     },
 ];

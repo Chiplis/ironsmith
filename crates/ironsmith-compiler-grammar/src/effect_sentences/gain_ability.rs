@@ -707,8 +707,8 @@ fn parse_granted_ability_component_for_gain(
             ))),
         ))]));
     }
-    // "gain all creature types" (Mirror Entity, Maskwood Nexus): the
-    // changeling characteristic as a granted static ability.
+    // "gain all creature types": the changeling characteristic as a
+    // granted static ability.
     if ability_words == ["all", "creature", "types"] {
         return Ok(Some(vec![GrantedAbilityAst::StaticAbility(Box::new(
             StaticAbilityAst::Static(StaticAbility::changeling()),
@@ -925,8 +925,12 @@ fn split_quoted_granted_ability_list(tokens: &[OwnedLexToken]) -> Option<Vec<&[O
         let prefix = trim_lexed_commas(tokens.get(..open)?);
         let quoted = tokens.get(open..=close)?;
         let tail = trim_lexed_commas(tokens.get(tail_start + 1..)?);
-        if prefix.is_empty() || quoted.is_empty() || tail.is_empty() {
+        if quoted.is_empty() || tail.is_empty() {
             return None;
+        }
+        // `gains "A" and "B"`: two quoted abilities with no leading keyword.
+        if prefix.is_empty() {
+            return Some(vec![quoted, tail]);
         }
         return Some(vec![prefix, quoted, tail]);
     }
@@ -1088,6 +1092,44 @@ pub fn parse_granted_abilities_for_gain_clause(
     Ok((Vec::new(), false))
 }
 
+fn named_token_trigger_subject_as_this_token(
+    definition: &TokenDefinitionSpec,
+    ability_tokens: &[OwnedLexToken],
+) -> Option<Vec<OwnedLexToken>> {
+    let TokenDefinitionSpec::Creature(creature) = definition else {
+        return None;
+    };
+    if !creature.legendary {
+        return None;
+    }
+    let intro = ability_tokens.first()?;
+    if !intro.is_any_word(&["when", "whenever"]) {
+        return None;
+    }
+    let name_tokens = crate::lexer::synthetic_phrase_tokens(&creature.name);
+    let name_words = crate::lexer::parser_token_word_refs(&name_tokens)
+        .into_iter()
+        .map(str::to_ascii_lowercase)
+        .collect::<Vec<_>>();
+    if name_words.is_empty() || name_words.len() != name_tokens.len() {
+        return None;
+    }
+    let subject = ability_tokens.get(1..1 + name_words.len())?;
+    let matches = subject
+        .iter()
+        .zip(name_words.iter())
+        .all(|(token, word)| token.is_word(word));
+    if !matches {
+        return None;
+    }
+    let span = subject[0].span;
+    let mut rewritten = vec![intro.clone()];
+    rewritten.push(OwnedLexToken::word("this", span));
+    rewritten.push(OwnedLexToken::word("token", span));
+    rewritten.extend_from_slice(&ability_tokens[1 + name_words.len()..]);
+    Some(rewritten)
+}
+
 fn token_definition_source_identity(
     definition: &TokenDefinitionSpec,
 ) -> (String, Vec<CardType>, Vec<crate::types::Subtype>) {
@@ -1212,6 +1254,15 @@ pub fn parse_granted_abilities_for_token_definition(
             ability_tokens,
         )
         .map_or(ability_tokens, |shape| shape.body_tokens);
+    // "Whenever Redwing attacks, surveil 1." on the legendary token named
+    // Redwing: the quoted trigger names the token itself. The trigger
+    // grammar knows the token only as "this token".
+    // The specialized-shape check below must still see the authored tokens:
+    // it mirrors what token-definition reminder merging already lowered from
+    // those same words ("When Smaug dies, create fourteen Treasure tokens").
+    let authored_ability_tokens = ability_tokens;
+    let renamed_trigger_tokens = named_token_trigger_subject_as_this_token(definition, ability_tokens);
+    let ability_tokens = renamed_trigger_tokens.as_deref().unwrap_or(ability_tokens);
     // A mixed `It has <keyword>, "<rule>," and <activation>` sentence is a
     // list of independent abilities.  A compact token-rule probe can match
     // one member (most commonly the trailing equip ability), but treating
@@ -1224,7 +1275,11 @@ pub fn parse_granted_abilities_for_token_definition(
     // this boundary rather than looking for the already-consumed pronoun.
     let mixed_pronoun_list = split_quoted_granted_ability_list(ability_tokens).is_some();
     let specialized = !mixed_pronoun_list
-        && token_rule_is_already_lowered_by_specialized_shape(definition, ability_tokens, &name);
+        && token_rule_is_already_lowered_by_specialized_shape(
+            definition,
+            authored_ability_tokens,
+            &name,
+        );
     if specialized {
         return Ok(Vec::new());
     }

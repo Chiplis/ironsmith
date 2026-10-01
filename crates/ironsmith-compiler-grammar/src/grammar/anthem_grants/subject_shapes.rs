@@ -219,6 +219,9 @@ fn parse_shared_suffix_subject(input: &mut LexStream<'_>) -> WResult<AnthemSubje
 }
 
 fn parse_shared_suffix_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    if let Some(filter) = parse_independent_zone_domain_pair(tokens) {
+        return Some(filter);
+    }
     let mut best: Option<(usize, ObjectFilter)> = None;
 
     for candidate in super::parse_shared_suffix_candidates(tokens) {
@@ -325,6 +328,45 @@ fn parse_shared_suffix_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> 
     }
 
     best.map(|(_, filter)| filter)
+}
+
+/// "Noble creatures you control and Lesson spells you control" (Lo and Li):
+/// two complete selectors, each with its own controller, over different
+/// zones. Neither arm's noun is a shared suffix of the other.
+fn parse_independent_zone_domain_pair(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let mut ands = tokens
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.is_word("and"));
+    let (and_index, _) = ands.next()?;
+    if ands.next().is_some() {
+        return None;
+    }
+    let left = trim_lexed_commas(&tokens[..and_index]);
+    let right = trim_lexed_commas(&tokens[and_index + 1..]);
+    if left.is_empty() || right.is_empty() {
+        return None;
+    }
+    let left_filter =
+        filters::parse_object_filter_with_grammar_entrypoint_lexed(left, false).ok()?;
+    let right_filter =
+        filters::parse_object_filter_with_grammar_entrypoint_lexed(right, false).ok()?;
+    if left_filter.controller.is_none()
+        || right_filter.controller.is_none()
+        || left_filter.zone.is_none()
+        || right_filter.zone.is_none()
+        || left_filter.zone == right_filter.zone
+        || !left_filter.any_of.is_empty()
+        || !right_filter.any_of.is_empty()
+        || !subject_branch_looks_type_like(&left_filter)
+        || !subject_branch_looks_type_like(&right_filter)
+    {
+        return None;
+    }
+    let mut disjunction = ObjectFilter::default();
+    disjunction.any_of = vec![left_filter, right_filter];
+    disjunction.set_conjunctive_set_surface(true);
+    Some(disjunction)
 }
 
 fn subject_branch_looks_type_like(filter: &ObjectFilter) -> bool {

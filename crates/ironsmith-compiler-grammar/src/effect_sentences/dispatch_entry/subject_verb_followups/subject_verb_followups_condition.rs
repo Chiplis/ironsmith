@@ -116,6 +116,18 @@ pub(super) fn pre_rule_conditional_optional_result_followup(
     if continuation.len() == sentence_tokens.len() && !is_when_you_do && !is_if_you_dont {
         return Ok(None);
     }
+    // An explicit failed action ("If you don't cast it, ...") observes
+    // whether that action happened, including when its eligibility condition
+    // was false. The ordinary result-followup grammar owns this sibling
+    // instruction. Moving it into the condition would skip the fallback.
+    // Compact "if/when you do" continuations retain their branch scope.
+    if is_if_you_dont
+        && crate::effect_sentences::consult_family::explicit_if_you_dont_action_remainder(
+            sentence_tokens,
+        ).is_some()
+    {
+        return Ok(None);
+    }
     let effects = match state.effects.last_mut() {
         Some(EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. })) => effects,
         Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {

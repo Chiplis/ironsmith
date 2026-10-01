@@ -146,7 +146,7 @@ fn class_ability(
 }
 
 fn can_activate(game: &crate::GameState, source: ObjectId, player: PlayerId, index: usize) -> bool {
-    crate::decision::compute_legal_actions(game, player)
+    crate::decision::compute_legal_actions(game, player).expect("fixture has complete replacement state")
         .iter()
         .any(|action| matches!(action, LegalAction::ActivateAbility { source: id, ability_index } if *id == source && *ability_index == index))
 }

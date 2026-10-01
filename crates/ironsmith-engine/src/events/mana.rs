@@ -81,44 +81,6 @@ impl ManaAddedEvent {
     }
 }
 
-pub(crate) fn apply_mana_replacements(
-    game: &mut GameState,
-    source: ObjectId,
-    controller: PlayerId,
-    player: PlayerId,
-    mana: Vec<ManaSymbol>,
-    production_provenance: ManaProductionProvenance,
-    snapshot: Option<ObjectSnapshot>,
-    decision_maker: &mut (impl crate::decision::DecisionMaker + ?Sized),
-) -> Vec<ManaSymbol> {
-    if mana.is_empty() {
-        return mana;
-    }
-
-    let event = crate::events::Event::new_with_provenance(
-        ManaAddedEvent::new(source, controller, player, mana.clone())
-            .with_production_provenance(production_provenance)
-            .with_snapshot(snapshot),
-        crate::provenance::ProvNodeId::default(),
-    );
-    let applied_effects = std::collections::HashSet::new();
-    let applied_effect_keys = std::collections::HashSet::new();
-    match crate::events::processing::process_trait_event_with_dm_and_applied_effects(
-        game,
-        event,
-        decision_maker,
-        &applied_effects,
-        &applied_effect_keys,
-    )
-    .into_event()
-    {
-        Some(event) => crate::events::downcast_event::<ManaAddedEvent>(event.inner())
-            .map(|event| event.mana.clone())
-            .unwrap_or(mana),
-        None => Vec::new(),
-    }
-}
-
 pub mod matchers {
     use super::*;
     use crate::events::context::EventContext;

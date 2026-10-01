@@ -691,8 +691,62 @@ fn read_quantified_participant_subject_effect(
     input: &InnerChain<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
+    if let Some((opponents, body)) = empty_handed_participant_as_conditional_loop(tokens) {
+        use crate::cards::builders::{
+            ConditionalEffectAst, ForEachEffectAst, PlayerPredicateAst, PredicateAst,
+        };
+        let conditional = EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::Player(PlayerPredicateAst::PlayerCardsInHandOrFewer {
+                player: crate::cards::builders::PlayerAst::That,
+                count: 0,
+            }),
+            if_true: parse_effect_chain_inner_lexed(&body)?,
+            if_false: Vec::new(),
+        });
+        let effects = vec![conditional];
+        return Ok(Some(vec![EffectAst::ForEach(if opponents {
+            ForEachEffectAst::ForEachOpponent { effects }
+        } else {
+            ForEachEffectAst::ForEachPlayer { effects }
+        })]));
+    }
     if let Some(effect) = parse_quantified_participant_subject_effect(tokens)? {
         return Ok(Some(vec![effect]));
     }
     Ok(None)
+}
+
+/// "Each opponent with no cards in hand loses 10 life" (Tinybones, Trinket
+/// Thief): the hand-size qualifier restricts which participants act. Read it
+/// as the equivalent per-player conditional, "For each opponent, if that
+/// player has no cards in hand, that player loses 10 life", which the
+/// control-flow grammar already represents exactly.
+fn empty_handed_participant_as_conditional_loop(
+    tokens: &[OwnedLexToken],
+) -> Option<(bool, Vec<OwnedLexToken>)> {
+    let words = crate::lexer::token_word_refs(tokens);
+    let opponents = match words.get(..2)? {
+        ["each", "opponent"] => true,
+        ["each", "player"] => false,
+        _ => return None,
+    };
+    let qualifier_len = match words.get(2..)? {
+        ["with", "no", "cards", "in", "hand", ..] => 5,
+        ["who", "has", "no", "cards", "in", "hand", ..] => 6,
+        ["with", "no", "cards", "in", "their", "hand", ..] => 6,
+        ["who", "has", "no", "cards", "in", "their", "hand", ..] => 7,
+        _ => return None,
+    };
+    let rest_word = 2 + qualifier_len;
+    if rest_word >= words.len() {
+        return None;
+    }
+    // Every token is a word up to the qualifier's end, so the word index is
+    // the token index there.
+    if tokens[..rest_word].iter().any(|token| token.as_word().is_none()) {
+        return None;
+    }
+    let mut body = crate::lexer::synthetic_word_tokens(["that", "player"]);
+    body.extend_from_slice(&tokens[rest_word..]);
+    Some((opponents, body))
 }

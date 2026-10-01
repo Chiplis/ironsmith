@@ -202,6 +202,11 @@ pub fn parse_consult_traversal_with_inline_followup(
     if trailing.is_empty() {
         return Ok(None);
     }
+    bind_inline_plural_back_reference_to_consulted_collection(
+        &shape.trailing_effect,
+        &parts,
+        &mut trailing,
+    );
     let mut effects = parts.effects;
     effects.append(&mut trailing);
     if each_opponent {
@@ -231,6 +236,38 @@ pub fn parse_consult_traversal_with_inline_followup(
         })];
     }
     Ok(Some(effects))
+}
+
+/// "... reveals cards from the top of their library until they reveal a land
+/// card, then puts those cards into their graveyard": within the traversal's
+/// own sentence, an unqualified plural "those cards" names every card the
+/// traversal exposed (the matching card included), not only the singular
+/// match that a later "that card" would name. A tail that also partitions the
+/// collection ("the rest", "that card", "it") keeps its ordinary antecedents.
+fn bind_inline_plural_back_reference_to_consulted_collection(
+    trailing_tokens: &[OwnedLexToken],
+    parts: &ConsultSentenceParts,
+    trailing: &mut [EffectAst],
+) {
+    use ironsmith_core::tag::TagKeyWalk;
+    let words = crate::lexer::parser_token_word_refs(trailing_tokens);
+    let names_plural_collection = words
+        .windows(2)
+        .any(|pair| pair == ["those", "cards"]);
+    let partitions_collection = words
+        .iter()
+        .any(|word| matches!(*word, "rest" | "that" | "it" | "other" | "remaining"));
+    if !names_plural_collection || partitions_collection {
+        return;
+    }
+    let it = crate::tag::CompilerReferenceTag::It.as_str();
+    for effect in trailing.iter_mut() {
+        effect.map_tag_keys(&mut |key| {
+            if key.as_str() == it || *key == parts.match_tag {
+                *key = parts.all_tag.clone();
+            }
+        });
+    }
 }
 
 /// Compose a consult's common inline damage/disposition tail from leaf
@@ -757,7 +794,7 @@ pub fn parse_if_you_dont_sentence(
     Ok(Some(effects))
 }
 
-fn explicit_if_you_dont_action_remainder(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+pub(super) fn explicit_if_you_dont_action_remainder(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let prefix_len = if_you_dont_prefix_len(tokens)?;
 
     // The ordinary "If you don't, ..." form is intentionally left to the

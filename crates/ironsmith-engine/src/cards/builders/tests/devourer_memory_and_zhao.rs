@@ -73,14 +73,14 @@ fn zhao_keeps_exact_counter_threshold_and_nonbasic_land_rules() {
     let nonbasic =
         game.create_object_from_definition(&land("Threshold Nonbasic", false), alice, Zone::Hand);
     let nonbasic = game
-        .move_object_with_etb_processing(nonbasic, Zone::Battlefield)
+        .move_object_with_etb_processing(nonbasic, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
         .expect("nonbasic land should enter");
     assert!(game.is_tapped(nonbasic.new_id));
 
     let basic =
         game.create_object_from_definition(&land("Threshold Basic", true), alice, Zone::Hand);
     let basic = game
-        .move_object_with_etb_processing(basic, Zone::Battlefield)
+        .move_object_with_etb_processing(basic, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
         .expect("basic land should enter");
     assert!(!game.is_tapped(basic.new_id));
 

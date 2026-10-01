@@ -28,6 +28,7 @@ fn animate_artifact_definition() -> crate::cards::CardDefinition {
         .card_types(vec![CardType::Enchantment])
         .subtypes(vec![Subtype::Aura])
         .enchants(ObjectFilter::artifact())
+        .with_ability(Ability::static_ability(StaticAbility::source_line_static_group(2)))
         .with_ability(Ability::static_ability(
             StaticAbility::set_card_types(
                 animation_filter.clone(),
@@ -2572,6 +2573,7 @@ fn filtered_animation_values_are_evaluated_per_affected_object() {
     let mana_value = Value::ManaValueOf(Box::new(ChooseSpec::Iterated));
     let march = CardDefinitionBuilder::new(CardId::new(), "March of the Machines")
         .card_types(vec![CardType::Enchantment])
+        .with_ability(Ability::static_ability(StaticAbility::source_line_static_group(2)))
         .with_ability(Ability::static_ability(StaticAbility::set_card_types(
             march_filter.clone(),
             vec![CardType::Artifact, CardType::Creature],
@@ -2622,6 +2624,7 @@ fn filtered_animation_values_are_evaluated_per_affected_object() {
     let loyalty = Value::CountersOn(Box::new(ChooseSpec::Iterated), Some(CounterType::Loyalty));
     let spark = CardDefinitionBuilder::new(CardId::new(), "Spark Rupture")
         .card_types(vec![CardType::Enchantment])
+        .with_ability(Ability::static_ability(StaticAbility::source_line_static_group(3)))
         .with_ability(Ability::static_ability(
             StaticAbility::remove_all_abilities(walker_filter.clone()),
         ))
@@ -2698,6 +2701,7 @@ fn attached_conditional_animation_is_scoped_to_each_aura() {
     let animate_artifact = CardDefinitionBuilder::new(CardId::new(), "Animate Artifact")
         .card_types(vec![CardType::Enchantment])
         .subtypes(vec![Subtype::Aura])
+        .with_ability(Ability::static_ability(StaticAbility::source_line_static_group(2)))
         .with_ability(Ability::static_ability(
             StaticAbility::set_card_types(
                 animation_filter.clone(),
@@ -3010,6 +3014,7 @@ fn two_active_conditional_animation_auras_terminate() {
     let animate_artifact = CardDefinitionBuilder::new(CardId::new(), "Animate Artifact")
         .card_types(vec![CardType::Enchantment])
         .subtypes(vec![Subtype::Aura])
+        .with_ability(Ability::static_ability(StaticAbility::source_line_static_group(2)))
         .with_ability(Ability::static_ability(
             StaticAbility::set_card_types(
                 animation_filter.clone(),

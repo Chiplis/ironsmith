@@ -9,6 +9,8 @@ pub trait GrantStaticAbility: Clone + PartialEq {
     fn grant_flash() -> Self;
     fn grant_display(&self) -> String;
     fn grant_has_flash(&self) -> bool;
+    /// Whether this payload replaces its own owner's graveyard arrival with exile.
+    fn grant_is_source_owner_graveyard_exile(&self) -> bool { false }
 }
 
 /// A granted alternative cast whose exact cost is derived from the granted card.
@@ -1357,6 +1359,12 @@ where
                     cast_this_way_spell_subject(cast_filter)
                 }
             };
+            if self.cast_this_way_grants.len() == 1
+                && self.cast_this_way_grants[0].grant_is_source_owner_graveyard_exile()
+            {
+                let spell_text = cast_spell_text();
+                return format!(". If {spell_text} cast this way would be put into your graveyard, exile it instead");
+            }
             if grants.len() == 1 && grants[0].eq_ignore_ascii_case("haste") {
                 let spell_text = cast_spell_text();
                 return format!(
@@ -1778,6 +1786,7 @@ where
                 cast_filter.owner = None;
             }
             let filter_desc = castable_filter_description(&cast_filter);
+            let filter_desc = if filter_desc == "spell" { "a spell".to_string() } else { filter_desc };
             let cost_text = graveyard_cast_cost_text(additional_costs);
             if self.filter == ObjectFilter::source() {
                 let mut line = format!("{may_prefix} cast this card from your graveyard");

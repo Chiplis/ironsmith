@@ -232,7 +232,7 @@ fn activation_taps_and_sacrifices_before_private_look() {
         .build();
     game.create_object_from_definition(&card, bob, Zone::Hand);
     let action_for = |game: &GameState, player| {
-        compute_legal_actions(game, player)
+        compute_legal_actions(game, player).expect("fixture has complete replacement state")
             .into_iter()
             .find(|a| matches!(a, LegalAction::ActivateAbility { source: id, .. } if *id == source))
     };

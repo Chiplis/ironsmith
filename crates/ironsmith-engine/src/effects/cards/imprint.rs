@@ -3,6 +3,7 @@
 //! Imprint exiles a card from a zone (typically hand) and associates it with
 //! the source permanent. Used by Chrome Mox, Isochron Scepter, etc.
 
+use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
 use crate::decisions::context::SelectionRevealPolicy;
 use crate::decisions::specs::ChooseObjectsSpec;
 use crate::decisions::{MayChooseCardSpec, make_decision};
@@ -63,6 +64,10 @@ impl EffectExecutor for ImprintFromHandEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = (|| {
         let controller = ctx.controller;
         let source_id = ctx.source;
 
@@ -155,6 +160,8 @@ impl EffectExecutor for ImprintFromHandEffect {
             )
         };
 
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+
         // Verify the card is still valid
         let chosen_card = chosen_card.filter(|card_id| valid_cards.contains(card_id));
 
@@ -164,36 +171,48 @@ impl EffectExecutor for ImprintFromHandEffect {
             // effects apply to it.
             let from_zone = game.object(card_id).map(|object| object.zone);
             let additional_effects = ctx.additional_replacement_effects_snapshot();
-            let exiled_id = from_zone.and_then(|from_zone| {
-                match crate::effects::zones::apply_zone_change_with_additional_effects(
-                    game,
-                    card_id,
-                    from_zone,
-                    Zone::Exile,
-                    ctx.cause.clone(),
-                    &mut *ctx.decision_maker,
-                    &additional_effects,
-                ) {
+            let mut receipts = Vec::new();
+            let exiled_id = if let Some(from_zone) = from_zone {
+                let receipt = crate::effects::zones::apply_zone_change_with_context_and_additional_effects(
+    game,
+    card_id,
+    from_zone,
+    Zone::Exile,
+    ctx.cause.clone(),
+    ctx,
+    &additional_effects
+)?;
+                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                let exiled_id = match &receipt.original {
                     crate::events::processing::EventOutcome::Proceed(change)
                         if change.final_zone == Zone::Exile =>
                     {
                         change.new_object_id
                     }
                     _ => None,
-                }
-            });
+                };
+                receipts.push((card_id, receipt));
+                exiled_id
+            } else { None };
 
-            if let Some(exiled_id) = exiled_id {
-                // Imprint it on the source permanent
+            let original_outcome = if let Some(exiled_id) = exiled_id {
                 game.imprint_card(source_id, exiled_id);
                 game.add_exiled_with_source_link(source_id, exiled_id);
-                Ok(EffectOutcome::with_objects(vec![exiled_id]))
+                EffectOutcome::with_objects(vec![exiled_id])
             } else {
-                Ok(EffectOutcome::count(0))
-            }
+                EffectOutcome::count(0)
+            };
+            crate::effects::zones::finish_zone_change_receipts(game, ctx, original_outcome, receipts)
         } else {
             // Player chose not to imprint
             Ok(EffectOutcome::count(0))
         }
+        })();
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
+        }
+        if ctx.decision_maker.awaiting_choice() { return result.map(|_| EffectOutcome::count(0)); }
+        result
     }
 }

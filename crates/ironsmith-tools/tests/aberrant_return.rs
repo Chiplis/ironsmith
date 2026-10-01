@@ -184,7 +184,7 @@ fn aberrant_return_counted_targets_return_only_legal_identities_with_counters() 
                 .unwrap()
                 .mana_pool
                 .add(ManaSymbol::Colorless, 4);
-            let action = compute_legal_actions(&game,alice).into_iter().find(|action| matches!(action,LegalAction::CastSpell{spell_id,..} if *spell_id==source)).unwrap();
+            let action = compute_legal_actions(&game,alice).expect("fixture has complete replacement state").into_iter().find(|action| matches!(action,LegalAction::CastSpell{spell_id,..} if *spell_id==source)).unwrap();
             let mut dm = Pick {
                 selected: ids[..count].to_vec(),
                 excluded: vec![wrong_zone, wrong_type],
@@ -313,7 +313,7 @@ fn aberrant_return_cannot_cast_without_a_legal_target() {
     game.create_object_from_definition(&creature, alice, Zone::Hand);
     game.create_object_from_definition(&noncreature, alice, Zone::Graveyard);
     let can_cast = |game: &GameState| {
-        compute_legal_actions(game, alice)
+        compute_legal_actions(game, alice).expect("fixture has complete replacement state")
             .iter()
             .any(|action| matches!(action,LegalAction::CastSpell{spell_id,..} if *spell_id==source))
     };

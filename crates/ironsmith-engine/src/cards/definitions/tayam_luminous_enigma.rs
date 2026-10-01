@@ -98,7 +98,7 @@ mod tests {
 
         let alice_hand_id = game.create_object_from_card(&test_creature, alice, Zone::Hand);
         let alice_entry = game
-            .move_object_with_etb_processing(alice_hand_id, Zone::Battlefield)
+            .move_object_with_etb_processing(alice_hand_id, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
             .expect("alice creature should enter battlefield");
         let alice_entered = game
             .object(alice_entry.new_id)
@@ -111,7 +111,7 @@ mod tests {
 
         let bob_hand_id = game.create_object_from_card(&test_creature, bob, Zone::Hand);
         let bob_entry = game
-            .move_object_with_etb_processing(bob_hand_id, Zone::Battlefield)
+            .move_object_with_etb_processing(bob_hand_id, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
             .expect("bob creature should enter battlefield");
         let bob_entered = game
             .object(bob_entry.new_id)

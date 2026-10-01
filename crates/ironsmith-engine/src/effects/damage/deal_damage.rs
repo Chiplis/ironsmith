@@ -242,11 +242,16 @@ fn apply_processed_damage_results(
 
     let keywords = crate::rules::damage::source_damage_keywords(game, source, source_snapshot);
     let mut outcomes = Vec::new();
+    let mut programs = Vec::new();
+    let damage_source_snapshot = game.object(source).map(|object|
+        crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
+        .or_else(|| source_snapshot.cloned());
     let mut total_damage_dealt = 0u32;
     let mut affected_objects = Vec::new();
     let mut any_replacement_prevented = false;
     let mut lifelink_outcome = None;
     for processed in processed_results {
+        programs.extend(processed.programs);
         any_replacement_prevented |= processed.replacement_prevented;
         if let Some(mut payload) = processed.payload_outcome {
             if let Some(batch) = simultaneous_batch {
@@ -308,9 +313,7 @@ fn apply_processed_damage_results(
                 if let Some(batch) = simultaneous_batch {
                     event = event.with_simultaneous_batch(batch);
                 }
-                if game.object(source).is_none()
-                    && let Some(snapshot) = source_snapshot
-                {
+                if let Some(snapshot) = damage_source_snapshot.as_ref() {
                     event = event.with_source_snapshot(snapshot.clone());
                 }
                 outcome = outcome.with_event(event);
@@ -322,9 +325,7 @@ fn apply_processed_damage_results(
                         *event = event.clone().with_simultaneous_batch(batch);
                     }
                 }
-                let damage_summary = outcome.value.clone();
-                outcome = EffectOutcome::aggregate([outcome, consequence_outcome]);
-                outcome.value = damage_summary;
+                outcome = EffectOutcome::aggregate_replacement_outcomes(outcome, [consequence_outcome]);
             }
 
             outcomes.push(outcome);
@@ -365,11 +366,38 @@ fn apply_processed_damage_results(
         outcome = outcome.with_affected_objects_from_game(game, affected_objects);
     }
     if let Some(gain) = lifelink_outcome {
-        let damage_summary = outcome.value.clone();
-        outcome = EffectOutcome::aggregate([outcome, gain]);
-        outcome.value = damage_summary;
+        outcome = EffectOutcome::aggregate_replacement_outcomes(outcome, [gain]);
     }
-    Ok(outcome)
+    let mut parent = ExecutionContext::new(source, source_controller.unwrap_or(game.turn.active_player), dm)
+        .with_cause(cause).with_provenance(provenance);
+    parent.source_snapshot = damage_source_snapshot;
+    parent.replacement = replacement_scope.clone();
+    finish_damage_replacement_programs(game, &mut parent, outcome, programs)
+}
+
+/// Execute captured additions after their owning damage operation. Targets
+/// use the matched event and its captured incarnation, never a later ID chase.
+pub(crate) fn finish_damage_replacement_programs(
+    game: &mut GameState,
+    parent: &mut ExecutionContext,
+    outcome: EffectOutcome,
+    programs: Vec<crate::events::processing::PreparedReplacementProgram>,
+) -> Result<EffectOutcome, ExecutionError> {
+    crate::effects::replacement::execute_deferred_replacement_programs_with_bindings(
+        game, parent, outcome, programs, |_, context, _| {
+            let damage = crate::events::downcast_event::<DamageEvent>(context.event.inner())
+                .ok_or_else(|| ExecutionError::InternalError("damage addition lost its matched event".into()))?;
+            let target = match damage.target {
+                DamageTarget::Player(player) => ResolvedTarget::Player(player),
+                DamageTarget::Object(object) => ResolvedTarget::Object(object),
+            };
+            let snapshots = damage.target_snapshot.clone().into_iter().collect::<Vec<_>>();
+            Ok(crate::effects::replacement::ReplacementProgramBindings {
+                targets: Some(vec![target]),
+                object_tags: vec![("it".into(), snapshots.clone()), ("__it__".into(), snapshots)],
+            })
+        },
+    )
 }
 
 /// CR 120.4a / 120.10: excess damage dealt to a permanent. A permanent that
@@ -2080,4 +2108,91 @@ mod tests {
         assert_eq!(game.damage_on(target), 0);
     }
 
+}
+
+#[cfg(test)]
+mod replacement_damage_addition_owner_contract_tests {
+    use super::*;
+    use crate::card::CardBuilder;
+    use crate::decision::DecisionMaker;
+    use crate::effect::{Effect, Value};
+    use crate::ids::{CardId, ObjectId, PlayerId};
+    use crate::object::CounterType;
+    use crate::replacement::{ReplacementAction, ReplacementEffect};
+    use crate::snapshot::ObjectSnapshot;
+    use crate::target::ObjectFilter;
+    struct Answers { victims: Vec<ObjectId>, pause: bool, pending: bool, calls: usize, binding: bool }
+    impl DecisionMaker for Answers {
+        fn decide_boolean(&mut self, game: &GameState, _: &crate::decisions::context::BooleanContext) -> bool {
+            self.calls += 1;
+            for id in &self.victims { assert_eq!(game.damage_on(*id), 3, "all original damage precedes additions"); }
+            if self.binding { assert_eq!(game.counter_count(self.victims[0], CounterType::PlusOnePlusOne), 1); }
+            self.pending = self.pause;
+            !self.pending
+        }
+        fn awaiting_choice(&self) -> bool { self.pending }
+    }
+    fn creature(game: &mut GameState, owner: PlayerId) -> ObjectId {
+        game.create_object_from_card(&CardBuilder::new(CardId::new(), "Damage owner fixture")
+            .card_types(vec![CardType::Creature]).power_toughness(crate::card::PowerToughness::fixed(3, 12)).build(), owner, crate::zone::Zone::Battlefield)
+    }
+    fn check(multiple: bool, mode: u8) {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let source = creature(&mut game, alice); let replacement_source = creature(&mut game, bob);
+        let sentinel = creature(&mut game, alice); let first = creature(&mut game, bob);
+        let mut victims = vec![first]; if multiple { victims.push(creature(&mut game, bob)); }
+        let actions = match mode {
+            1 => vec![Effect::gain_life(3), Effect::lose_life(Value::X)],
+            3 => vec![Effect::new(crate::effects::PutCountersEffect::new(CounterType::PlusOnePlusOne, 1, ChooseSpec::tagged("it"))), Effect::may(vec![Effect::gain_life(0)])],
+            _ => vec![Effect::gain_life(3), Effect::may(vec![Effect::gain_life(4)])],
+        };
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(replacement_source, bob,
+            crate::events::damage::matchers::DamageToObjectMatcher::new(ObjectFilter::specific(first)), ReplacementAction::Additionally(actions)));
+        let snapshots = victims.iter().map(|id| ObjectSnapshot::from_object(game.object(*id).unwrap(), &game)).collect::<Vec<_>>();
+        let sentinel_snapshot = ObjectSnapshot::from_object(game.object(sentinel).unwrap(), &game);
+        game.take_pending_trigger_events(); let ids = game.next_object_id_counter(); let objects = game.objects_in_deterministic_order().len();
+        let mut dm = Answers { victims: victims.clone(), pause: mode == 2, pending: false, calls: 0, binding: mode == 3 };
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm).with_targets(vec![ResolvedTarget::Object(sentinel)]);
+        ctx.set_tagged_objects("it", vec![sentinel_snapshot.clone()]); ctx.set_tagged_objects("victims", snapshots.clone());
+        let effect = DealDamageEffect::new(3, if multiple { ChooseSpec::tagged("victims") } else { ChooseSpec::SpecificObject(first) });
+        let result = effect.execute(&mut game, &mut ctx);
+        if mode == 1 { assert!(matches!(result, Err(ExecutionError::UnresolvableValue(_)))); }
+        else if mode == 2 { assert!(ctx.decision_maker.awaiting_choice()); assert!(result.unwrap().events.is_empty()); }
+        else {
+            let outcome = result.unwrap(); assert_eq!(outcome.count_or_zero(), 3 * victims.len() as i32);
+            for id in &victims { assert_eq!(game.damage_on(*id), 3); }
+            assert_eq!(game.player(alice).unwrap().life, 20); assert_eq!(game.player(bob).unwrap().life, if mode == 3 { 20 } else { 27 });
+            assert_eq!(outcome.events.iter().filter(|event| event.downcast::<DamageEvent>().is_some()).count(), victims.len());
+            if mode == 3 { assert_eq!(game.counter_count(first, CounterType::PlusOnePlusOne), 1); }
+            else { assert_eq!(outcome.events.iter().filter_map(|event| event.downcast::<LifeGainEvent>()).map(|event| (event.player, event.amount)).collect::<Vec<_>>(), vec![(bob, 3), (bob, 4)]); }
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+        }
+        assert_eq!(ctx.source, source); assert_eq!(ctx.controller, alice); assert_eq!(ctx.targets, vec![ResolvedTarget::Object(sentinel)]);
+        assert_eq!(ctx.get_tagged_all("it").unwrap()[0].object_id, sentinel_snapshot.object_id);
+        assert_eq!(game.counter_count(sentinel, CounterType::PlusOnePlusOne), 0);
+        if mode == 1 || mode == 2 {
+            for id in &victims { assert_eq!(game.damage_on(*id), 0); assert_eq!(game.counter_count(*id, CounterType::PlusOnePlusOne), 0); }
+            assert_eq!(game.player(bob).unwrap().life, 20); assert_eq!(game.next_object_id_counter(), ids);
+            assert_eq!(game.objects_in_deterministic_order().len(), objects); assert!(game.effect_store.replacement_effects.get_effect(shield).is_some());
+            assert!(game.take_pending_trigger_events().is_empty());
+        }
+        drop(ctx); if mode == 0 || mode == 3 { assert_eq!(dm.calls, 1); }
+        if mode == 2 {
+            assert_eq!(dm.calls, 1); dm.pause = false; dm.pending = false;
+            let mut ctx = ExecutionContext::new(source, alice, &mut dm); ctx.set_tagged_objects("victims", snapshots);
+            let outcome = effect.execute(&mut game, &mut ctx).unwrap(); assert_eq!(outcome.count_or_zero(), 3 * victims.len() as i32);
+            for id in &victims { assert_eq!(game.damage_on(*id), 3); }
+            assert_eq!(game.player(bob).unwrap().life, 27); assert!(!ctx.decision_maker.awaiting_choice());
+            drop(ctx); assert_eq!(dm.calls, 2);
+        }
+    }
+    #[test] fn single_additions_follow_damage() { check(false, 0); }
+    #[test] fn single_error_restores_damage() { check(false, 1); }
+    #[test] fn single_pending_replays_once() { check(false, 2); }
+    #[test] fn single_addition_binds_matched_target() { check(false, 3); }
+    #[test] fn batch_additions_follow_all_damage() { check(true, 0); }
+    #[test] fn batch_error_restores_all_damage() { check(true, 1); }
+    #[test] fn batch_pending_replays_once() { check(true, 2); }
+    #[test] fn batch_addition_binds_matched_target() { check(true, 3); }
 }

@@ -13164,6 +13164,9 @@ pub(super) fn describe_triggered_resolution_text(
     if let Some(text) = describe_etb_copy_next_spell_when_cast(triggered) {
         return Some(text);
     }
+    if let Some(text) = describe_etb_copy_next_filtered_spell_kicked_twice(triggered) {
+        return Some(text);
+    }
     if let Some(text) =
         describe_last_counter_destroy_attached_land_and_damage_controller(triggered, subject)
     {
@@ -17387,6 +17390,79 @@ fn describe_etb_copy_next_spell_when_cast(
     }
     Some(format!(
         "copy the next spell you cast this turn when you cast it. You may choose new targets for the copy. {STANDARD_REMINDER_OPEN_SENTINEL}A copy of a permanent spell becomes a token.{STANDARD_REMINDER_CLOSE_SENTINEL}"
+    ))
+}
+
+/// "copy the next instant or sorcery spell with mana value 2 or less you cast
+/// this turn when you cast it. If this creature was kicked, copy that spell
+/// twice instead. You may choose new targets for the copies." (Sea Gate
+/// Stormcaller): a one-copy watcher whose kicked self-replacement schedules
+/// the same watcher copying twice.
+fn describe_etb_copy_next_filtered_spell_kicked_twice(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<String> {
+    let enters = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::ZoneChangeTrigger>()?;
+    if !enters.this_object
+        || enters.to != crate::triggers::zone_changes::ZonePattern::Specific(Zone::Battlefield)
+        || !triggered.choices.is_empty()
+        || triggered.intervening_if.is_some()
+    {
+        return None;
+    }
+    let [segment] = triggered.effects.segments.as_slice() else {
+        return None;
+    };
+    let [default_schedule] = segment.default_effects.as_slice() else {
+        return None;
+    };
+    let [branch] = segment.self_replacements.as_slice() else {
+        return None;
+    };
+    if !matches!(
+        &branch.condition,
+        crate::effect::Condition::TurnHistory(
+            ironsmith_core::TurnHistoryCondition::SourceWasKicked { .. }
+        )
+    ) {
+        return None;
+    }
+    let [replacement_schedule] = branch.replacement_effects.as_slice() else {
+        return None;
+    };
+    let once = describe_next_spell_delayed_trigger(
+        default_schedule.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()?,
+        false,
+    )?;
+    let twice = describe_next_spell_delayed_trigger(
+        replacement_schedule.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()?,
+        false,
+    )?;
+    let spell = once
+        .strip_prefix("When you next cast ")?
+        .strip_suffix(
+            " this turn, copy that spell. You may choose new targets for the copy",
+        )?;
+    let twice_spell = twice.strip_prefix("When you next cast ")?.strip_suffix(
+        " this turn, copy that spell twice. You may choose new targets for the copies",
+    )?;
+    if spell != twice_spell {
+        return None;
+    }
+    // The trigger display puts the head noun last ("instant or sorcery with
+    // mana value 2 or less spell"); the authored surface reads it before the
+    // qualifier.
+    let spell = match spell.strip_suffix(" spell") {
+        Some(body) => match body.split_once(" with ") {
+            Some((head, qualifier)) => format!("{head} spell with {qualifier}"),
+            None => format!("{body} spell"),
+        },
+        None => spell.to_string(),
+    };
+    let condition = super::normalize_common::describe_condition(&branch.condition);
+    Some(format!(
+        "copy the next {spell} you cast this turn when you cast it. If {condition}, copy that spell twice instead. You may choose new targets for the copies"
     ))
 }
 

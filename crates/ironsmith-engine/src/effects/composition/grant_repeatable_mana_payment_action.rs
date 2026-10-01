@@ -113,7 +113,7 @@ mod tests {
         assert_eq!(game.effect_store.prevention_effects.shields().len(), 2);
 
         let damage_source = game.new_object_id();
-        let (remaining, _) = crate::events::processing::process_damage_with_event(
+        let (remaining, _) = crate::events::processing::process_damage_summary_for_test(
             &mut game,
             damage_source,
             crate::events::DamageTarget::Object(target),

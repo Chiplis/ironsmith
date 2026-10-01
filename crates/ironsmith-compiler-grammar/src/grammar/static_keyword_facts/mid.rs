@@ -260,12 +260,23 @@ fn parse_target_fact(
         return Some(CostTargetFact::AnyPlayer);
     }
     let target_token = view.map_word_to_token_boundary(target_start)?;
-    let filter = crate::grammar::primitives::probe_shape(
+    let mut filter = crate::grammar::primitives::probe_shape(
         parse_object_filter_with_grammar_entrypoint_lexed(
             trim_lexed_commas(tokens.get(target_token..)?),
             false,
         ),
     )?;
+    // "if it targets a creature card with mana value 3 or less" (No One Left
+    // Behind): a targeted card is in another zone (the spell's own target
+    // names it), never on the battlefield.
+    if filter.zone == Some(crate::zone::Zone::Battlefield)
+        && target_words
+            .iter()
+            .any(|word| matches!(*word, "card" | "cards"))
+        && !target_words.contains(&"battlefield")
+    {
+        filter.zone = None;
+    }
     Some(CostTargetFact::Object(filter))
 }
 

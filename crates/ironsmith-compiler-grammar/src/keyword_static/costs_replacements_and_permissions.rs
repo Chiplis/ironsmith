@@ -1049,12 +1049,29 @@ pub fn parse_double_conditional_this_spell_cost_reduction_line(
                 &["to", "cast", "if"],
             )
     });
-    let Some(and_idx) = split else {
-        return Ok(None);
+    // "This spell costs {1} less to cast if you control a Spirit. It also
+    // costs {1} less to cast if you control an enchantment.": the second
+    // sentence is a second, independent reduction of the same spell.
+    let also_sentence = (costs_idx + 1..tokens.len()).find(|&idx| {
+        tokens[idx].kind == TokenKind::Period
+            && tokens.get(idx + 1).is_some_and(|token| token.is_word("it"))
+            && tokens.get(idx + 2).is_some_and(|token| token.is_word("also"))
+            && tokens.get(idx + 3).is_some_and(|token| token.is_word("costs"))
+    });
+    let (left, right) = if let Some(period_idx) = also_sentence {
+        let left = trim_commas(&tokens[..period_idx]);
+        let mut right = tokens[..=costs_idx].to_vec();
+        right.extend_from_slice(&tokens[period_idx + 4..]);
+        (left, right)
+    } else {
+        let Some(and_idx) = split else {
+            return Ok(None);
+        };
+        let left = trim_commas(&tokens[..and_idx]);
+        let mut right = tokens[..=costs_idx].to_vec();
+        right.extend_from_slice(&tokens[and_idx + 1..]);
+        (left, right)
     };
-    let left = trim_commas(&tokens[..and_idx]);
-    let mut right = tokens[..=costs_idx].to_vec();
-    right.extend_from_slice(&tokens[and_idx + 1..]);
     let (Some(first), Some(second)) = (
         parse_spells_cost_modifier_line(&left)?,
         parse_spells_cost_modifier_line(&right)?,
@@ -3383,6 +3400,11 @@ pub fn parse_prevent_all_damage_to_matching_permanents_line(
         || words
             .iter()
             .any(|word| matches!(*word, "by" | "and" | "or"))
+        // "... to target creature this turn" is a one-shot prevention shield
+        // (Indestructible Aura), never a static over every creature.
+        || words
+            .iter()
+            .any(|word| matches!(*word, "target" | "turn" | "until"))
     {
         return Ok(None);
     }
@@ -6102,10 +6124,22 @@ pub fn parse_copy_activated_abilities_line(
     if filter_tokens.is_empty() {
         return Ok(None);
     }
-    let filter = match parse_object_filter(&filter_tokens, false) {
+    let mut filter = match parse_object_filter(&filter_tokens, false) {
         Ok(filter) => filter,
         Err(_) => return Ok(None),
     };
+    if fact.exclude_source_name {
+        // "that don't have the same name as this creature" is carried by
+        // `exclude_source_name`; a name relation left on the filter (whose
+        // polarity the filter grammar does not keep) would contradict it.
+        filter.tagged_constraints.retain(|constraint| {
+            !matches!(
+                constraint.relation,
+                crate::filter::TaggedOpbjectRelation::SameNameAsTagged
+                    | crate::filter::TaggedOpbjectRelation::DifferentNameFromTagged
+            )
+        });
+    }
 
     let counter = match filter.with_counter {
         Some(crate::filter::CounterConstraint::Typed(counter_type)) => Some(counter_type),

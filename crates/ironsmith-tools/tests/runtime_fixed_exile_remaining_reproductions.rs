@@ -195,7 +195,7 @@ fn cast_announce(
 ) -> Result<(), String> {
     g.turn.priority_player = Some(alice());
     let id = g.create_object_from_definition(d, alice(), Zone::Hand);
-    let a = compute_legal_actions(g, alice())
+    let a = compute_legal_actions(g, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or("fixture source cast absent")?;
@@ -280,7 +280,7 @@ fn actual_land(
 ) -> Result<ironsmith::ids::StableId, String> {
     let id = g.create_object_from_definition(&defs[n].0, alice(), Zone::Hand);
     let stable = g.object(id).unwrap().stable_id;
-    let a = compute_legal_actions(g, alice())
+    let a = compute_legal_actions(g, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::PlayLand{land_id}if *land_id==id))
         .ok_or("land play missing")?;
@@ -349,7 +349,7 @@ fn run(
         let m = paid_cast(&mut g, defs, material, 0, &mut q, dm)?;
         if material == "Lotus Petal" {
             let mid = current(&g, m);
-            let a=compute_legal_actions(&g,alice()).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index:0,..}|LegalAction::ActivateManaAbility{source,ability_index:0,..}if *source==mid)).ok_or("Lotus Petal resource producer unavailable")?;
+            let a=compute_legal_actions(&g,alice()).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index:0,..}|LegalAction::ActivateManaAbility{source,ability_index:0,..}if *source==mid)).ok_or("Lotus Petal resource producer unavailable")?;
             dm.stage = "actual_lotus_petal_mana_sacrifice".into();
             immediate(&mut g, a, &mut q, dm)?;
             finish(&mut g, &mut q, dm)?;
@@ -358,7 +358,7 @@ fn run(
             dm.chosen = vec![current(&g, m)];
             dm.targets = vec![Target::Player(PlayerId(1))];
             dm.stage = "actual_graveyard_resource_sacrifice".into();
-            let a=compute_legal_actions(&g,alice()).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index:0,..}if *source==current(&g,altar))).ok_or("Altar resource action absent")?;
+            let a=compute_legal_actions(&g,alice()).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index:0,..}if *source==current(&g,altar))).ok_or("Altar resource action absent")?;
             announce(&mut g, a, &mut q, dm)?;
             finish(&mut g, &mut q, dm)?;
             assert_eq!(g.object(current(&g, m)).unwrap().zone, Zone::Graveyard);
@@ -373,7 +373,7 @@ fn run(
         g.player_mut(alice()).unwrap().mana_pool = Default::default();
         if mode == "basic_mana" {
             let sid = current(&g, source);
-            let a=compute_legal_actions(&g,alice()).into_iter().find(|a|matches!(a,LegalAction::ActivateManaAbility{source,ability_index:1,..}if *source==sid)).ok_or("basic mana control absent")?;
+            let a=compute_legal_actions(&g,alice()).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateManaAbility{source,ability_index:1,..}if *source==sid)).ok_or("basic mana control absent")?;
             dm.stage = "actual_palace_basic_mana_control".into();
             immediate(&mut g, a, &mut q, dm)?;
         } else {
@@ -423,7 +423,7 @@ fn run(
             .mana_pool
             .add(ManaSymbol::Colorless, 1);
     }
-    let legal = compute_legal_actions(&g, alice());
+    let legal = compute_legal_actions(&g, alice()).expect("fixture has complete replacement state");
     let action=legal.iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index,..}|LegalAction::ActivateManaAbility{source,ability_index,..}if *source==source_id&&*ability_index==index)).cloned();
     dm.trace.push(json!({"stage":"candidate_cost_path","cost_path":c["cost_path"],"ability_index":index,"legal_actions":format!("{legal:?}"),"source_tapped":g.is_tapped(source_id),"source_zone":format!("{:?}",g.object(source_id).unwrap().zone),"resource_zones":materials.iter().map(|s|format!("{:?}",g.object(current(&g,*s)).unwrap().zone)).collect::<Vec<_>>()}));
     let valid = c["valid"].as_bool().unwrap();

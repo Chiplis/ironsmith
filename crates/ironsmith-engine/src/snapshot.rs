@@ -629,6 +629,7 @@ impl ObjectSnapshot {
             }
             snapshot.name = calculated.name.to_string();
             snapshot.mana_cost = calculated.mana_cost.clone();
+            snapshot.linked_face_mana_value = calculated.linked_face_mana_value;
             snapshot.compiled_card_text = calculated.compiled_card_text.to_string();
             snapshot.ability_labels = calculated.ability_labels.to_vec();
             snapshot.power = calculated.power;

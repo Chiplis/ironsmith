@@ -728,6 +728,18 @@ fn parse_terminal_where_x_binding(tokens: &[OwnedLexToken]) -> Option<(Vec<Owned
     let view = TokenWordView::new(tokens);
     let where_word = view.parse_phrase_start(&["where", "x", "is"])?;
     let where_index = view.map_word_to_token_start(where_word)?;
+    // `it gains "..., draw X cards, where X is ..."` (Cosima): a where-X
+    // inside a quoted ability defines that ability's X; the quoted text is
+    // parsed (with its definition) as the granted ability.
+    if tokens[..where_index]
+        .iter()
+        .filter(|token| token.kind == TokenKind::Quote)
+        .count()
+        % 2
+        == 1
+    {
+        return None;
+    }
     if shape.followup_tokens.is_none()
         && has_explicit_comma_then_boundary_lexed(&tokens[where_index..])
     {
@@ -1362,7 +1374,38 @@ fn parse_effect_chain_inner_lexed_unstacked(
     let lists_mana_combination = effect_chain_tokens.windows(3).any(|window| {
         window[0].is_word("any") && window[1].is_word("combination") && window[2].is_word("of")
     });
-    let mut coordination_plan = if lists_mana_combination {
+    // "sacrifices a Plains or a white permanent" (Omen of Fire) names one
+    // sacrificed object chosen from a union; the bare noun phrase after
+    // "or" has no verb of its own, so it never coordinates a second action.
+    let sacrifices_object_union = {
+        let words = crate::lexer::token_word_refs(effect_chain_tokens);
+        let or_positions = effect_chain_tokens
+            .iter()
+            .enumerate()
+            .filter(|(_, token)| token.is_word("or"))
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        if words
+            .iter()
+            .any(|word| matches!(*word, "sacrifice" | "sacrifices"))
+            && !words
+                .iter()
+                .any(|word| matches!(*word, "and" | "and/or" | "then" | "unless" | "if"))
+            && !effect_chain_tokens.iter().any(OwnedLexToken::is_comma)
+            && let [or_index] = or_positions.as_slice()
+            && effect_chain_tokens
+                .get(or_index + 1)
+                .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+            && !super::lex_chain_helpers::segment_has_effect_head_lexed(
+                &effect_chain_tokens[or_index + 1..],
+            )
+        {
+            true
+        } else {
+            false
+        }
+    };
+    let mut coordination_plan = if lists_mana_combination || sacrifices_object_union {
         None
     } else {
         match super::super::grammar::effects::coordination::recognize_coordination(
@@ -2430,12 +2473,13 @@ pub fn bind_no_regeneration_rider(
 ) -> bool {
     let words = crate::lexer::token_word_refs(sentence);
     if !crate::word_primitives::last_is(&words, "regenerated")
-        || !crate::word_primitives::first_is_any(&words, &["it", "they", "those"])
+        || !crate::word_primitives::first_is_any(&words, &["it", "they", "those", "that"])
         || !crate::slice_primitives::contains_any(&words, &["cant", "can't"])
     {
         return false;
     }
-    let singular = crate::word_primitives::first_is(&words, "it");
+    // "That creature can't be regenerated." (Parallax Dementia) is singular.
+    let singular = crate::word_primitives::first_is_any(&words, &["it", "that"]);
     let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. })) = effects.last_mut()
     else {
         return false;

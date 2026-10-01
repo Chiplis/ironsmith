@@ -2859,7 +2859,11 @@ pub(super) fn parse_this_spell_was_cast_from_shape(
     ];
     let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
     let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
-    if !is_this_spell_clause(subject_clause) {
+    // "When this Equipment enters, if it was cast from your graveyard": the
+    // pronoun is the triggering permanent, and the zone is where that spell
+    // was cast from, not an ownership qualifier.
+    let pronoun_subject = surface::exact(subject_clause.trimmed(), &["it"]);
+    if !pronoun_subject && !is_this_spell_clause(subject_clause) {
         return None;
     }
     let action_clause = matched.capture_clause_by_role(WinnowCaptureRole::Action, clause)?;
@@ -2867,6 +2871,17 @@ pub(super) fn parse_this_spell_was_cast_from_shape(
         return None;
     }
     let origin_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
+    if pronoun_subject {
+        let origin_words = origin_clause.word_refs();
+        let zone = if origin_words.len() == 2 && origin_words[0] == "your" {
+            parse_zone_word(origin_words[1])?
+        } else {
+            spell_cast_origin_zone_clause(origin_clause)?
+        };
+        // Triggered-line lowering rewrites this into the triggering
+        // object's cast zone, exactly as for "this spell".
+        return Some(PredicateAst::ThisSpellWasCastFromZone(zone));
+    }
     if surface::exact(
         origin_clause,
         &["anywhere", "other", "than", "your", "hand"],
@@ -3324,16 +3339,27 @@ pub(super) fn parse_mana_symbol_spent_to_cast_shape(
     {
         return None;
     }
-    let mut predicates = symbol_clause
-        .tokens()
-        .iter()
-        .filter_map(|token| {
-            crate::grammar::primitives::probe_shape(parse_mana_symbol(token.parser_text()))
-        })
-        .map(|symbol| PredicateAst::ManaSpentToCastThisSpellAtLeast {
-            amount: 1,
+    // "{W}{W} was spent": repeated symbols require that many of that symbol,
+    // so group them into one amount-N predicate instead of ANDing amount-1s.
+    let mut grouped = Vec::new();
+    for symbol in symbol_clause.tokens().iter().filter_map(|token| {
+        crate::grammar::primitives::probe_shape(parse_mana_symbol(token.parser_text()))
+    }) {
+        if let Some((_, amount)) = grouped
+            .iter_mut()
+            .find(|(existing, _)| *existing == symbol)
+        {
+            *amount += 1;
+        } else {
+            grouped.push((symbol, 1u32));
+        }
+    }
+    let mut predicates = grouped.into_iter().map(|(symbol, amount)| {
+        PredicateAst::ManaSpentToCastThisSpellAtLeast {
+            amount,
             symbol: Some(symbol),
-        });
+        }
+    });
     let first = predicates.next()?;
     Some(predicates.fold(first, |left, right| {
         PredicateAst::And(Box::new(left), Box::new(right))
@@ -3691,6 +3717,19 @@ fn parse_triggering_object_first_counters_this_turn_predicate(
         &words[2..]
     } else {
         return None;
+    };
+    // "the first time +1/+1 counters have been put on that permanent this
+    // turn" (Botanical Brawler): the trigger already names the counter kind.
+    let typed_rest;
+    let rest = if rest.len() == 13 && rest.get(4) == Some(&"counters") {
+        typed_rest = rest[..3]
+            .iter()
+            .chain(rest[4..].iter())
+            .copied()
+            .collect::<Vec<_>>();
+        typed_rest.as_slice()
+    } else {
+        rest
     };
     if rest.len() != 12
         || !crate::word_primitives::parse_sequence_prefix(rest, &["the", "first", "time"])
@@ -5572,12 +5611,58 @@ use crate::recognition::ParseOutcome;
 #[path = "advanced/predicate_readings.rs"]
 mod predicate_readings;
 
+/// "you control at least two creatures that share a creature type",
+/// "you control three or more creatures that share a creature type": the
+/// largest group of controlled creatures sharing one creature type.
+fn parse_you_control_shared_creature_type_count_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.to_word_refs();
+    let suffix: &[&str] = &["that", "share", "a", "creature", "type"];
+    if words.len() < 2 + suffix.len() + 2
+        || words[..2] != ["you", "control"]
+        || !words.ends_with(suffix)
+    {
+        return None;
+    }
+    let body = &words[2..words.len() - suffix.len()];
+    let (count, filter_start) = match body {
+        ["at", "least", amount, ..] => (crate::util::parse_number_word_u32(amount)?, 3),
+        [amount, "or", "more", ..] => (crate::util::parse_number_word_u32(amount)?, 3),
+        _ => return None,
+    };
+    let filter_word_start = 2 + filter_start;
+    let filter_word_end = words.len() - suffix.len();
+    if filter_word_start >= filter_word_end {
+        return None;
+    }
+    let token_start = view.map_word_to_token_boundary(filter_word_start)?;
+    let token_end = view.map_word_to_token_boundary(filter_word_end)?;
+    let mut filter = crate::grammar::primitives::probe_shape(
+        crate::object_filters::parse_object_filter_lexed(tokens.get(token_start..token_end)?, false),
+    )?;
+    if filter.controller.is_none() {
+        filter.controller = Some(PlayerFilter::You);
+    }
+    Some(PredicateAst::ValueComparison {
+        left: Value::GreatestSharedCreatureTypeCount(filter),
+        operator: ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::Fixed(count as i32),
+    })
+}
+
 pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
     let predicate_tokens = if token_slice_first_is(tokens, "if") {
         &tokens[1..]
     } else {
         tokens
     };
+    if let Some(predicate) =
+        parse_you_control_shared_creature_type_count_predicate(predicate_tokens)
+    {
+        return Ok(predicate);
+    }
     let input = predicate_readings::Predicate {
         tokens,
         predicate_tokens,

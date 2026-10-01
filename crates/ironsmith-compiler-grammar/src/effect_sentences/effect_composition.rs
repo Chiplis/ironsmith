@@ -971,7 +971,7 @@ fn parse_reveal_from_outside_game_or_choose_face_up_exile_to_hand(
     )]))
 }
 
-fn parse_reveal_from_outside_game_to_hand(
+pub(super) fn parse_reveal_from_outside_game_to_hand(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = bundle_grammar::parse_outside_game_wish_shape(tokens) else {
@@ -1797,6 +1797,37 @@ fn parse_persistent_exile_play_tax_bundle(tokens: &[OwnedLexToken]) -> Option<Ve
     let shape = bundle_grammar::parse_persistent_exile_play_tax_tokens(tokens)?;
     let tagged = crate::tag::CompilerReferenceTag::It.bind();
     let target = TargetAst::Object(shape.target_filter, Some(TextSpan::synthetic()), None);
+
+    // "A spell cast by an opponent this way costs {2} more to cast" (Soul
+    // Partition): the tax rides on the play permission itself, because a
+    // static granted to the exiled card does not follow it to the stack.
+    // Only the owner may play the card, so the caster is an opponent exactly
+    // when the owner is.
+    let caster_relation = match shape.taxed_caster {
+        PlayerFilter::Opponent => Some(PlayerFilter::Opponent),
+        PlayerFilter::You => Some(PlayerFilter::You),
+        _ => None,
+    };
+    if let Some(owner) = caster_relation {
+        let permission = |tax: Option<crate::mana::ManaCost>| {
+            EffectAst::subject_verb_grant_play_tagged_with_play_constraints(
+                tagged.clone(),
+                shape.permission_player,
+                tax,
+                false,
+            )
+        };
+        let mut owned_by_taxed_caster = ObjectFilter::default();
+        owned_by_taxed_caster.owner = Some(owner);
+        return Some(vec![
+            EffectAst::subject_verb_exile(target, false),
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate: PredicateAst::TaggedMatches(tagged.clone(), owned_by_taxed_caster),
+                if_true: vec![permission(Some(shape.additional_cost.clone()))],
+                if_false: vec![permission(None)],
+            }),
+        ]);
+    }
 
     Some(vec![
         EffectAst::subject_verb_exile(target, false),

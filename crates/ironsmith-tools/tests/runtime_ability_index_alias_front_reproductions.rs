@@ -105,7 +105,7 @@ fn cast(
     eprintln!("AUDIT_STAGE cast {}", def.name());
     g.turn.priority_player = Some(actor);
     let id = g.create_object_from_definition(def, actor, Zone::Hand);
-    let action = compute_legal_actions(g, actor)
+    let action = compute_legal_actions(g, actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or_else(|| format!("{} normal cast unavailable", def.name()))?;
@@ -291,7 +291,7 @@ fn activation(
     source: ObjectId,
 ) -> Result<Value, String> {
     g.turn.priority_player = Some(PlayerId(0));
-    let a = compute_legal_actions(g, PlayerId(0))
+    let a = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::ActivateAbility{source:s,..}|LegalAction::ActivateManaAbility{source:s,..}if *s==source) && dm.activation_hint.is_none_or(|hint| match a { LegalAction::ActivateAbility{ability_index,..}|LegalAction::ActivateManaAbility{ability_index,..} => g.current_abilities(source).is_some_and(|abilities|abilities.get(*ability_index).is_some_and(|a|format!("{a:?}").contains(hint))), _=>false }));
     let before = g.player(PlayerId(0)).unwrap().mana_pool.total() as i64;
@@ -322,7 +322,7 @@ fn run(def:&CardDefinition,defs:&std::collections::HashMap<&str,CardDefinition>,
  if kolvori {let mut support=vec![];if mode==1{for(name,cost)in[("Isamaru, Hound of Konda",1),("Sram, Senior Edificer",2)]{let paid=cast(&mut g,&defs[name],PlayerId(0),&mut q,&mut dm)?;if paid!=cost{return Err("legend producer cost".into());}resolve_all(&mut g,&mut q,&mut dm)?;support.push(json!({"card":name,"paid":paid}));}}
  advance_turn(&mut g,&mut q,&mut dm)?;advance_turn(&mut g,&mut q,&mut dm)?;let legends=g.battlefield.iter().filter(|id|g.current_controller(**id)==Some(PlayerId(0))&&g.current_is_creature(**id)&&g.current_supertypes(**id).is_some_and(|ts|ts.contains(&ironsmith::Supertype::Legendary))).count();if legends!=if mode==1{3}else{1}{return Err(format!("legend producer count {legends}"));}
  let before=g.player(PlayerId(0)).unwrap().hand.len();let a=activation(&mut g,&mut q,&mut dm,source)?;let expected=json!({"activation":good_activation(2),"source_tapped":true,"power":if mode==1{6}else{2},"toughness":if mode==1{6}else{4},"vigilance":mode==1,"hand_delta":1});let actual=json!({"activation":a,"source_tapped":g.is_tapped(source),"power":g.calculated_power(source),"toughness":g.calculated_toughness(source),"vigilance":g.object_has_static_ability_id(source,K::Vigilance),"hand_delta":g.player(PlayerId(0)).unwrap().hand.len()-before});return Ok(json!({"expected":expected,"actual":actual,"state_evidence":{"source_paid":paid,"actual_legendary_creature_count":legends,"actual_support_casts":support,"alias_scope":"Exact combined frozen payload parsed via canonical parse_name; only front behavior, no Ringhart Crest play path."},"execution_trace":dm.trace}));}
- let land=g.create_object_from_definition(&defs["Forest"],PlayerId(0),Zone::Hand);let action=compute_legal_actions(&g,PlayerId(0)).into_iter().find(|a|matches!(a,LegalAction::PlayLand{land_id}if *land_id==land)).ok_or("Forest play unavailable")?;let mut state=PriorityLoopState::new(g.players_in_game());apply_priority_response_with_dm(&mut g,&mut q,&mut state,&PriorityResponse::PriorityAction(action),&mut dm).map_err(|e|e.to_string())?;resolve_all(&mut g,&mut q,&mut dm)?;
+ let land=g.create_object_from_definition(&defs["Forest"],PlayerId(0),Zone::Hand);let action=compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::PlayLand{land_id}if *land_id==land)).ok_or("Forest play unavailable")?;let mut state=PriorityLoopState::new(g.players_in_game());apply_priority_response_with_dm(&mut g,&mut q,&mut state,&PriorityResponse::PriorityAction(action),&mut dm).map_err(|e|e.to_string())?;resolve_all(&mut g,&mut q,&mut dm)?;
  advance_turn(&mut g,&mut q,&mut dm)?;if mode==1{advance_turn(&mut g,&mut q,&mut dm)?;}let land_count=g.battlefield.iter().filter(|id|g.current_controller(**id)==Some(PlayerId(0))&&g.current_has_card_type(**id,CardType::Land)).count();if land_count!=1{return Err("actual Forest missing".into());}let a=activation(&mut g,&mut q,&mut dm,source)?;let expected=json!({"activation":good_activation(6),"first_strike":mode==1,"power":4,"toughness":4});let actual=json!({"activation":a,"first_strike":g.object_has_static_ability_id(source,K::FirstStrike),"power":g.calculated_power(source),"toughness":g.calculated_toughness(source)});Ok(json!({"expected":expected,"actual":actual,"state_evidence":{"source_paid":paid,"actual_land_count":land_count,"active_player":g.turn.active_player.index(),"alias_scope":"Exact combined frozen payload parsed via canonical parse_name. Only ordinary front pump and turn condition, no top-library land play."},"execution_trace":dm.trace}))
 }
 #[test]

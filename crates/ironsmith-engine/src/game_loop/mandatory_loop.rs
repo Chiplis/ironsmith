@@ -255,18 +255,20 @@ impl MandatoryLoopTracker {
         &mut self,
         resolved: Option<MandatoryProcedureObservation>,
         queued: impl IntoIterator<Item = MandatoryProcedureObservation>,
-    ) -> Option<std::collections::HashSet<PlayerId>> {
+    ) -> Result<Option<std::collections::HashSet<PlayerId>>, super::GameLoopError> {
+        let checkpoint = self.clone();
+        let result = (|| {
         if self.optional_action_seen {
             self.reset();
-            return None;
+            return Ok(None);
         }
         let Some(resolved) = resolved else {
             self.reset();
-            return None;
+            return Ok(None);
         };
         if resolved.blocks_mandatory_proof {
             self.reset();
-            return None;
+            return Ok(None);
         }
 
         self.actions.push(resolved.signature);
@@ -279,37 +281,45 @@ impl MandatoryLoopTracker {
         }
 
         let Some((next_expected, controllers)) = self.repeated_suffix_next_action() else {
-            return None;
+            return Ok(None);
         };
         if !queued.into_iter().any(|candidate| {
             !candidate.blocks_mandatory_proof && candidate.signature == next_expected
         }) {
-            return None;
+            return Ok(None);
         }
         // Resolve historical unknowns only when they could establish a draw.
         // Drop the prefix through the last optional window, exactly as eager
         // observe_priority_window would have reset it at that resolution.
         let mut last_optional = None;
         for (index, windows) in self.history_windows.iter().enumerate() {
-            if windows.iter().any(|game| {
-                game.priority_team_players().into_iter().any(|player| {
-                    crate::decision::compute_legal_actions(game, player)
-                        .into_iter()
-                        .chain(crate::decision::compute_commander_actions(game, player))
-                        .any(|action| !matches!(action, crate::decision::LegalAction::PassPriority))
-                })
-            }) {
+            let mut optional = false;
+            for game in windows {
+                for player in game.priority_team_players() {
+                    if crate::decision::compute_legal_actions(game, player)?
+                        .into_iter().chain(crate::decision::compute_commander_actions(game, player))
+                        .any(|action| !matches!(action, crate::decision::LegalAction::PassPriority)) {
+                        optional = true;
+                        break;
+                    }
+                }
+                if optional { break; }
+            }
+            if optional {
                 last_optional = Some(index);
             }
         }
         if let Some(index) = last_optional {
             self.actions.drain(..=index);
             self.history_windows.drain(..=index);
-            return self
+            return Ok(self
                 .repeated_suffix_next_action()
-                .and_then(|(next, controllers)| (next == next_expected).then_some(controllers));
+                .and_then(|(next, controllers)| (next == next_expected).then_some(controllers)));
         }
-        Some(controllers)
+        Ok(Some(controllers))
+            })();
+        if result.is_err() { *self = checkpoint; }
+        result
     }
 
     fn repeated_suffix_next_action(
@@ -375,7 +385,7 @@ mod tests {
         deferred.pending_windows.push(game.clone());
         assert!(
             deferred
-                .observe_resolution(Some(action.clone()), [action.clone()])
+                .observe_resolution(Some(action.clone()), [action.clone()]).expect("fixture has complete replacement state")
                 .is_none()
         );
         // The option no longer exists now, but it did exist at the first pass.
@@ -387,13 +397,13 @@ mod tests {
         deferred.pending_windows.push(game.clone());
         assert!(
             deferred
-                .observe_resolution(Some(action.clone()), [action.clone()])
+                .observe_resolution(Some(action.clone()), [action.clone()]).expect("fixture has complete replacement state")
                 .is_none()
         );
         deferred.pending_windows.push(game);
         assert!(
             deferred
-                .observe_resolution(Some(action.clone()), [action])
+                .observe_resolution(Some(action.clone()), [action]).expect("fixture has complete replacement state")
                 .is_some()
         );
     }
@@ -406,20 +416,20 @@ mod tests {
 
         assert!(
             tracker
-                .observe_resolution(Some(a.clone()), [b.clone()])
+                .observe_resolution(Some(a.clone()), [b.clone()]).expect("fixture has complete replacement state")
                 .is_none()
         );
         assert!(
             tracker
-                .observe_resolution(Some(b.clone()), [a.clone()])
+                .observe_resolution(Some(b.clone()), [a.clone()]).expect("fixture has complete replacement state")
                 .is_none()
         );
         assert!(
             tracker
-                .observe_resolution(Some(a.clone()), [b.clone()])
+                .observe_resolution(Some(a.clone()), [b.clone()]).expect("fixture has complete replacement state")
                 .is_none()
         );
-        assert!(tracker.observe_resolution(Some(b), [a]).is_some());
+        assert!(tracker.observe_resolution(Some(b), [a]).expect("fixture has complete replacement state").is_some());
     }
 
     #[test]
@@ -429,24 +439,24 @@ mod tests {
 
         assert!(
             tracker
-                .observe_resolution(Some(action.clone()), [action.clone()])
+                .observe_resolution(Some(action.clone()), [action.clone()]).expect("fixture has complete replacement state")
                 .is_none()
         );
         tracker.observe_priority_window(false);
         assert!(
             tracker
-                .observe_resolution(Some(action.clone()), [action.clone()])
+                .observe_resolution(Some(action.clone()), [action.clone()]).expect("fixture has complete replacement state")
                 .is_none()
         );
         assert!(
             tracker
-                .observe_resolution(Some(action.clone()), [action.clone()])
+                .observe_resolution(Some(action.clone()), [action.clone()]).expect("fixture has complete replacement state")
                 .is_none()
         );
         tracker.observe_priority_window(false);
         assert!(
             tracker
-                .observe_resolution(Some(action.clone()), [action])
+                .observe_resolution(Some(action.clone()), [action]).expect("fixture has complete replacement state")
                 .is_none()
         );
     }
@@ -459,21 +469,22 @@ mod tests {
 
         assert!(
             tracker
-                .observe_resolution(Some(a.clone()), [b.clone()])
+                .observe_resolution(Some(a.clone()), [b.clone()]).expect("fixture has complete replacement state")
                 .is_none()
         );
         assert!(
             tracker
-                .observe_resolution(Some(b.clone()), [a.clone()])
+                .observe_resolution(Some(b.clone()), [a.clone()]).expect("fixture has complete replacement state")
                 .is_none()
         );
         assert!(
             tracker
-                .observe_resolution(Some(a.clone()), [b.clone()])
+                .observe_resolution(Some(a.clone()), [b.clone()]).expect("fixture has complete replacement state")
                 .is_none()
         );
         let controllers = tracker
             .observe_resolution(Some(b), [a])
+            .expect("fixture has complete replacement state")
             .expect("the repeated mandatory suffix should be proved");
         assert_eq!(
             controllers,

@@ -517,12 +517,33 @@ fn parse_filter_parity_decorations(words: &[&str]) -> FilterParityDecorations {
         parsed.power = Some(ParityRequirement::Even);
     }
     if parse_any_phrase_anywhere(words, CHOSEN_POWER_QUALITY_PHRASES) {
-        parsed.power = Some(ParityRequirement::Chosen);
+        parsed.power = Some(chosen_quality_parity(words, CHOSEN_POWER_QUALITY_PHRASES));
     }
     if parse_any_phrase_anywhere(words, CHOSEN_MANA_VALUE_QUALITY_PHRASES) {
-        parsed.mana_value = Some(ParityRequirement::Chosen);
+        parsed.mana_value = Some(chosen_quality_parity(
+            words,
+            CHOSEN_MANA_VALUE_QUALITY_PHRASES,
+        ));
     }
     parsed
+}
+
+/// "with mana value of the chosen quality" vs "without mana value of the
+/// chosen quality" (Ashling's Prerogative): the negated surface selects the
+/// other parity.
+fn chosen_quality_parity(words: &[&str], phrases: &[&[&str]]) -> ParityRequirement {
+    for word_start in 1..words.len() {
+        if words[word_start - 1] != "without" {
+            continue;
+        }
+        for phrase in phrases {
+            let mut input: WordInput<'_> = &words[word_start..];
+            if parse_word_phrase(&mut input, phrase).is_ok() {
+                return ParityRequirement::NotChosen;
+            }
+        }
+    }
+    ParityRequirement::Chosen
 }
 
 fn parse_any_phrase_anywhere(words: &[&str], phrases: &[&[&str]]) -> bool {

@@ -453,7 +453,15 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
     // fact before inspecting the remaining target phrase: words in the target
     // such as "creature" are otherwise valid named-counter surfaces and can
     // be mistaken for a counter descriptor.
-    if let Value::CountersOn(spec, None) = count_value.unhinted() {
+    // "put that number of +1/+1 counters on target creature" (Yuna) names
+    // its own counter kind: the referential value is only the amount.
+    let names_own_counter_kind = rest
+        .iter()
+        .position(|token| token.is_any_word(&["counter", "counters"]))
+        .is_some_and(|index| parse_counter_type_from_tokens(&rest[..=index]).is_some());
+    if let Value::CountersOn(spec, None) = count_value.unhinted()
+        && !names_own_counter_kind
+    {
         let target = parse_counter_target_phrase(&target_tokens)?;
         let from = target_from_counter_source_spec(spec.as_ref(), span_from_tokens(tokens))
             .ok_or_else(|| {

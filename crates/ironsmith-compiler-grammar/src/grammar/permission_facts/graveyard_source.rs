@@ -68,6 +68,7 @@ pub struct OnceEachTurnGraveyardCastFact<'a> {
     pub subject_tokens: &'a [OwnedLexToken],
     pub cost_tokens: Option<&'a [OwnedLexToken]>,
     pub exiles_after_resolution: bool,
+    pub exile_rider_subject_tokens: Option<&'a [OwnedLexToken]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -138,11 +139,21 @@ fn parse_once_each_turn_graveyard_cast_lexed<'a>(
     .parse_next(input)?
     .is_some();
 
+    let exile_rider_subject_tokens = opt(parse_qualified_cast_exile_rider).parse_next(input)?;
+
     Ok(OnceEachTurnGraveyardCastFact {
         subject_tokens: trim_lexed_commas(subject_tokens),
         cost_tokens,
         exiles_after_resolution,
+        exile_rider_subject_tokens,
     })
+}
+
+fn parse_qualified_cast_exile_rider<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLexToken]> {
+    semantic_kw("if").parse_next(input)?;
+    let subject = take_until_semantic_phrase(input, &["cast", "this", "way"])?;
+    semantic_phrase(&GRAVEYARD_CAST_EXILE_AFTER_RESOLUTION_SUFFIX[3..]).parse_next(input)?;
+    Ok(trim_lexed_commas(subject))
 }
 
 pub fn parse_graveyard_additional_cost_tokens(

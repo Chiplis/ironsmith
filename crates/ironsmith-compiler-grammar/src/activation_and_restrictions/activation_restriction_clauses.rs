@@ -1247,8 +1247,44 @@ pub fn parse_negated_object_restriction_clause(
         Some(NegatedObjectTailShape::BeBlockedBy { payload_words })
             if remainder_words.len() > payload_words =>
         {
-            let blocker_tokens = trim_commas(&remainder_tokens[payload_words..]);
-            let blocker_filter = parse_and_or_disjunction_filter(&blocker_tokens)?
+            let mut blocker_tokens = trim_commas(&remainder_tokens[payload_words..]);
+            // "can't be blocked by creatures with greater power" compares each
+            // blocker with the restricted attacker, not a fixed number.
+            let mut greater_power_than_attacker = None;
+            {
+                let blocker_words = crate::lexer::token_word_refs(&blocker_tokens);
+                if blocker_words.len() > 3
+                    && blocker_words[blocker_words.len() - 3..] == ["with", "greater", "power"]
+                {
+                    let attacker_power = if filter.source {
+                        Some(crate::effect::Value::SourcePower)
+                    } else {
+                        filter
+                            .tagged_constraints
+                            .iter()
+                            .find(|constraint| {
+                                constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                            })
+                            .map(|constraint| {
+                                crate::effect::Value::PowerOf(Box::new(
+                                    crate::target::ChooseSpec::Tagged(constraint.tag.clone()),
+                                ))
+                            })
+                    };
+                    if let Some(attacker_power) = attacker_power {
+                        let keep = blocker_tokens
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, token)| token.is_word("with"))
+                            .map(|(idx, _)| idx)
+                            .last()
+                            .unwrap_or(blocker_tokens.len());
+                        blocker_tokens = blocker_tokens[..keep].to_vec();
+                        greater_power_than_attacker = Some(attacker_power);
+                    }
+                }
+            }
+            let mut blocker_filter = parse_and_or_disjunction_filter(&blocker_tokens)?
                 .or(parse_subject_object_filter(&blocker_tokens)?)
                 .or_else(|| {
                     crate::grammar::primitives::probe_shape(parse_object_filter(
@@ -1262,6 +1298,11 @@ pub fn parse_negated_object_restriction_clause(
                         crate::lexer::token_word_refs(tokens).join(" ")
                     ))
                 })?;
+            if let Some(attacker_power) = greater_power_than_attacker {
+                blocker_filter.power = Some(crate::filter::Comparison::GreaterThanExpr(Box::new(
+                    attacker_power,
+                )));
+            }
             Restriction::block_specific_attacker(blocker_filter, filter)
         }
         Some(NegatedObjectTailShape::BeActivated) => match ability_scope {

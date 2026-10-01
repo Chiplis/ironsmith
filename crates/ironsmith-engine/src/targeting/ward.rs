@@ -288,9 +288,7 @@ impl crate::effects::EffectExecutor for WardCounterEffect {
         let Some(index) = self.stack_index(game) else {
             return Ok(crate::effect::EffectOutcome::target_invalid());
         };
-        Ok(crate::effects::stack::counter_stack_entry_at(
-            game, ctx, index,
-        ))
+        crate::effects::stack::counter_stack_entry_at(game, ctx, index)
     }
 }
 

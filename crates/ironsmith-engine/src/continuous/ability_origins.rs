@@ -1,16 +1,55 @@
 //! Runtime identity of abilities, independent of their semantic definitions.
 use super::ContinuousEffect;
 use crate::ability::Ability;
-use crate::ids::ObjectId;
+use crate::ids::{CardId, ObjectId};
+use std::hash::{Hash, Hasher};
 use crate::object::SharedVec;
 use crate::static_abilities::StaticAbilityInstanceId;
 use std::sync::Arc;
 
+/// Stable occurrence of the ability generating one branch of a static effect.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ContinuousAbilityOrigin {
+    pub host: ObjectId,
+    pub ability: AbilityOrigin,
+    pub printed_face: Option<CardId>,
+    pub branch: usize,
+}
+
+#[derive(Debug, Clone)]
 pub struct AbilityEffectOrigin {
     source: ObjectId,
+    registration_id: Option<super::ContinuousEffectId>,
     timestamp: u64,
     static_ability: Option<StaticAbilityInstanceId>,
+    generated_by: Option<Box<ContinuousAbilityOrigin>>,
+}
+impl PartialEq for AbilityEffectOrigin {
+    fn eq(&self, other: &Self) -> bool {
+        match (self.registration_id, other.registration_id) {
+            (Some(a), Some(b)) => a == b,
+            (Some(_), None) | (None, Some(_)) => false,
+            (None, None) => match (&self.generated_by, &other.generated_by) {
+                (Some(a), Some(b)) => a == b,
+                (None, None) => self.source == other.source && self.timestamp == other.timestamp
+                    && self.static_ability == other.static_ability,
+                _ => false,
+            },
+        }
+    }
+}
+impl Eq for AbilityEffectOrigin {}
+impl Hash for AbilityEffectOrigin {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        if let Some(id) = self.registration_id {
+            0_u8.hash(state); id.hash(state);
+        } else if let Some(parent) = &self.generated_by {
+            1_u8.hash(state); parent.hash(state);
+        } else {
+            2_u8.hash(state); self.source.hash(state); self.timestamp.hash(state);
+            self.static_ability.hash(state);
+        }
+    }
 }
 impl AbilityEffectOrigin {
     /// The object whose effect granted the ability.
@@ -27,6 +66,8 @@ impl From<&ContinuousEffect> for AbilityEffectOrigin {
     fn from(effect: &ContinuousEffect) -> Self {
         Self {
             source: effect.source,
+            registration_id: effect.registration_id,
+            generated_by: effect.originating_ability.clone(),
             timestamp: effect.timestamp,
             static_ability: effect
                 .originating_static_ability
@@ -39,6 +80,13 @@ impl From<&ContinuousEffect> for AbilityEffectOrigin {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AbilityOrigin {
     Printed(usize),
+    Temporary(crate::object::TemporaryAbilityOrigin),
+    Level {
+        printed_face: Option<CardId>,
+        parent: Box<AbilityOrigin>,
+        tier: usize,
+        slot: usize,
+    },
     Effect {
         effect: AbilityEffectOrigin,
         slot: usize,
@@ -55,7 +103,7 @@ impl AbilityOrigin {
     /// ability was granted by a continuous effect.
     pub(crate) fn effect_source(&self) -> Option<ObjectId> {
         match self {
-            Self::Printed(_) => None,
+            Self::Printed(_) | Self::Temporary(_) | Self::Level { .. } => None,
             Self::Effect { effect, .. } => Some(effect.source),
             Self::Borrowed { effect, .. } => Some(effect.source),
         }
@@ -66,7 +114,7 @@ impl AbilityOrigin {
     /// name. A borrowed ability keeps the grantor of the ability it copies.
     pub(crate) fn granting_source(&self) -> Option<ObjectId> {
         match self {
-            Self::Printed(_) => None,
+            Self::Printed(_) | Self::Temporary(_) | Self::Level { .. } => None,
             Self::Effect { effect, .. } => Some(effect.source),
             Self::Borrowed { origin, .. } => origin.granting_source(),
         }
@@ -225,5 +273,33 @@ impl PartialEq<Vec<Ability>> for CalculatedAbilities {
 impl<const N: usize> PartialEq<[Ability; N]> for CalculatedAbilities {
     fn eq(&self, other: &[Ability; N]) -> bool {
         self.as_slice() == other
+    }
+}
+
+#[cfg(test)]
+mod registered_origin_tests {
+    use super::*;
+    #[test]
+    fn registered_origin_survives_retarget_and_mutable_metadata() {
+        let mut manager = crate::continuous::ContinuousEffectManager::new();
+        let source = ObjectId::from_raw(1); let other = ObjectId::from_raw(2);
+        let player = crate::ids::PlayerId::from_index(0);
+        let mut descriptor = ContinuousEffect::from_resolution(source, player, vec![source],
+            crate::continuous::Modification::AddAbility(crate::static_abilities::StaticAbility::flying()));
+        descriptor.timestamp = 7;
+        let id = manager.add_effect(descriptor.clone());
+        let original = AbilityEffectOrigin::from(&manager.effects()[0]);
+        manager.retarget_sticker(id, other);
+        let moved = AbilityEffectOrigin::from(&manager.effects()[0]);
+        assert_eq!(original, moved);
+        let mut changed = manager.effects()[0].clone();
+        changed.timestamp = 99; changed.controller = crate::ids::PlayerId::from_index(1);
+        changed.originating_static_ability = Some(crate::static_abilities::StaticAbility::haste());
+        let changed = AbilityEffectOrigin::from(&changed);
+        assert_eq!(original, changed);
+        assert!(std::collections::HashSet::from([original]).contains(&changed));
+        let independent = manager.add_effect(descriptor);
+        assert_ne!(id, independent);
+        assert_ne!(moved, AbilityEffectOrigin::from(&manager.effects()[1]));
     }
 }

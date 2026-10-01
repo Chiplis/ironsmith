@@ -227,7 +227,7 @@ fn cast_announce(
 ) -> Result<(), String> {
     g.turn.priority_player = Some(dm.actor);
     let id = g.create_object_from_definition(d, dm.actor, Zone::Hand);
-    let a = compute_legal_actions(g, dm.actor)
+    let a = compute_legal_actions(g, dm.actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or("fixture source cast absent")?;
@@ -380,7 +380,7 @@ fn run(
     }
     dm.stage = "escape_legality".into();
     let sid = current(&g, source);
-    let action=compute_legal_actions(&g,alice()).into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,from_zone:Zone::Graveyard,casting_method:ironsmith::alternative_cast::CastingMethod::Alternative(0),..}if *spell_id==sid));
+    let action=compute_legal_actions(&g,alice()).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,from_zone:Zone::Graveyard,casting_method:ironsmith::alternative_cast::CastingMethod::Alternative(0),..}if *spell_id==sid));
     let before_life = g.players.iter().map(|p| p.life).collect::<Vec<_>>();
     let before_mana = g.player(alice()).unwrap().mana_pool.total();
     dm.trace.push(json!({"stage":"actual_discard_producer_state","source_zone":zone(&g,source),"resources":resources.iter().map(|s|json!({"card":g.object(current(&g,*s)).unwrap().name.to_string(),"zone":zone(&g,*s)})).collect::<Vec<_>>(),"advertised_escape_action":format!("{action:?}")}));

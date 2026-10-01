@@ -277,7 +277,7 @@ fn cohort_entry_counter_list_is_present_on_entry_and_moves_only_chosen_counter()
             let (alice, bob) = (game.players[0].id, game.players[1].id);
             let stack = game.create_object_from_definition(&card, alice, Zone::Stack);
             let source = game
-                .move_object_with_etb_processing(stack, Zone::Battlefield)
+                .move_object_with_etb_processing(stack, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
                 .unwrap()
                 .new_id;
             for counter in counters {
@@ -312,7 +312,7 @@ fn cohort_entry_counter_list_is_present_on_entry_and_moves_only_chosen_counter()
                 .unwrap()
                 .mana_pool
                 .add(ManaSymbol::Colorless, 2);
-            let action=crate::decision::compute_legal_actions(&game,alice).into_iter().find(|action|matches!(action,crate::decision::LegalAction::ActivateAbility{source:id,..} if *id==source)).expect("sacrifice activation");
+            let action=crate::decision::compute_legal_actions(&game,alice).expect("fixture has complete replacement state").into_iter().find(|action|matches!(action,crate::decision::LegalAction::ActivateAbility{source:id,..} if *id==source)).expect("sacrifice activation");
             let mut state = crate::game_loop::PriorityLoopState::new(game.players_in_game());
             let mut dm = crate::decision::AutoPassDecisionMaker;
             let mut progress = crate::game_loop::apply_priority_response_with_dm(
@@ -438,4 +438,13 @@ fn cohort_bounced_permanents_controller_sacrifices_own_land_before_copying() {
             assert_eq!(game.stack[0].targets, vec![Target::Object(target)]);
         }
     }
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: crate::game_state::EntryCommitResult)
+    -> Option<crate::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

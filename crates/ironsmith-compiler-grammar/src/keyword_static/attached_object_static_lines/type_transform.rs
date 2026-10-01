@@ -66,6 +66,17 @@ pub fn parse_attached_type_transform_line(
             )));
         }
 
+        // "is a Treasure artifact with "..." and it loses all other
+        // abilities": the granted ability is one of the abilities it keeps.
+        // Emit the removal ahead of every grant so the same-timestamp
+        // layer-6 effects apply removal first (CR 613.7).
+        if parsed.loss == Some(attached_grammar::AttachedTransformLossKind::AllAbilities)
+            && !loss_consumed
+        {
+            out.push(StaticAbility::remove_all_abilities(filter.clone()).into());
+            loss_consumed = true;
+        }
+
         if let Some(split) =
             attached_grammar::split_attached_base_pt_keyword_tokens(&ability_tokens)
         {

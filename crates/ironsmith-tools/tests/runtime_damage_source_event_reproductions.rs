@@ -185,7 +185,7 @@ fn cast_announce(
 ) -> Result<(), String> {
     g.turn.priority_player = Some(alice());
     let id = g.create_object_from_definition(d, alice(), Zone::Hand);
-    let a = compute_legal_actions(g, alice())
+    let a = compute_legal_actions(g, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or("fixture source cast absent")?;
@@ -286,7 +286,7 @@ fn run(
     dm.targets = vec![Target::Player(PlayerId(1))];
     let owner = if name == "City of Brass" {
         let h = g.create_object_from_definition(&defs[name].0, alice(), Zone::Hand);
-        let a = compute_legal_actions(&g, alice())
+        let a = compute_legal_actions(&g, alice()).expect("fixture has complete replacement state")
             .into_iter()
             .find(|a| matches!(a,LegalAction::PlayLand{land_id,..}if *land_id==h))
             .ok_or("fixture legal land play absent")?;
@@ -327,7 +327,7 @@ fn run(
         amount = usize::from(mode != "untapped_control") as i32;
         if mode != "untapped_control" {
             let before = g.player(alice()).unwrap().mana_pool.total();
-            let a=compute_legal_actions(&g,alice()).into_iter().find(|a|matches!(a,LegalAction::ActivateManaAbility{source,ability_index:1}if *source==owner)).ok_or("fixture City mana ability absent")?;
+            let a=compute_legal_actions(&g,alice()).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateManaAbility{source,ability_index:1}if *source==owner)).ok_or("fixture City mana ability absent")?;
             dm.stage = "actual_city_mana_activation".into();
             immediate_action(&mut g, a, &mut q, dm)?;
             let after = g.player(alice()).unwrap().mana_pool.total();

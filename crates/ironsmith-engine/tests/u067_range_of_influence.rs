@@ -262,7 +262,7 @@ fn damage_after_prevention(protected: PreventionTarget, damage_filter: DamageFil
         3,
         false,
         ironsmith::events::cause::EventCause::from_effect(damage_source, charlie),
-    )
+    ).expect("damage test proposal must process successfully")
     .assignments
     .iter()
     .map(|assignment| assignment.amount)

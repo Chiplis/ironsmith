@@ -1946,6 +1946,7 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
         "cant-be-regenerated",
         &[
             "it",
+            "that",
             "they",
             "those",
             "creature",

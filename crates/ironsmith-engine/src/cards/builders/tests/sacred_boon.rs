@@ -54,7 +54,7 @@ fn resolve_prevention_spell_then_damage(
             amount,
             false,
             crate::events::cause::EventCause::effect(),
-        );
+        ).expect("damage test proposal must process successfully");
         let keywords = crate::rules::damage::source_damage_keywords(&game, damage_source, None);
         for assignment in processed.assignments {
             crate::rules::damage::apply_processed_damage_assignment(

@@ -138,7 +138,7 @@ fn perform(
         .ok_or("missing action source")?;
     let initial_stack_len = game.stack.len();
     game.turn.priority_player = Some(actor);
-    let action = compute_legal_actions(game, actor)
+    let action = compute_legal_actions(game, actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| match a {
             LegalAction::CastSpell { spell_id, .. } => ability.is_none() && *spell_id == source,
@@ -293,7 +293,7 @@ fn victory(d: &CardDefinition, players: usize, recipient: usize) -> Result<(Valu
             .mana_pool = Default::default();
     }
     g.turn.priority_player = Some(alice());
-    let action=compute_legal_actions(&g,alice()).into_iter().find(|a|matches!(a,LegalAction::ActivateManaAbility{source,..}|LegalAction::ActivateAbility{source,..}if *source==id)).ok_or("fixture no legal Chimes activation")?;
+    let action=compute_legal_actions(&g,alice()).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateManaAbility{source,..}|LegalAction::ActivateAbility{source,..}if *source==id)).ok_or("fixture no legal Chimes activation")?;
     let mut q = TriggerQueue::new();
     let mut state = PriorityLoopState::new(g.players_in_game());
     let mut dm = dm(0, true);

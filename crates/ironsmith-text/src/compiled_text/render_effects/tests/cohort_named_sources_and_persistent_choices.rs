@@ -38,7 +38,7 @@ fn cohort_named_regeneration_keeps_source_identity_and_consumes_one_shield() {
             .push(StackEntry::ability(source, alice, ability.effects.clone()));
         crate::game_loop::resolve_stack_entry(&mut game).unwrap();
         assert_eq!(
-            crate::events::processing::process_destroy_full(&mut game, source, None),
+            crate::events::processing::process_destroy_full(&mut game, source, None).expect("destroy test must execute successfully"),
             crate::events::processing::DestroyResult::Replaced
         );
         assert!(game.battlefield.contains(&source));
@@ -269,7 +269,7 @@ fn cohort_chosen_creature_identity_persists_across_entry_static_and_leave_abilit
             .then(|| game.create_object_from_definition(&body, alice, Zone::Battlefield));
         let hand = game.create_object_from_definition(&card, alice, Zone::Hand);
         let source = game
-            .move_object_with_etb_processing(hand, Zone::Battlefield)
+            .move_object_with_etb_processing(hand, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
             .unwrap()
             .new_id;
         let later = game.create_object_from_definition(&body, alice, Zone::Battlefield);
@@ -295,7 +295,7 @@ fn cohort_chosen_creature_identity_persists_across_entry_static_and_leave_abilit
             if case == 3 {
                 let hand = game.move_object_by_effect(chosen, Zone::Hand).unwrap();
                 let returned = game
-                    .move_object_with_etb_processing(hand, Zone::Battlefield)
+                    .move_object_with_etb_processing(hand, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
                     .unwrap()
                     .new_id;
                 returned_choice = Some(returned);
@@ -376,7 +376,7 @@ fn cohort_counter_condition_protects_player_and_other_subtype_members() {
     let (alice, bob) = (game.players[0].id, game.players[1].id);
     let hand = game.create_object_from_definition(&card, alice, Zone::Hand);
     let source = game
-        .move_object_with_etb_processing(hand, Zone::Battlefield)
+        .move_object_with_etb_processing(hand, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     assert_eq!(game.counter_count(source, crate::CounterType::Shield), 1);
@@ -535,4 +535,13 @@ fn cohort_looked_permanent_choice_keeps_mana_limit_shield_and_bottom_partition()
             assert!(game.player(alice).unwrap().hand.is_empty());
         }
     }
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: crate::game_state::EntryCommitResult)
+    -> Option<crate::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

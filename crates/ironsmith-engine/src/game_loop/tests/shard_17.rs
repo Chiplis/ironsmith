@@ -260,9 +260,7 @@ pub(super) fn test_planeswalker_etb_processing_seeds_starting_loyalty_counters()
         .loyalty(6)
         .build();
     let hand_id = game.create_object_from_card(&chandra, alice, Zone::Hand);
-    let result = game
-        .move_object_with_etb_processing(hand_id, Zone::Battlefield)
-        .expect("planeswalker should enter battlefield");
+    let result = crate::tests::test_helpers::enter_fixture(&mut game, hand_id, "planeswalker should enter battlefield");
 
     let loyalty = game
         .object(result.new_id)
@@ -270,7 +268,7 @@ pub(super) fn test_planeswalker_etb_processing_seeds_starting_loyalty_counters()
         .unwrap_or(0);
     assert_eq!(loyalty, 6, "planeswalker should enter with printed loyalty");
 
-    crate::rules::state_based::apply_state_based_actions(&mut game);
+    crate::rules::state_based::apply_state_based_actions(&mut game).expect("replacement operation must finish without execution error");
     assert!(
         game.object(result.new_id)
             .is_some_and(|obj| obj.zone == Zone::Battlefield),
@@ -298,7 +296,7 @@ pub(super) fn test_create_object_on_battlefield_seeds_starting_loyalty_counters(
         "direct battlefield creation should seed loyalty"
     );
 
-    crate::rules::state_based::apply_state_based_actions(&mut game);
+    crate::rules::state_based::apply_state_based_actions(&mut game).expect("replacement operation must finish without execution error");
     assert!(
         game.object(pw_id)
             .is_some_and(|obj| obj.zone == Zone::Battlefield),
@@ -474,7 +472,7 @@ pub(super) fn test_valley_floodcaller_sorcery_castable_during_combat() {
     game.turn.step = Some(Step::DeclareAttackers);
 
     // Check that the sorcery can be cast during combat (has flash)
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let can_cast_sorcery = actions.iter().any(|a| {
         matches!(
             a,
@@ -573,7 +571,7 @@ pub(super) fn test_compute_legal_actions_respects_valley_floodcaller_flash_grant
         .build();
     let sorcery_id = game.create_object_from_card(&sorcery, alice, Zone::Hand);
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| {
             matches!(

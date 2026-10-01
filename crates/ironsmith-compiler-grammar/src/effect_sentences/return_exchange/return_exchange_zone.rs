@@ -2,7 +2,44 @@ use super::*;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::ZoneMoveActionAst;
 
+/// "return a creature card and a land card from your graveyard to your hand"
+/// (Sudden Reclamation): two independently articled card selections share
+/// one origin and destination. Each is its own return.
+fn split_articled_card_pair_return(
+    tokens: &[OwnedLexToken],
+) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
+    let is_article = |token: &OwnedLexToken| token.is_any_word(&["a", "an"]);
+    if !tokens.first().is_some_and(is_article)
+        || tokens.iter().any(|token| token.is_any_word(&["target", "targets"]))
+    {
+        return None;
+    }
+    let and_idx = tokens.iter().position(|token| token.is_word("and"))?;
+    if and_idx < 2
+        || !tokens[and_idx - 1].is_word("card")
+        || !tokens.get(and_idx + 1).is_some_and(is_article)
+    {
+        return None;
+    }
+    let right = &tokens[and_idx + 1..];
+    let right_card = right.iter().position(|token| token.is_word("card"))?;
+    let tail = &right[right_card + 1..];
+    if !tail.first().is_some_and(|token| token.is_word("from"))
+        || tokens[..and_idx].iter().any(|token| token.is_word("from"))
+    {
+        return None;
+    }
+    let mut left = tokens[..and_idx].to_vec();
+    left.extend_from_slice(tail);
+    Some((left, right.to_vec()))
+}
+
 pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    if let Some((left, right)) = split_articled_card_pair_return(tokens) {
+        return Ok(EffectAst::Sequence {
+            effects: vec![parse_return(&left)?, parse_return(&right)?],
+        });
+    }
     if let Some(shape) = crate::grammar::effects::parse_return_create_tail_shape(tokens) {
         let mut effects = vec![parse_return(shape.return_tokens)?];
         effects.extend(crate::effect_sentences::parse_effect_chain(
@@ -43,6 +80,36 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                 "unsupported return-unless clause (clause: '{clause_text}')"
             ))
         });
+    }
+    // "return all cards you own exiled with this artifact to your hand"
+    // (Bottled Cloister): the ownership qualifier sits between the noun and
+    // its exiled-with relation. Parse the relation, then restrict the
+    // returned cards to the ones you own.
+    if let Some(you_idx) = crate::slice_primitives::find_window_by(tokens, 4, |window| {
+        window[0].is_word("you")
+            && window[1].is_word("own")
+            && window[2].is_word("exiled")
+            && window[3].is_word("with")
+    }) {
+        let mut stripped = tokens[..you_idx].to_vec();
+        stripped.extend_from_slice(&tokens[you_idx + 2..]);
+        let mut effect = parse_return(&stripped)?;
+        let mut applied = false;
+        if let EffectAst::SubjectVerb(subject) = &mut effect
+            && let SubjectVerbActionAst::ZoneMoves(
+                ZoneMoveActionAst::ReturnAllToHand { filter, .. }
+                | ZoneMoveActionAst::ReturnAllToBattlefield { filter, .. },
+            ) = &mut subject.action
+        {
+            filter.owner = Some(PlayerFilter::You);
+            applied = true;
+        }
+        if applied {
+            return Ok(effect);
+        }
+        return Err(CardTextError::ParseError(format!(
+            "unsupported owned exiled-with return clause (clause: '{clause_text}')"
+        )));
     }
     let mut exiled_with_source_surface =
         crate::effect_sentences::verb_handlers::parse_exiled_with_source_return_tail_surface(
@@ -402,7 +469,27 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                     delayed_timing,
                 ));
             }
-            let mut filter = parse_object_filter(&filter_tokens, false)?;
+            // "Return all Auras attached to target permanent you own to their
+            // owners' hands" (Scarab of the Unseen): the host is a real
+            // target. Declare it, then relate the returned objects to it.
+            let attached_target_split = filter_tokens.windows(3).position(|window| {
+                window[0].is_word("attached") && window[1].is_word("to") && window[2].is_word("target")
+            });
+            let mut attachment_target_prelude = None;
+            let mut filter = if let Some(split) = attached_target_split {
+                let head_tokens = trim_commas(&filter_tokens[..split]);
+                let host_tokens = trim_commas(&filter_tokens[split + 2..]);
+                let host = parse_target_phrase(&host_tokens)?;
+                let host_tag = crate::util::helper_tag_for_tokens(&host_tokens, "attachment_target");
+                attachment_target_prelude = Some(EffectAst::TagAffected {
+                    effect: Box::new(EffectAst::subject_verb_explicit_target_only(host)),
+                    tag: host_tag.clone(),
+                });
+                parse_object_filter(&head_tokens, false)?
+                    .match_tagged(host_tag, TaggedOpbjectRelation::AttachedToTaggedObject)
+            } else {
+                parse_object_filter(&filter_tokens, false)?
+            };
             filter.set_set_quantifier_surface(Some(set_quantifier_surface));
             filter.set_return_destination_first_surface(destination_first);
             filter.chosen_creature_type |= chosen_creature_type;
@@ -430,7 +517,7 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                     )
                 };
             }
-            match destination.zone {
+            let return_all = match destination.zone {
                 crate::grammar::effects::ReturnZoneShape::Battlefield => {
                     EffectAst::subject_verb_return_all_to_battlefield(
                         filter,
@@ -453,6 +540,12 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                 crate::grammar::effects::ReturnZoneShape::Hand => {
                     EffectAst::subject_verb_return_all_to_hand(filter)
                 }
+            };
+            match attachment_target_prelude {
+                Some(prelude) => EffectAst::Sequence {
+                    effects: vec![prelude, return_all],
+                },
+                None => return_all,
             }
         }
         crate::grammar::effects::ReturnTargetShape::Singular {

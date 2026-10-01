@@ -31,6 +31,7 @@ fn execute_token_instruction(
     let mut created_ids = Vec::with_capacity(count);
     let mut events = Vec::with_capacity(count * 2);
     let mut replacement_outcomes = Vec::new();
+    let mut committed_outcomes = Vec::new();
     let entry_options = TokenEntryOptions::default();
 
     for _ in 0..count {
@@ -46,39 +47,21 @@ fn execute_token_instruction(
             &front,
             controller_id,
         );
-        let replacement = crate::events::processing::process_token_creation_for_token_with_event(
+        let mut committed_original = false;
+        let completed = crate::events::processing::execute_token_creation_with_event(
             game,
             controller_id,
             1,
             Some(token_preview.clone()),
             ctx.cause.clone(),
             ctx,
-        )?;
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::with_objects(Vec::new()));
-        }
-        let replacement = match replacement {
-            crate::events::processing::TokenCreationReplacementResult::Proceed {
-                event,
-                provenance,
-            } => {
+            |game, ctx, replacement, provenance| {
                 ctx.provenance = provenance;
-                event
-            }
-            crate::events::processing::TokenCreationReplacementResult::Finished(outcome) => {
-                replacement_outcomes.push(outcome);
-                events.push(TriggerEvent::new_with_provenance(
-                    KeywordActionEvent::new(
-                        KeywordActionKind::Incubate,
-                        controller_id,
-                        ctx.source,
-                        amount,
-                    ),
-                    ctx.provenance,
-                ));
-                continue;
-            }
-        };
+                committed_original = true;
+        // Keep this receipt's observations separate from earlier iterations
+        // whose original creation was replaced completely.
+        let mut events = Vec::new();
+    let mut entry_receipts = Vec::new();
         let controller_id = replacement.controller;
         let token_preview = replacement.token.clone().unwrap_or(token_preview);
         let token_count =
@@ -103,11 +86,11 @@ fn execute_token_instruction(
                 Zone::Battlefield,
                 initial_counters,
                 &mut ctx.decision_maker,
-            );
+            )?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::with_objects(Vec::new()));
             }
-            let Some(entry_result) = entry_result else {
+            let Some(entry_result) = super::lifecycle::retain_token_entry_receipt(game, id, entry_result, &mut entry_receipts)? else {
                 game.remove_object(id);
                 continue;
             };
@@ -152,18 +135,19 @@ fn execute_token_instruction(
                 ),
             );
         }
-        created_ids.extend(incubated_ids);
+        let mut iteration_ids = incubated_ids;
         let additional_ids = create_replacement_additional_tokens(
             game,
             ctx,
             controller_id,
             &replacement.additional_tokens,
             &mut events,
+        &mut entry_receipts,
         )?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::with_objects(Vec::new()));
         }
-        created_ids.extend(additional_ids);
+        iteration_ids.extend(additional_ids);
 
         events.push(TriggerEvent::new_with_provenance(
             KeywordActionEvent::new(
@@ -174,12 +158,42 @@ fn execute_token_instruction(
             ),
             ctx.provenance,
         ));
+
+        // Complete this creation and its appended programs before the next
+        // incubate iteration. Retain actual successor IDs in the receipt.
+        let original = EffectOutcome::with_objects(iteration_ids.clone())
+            .with_result_objects(iteration_ids.clone())
+            .with_events(std::mem::take(&mut events))
+            .with_affected_objects_from_game(game, iteration_ids.clone());
+                created_ids.extend(iteration_ids);
+                crate::effects::zones::finish_zone_change_receipts(game, ctx, original, entry_receipts)
+            },
+        )?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::with_objects(Vec::new()));
+        }
+        if committed_original {
+            committed_outcomes.push(completed);
+        } else {
+            replacement_outcomes.push(completed);
+            events.push(TriggerEvent::new_with_provenance(
+                KeywordActionEvent::new(
+                    KeywordActionKind::Incubate,
+                    controller_id,
+                    ctx.source,
+                    amount,
+                ),
+                ctx.provenance,
+            ));
+        }
     }
 
-    let original = EffectOutcome::with_objects(created_ids.clone())
-        .with_result_objects(created_ids.clone())
-        .with_events(events)
-        .with_affected_objects_from_game(game, created_ids);
+    // Each committed receipt already owns its events and execution facts;
+    // aggregate those once and retain the whole instruction's token summary.
+    // Keyword observations from finished replacements remain in `events`.
+    let mut original = EffectOutcome::aggregate(committed_outcomes);
+    original.value = crate::effect::OutcomeValue::Objects(created_ids);
+    original.events.extend(events);
     if replacement_outcomes.is_empty() {
         Ok(original)
     } else {

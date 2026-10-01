@@ -60,7 +60,7 @@ fn setup(players: usize, lands: usize) -> GameState {
 fn cast(g: &mut GameState, def: &CardDefinition, actor: u8, dm: &mut Choices) -> Result<Value,String> {
     g.turn.priority_player=Some(PlayerId(actor));
     let source=g.create_object_from_definition(def,PlayerId(actor),Zone::Hand);
-    let action=compute_legal_actions(g,PlayerId(actor)).into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source)).ok_or("intended cast unavailable")?;
+    let action=compute_legal_actions(g,PlayerId(actor)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source)).ok_or("intended cast unavailable")?;
     let mana=g.player(PlayerId(actor)).unwrap().mana_pool.total();
     let mut q=TriggerQueue::new();
     let mut state=PriorityLoopState::new(g.players_in_game());
@@ -139,7 +139,7 @@ fn run(defs:&HashMap<String,CardDefinition>,name:&str,mode:&str)->Result<(Value,
     if mode=="end_step"{g.turn.phase=ironsmith::Phase::Ending;g.turn.step=Some(ironsmith::Step::End);}
     if mode=="opponent_turn"{g.next_turn();ironsmith::turn::execute_untap_step(&mut g);g.turn.phase=ironsmith::Phase::FirstMain;g.turn.step=None;}
     g.turn.priority_player=Some(PlayerId(0));
-    let mut actions:Vec<_>=compute_legal_actions(&g,PlayerId(0)).into_iter().filter(|a|matches!(a,LegalAction::ActivateAbility{source:id,..}if *id==source)).collect();
+    let mut actions:Vec<_>=compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state").into_iter().filter(|a|matches!(a,LegalAction::ActivateAbility{source:id,..}if *id==source)).collect();
     actions.sort_by_key(|a|match a{LegalAction::ActivateAbility{ability_index,..}=>*ability_index,_=>usize::MAX});
     let chosen=if attached{actions.last()}else{actions.first()}.cloned();
     let advertised_lookup=chosen.as_ref().map(|a|match a{LegalAction::ActivateAbility{ability_index,..}=>format!("{:?}",g.current_ability(source,*ability_index)),_=>String::new()});

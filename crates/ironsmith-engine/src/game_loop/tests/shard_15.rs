@@ -57,7 +57,7 @@ pub(super) fn test_convoke_taps_creatures_on_cast() {
     // (2 pay generic, 2 pay red)
 
     // Compute legal actions
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     let cast_action = actions.iter().find(|a| {
         matches!(
@@ -239,7 +239,7 @@ pub(super) fn test_convoke_summoning_sick_creatures_can_be_tapped() {
         "All untapped creatures should be available for convoke, even while summoning sick"
     );
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let cast_action = actions.iter().find(|a| {
         matches!(
             a,
@@ -328,7 +328,7 @@ pub(super) fn test_improvise_reduces_mana_cost_with_artifacts() {
     );
 
     // Compute legal actions - Reverse Engineer should be castable
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     let can_cast_re = actions.iter().any(|a| {
         matches!(
@@ -385,7 +385,7 @@ pub(super) fn test_improvise_taps_artifacts_on_cast() {
         .add(ManaSymbol::Blue, 2);
 
     // Compute legal actions
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     let cast_action = actions.iter().find(|a| {
         matches!(
@@ -2419,7 +2419,7 @@ pub(super) fn test_the_stasis_coffin_activation_grants_protection_and_exiles_its
         .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
         .expect("The Stasis Coffin should have an activated ability");
 
-    let activate_action = compute_legal_actions(&game, alice)
+    let activate_action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -2584,7 +2584,7 @@ pub(super) fn activate_heroism(
         .iter()
         .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
         .expect("Heroism should have an activated ability");
-    let activate_action = compute_legal_actions(game, controller)
+    let activate_action = compute_legal_actions(game, controller).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -2848,7 +2848,7 @@ pub(super) fn test_elsewhere_flask_activation_changes_land_type_until_cleanup() 
         .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
         .expect("Elsewhere Flask should have an activated ability");
 
-    let activate_action = compute_legal_actions(&game, alice)
+    let activate_action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -2973,7 +2973,7 @@ pub(super) fn test_cephalid_inkshrouder_grants_shroud_and_unblockable_after_disc
         .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
         .expect("Cephalid Inkshrouder should have an activated ability");
 
-    let activate_action = compute_legal_actions(&game, alice)
+    let activate_action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(

@@ -101,7 +101,7 @@ fn cast(
     eprintln!("AUDIT_STAGE cast {}", def.name());
     g.turn.priority_player = Some(actor);
     let id = g.create_object_from_definition(def, actor, Zone::Hand);
-    let action = compute_legal_actions(g, actor)
+    let action = compute_legal_actions(g, actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or_else(|| format!("{} normal cast unavailable", def.name()))?;
@@ -286,7 +286,7 @@ fn activation(
     last: bool,
 ) -> Result<Value, String> {
     g.turn.priority_player = Some(PlayerId(0));
-    let actions: Vec<_> = compute_legal_actions(g, PlayerId(0))
+    let actions: Vec<_> = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .filter(|a| matches!(a,LegalAction::ActivateAbility{source:s,..}if *s==source))
         .collect();

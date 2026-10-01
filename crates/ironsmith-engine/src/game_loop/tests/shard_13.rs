@@ -255,7 +255,7 @@ pub(super) fn test_overload_cast_swaps_in_rewritten_effects_and_hits_all_matches
     let _bounced_two = create_creature(&mut game, "Opposing Two", bob, 3, 3);
     let survivor = create_creature(&mut game, "Friendly Survivor", alice, 1, 1);
 
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action,
@@ -372,7 +372,7 @@ pub(super) fn cleave_swaps_text_before_target_requirements_are_derived() {
     );
 
     assert!(
-        crate::decision::compute_legal_actions(&game, alice)
+        crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .iter()
             .any(|action| matches!(
                 action,
@@ -497,7 +497,7 @@ pub(super) fn spree_requires_a_payable_mode_and_charges_every_selected_mode() {
         .add(ManaSymbol::Red, 1);
 
     assert!(
-        !crate::decision::compute_legal_actions(&game, alice)
+        !crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .iter()
             .any(|action| matches!(
                 action,
@@ -515,7 +515,7 @@ pub(super) fn spree_requires_a_payable_mode_and_charges_every_selected_mode() {
         .mana_pool
         .add(ManaSymbol::Colorless, 3);
     assert!(
-        crate::decision::compute_legal_actions(&game, alice)
+        crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .iter()
             .any(|action| matches!(
                 action,
@@ -629,7 +629,7 @@ pub(super) fn fire_magic_tiered_modes_bind_each_cost_to_exactly_its_damage_effec
             .add(ManaSymbol::Colorless, additional_generic);
 
         assert!(
-            crate::decision::compute_legal_actions(&game, alice)
+            crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
                 .iter()
                 .any(|action| matches!(
                     action,
@@ -768,7 +768,7 @@ pub(super) fn assist_uses_authoritative_plans_for_the_assistant_then_the_caster(
         .add(ManaSymbol::Colorless, 2);
 
     assert!(
-        crate::decision::compute_legal_actions(&game, alice)
+        crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .iter()
             .any(|action| matches!(
                 action,
@@ -891,7 +891,7 @@ pub(super) fn assist_cannot_cover_colored_mana_and_the_chosen_player_may_pay_zer
         .mana_pool
         .add(ManaSymbol::Blue, 1);
     assert!(
-        !crate::decision::compute_legal_actions(&colored_game, alice)
+        !crate::decision::compute_legal_actions(&colored_game, alice).expect("fixture has complete replacement state")
             .iter()
             .any(|action| matches!(
                 action,
@@ -1132,7 +1132,7 @@ pub(super) fn test_spell_land_linked_card_offers_cast_and_land_play_actions() {
     game.create_object_from_definition(&crate::cards::basic_forest(), alice, Zone::Battlefield);
     let card_id = game.create_object_from_definition(&front, alice, Zone::Hand);
 
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| {
             matches!(
@@ -1156,7 +1156,7 @@ pub(super) fn test_spell_land_linked_card_offers_cast_and_land_play_actions() {
         "linked land face should be playable from hand; got {actions:?}"
     );
     assert_eq!(
-        crate::decision::format_action_short(&game, &LegalAction::PlayLand { land_id: card_id },),
+        crate::decision::format_action_short(&game, &LegalAction::PlayLand { land_id: card_id }, None),
         "Play Test Back Land"
     );
 }
@@ -1217,7 +1217,7 @@ pub(super) fn test_land_adventure_half_is_legal_hand_cast_action() {
     game.create_object_from_definition(&crate::cards::basic_forest(), alice, Zone::Battlefield);
     let card_id = game.create_object_from_definition(&front, alice, Zone::Hand);
 
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| {
             matches!(
@@ -1296,7 +1296,7 @@ pub(super) fn test_adventure_exiled_land_can_be_played_from_exile() {
     let exiled_id = game.create_object_from_definition(&front, alice, Zone::Exile);
     game.set_adventure_exiled(exiled_id);
 
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| {
             matches!(
@@ -1345,7 +1345,7 @@ pub(super) fn test_adventure_half_is_legal_hand_cast_action() {
     game.create_object_from_definition(&crate::cards::basic_forest(), alice, Zone::Battlefield);
     let card_id = game.create_object_from_definition(&front, alice, Zone::Hand);
 
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| {
             matches!(
@@ -1809,7 +1809,7 @@ pub(super) fn test_resolved_adventure_exiles_front_face_and_allows_creature_cast
     assert!(exile_obj.card_types.contains(&CardType::Creature));
     assert!(!exile_obj.subtypes.contains(&Subtype::Adventure));
 
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| {
             matches!(
@@ -1882,7 +1882,7 @@ pub(super) fn test_stable_exile_play_from_grant_survives_adventure_resolution() 
         "resolved Adventure should return the front face to exile"
     );
 
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| {
             matches!(
@@ -1948,7 +1948,7 @@ pub(super) fn test_library_play_from_grant_offers_top_creature_card() {
     }
     let library_id = game.create_object_from_definition(&front, alice, Zone::Library);
 
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| {
             matches!(
@@ -2001,7 +2001,7 @@ pub(super) fn thundermane_dragon_casts_top_power_four_creature_and_grants_haste_
         .build();
     let top_id = game.create_object_from_card(&top_creature, alice, Zone::Library);
 
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let casting_method = actions
         .iter()
         .find_map(|action| match action {
@@ -2071,7 +2071,7 @@ pub(super) fn thundermane_dragon_does_not_cast_top_creature_below_power_four() {
         .build();
     let small_id = game.create_object_from_card(&small_creature, alice, Zone::Library);
 
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !actions.iter().any(|action| matches!(
             action,
@@ -2121,7 +2121,7 @@ pub(super) fn cemetery_illuminator_play_from_action(
     spell_id: ObjectId,
     source_id: ObjectId,
 ) -> Option<CastingMethod> {
-    crate::decision::compute_legal_actions(game, player)
+    crate::decision::compute_legal_actions(game, player).expect("fixture has complete replacement state")
         .into_iter()
         .find_map(|action| match action {
             LegalAction::CastSpell {
@@ -2299,9 +2299,11 @@ pub(super) fn cemetery_illuminator_top_library_cast_is_limited_to_once_each_turn
         cemetery_illuminator_play_from_action(&game, alice, first_top, source_id).is_some(),
         "first matching top spell should be castable"
     );
-    game.turn_store
-        .grant_cast_uses_this_turn
-        .insert((alice, source_id));
+    let permission = game.effect_store.grant_registry
+        .granted_play_from_for_card(&game, first_top, Zone::Library, alice)
+        .into_iter().find(|grant| grant.source_id == source_id).unwrap()
+        .permission_identity.expect("exact top-library permission");
+    game.turn_store.grant_cast_uses_this_turn.insert((alice, permission));
 
     let second_top = create_zero_cost_card(
         &mut game,
@@ -2379,7 +2381,7 @@ pub(super) fn test_library_play_from_grant_offers_adventure_half_when_linked_fac
         "linked Adventure half should be castable from top library once a grant applies"
     );
 
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| {
             matches!(
@@ -2415,7 +2417,7 @@ pub(super) fn test_exile_play_from_grant_offers_adventure_half() {
     game.create_object_from_definition(&crate::cards::basic_forest(), alice, Zone::Battlefield);
     let exiled_id = game.create_object_from_definition(&front, alice, Zone::Exile);
 
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| {
             matches!(
@@ -2459,9 +2461,7 @@ pub(super) fn test_granted_enter_with_counters_applies_to_adventure_creature_ent
 
     let front = register_test_adventure_pair(&mut game);
     let card_id = game.create_object_from_definition(&front, alice, Zone::Hand);
-    let entered = game
-        .move_object_with_etb_processing(card_id, Zone::Battlefield)
-        .expect("Adventure creature should enter")
+    let entered = crate::tests::test_helpers::enter_fixture(&mut game, card_id, "Adventure creature should enter")
         .new_id;
 
     assert_eq!(
@@ -2975,7 +2975,7 @@ pub(super) fn prototype_portal_imprints_artifact_and_copies_it_for_exact_dynamic
     let portal_id = game.create_object_from_definition(&portal, alice, Zone::Battlefield);
 
     assert!(
-        !crate::decision::compute_legal_actions(&game, alice)
+        !crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .into_iter()
             .any(|action| matches!(
                 action,
@@ -3293,7 +3293,7 @@ pub(super) fn test_flashback_requires_enough_mana() {
         game.create_object_from_definition(&think_twice_def, alice, Zone::Graveyard);
 
     // Compute legal actions
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     // Should NOT find flashback action (not enough mana)
     let flashback_action = actions.iter().find(|a| {

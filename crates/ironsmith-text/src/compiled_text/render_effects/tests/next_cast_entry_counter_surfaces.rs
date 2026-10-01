@@ -92,7 +92,7 @@ fn cast_and_resolve_entry_counter_fixture(
     game.turn.phase = crate::game_state::Phase::FirstMain;
     game.turn.step = None;
     game.turn.priority_player = Some(caster);
-    let action = crate::decision::compute_legal_actions(game, caster)
+    let action = crate::decision::compute_legal_actions(game, caster).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| matches!(action, crate::decision::LegalAction::CastSpell { spell_id, .. } if *spell_id == hand_card))
         .expect("the fixture should be castable from hand");

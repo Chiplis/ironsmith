@@ -42,7 +42,7 @@ fn legal_targets_for_players(player_count: usize) -> (Vec<Vec<Target>>, Vec<usiz
     let alice = PlayerId::from_index(0);
 
     let hand = game.create_object_from_definition(&definition, alice, Zone::Hand);
-    game.move_object_with_etb_processing(hand, Zone::Battlefield)
+    game.move_object_with_etb_processing(hand, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap();
     let _ = game.take_pending_trigger_events();
 
@@ -86,4 +86,13 @@ fn sephiroth_trigger_reports_every_opponent_as_legal() {
         3,
         "every opponent is legal, so the player really is choosing"
     );
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: ironsmith::game_state::EntryCommitResult)
+    -> Option<ironsmith::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

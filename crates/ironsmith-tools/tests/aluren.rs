@@ -73,7 +73,7 @@ fn castable_for(player: PlayerId) -> Vec<String> {
         )
     })
     .collect();
-    let actions = compute_legal_actions(&game, player);
+    let actions = compute_legal_actions(&game, player).expect("fixture has complete replacement state");
     let mut castable: Vec<String> = cards
         .into_iter()
         .filter(|(id, _)| {

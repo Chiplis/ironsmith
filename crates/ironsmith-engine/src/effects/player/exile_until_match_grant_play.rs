@@ -39,11 +39,16 @@ impl EffectExecutor for ExileUntilMatchGrantPlayEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let mut consultation = None;
+        let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let caster_id = resolve_player_filter(game, &self.caster, ctx)?;
         let match_tag = TagKey::from("__exile_until_match_grant_play_match");
         let filter_ctx = ctx.filter_context(game);
-        execute_library_consult(
+        consultation = Some(execute_library_consult(
             game,
             ctx,
             player_id,
@@ -52,18 +57,15 @@ impl EffectExecutor for ExileUntilMatchGrantPlayEffect {
             None,
             Some(&match_tag),
             |object, game| self.filter.matches(object, &filter_ctx, game),
-        )?;
+        )?);
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
 
         let Some(candidate_snapshot) = ctx.get_tagged(match_tag.as_str()).cloned() else {
             return Ok(EffectOutcome::count(0));
         };
-        let mut candidate_id = candidate_snapshot.object_id;
-        if game.object(candidate_id).is_none() {
-            if let Some(found) = game.find_object_by_stable_id(candidate_snapshot.stable_id) {
-                candidate_id = found;
-            } else {
-                return Ok(EffectOutcome::count(0));
-            }
+        let candidate_id = candidate_snapshot.object_id;
+        if !game.object(candidate_id).is_some_and(|object| object.zone == Zone::Exile) {
+            return Ok(EffectOutcome::count(0));
         }
 
         game.effect_store.grant_registry.grant_to_card(
@@ -78,5 +80,19 @@ impl EffectExecutor for ExileUntilMatchGrantPlayEffect {
         );
 
         Ok(EffectOutcome::with_objects(vec![candidate_id]))
+        })();
+        let pending = ctx.decision_maker.awaiting_choice();
+        if pending || instruction.is_err() { *game = checkpoint; context_checkpoint.restore(ctx); }
+        if pending { return instruction.map(|_| EffectOutcome::count(0)); }
+        instruction.map(|outcome| {
+            if let Some(consult) = consultation {
+                let primary_status = outcome.status;
+                let primary_value = outcome.value.clone();
+                let mut combined = EffectOutcome::aggregate([consult.attach_to_outcome(EffectOutcome::resolved()), outcome]);
+                combined.status = primary_status;
+                combined.value = primary_value;
+                combined
+            } else { outcome }
+        })
     }
 }

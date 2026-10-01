@@ -292,10 +292,25 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 continue;
             };
             let filter_ctx = ctx.filter_context(game);
+            // The permission names a card that is no longer on the
+            // battlefield ("you may cast it if it's a creature spell"); a
+            // default battlefield zone on its characteristic filter describes
+            // the noun, not where the card must be.
+            let matches_characteristics = |filter: &ObjectFilter| {
+                if filter.zone == Some(crate::zone::Zone::Battlefield)
+                    && object.zone != crate::zone::Zone::Battlefield
+                {
+                    let mut unzoned = filter.clone();
+                    unzoned.zone = None;
+                    unzoned.matches(object, &filter_ctx, game)
+                } else {
+                    filter.matches(object, &filter_ctx, game)
+                }
+            };
             if self
                 .filter
                 .as_ref()
-                .is_some_and(|filter| !filter.matches(object, &filter_ctx, game))
+                .is_some_and(|filter| !matches_characteristics(filter))
             {
                 continue;
             }

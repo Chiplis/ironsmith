@@ -255,7 +255,7 @@ fn force_of_negation_targets_noncreatures_exiles_them_and_gates_its_blue_pitch_c
         .expect("the blue pitch card should exist")
         .stable_id;
     let has_pitch_action = |game: &GameState| {
-        crate::decision::compute_legal_actions(game, alice)
+        crate::decision::compute_legal_actions(game, alice).expect("fixture has complete replacement state")
             .iter()
             .any(|action| {
                 matches!(

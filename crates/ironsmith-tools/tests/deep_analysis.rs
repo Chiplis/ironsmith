@@ -74,7 +74,7 @@ fn setup(zone: Zone, life: i32) -> (GameState, ironsmith::ObjectId) {
 
 fn cast(game: &mut GameState, spell: ironsmith::ObjectId, target: PlayerId) -> Result<(), String> {
     let alice = PlayerId::from_index(0);
-    let Some(action) = compute_legal_actions(game, alice)
+    let Some(action) = compute_legal_actions(game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))
     else {

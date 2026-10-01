@@ -46,7 +46,7 @@ fn setup() -> (GameState, ObjectId) {
 }
 
 fn charge_action(game: &GameState, amulet: ObjectId) -> Option<LegalAction> {
-    compute_legal_actions(game, PlayerId::from_index(0))
+    compute_legal_actions(game, PlayerId::from_index(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::ActivateAbility { source, .. } if *source == amulet))
 }
@@ -80,7 +80,7 @@ fn charge(game: &mut GameState, amulet: ObjectId) {
 
 fn tap_for_mana(game: &mut GameState, amulet: ObjectId) {
     let alice = PlayerId::from_index(0);
-    let action = compute_legal_actions(game, alice)
+    let action = compute_legal_actions(game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::ActivateManaAbility { source, .. } if *source == amulet))
         .expect("mana ability is activatable");
@@ -159,7 +159,7 @@ fn charge_ability_only_without_charge_counters() {
 fn no_counter_no_mana_ability() {
     let (game, amulet) = setup();
     assert!(
-        !compute_legal_actions(&game, PlayerId::from_index(0))
+        !compute_legal_actions(&game, PlayerId::from_index(0)).expect("fixture has complete replacement state")
             .iter()
             .any(|a| matches!(a, LegalAction::ActivateManaAbility { source, .. } if *source == amulet)),
         "needs a charge counter to remove"

@@ -68,6 +68,11 @@ impl ironsmith_core::GrantStaticAbility for StaticAbility {
     fn grant_has_flash(&self) -> bool {
         self.has_flash()
     }
+
+    fn grant_is_source_owner_graveyard_exile(&self) -> bool {
+        self.compiled_model().is_some_and(|model|
+            ironsmith_core::GrantStaticAbility::grant_is_source_owner_graveyard_exile(model))
+    }
 }
 
 pub trait DerivedAlternativeCastRuntimeExt {

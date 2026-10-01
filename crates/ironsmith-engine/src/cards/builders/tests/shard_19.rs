@@ -1104,7 +1104,7 @@ pub(super) fn scholar_of_new_horizons_enters_with_plus_one_counter() {
     let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
     let scholar_in_hand = game.create_object_from_definition(&def, alice, Zone::Hand);
     let scholar = game
-        .move_object_with_etb_processing(scholar_in_hand, Zone::Battlefield)
+        .move_object_with_etb_processing(scholar_in_hand, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
         .expect("Scholar of New Horizons should enter")
         .new_id;
 
@@ -1704,7 +1704,7 @@ pub(super) fn inviolability_runtime_prevents_damage_to_enchanted_creature_only()
     );
 
     let (damage_to_protected, protected_prevented) =
-        crate::events::processing::process_damage_with_event(
+        crate::events::processing::process_damage_summary_for_test(
             &mut game,
             source_id,
             crate::events::DamageTarget::Object(protected_id),
@@ -1721,7 +1721,7 @@ pub(super) fn inviolability_runtime_prevents_damage_to_enchanted_creature_only()
         "damage to enchanted creature should be prevented"
     );
 
-    let (damage_to_other, other_prevented) = crate::events::processing::process_damage_with_event(
+    let (damage_to_other, other_prevented) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         source_id,
         crate::events::DamageTarget::Object(other_id),
@@ -1839,7 +1839,7 @@ pub(super) fn saving_grace_runtime_redirects_controller_and_permanent_damage_thi
         3,
         false,
         crate::events::cause::EventCause::effect(),
-    );
+    ).expect("damage test proposal must process successfully");
     assert_eq!(
         damage_to_alice.assignments,
         vec![crate::events::processing::ProcessedDamageAssignment {
@@ -1857,7 +1857,7 @@ pub(super) fn saving_grace_runtime_redirects_controller_and_permanent_damage_thi
             2,
             false,
             crate::events::cause::EventCause::effect(),
-        );
+        ).expect("damage test proposal must process successfully");
     assert_eq!(
         damage_to_other_permanent.assignments,
         vec![crate::events::processing::ProcessedDamageAssignment {
@@ -1875,7 +1875,7 @@ pub(super) fn saving_grace_runtime_redirects_controller_and_permanent_damage_thi
             4,
             false,
             crate::events::cause::EventCause::effect(),
-        );
+        ).expect("damage test proposal must process successfully");
     assert_eq!(
         damage_to_opponent_permanent.assignments,
         vec![crate::events::processing::ProcessedDamageAssignment {
@@ -1892,7 +1892,7 @@ pub(super) fn saving_grace_runtime_redirects_controller_and_permanent_damage_thi
         4,
         false,
         crate::events::cause::EventCause::effect(),
-    );
+    ).expect("damage test proposal must process successfully");
     assert_eq!(
         damage_to_bob.assignments,
         vec![crate::events::processing::ProcessedDamageAssignment {
@@ -1912,7 +1912,7 @@ pub(super) fn saving_grace_runtime_redirects_controller_and_permanent_damage_thi
         5,
         false,
         crate::events::cause::EventCause::effect(),
-    );
+    ).expect("damage test proposal must process successfully");
     assert_eq!(
         after_turn_damage.assignments,
         vec![crate::events::processing::ProcessedDamageAssignment {

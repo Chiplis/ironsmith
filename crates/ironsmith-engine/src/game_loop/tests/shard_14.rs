@@ -148,7 +148,7 @@ pub(super) fn test_force_of_will_alternative_cost_available() {
     game.player_mut(alice).unwrap().life = 20;
 
     // Compute legal actions
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     // Should find alternative cost option
     let alt_cost_action = actions.iter().find(|a| {
@@ -394,7 +394,7 @@ pub(super) fn test_non_mana_only_flashback_does_not_require_printed_mana_cost() 
     }
     game.create_object_from_card(&creature, alice, Zone::Graveyard);
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action,
@@ -437,7 +437,7 @@ pub(super) fn test_force_of_will_alternative_cost_not_available_without_card() {
     game.player_mut(alice).unwrap().life = 20;
 
     // Compute legal actions
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     // Should NOT find alternative cost option (no other blue card to exile)
     let alt_cost_action = actions.iter().find(|a| {
@@ -796,7 +796,7 @@ pub(super) fn test_force_of_will_alternative_cost_not_available_with_only_nonblu
     game.player_mut(alice).unwrap().life = 20;
 
     // Compute legal actions
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     // Should NOT find alternative cost option (no blue card to exile)
     let alt_cost_action = actions.iter().find(|a| {
@@ -853,7 +853,7 @@ pub(super) fn test_force_of_will_normal_cast_available_with_mana() {
         .add(ManaSymbol::Colorless, 3);
 
     // Compute legal actions
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     // Should find normal cast option
     let normal_cast = actions.iter().find(|a| {
@@ -916,7 +916,7 @@ pub(super) fn test_force_of_will_both_options_available() {
     game.player_mut(alice).unwrap().life = 20;
 
     // Compute legal actions
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     // Legal-action generation now exposes each available native casting method directly.
     let normal_cast = actions.iter().find(|a| {
@@ -1526,7 +1526,7 @@ pub(super) fn test_omniscience_grants_free_cast_from_hand_without_mana() {
     let bolt = lightning_bolt();
     let bolt_id = game.create_object_from_definition(&bolt, alice, Zone::Hand);
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let free_cast = actions.iter().find(|action| {
         matches!(
             action,
@@ -1640,7 +1640,7 @@ pub(super) fn test_omniscience_does_not_bypass_sorcery_timing_restrictions() {
         .build();
     let sorcery_id = game.create_object_from_card(&sorcery, alice, Zone::Hand);
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let free_cast = actions.iter().find(|action| {
         matches!(
             action,
@@ -1727,7 +1727,7 @@ pub(super) fn test_brain_in_a_jar_first_ability_casts_matching_mana_value_spell_
         brain_id,
         "MayCastMatchingSpellWithoutPayingManaCostEffect",
     );
-    let activate_action = compute_legal_actions(&game, alice)
+    let activate_action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -1825,7 +1825,7 @@ pub(super) fn test_brain_in_a_jar_first_ability_casts_nothing_without_matching_m
         brain_id,
         "MayCastMatchingSpellWithoutPayingManaCostEffect",
     );
-    let activate_action = compute_legal_actions(&game, alice)
+    let activate_action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -1912,7 +1912,7 @@ pub(super) fn test_brain_in_a_jar_second_ability_removes_x_charge_counters_for_s
         .add(ManaSymbol::Red, 3);
 
     let ability_index = brain_in_a_jar_ability_index(&game, brain_id, "ScryEffect");
-    let activate_action = compute_legal_actions(&game, alice)
+    let activate_action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -2219,7 +2219,7 @@ pub(super) fn test_dauthi_voidwalker_activation_makes_void_counter_card_castable
         "exiled Grizzly Bears should have a void counter"
     );
 
-    let actions_before = compute_legal_actions(&game, alice);
+    let actions_before = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !actions_before.iter().any(|action| {
             matches!(
@@ -2251,7 +2251,7 @@ pub(super) fn test_dauthi_voidwalker_activation_makes_void_counter_card_castable
             .expect("Dauthi activation effect should resolve");
     }
 
-    let actions_after = compute_legal_actions(&game, alice);
+    let actions_after = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions_after.iter().any(|action| {
             matches!(
@@ -2311,7 +2311,7 @@ pub(super) fn test_underworld_breach_grants_escape_to_graveyard_cards() {
         .add(ManaSymbol::Red, 1);
 
     // Compute legal actions
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     // Should find a GrantedEscape cast option for Lightning Bolt
     let escape_action = actions.iter().find(|a| {
@@ -2365,7 +2365,7 @@ pub(super) fn test_underworld_breach_no_escape_without_enough_cards_to_exile() {
         .add(ManaSymbol::Red, 1);
 
     // Compute legal actions
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     // Should NOT find escape option (not enough cards to exile)
     let escape_action = actions.iter().find(|a| {
@@ -2423,7 +2423,7 @@ pub(super) fn test_underworld_breach_escape_needs_3_other_cards() {
         .add(ManaSymbol::Blue, 5);
 
     // Compute legal actions
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     // Escape requires exiling 3 OTHER cards - but with only 3 total,
     // each card has only 2 other cards available, so NO escape should be available
@@ -2505,7 +2505,7 @@ pub(super) fn test_underworld_breach_doesnt_grant_escape_to_lands() {
     let _bolt4_id = game.create_object_from_definition(&bolt_def, alice, Zone::Graveyard);
 
     // Compute legal actions
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     // Should NOT find escape option for the land
     let escape_action = actions.iter().find(|a| {
@@ -2559,7 +2559,7 @@ pub(super) fn test_underworld_breach_no_escape_without_breach_on_battlefield() {
         .add(ManaSymbol::Red, 1);
 
     // Compute legal actions
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     // Should NOT find escape option (no Underworld Breach)
     let escape_action = actions.iter().find(|a| {
@@ -2642,7 +2642,7 @@ pub(super) fn test_force_of_will_cannot_use_alt_cost_when_escaping() {
     game.player_mut(alice).unwrap().life = 20;
 
     // Compute legal actions
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     // Should find granted escape option (from graveyard via Underworld Breach)
     let granted_escape_action = actions.iter().find(|a| {
@@ -2727,7 +2727,7 @@ pub(super) fn test_underworld_breach_escape_works_with_4_cards() {
         .add(ManaSymbol::Colorless, 2);
 
     // Compute legal actions
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     // Should find Think Twice [Escape] option
     let escape_action = actions.iter().find(|a| {
@@ -2817,7 +2817,7 @@ pub(super) fn test_force_of_will_escape_with_spell_on_stack() {
         .add(ManaSymbol::Blue, 5);
 
     // Compute legal actions for Player 1
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     // Should find Force of Will [Escape] option - there's a spell on the stack to counter!
     let fow_escape_action = actions.iter().find(|a| {
@@ -2975,7 +2975,7 @@ pub(super) fn test_affinity_reduces_mana_cost() {
     let frogmite_id = game.create_object_from_definition(&frogmite_def, alice, Zone::Hand);
 
     // Compute legal actions - Frogmite should be castable with 0 mana
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     let can_cast_frogmite = actions.iter().any(|a| {
         matches!(
@@ -3050,7 +3050,7 @@ pub(super) fn test_affinity_partial_reduction() {
         .mana_pool
         .add(ManaSymbol::Colorless, 1);
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let can_cast = actions.iter().any(|a| {
         matches!(
             a,
@@ -3071,7 +3071,7 @@ pub(super) fn test_affinity_partial_reduction() {
         .mana_pool
         .add(ManaSymbol::Colorless, 1);
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let can_cast = actions.iter().any(|a| {
         matches!(
             a,
@@ -3209,7 +3209,7 @@ pub(super) fn test_delve_reduces_mana_cost() {
     );
 
     // Compute legal actions - Treasure Cruise should be castable with 1 blue mana
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     let can_cast_tc = actions.iter().any(|a| {
         matches!(
@@ -3278,7 +3278,7 @@ pub(super) fn test_delve_partial_reduction() {
         .mana_pool
         .add(ManaSymbol::Colorless, 2);
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let can_cast = actions.iter().any(|a| {
         matches!(
             a,
@@ -3299,7 +3299,7 @@ pub(super) fn test_delve_partial_reduction() {
         .mana_pool
         .add(ManaSymbol::Colorless, 2);
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let can_cast = actions.iter().any(|a| {
         matches!(
             a,
@@ -3602,7 +3602,7 @@ pub(super) fn test_delve_cannot_cast_without_enough_graveyard_or_mana() {
         .add(ManaSymbol::Colorless, 2);
 
     // Should NOT be able to cast
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let can_cast = actions.iter().any(|a| {
         matches!(
             a,
@@ -3684,7 +3684,7 @@ pub(super) fn test_convoke_reduces_mana_cost_with_creatures() {
     );
 
     // Compute legal actions - Stoke should be castable
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     let can_cast_stoke = actions.iter().any(|a| {
         matches!(

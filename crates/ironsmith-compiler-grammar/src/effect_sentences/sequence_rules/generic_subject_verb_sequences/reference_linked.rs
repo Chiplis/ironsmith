@@ -1631,7 +1631,10 @@ pub fn graveyard_cast_with_exile_replacement_surface(
 
     Ok(Some(vec![
         select_card,
-        EffectAst::Permissions(PermissionEffectAst::May {
+        // This shape starts with "you may cast". Preserve the chooser as
+        // well as the caster: a triggering event may refer to another player.
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
+            player: PlayerAst::You,
             effects: vec![EffectAst::TagAffected {
                 effect: Box::new(
                     EffectAst::subject_verb_cast_tagged_with_additional_cost_and_mana_spend_mode(

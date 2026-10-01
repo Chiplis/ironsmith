@@ -77,6 +77,9 @@ pub fn resolve_condition_from_predicate(
                 resolved.zone = None;
             }
             if let Some(tag) = saved_last_tag.clone() {
+                if tag_names_card_outside_stack(tag.as_str()) {
+                    spell_characteristics_for_card(&mut resolved);
+                }
                 Condition::TaggedObjectMatches(tag.into(), resolved)
             } else if refs.has_source_object_antecedent() {
                 Condition::SourceMatches(resolved)
@@ -122,7 +125,11 @@ pub fn resolve_condition_from_predicate(
         }
         PredicateAst::TaggedMatches(tag, filter) => {
             let resolved_tag = resolve_it_tag_key(tag, &refs)?;
-            Condition::TaggedObjectMatches(resolved_tag, resolve_it_tag(filter, &refs)?)
+            let mut resolved = resolve_it_tag(filter, &refs)?;
+            if tag_names_card_outside_stack(resolved_tag.as_str()) {
+                spell_characteristics_for_card(&mut resolved);
+            }
+            Condition::TaggedObjectMatches(resolved_tag, resolved)
         }
         PredicateAst::TaggedWasCast(tag) => match resolve_it_tag_key(tag, &refs) {
             Ok(resolved_tag) => Condition::TaggedObjectWasCast(resolved_tag),
@@ -1051,4 +1058,52 @@ pub fn resolve_condition_from_predicate(
             Condition::Or(Box::new(left), Box::new(right))
         }
     })
+}
+
+/// Whether a sentence-helper tag names a card that was revealed, looked at,
+/// milled, or exiled from a library, so it is never a stack object while a
+/// "if it's a ... spell" check reads it.
+fn tag_names_card_outside_stack(tag: &str) -> bool {
+    tag.starts_with("__sentence_helper_")
+        && ["revealed", "looked", "exiled", "milled"]
+            .iter()
+            .any(|kind| tag.contains(kind))
+}
+
+/// "You may cast it ... if it's an instant or sorcery spell" (Galvanoth),
+/// "if it's a spell with mana value less than ..." (Rashmi and Ragavan): the
+/// card is checked as the spell it would become, so the stack-object facts
+/// of the `spell` noun do not apply; a bare `spell` still means a nonland
+/// card.
+fn spell_characteristics_for_card(filter: &mut ObjectFilter) {
+    let is_spell_noun = |filter: &ObjectFilter| {
+        filter.zone == Some(Zone::Stack)
+            && filter.stack_kind == Some(crate::filter::StackObjectKind::Spell)
+    };
+    fn has_type_selector(filter: &ObjectFilter) -> bool {
+        !filter.card_types.is_empty()
+            || !filter.all_card_types.is_empty()
+            || !filter.any_of.is_empty() && filter.any_of.iter().all(has_type_selector)
+    }
+    let mut changed = false;
+    if is_spell_noun(filter) {
+        filter.zone = None;
+        filter.stack_kind = None;
+        filter.has_mana_cost = false;
+        changed = true;
+    }
+    for branch in &mut filter.any_of {
+        if is_spell_noun(branch) {
+            branch.zone = None;
+            branch.stack_kind = None;
+            branch.has_mana_cost = false;
+            changed = true;
+        }
+    }
+    if changed
+        && !has_type_selector(filter)
+        && !filter.excluded_card_types.contains(&crate::types::CardType::Land)
+    {
+        filter.excluded_card_types.push(crate::types::CardType::Land);
+    }
 }

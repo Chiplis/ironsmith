@@ -111,7 +111,7 @@ fn perform(
     dm: &mut ProbeDm,
 ) -> Result<(TriggerQueue, u32), String> {
     game.turn.priority_player = Some(alice());
-    let action = compute_legal_actions(game, alice())
+    let action = compute_legal_actions(game, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| match a {
             LegalAction::CastSpell { spell_id, .. } => ability.is_none() && *spell_id == source,

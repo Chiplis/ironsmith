@@ -66,7 +66,7 @@ fn cohort_created_aura_retains_enchant_and_umbra_armor() {
             .contains("enchant permanent and umbra armor")
     );
     assert_eq!(
-        crate::events::processing::process_destroy_full(&mut game, target, None),
+        crate::events::processing::process_destroy_full(&mut game, target, None).expect("destroy test must execute successfully"),
         crate::events::processing::DestroyResult::Replaced,
     );
     assert!(game.battlefield.contains(&target));

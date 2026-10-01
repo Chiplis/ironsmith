@@ -227,7 +227,7 @@ fn cast_announce(
 ) -> Result<(), String> {
     g.turn.priority_player = Some(dm.actor);
     let id = g.create_object_from_definition(d, dm.actor, Zone::Hand);
-    let a = compute_legal_actions(g, dm.actor)
+    let a = compute_legal_actions(g, dm.actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or("fixture source cast absent")?;
@@ -378,7 +378,7 @@ fn run(
     }
     let id = g.create_object_from_definition(&defs[n].0, alice(), Zone::Hand);
     let source = g.object(id).unwrap().stable_id;
-    let action=compute_legal_actions(&g,alice()).into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,casting_method,..}if *spell_id==id&&if normal{matches!(casting_method,ironsmith::alternative_cast::CastingMethod::Normal)}else{matches!(casting_method,ironsmith::alternative_cast::CastingMethod::Alternative(0))}));
+    let action=compute_legal_actions(&g,alice()).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,casting_method,..}if *spell_id==id&&if normal{matches!(casting_method,ironsmith::alternative_cast::CastingMethod::Normal)}else{matches!(casting_method,ironsmith::alternative_cast::CastingMethod::Alternative(0))}));
     let simple_expected =
         json!({"selected_method_offered":payable,"source_zone":"Hand","materials_exiled":0});
     let simple_actual = json!({"selected_method_offered":action.is_some(),"source_zone":zone(&g,source),"materials_exiled":0});

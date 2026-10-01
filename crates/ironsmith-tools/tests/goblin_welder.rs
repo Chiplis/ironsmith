@@ -95,7 +95,7 @@ fn board() -> Board {
 /// Activates with `targets`; returns whether the ability reached the stack.
 fn activate(board: &mut Board, dm: &mut Pick) -> bool {
     let alice = PlayerId::from_index(0);
-    let action = compute_legal_actions(&board.game, alice)
+    let action = compute_legal_actions(&board.game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(
             |a| matches!(a, LegalAction::ActivateAbility { source, .. } if *source == board.welder),

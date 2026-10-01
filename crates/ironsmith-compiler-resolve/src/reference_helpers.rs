@@ -7,6 +7,12 @@ use ironsmith_core::TurnHistoryCount;
 
 use crate::model::reference_state::ReferenceEnv;
 
+/// Parse-time alias for the object set produced by the instruction that
+/// registers a delayed trigger ("... this way" inside the delayed body).
+/// Lowering binds it to the registering instruction's concrete result tag,
+/// which the delayed trigger captures when it is scheduled.
+pub const DELAYED_REGISTRATION_RESULT_ALIAS: &str = "__delayed_registration_result__";
+
 pub fn is_sacrificed_object_reference_tag(tag: &str) -> bool {
     tag == "sacrificed"
         || tag.starts_with("sacrificed_")
@@ -634,6 +640,7 @@ fn replace_it_tag_in_value(value: &mut Value, tag: &TagKey) {
         | Value::DistinctCounterTypesAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctManaValues(filter)
+        | Value::UnlockedDoorsAmong(filter)
         | Value::DistinctPowers(filter) => replace_it_tag_in_filter(filter, tag),
         Value::StaticAbilitiesAmong { filter, .. } => replace_it_tag_in_filter(filter, tag),
         Value::TurnHistoryCount(
@@ -1780,6 +1787,11 @@ fn rebind_triggering_stack_target_filter(
             constraint.relation = TaggedOpbjectRelation::TargetedByTaggedObject;
         }
     }
+    // "create a token that's a copy of that artifact or creature": the noun
+    // union distributes the demonstrative into its first branch only. That
+    // branch names the same targeted permanent as the outer filter, never the
+    // triggering spell itself.
+    retarget_triggering_stack_union_branches(&mut rebound, &stack_object);
     if rebound.card_types.is_empty()
         && let Some(types) = surface_types
     {
@@ -1789,6 +1801,53 @@ fn rebind_triggering_stack_target_filter(
         rebound.zone = Some(Zone::Battlefield);
     }
     Some(rebound)
+}
+
+fn retarget_triggering_stack_union_branches(filter: &mut ObjectFilter, stack_object: &TagKey) {
+    if filter.any_of.is_empty() {
+        return;
+    }
+    let it = crate::tag::CompilerReferenceTag::It.as_str();
+    for branch in &mut filter.any_of {
+        for constraint in &mut branch.tagged_constraints {
+            if constraint.tag.as_str() == it
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            {
+                constraint.tag = stack_object.clone();
+                constraint.relation = TaggedOpbjectRelation::TargetedByTaggedObject;
+            }
+        }
+        retarget_triggering_stack_union_branches(branch, stack_object);
+    }
+    // Once every branch only restates the outer targeted-permanent constraint
+    // and one of the outer card types, the union adds nothing: fold it away.
+    let outer_types = filter.card_types.clone();
+    let outer_constraints = filter.tagged_constraints.clone();
+    let redundant = filter.any_of.iter().all(|branch| {
+        if branch.card_types.is_empty()
+            || !branch
+                .card_types
+                .iter()
+                .all(|card_type| outer_types.contains(card_type))
+        {
+            return false;
+        }
+        let mut residue = branch.clone();
+        residue.card_types.clear();
+        residue
+            .tagged_constraints
+            .retain(|constraint| !outer_constraints.contains(constraint));
+        residue == ObjectFilter::default()
+    });
+    let covered = outer_types.iter().all(|card_type| {
+        filter
+            .any_of
+            .iter()
+            .any(|branch| branch.card_types.contains(card_type))
+    });
+    if redundant && covered {
+        filter.any_of.clear();
+    }
 }
 
 /// Alias recording the object antecedent an explicit source subject
@@ -2136,6 +2195,9 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
         Value::DistinctNames(filter) => Ok(Value::DistinctNames(resolve_it_tag(filter, refs)?)),
         Value::DistinctManaValues(filter) => {
             Ok(Value::DistinctManaValues(resolve_it_tag(filter, refs)?))
+        }
+        Value::UnlockedDoorsAmong(filter) => {
+            Ok(Value::UnlockedDoorsAmong(resolve_it_tag(filter, refs)?))
         }
         Value::DistinctPowers(filter) => Ok(Value::DistinctPowers(resolve_it_tag(filter, refs)?)),
         Value::TurnHistoryCount(query) => {
@@ -2613,14 +2675,14 @@ pub fn resolve_attach_object_spec(
         TargetAst::Source(_) => Ok((choose_spec_for_target(object), Vec::new())),
         TargetAst::Tagged(tag, _) => {
             let resolved_tag = if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
-                refs.known_last_object_tag()
-                    .cloned()
-                    .ok_or_else(|| {
-                        CardTextError::ParseError(
-                            "cannot resolve 'it/them' in attach object clause without prior tagged object"
-                                .to_string(),
-                        )
-                    })?
+                match refs.known_last_object_tag() {
+                    Some(tag) => tag.clone(),
+                    // "When this Equipment enters, if it was cast from your
+                    // graveyard, attach it to target creature you control":
+                    // the intervening-if names the source as the antecedent
+                    // and no body object was tagged, so "it" is the source.
+                    None => return Ok((ChooseSpec::Source, Vec::new())),
+                }
             } else {
                 tag.clone().into()
             };

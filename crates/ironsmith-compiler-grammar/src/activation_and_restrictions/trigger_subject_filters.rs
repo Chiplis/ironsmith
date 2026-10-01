@@ -931,6 +931,24 @@ pub fn parse_spell_activity_trigger(
             filter.first_spell_cast_each_turn = true;
             filter.cast_by = Some(PlayerFilter::IteratedPlayer);
         }
+        // "their first noncreature spell each turn" / "your fourth
+        // noncreature spell each turn": the ordinal counts only the caster's
+        // spells that match the qualifier, not every spell they cast.
+        if let Some(ordinal) =
+            crate::grammar::trigger_subjects::qualified_ordinal_spell_count_surface(&clause_words)
+            && exact_spells_this_turn == Some(ordinal)
+            && !activity_facts.count_all_spells_this_turn
+            && let Some(filter) = filter.as_mut()
+            && !filter.first_spell_cast_each_turn
+            && filter.spell_cast_ordinal_each_turn.is_none()
+        {
+            if ordinal == 1 {
+                filter.first_spell_cast_each_turn = true;
+            } else {
+                filter.spell_cast_ordinal_each_turn = Some(ordinal);
+            }
+            filter.cast_by = Some(PlayerFilter::IteratedPlayer);
+        }
         return Ok(Some(TriggerSpec::SpellCast {
             filter,
             mana_source_filter: None,

@@ -485,7 +485,16 @@
             }
             return text;
         }
-        let use_where_x = should_render_token_count_with_where_x(&create_token.count);
+        // "creates X minus one 2/2 ... tokens": an X offset reads inline;
+        // a "where X is X minus 1" continuation would restate X itself.
+        let x_offset_inline = matches!(
+            create_token.count.unhinted(),
+            Value::Add(left, right)
+                if matches!(left.as_ref(), Value::X)
+                    && matches!(right.as_ref(), Value::Fixed(_))
+        );
+        let use_where_x =
+            !x_offset_inline && should_render_token_count_with_where_x(&create_token.count);
         let singular_count = matches!(create_token.count, Value::Fixed(1)) && !use_where_x;
         let token_blueprint = describe_created_token_blueprint();
         let token_phrase = if singular_count {
@@ -495,6 +504,8 @@
         };
         let count_text = if use_where_x {
             "X".to_string()
+        } else if x_offset_inline {
+            describe_value(&create_token.count)
         } else if singular_count {
             "a".to_string()
         } else if matches!(

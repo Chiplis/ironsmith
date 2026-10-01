@@ -24,7 +24,15 @@ fn split_attached_keyword_condition_suffix(
                 display: None,
             }
         } else {
-            parse_static_condition_clause(condition_tokens)?
+            let host_tag = if subject.is_equipped() {
+                crate::tag::CompilerReferenceTag::Equipped
+            } else {
+                crate::tag::CompilerReferenceTag::Enchanted
+            };
+            bind_attached_host_controller_condition(
+                parse_static_condition_clause(condition_tokens)?,
+                host_tag,
+            )
         }),
         attached_grammar::AttachedConditionSuffix::YourTurn { .. } => {
             Some(PredicateAst::YourTurn)
@@ -34,6 +42,63 @@ fn split_attached_keyword_condition_suffix(
         ),
     };
     Ok((trim_edge_punctuation(parsed.ability_tokens()), condition))
+}
+
+/// "Enchanted creature has shroud as long as its controller controls another
+/// creature": `its controller` is the attached object's controller and
+/// `another` is measured against the attached object, not the Aura or
+/// Equipment whose static ability evaluates the condition.
+fn bind_attached_host_controller_condition(
+    condition: PredicateAst,
+    host_tag: crate::tag::CompilerReferenceTag,
+) -> PredicateAst {
+    fn bind_filter(mut filter: ObjectFilter, host_tag: crate::tag::CompilerReferenceTag) -> ObjectFilter {
+        filter.controller = Some(crate::filter::PlayerFilter::ControllerOf(
+            crate::filter::ObjectRef::tagged(host_tag.bind()),
+        ));
+        if filter.other {
+            filter.other = false;
+            filter = filter.not_tagged(host_tag.bind());
+        }
+        filter
+    }
+    let is_unbound_its_controller = |filter: &ObjectFilter| {
+        matches!(
+            &filter.controller,
+            Some(crate::filter::PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target))
+        )
+    };
+    match condition {
+        PredicateAst::Player(PlayerPredicateAst::PlayerControls {
+            player: PlayerAst::ItsController,
+            filter,
+        }) => PredicateAst::CountComparison {
+            count: AnthemCountExpression::MatchingFilter(bind_filter(filter, host_tag)),
+            comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+            display: None,
+        },
+        PredicateAst::CountComparison {
+            count: AnthemCountExpression::MatchingFilter(filter),
+            comparison,
+            display,
+        } if is_unbound_its_controller(&filter) => PredicateAst::CountComparison {
+            count: AnthemCountExpression::MatchingFilter(bind_filter(filter, host_tag)),
+            comparison,
+            display,
+        },
+        PredicateAst::Not(inner) => PredicateAst::Not(Box::new(
+            bind_attached_host_controller_condition(*inner, host_tag),
+        )),
+        PredicateAst::And(left, right) => PredicateAst::And(
+            Box::new(bind_attached_host_controller_condition(*left, host_tag)),
+            Box::new(bind_attached_host_controller_condition(*right, host_tag)),
+        ),
+        PredicateAst::Or(left, right) => PredicateAst::Or(
+            Box::new(bind_attached_host_controller_condition(*left, host_tag)),
+            Box::new(bind_attached_host_controller_condition(*right, host_tag)),
+        ),
+        other => other,
+    }
 }
 
 /// The filter an unbound `it` denotes when the line is about an attached object.

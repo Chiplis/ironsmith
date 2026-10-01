@@ -296,6 +296,15 @@ pub fn parse_create_head_tokens(tokens: &[OwnedLexToken]) -> Option<CreateHeadSp
         (CreateCountHead::EventAmount, 2)
     } else if surface.starts(CreationPhrase::NumberOf) {
         (CreateCountHead::EqualToDynamic, 3)
+    } else if words.first().copied() == Some("x")
+        && matches!(words.get(1).copied(), Some("plus" | "minus"))
+        && let Some((value, used)) =
+            super::super::super::shared_util::value_expr::parse_value_expr_words(&words)
+                .filter(|(_, used)| *used > 2)
+    {
+        // "Each opponent creates X minus one 2/2 ... tokens" (Eiganjo
+        // Uprising): the arithmetic is the count, not a token name.
+        (CreateCountHead::Dynamic(value), used)
     } else if words.first().copied() == Some("x") {
         (CreateCountHead::X, 1)
     } else if words.first().copied() == Some("half")

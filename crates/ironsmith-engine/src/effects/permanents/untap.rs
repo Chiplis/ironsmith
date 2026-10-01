@@ -31,6 +31,8 @@ impl EffectExecutor for UntapEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        game.clear_pending_decision_controllers();
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let result = (|| {
@@ -63,7 +65,7 @@ impl EffectExecutor for UntapEffect {
             }
             let count = outcomes.iter().map(EffectOutcome::count_or_zero).sum();
             let mut outcome = EffectOutcome::aggregate_summing_counts(outcomes);
-            outcome.value = crate::effect::OutcomeValue::Count(count);
+            outcome.set_value(crate::effect::OutcomeValue::Count(count));
             if self.target.is_target() && self.target.is_single() {
                 // A legal target resolves even when no untap happens. Preserve
                 // the complete payload while retaining that target policy.
@@ -72,13 +74,13 @@ impl EffectExecutor for UntapEffect {
                 } else {
                     EffectOutcome::target_invalid()
                 };
-                outcome.status = summary.status;
-                outcome.value = summary.value;
+                outcome.set_status(summary.status);
+                outcome.set_value(summary.value);
             }
             Ok(outcome)
         })();
         if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            *game = checkpoint;
+            game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
             context_checkpoint.restore(ctx);
         }
         result

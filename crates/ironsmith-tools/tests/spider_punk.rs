@@ -45,7 +45,7 @@ fn riot_counter_is_present_before_entry_finishes_and_is_granted_to_other_spiders
             source,
             Zone::Battlefield,
             &mut SelectFirstDecisionMaker,
-        )
+        ).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     assert_eq!(
@@ -74,7 +74,7 @@ fn riot_counter_is_present_before_entry_finishes_and_is_granted_to_other_spiders
                 hand,
                 Zone::Battlefield,
                 &mut SelectFirstDecisionMaker,
-            )
+            ).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
             .unwrap()
             .new_id;
         assert_eq!(
@@ -110,7 +110,7 @@ fn riot_haste_choice_is_immediate_and_survives_cleanup() {
     let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
     let source = game.create_object_from_definition(&definition(), alice, Zone::Hand);
     let entered = game
-        .move_object_with_etb_processing_with_dm(source, Zone::Battlefield, &mut ChooseLast)
+        .move_object_with_etb_processing_with_dm(source, Zone::Battlefield, &mut ChooseLast).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     assert_eq!(
@@ -290,7 +290,7 @@ fn printed_and_granted_riot_are_separate_entry_choices() {
             hand,
             Zone::Battlefield,
             &mut SelectFirstDecisionMaker,
-        )
+        ).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     assert_eq!(
@@ -333,7 +333,7 @@ fn runtime_builder_riot_matches_compiler_entry_and_duration_semantics() {
             .build();
         let hand = game.create_object_from_definition(&card, alice, Zone::Hand);
         let creature = game
-            .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut PickMode(haste))
+            .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut PickMode(haste)).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
             .unwrap()
             .new_id;
         assert_eq!(
@@ -361,4 +361,13 @@ fn runtime_builder_riot_matches_compiler_entry_and_duration_semantics() {
             haste
         );
     }
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: ironsmith::game_state::EntryCommitResult)
+    -> Option<ironsmith::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

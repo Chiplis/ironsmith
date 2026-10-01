@@ -218,7 +218,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
         // snapshots targets, and the queued trigger snapshots its source.
         // Refreshing once is cheaper than letting each of those reads rebuild
         // every continuous effect from scratch.
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
         let controller_id = resolve_player_filter(game, &self.controller, ctx)?;
         // A resolving ability may already have moved its source to another
         // zone before registering this delayed trigger. Follow the source's
@@ -1181,7 +1181,7 @@ mod tests {
         };
         assert!(crate::special_actions::can_perform_check(&action, &game, bob).is_ok());
         assert!(
-            crate::decision::compute_legal_actions(&game, bob)
+            crate::decision::compute_legal_actions(&game, bob).expect("fixture has complete replacement state")
                 .contains(&crate::decision::LegalAction::SpecialAction(action.clone()))
         );
         let mut decision_maker = crate::decision::SelectFirstDecisionMaker;

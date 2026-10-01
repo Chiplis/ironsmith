@@ -32,11 +32,16 @@ impl EffectExecutor for DiscoverEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let mut consultation = None;
+        let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let count = resolve_value(game, &self.count, ctx)?.max(0) as u32;
         let all_tag = TagKey::from("__discover_all");
         let match_tag = TagKey::from("__discover_match");
-        execute_library_consult(
+        consultation = Some(execute_library_consult(
             game,
             ctx,
             player_id,
@@ -51,42 +56,17 @@ impl EffectExecutor for DiscoverEffect {
                 // CR 709.4: a split card's mana value is both halves' total.
                 (crate::filter::object_mana_value_for_filter(card).max(0) as u32) <= count
             },
-        )?;
+        )?);
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
 
         let mut selected_object = None;
         let mut casted_spell = None;
-        if let Some(candidate_snapshot) = ctx.get_tagged(match_tag.as_str()).cloned() {
-            let mut candidate_id = candidate_snapshot.object_id;
-            if game.object(candidate_id).is_none() {
-                if let Some(found) = game.find_object_by_stable_id(candidate_snapshot.stable_id) {
-                    candidate_id = found;
-                } else {
-                    return Ok(EffectOutcome::count(0).with_event(
-                        TriggerEvent::new_with_provenance(
-                            KeywordActionEvent::new(
-                                KeywordActionKind::Discover,
-                                player_id,
-                                ctx.source,
-                                count,
-                            ),
-                            ctx.provenance,
-                        ),
-                    ));
-                }
-            }
-            let Some(candidate_obj) = game.object(candidate_id) else {
-                return Ok(
-                    EffectOutcome::count(0).with_event(TriggerEvent::new_with_provenance(
-                        KeywordActionEvent::new(
-                            KeywordActionKind::Discover,
-                            player_id,
-                            ctx.source,
-                            count,
-                        ),
-                        ctx.provenance,
-                    )),
-                );
-            };
+        let mut phases = Vec::new();
+        if let Some(candidate_snapshot) = ctx.get_tagged(match_tag.as_str()).cloned()
+            && let Some(candidate_obj) = game.object(candidate_snapshot.object_id)
+            && candidate_obj.zone == Zone::Exile
+        {
+            let candidate_id = candidate_snapshot.object_id;
 
             let candidate_name = candidate_obj.name.to_string();
             let choice_ctx = crate::decisions::context::BooleanContext::new(
@@ -145,7 +125,9 @@ impl EffectExecutor for DiscoverEffect {
                 };
                 if let Some(result) = cast_result {
                     selected_object = Some(result.new_id);
-                    casted_spell = Some((result.new_id, result.from_zone));
+                    casted_spell = Some(register_effect_driven_spell_cast(
+                        game, result.new_id, player_id, result.from_zone, ctx.provenance,
+                    ));
                 } else if ctx.decision_maker.awaiting_choice() {
                     return Ok(EffectOutcome::count(0));
                 } else {
@@ -154,29 +136,31 @@ impl EffectExecutor for DiscoverEffect {
                     put_in_hand = true;
                 }
             }
-            let candidate_id = if game.object(candidate_id).is_some() {
-                candidate_id
-            } else {
-                game.find_object_by_stable_id(candidate_snapshot.stable_id)
-                    .unwrap_or(candidate_id)
-            };
-            if put_in_hand
-                && game
-                    .object(candidate_id)
-                    .is_some_and(|object| object.zone == Zone::Exile)
-                && let Some((new_id, final_zone)) = game.move_object_with_commander_options(
-                    candidate_id,
-                    Zone::Hand,
-                    ctx.cause.clone(),
-                    &mut *ctx.decision_maker,
-                )
-                && final_zone == Zone::Hand
-            {
-                selected_object = Some(new_id);
+            if put_in_hand && game.object(candidate_id).is_some_and(|object| object.zone == Zone::Exile) {
+                let additional = ctx.additional_replacement_effects_snapshot();
+                let receipt = crate::effects::zones::apply_zone_change_with_context_and_additional_effects(
+                    game, candidate_id, Zone::Exile, Zone::Hand, ctx.cause.clone(), ctx, &additional,
+                )?;
+                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                let arrivals = match &receipt.original {
+                    crate::events::processing::EventOutcome::Proceed(change) => change.new_object_ids.clone(),
+                    crate::events::processing::EventOutcome::Replaced => {
+                        let ids = game.take_zone_change_results(candidate_id);
+                        if !ids.is_empty() { game.record_zone_change_results(candidate_id, ids.clone()); }
+                        ids
+                    }
+                    _ => Vec::new(),
+                };
+                selected_object = arrivals.into_iter().find(|id| game.object(*id).is_some_and(|object| object.zone == Zone::Hand));
+                let original = selected_object.map(|id| EffectOutcome::with_objects(vec![id]))
+                    .unwrap_or_else(|| EffectOutcome::count(0));
+                phases.push(crate::effects::zones::finish_zone_change_receipts(game, ctx, original, vec![(candidate_id, receipt)])?);
+                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
             }
+
         }
         let keep_tagged = selected_object.as_ref().map(|_| match_tag.clone());
-        crate::effects::execute_effect(
+        let cleanup = crate::effects::execute_effect(
             game,
             &Effect::put_tagged_remainder_on_library_bottom(
                 all_tag,
@@ -193,24 +177,101 @@ impl EffectExecutor for DiscoverEffect {
             OutcomeValue::Count(0)
         };
 
-        let mut outcome = EffectOutcome::with_details(
-            crate::effect::OutcomeStatus::Succeeded,
-            value,
-            vec![TriggerEvent::new_with_provenance(
-                KeywordActionEvent::new(KeywordActionKind::Discover, player_id, ctx.source, count),
-                ctx.provenance,
-            )],
-            Vec::new(),
-        );
-        if let Some((new_id, from_zone)) = casted_spell {
-            outcome = outcome.with_event(register_effect_driven_spell_cast(
-                game,
-                new_id,
-                player_id,
-                from_zone,
-                ctx.provenance,
-            ));
-        }
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        // Cast observations were captured at the successful cast, before cleanup.
+        if let Some(event) = casted_spell { phases.insert(0, EffectOutcome::resolved().with_event(event)); }
+        phases.push(cleanup);
+        phases.push(EffectOutcome::resolved().with_event(TriggerEvent::new_with_provenance(
+            KeywordActionEvent::new(KeywordActionKind::Discover, player_id, ctx.source, count), ctx.provenance,
+        )));
+        let mut outcome = EffectOutcome::aggregate(phases);
+        outcome.status = crate::effect::OutcomeStatus::Succeeded;
+        outcome.value = value;
         Ok(outcome)
+        })();
+        let pending = ctx.decision_maker.awaiting_choice();
+        if pending || instruction.is_err() { *game = checkpoint; context_checkpoint.restore(ctx); }
+        if pending { return instruction.map(|_| EffectOutcome::count(0)); }
+        instruction.map(|outcome| {
+            if let Some(consult) = consultation {
+                let primary_status = outcome.status;
+                let primary_value = outcome.value.clone();
+                let mut combined = EffectOutcome::aggregate([consult.attach_to_outcome(EffectOutcome::resolved()), outcome]);
+                combined.status = primary_status;
+                combined.value = primary_value;
+                combined
+            } else { outcome }
+        })
     }
+}
+
+#[cfg(test)]
+mod replacement_discover_hand_owner_contract_tests {
+    use super::*;
+    use crate::card::CardBuilder;
+    use crate::decision::DecisionMaker;
+    use crate::effect::Value;
+    use crate::ids::{CardId,ObjectId,PlayerId};
+    use crate::mana::{ManaCost,ManaSymbol};
+    use crate::object::CounterType;
+    use crate::replacement::{ReplacementAction,ReplacementEffect};
+    use crate::snapshot::ObjectSnapshot;
+    use crate::target::{ChooseSpec,ObjectFilter};
+    use crate::types::CardType;
+    struct Answers {pause:bool,pending:bool,added:usize,binding:bool}
+    impl DecisionMaker for Answers {
+        fn decide_boolean(&mut self,game:&GameState,context:&crate::decisions::context::BooleanContext)->bool {
+            if context.player==PlayerId::from_index(0) {return false;}
+            self.added+=1;
+            let hand=&game.player(PlayerId::from_index(0)).unwrap().hand;assert_eq!(hand.len(),1);
+            assert_eq!(game.exile.len(),1,"hand additions precede remainder cleanup");assert!(game.player(PlayerId::from_index(0)).unwrap().library.is_empty());
+            if self.binding {assert_eq!(game.counter_count(hand[0],CounterType::PlusOnePlusOne),1);}
+            self.pending=self.pause;!self.pending
+        }
+        fn awaiting_choice(&self)->bool {self.pending}
+    }
+    fn card(game:&mut GameState,owner:PlayerId,kind:CardType,zone:Zone)->ObjectId {
+        game.create_object_from_card(&CardBuilder::new(CardId::new(),"Discover fixture").card_types(vec![kind])
+            .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)])).build(),owner,zone)
+    }
+    fn check(mode:u8) {
+        let mut game=crate::tests::test_helpers::setup_two_player_game();let alice=PlayerId::from_index(0);let bob=PlayerId::from_index(1);
+        let parent=card(&mut game,alice,CardType::Artifact,Zone::Battlefield);let source=card(&mut game,bob,CardType::Artifact,Zone::Battlefield);
+        let spell=card(&mut game,alice,CardType::Instant,Zone::Library);let land=card(&mut game,alice,CardType::Land,Zone::Library);
+        let sentinel=ObjectSnapshot::from_object(game.object(parent).unwrap(),&game);
+        let actions=match mode {1=>vec![Effect::gain_life(3),Effect::lose_life(Value::X)],3=>vec![Effect::new(crate::effects::PutCountersEffect::new(CounterType::PlusOnePlusOne,1,ChooseSpec::tagged("it"))),Effect::new(crate::effects::composition::MayEffect::new_for_player(vec![Effect::gain_life(0)], crate::target::PlayerFilter::You))],_=>vec![Effect::gain_life(3),Effect::new(crate::effects::composition::MayEffect::new_for_player(vec![Effect::gain_life(4)], crate::target::PlayerFilter::You))]};
+        let shield=game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(source,bob,
+            crate::events::zones::matchers::WouldChangeZoneMatcher::new(ObjectFilter::default(),Some(Zone::Exile),Some(Zone::Hand)),ReplacementAction::Additionally(actions)));
+        game.take_pending_trigger_events();let ids=game.next_object_id_counter();let objects=game.objects_in_deterministic_order().len();
+        let mut dm=Answers {pause:mode==2,pending:false,added:0,binding:mode==3};let mut ctx=ExecutionContext::new(parent,alice,&mut dm);ctx.set_tagged_objects("it",vec![sentinel.clone()]);
+        let result=DiscoverEffect::you(3).execute(&mut game,&mut ctx);
+        if mode==1 {assert!(matches!(result,Err(ExecutionError::UnresolvableValue(_))));}
+        else if mode==2 {assert!(ctx.decision_maker.awaiting_choice());assert!(result.unwrap().events.is_empty());}
+        else {
+            let outcome=result.unwrap();let arrived=outcome.explicit_objects().unwrap();assert_eq!(arrived.len(),1);assert_eq!(game.object(arrived[0]).unwrap().zone,Zone::Hand);
+            assert_eq!(game.player(alice).unwrap().life,20);assert_eq!(game.player(bob).unwrap().life,if mode==3 {20}else{27});
+            assert!(game.exile.is_empty());assert!(game.stack.is_empty());assert_eq!(game.player(alice).unwrap().library.len(),1);
+            if mode==3 {assert_eq!(game.counter_count(arrived[0],CounterType::PlusOnePlusOne),1);}
+            else {assert_eq!(outcome.events.iter().filter_map(|event|event.downcast::<crate::events::LifeGainEvent>()).map(|event|(event.player,event.amount)).collect::<Vec<_>>(),vec![(bob,3),(bob,4)]);}
+            assert_eq!(outcome.events.iter().filter(|event|event.downcast::<KeywordActionEvent>().is_some()).count(),1);
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+        }
+        assert_eq!(ctx.source,parent);assert_eq!(ctx.controller,alice);assert_eq!(ctx.get_tagged_all("it").unwrap()[0].object_id,sentinel.object_id);
+        if mode==1||mode==2 {
+            assert_eq!(game.player(alice).unwrap().library,vec![spell,land]);assert!(game.player(alice).unwrap().hand.is_empty());assert!(game.exile.is_empty());
+            assert_eq!(game.next_object_id_counter(),ids);assert_eq!(game.objects_in_deterministic_order().len(),objects);assert_eq!(game.player(bob).unwrap().life,20);
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_some());assert!(game.take_pending_trigger_events().is_empty());
+            assert!(ctx.get_tagged_all("__discover_all").is_none());assert!(ctx.get_tagged_all("__discover_match").is_none());
+        }
+        drop(ctx);if mode==0||mode==3 {assert_eq!(dm.added,1);}
+        if mode==2 {
+            assert_eq!(dm.added,1);dm.pause=false;dm.pending=false;let mut ctx=ExecutionContext::new(parent,alice,&mut dm);
+            let outcome=DiscoverEffect::you(3).execute(&mut game,&mut ctx).unwrap();assert_eq!(outcome.explicit_objects().unwrap().len(),1);assert_eq!(game.player(bob).unwrap().life,27);
+            assert!(!ctx.decision_maker.awaiting_choice());drop(ctx);assert_eq!(dm.added,2);
+        }
+    }
+    #[test] fn additions_follow_hand_move_before_cleanup() {check(0);}
+    #[test] fn error_restores_entire_discover_instruction() {check(1);}
+    #[test] fn pending_replays_entire_discover_instruction() {check(2);}
+    #[test] fn addition_binds_actual_hand_arrival() {check(3);}
 }

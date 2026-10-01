@@ -82,6 +82,8 @@ fn cohort_reflexive_pump_uses_original_life_gain_amount_after_hybrid_payment() {
                     Some(2),
                     "the reflexive ability must use a separate stack entry"
                 );
+                assert!(game.stack.is_empty(), "reflexive triggers are pending before priority placement");
+                crate::game_loop::put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut payment).unwrap();
                 assert_eq!(game.stack.len(), usize::from(paid));
                 assert_eq!(payment.target_choices, usize::from(paid));
                 assert_eq!(

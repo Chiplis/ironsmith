@@ -690,6 +690,12 @@ pub(super) fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
         return None;
     }
     idx += 2;
+    // "the number of times this creature was kicked": the multikicker count,
+    // not a count of objects matching the source noun.
+    let kick_end = value_boundary(&words[idx..]) + idx;
+    if super::super::count_shapes::is_kick_count_words(&words[idx..kick_end]) {
+        return Some((Value::KickCount, kick_end));
+    }
     let characteristic_tail = &words[idx..];
     if characteristic_tail.len() >= 4
         && crate::word_primitives::first_is_any(characteristic_tail, &["color", "colors"])
@@ -845,11 +851,43 @@ pub(super) fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
                 reference_end,
             ));
         }
+        // "with mana value less than or equal to the number of counters on
+        // that creature from your graveyard" (Puca's Covenant): the trailing
+        // zone belongs to the enclosing object phrase, not to the counted
+        // reference.
+        if reference.len() > 2
+            && reference[2] == "from"
+            && is_tagged_counter_reference(&reference[..2])
+        {
+            return Some((
+                Value::CountersOn(
+                    Box::new(ChooseSpec::Tagged(
+                        (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                    )),
+                    parsed_counter_type,
+                ),
+                reference_start + 2,
+            ));
+        }
         if is_tagged_counter_reference(reference) {
             return Some((
                 Value::CountersOn(
                     Box::new(ChooseSpec::Tagged(
                         (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                    )),
+                    parsed_counter_type,
+                ),
+                reference_end,
+            ));
+        }
+        // The card's own name inside an ability its Aura or Equipment grants
+        // (Archery Training's "arrow counters on Archery Training"): the
+        // granting permanent, not every permanent.
+        if reference == crate::preprocess::GRANTING_SOURCE_SURFACE_WORDS {
+            return Some((
+                Value::CountersOn(
+                    Box::new(ChooseSpec::Tagged(
+                        (crate::tag::CompilerReferenceTag::GrantingSource.bind()).into(),
                     )),
                     parsed_counter_type,
                 ),
@@ -869,7 +907,18 @@ pub(super) fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
     if filter_end <= filter_start {
         return None;
     }
-    let filter_words = &words[filter_start..filter_end];
+    // "the number of creatures on the battlefield as you cast this spell"
+    // (Volcanic Wind): the timing tail says when the count is taken, not that
+    // the counted objects were cast by you.
+    const AS_YOU_CAST_TAIL: &[&str] = &["as", "you", "cast", "this", "spell"];
+    let filter_words_end = if filter_end - filter_start > AS_YOU_CAST_TAIL.len()
+        && words[filter_end - AS_YOU_CAST_TAIL.len()..filter_end] == *AS_YOU_CAST_TAIL
+    {
+        filter_end - AS_YOU_CAST_TAIL.len()
+    } else {
+        filter_end
+    };
+    let filter_words = &words[filter_start..filter_words_end];
     let history_tokens = synthetic_word_tokens(filter_words);
     if permission_shapes::find_words(filter_words, &["this", "way"]).is_none()
         && let Some(value) =

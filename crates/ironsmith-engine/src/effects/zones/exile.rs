@@ -16,7 +16,7 @@ use crate::snapshot::ObjectSnapshot;
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;
 
-use super::{apply_zone_change_with_additional_effects, take_recorded_zone_change};
+use super::{apply_zone_change_with_context_and_additional_effects, take_recorded_zone_change};
 
 /// Effect that exiles permanents.
 ///
@@ -36,12 +36,15 @@ use super::{apply_zone_change_with_additional_effects, take_recorded_zone_change
 /// ```
 pub type ExileEffect = ironsmith_core::ExileEffect;
 
+type ExileZoneReceipts = Vec<(crate::ids::ObjectId, crate::events::processing::PreparedEventOutcome<super::AppliedZoneChange>)>;
+
 fn exile_object(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     object_id: crate::ids::ObjectId,
     face_down: bool,
     source_controller_may_look: bool,
+    receipts: &mut ExileZoneReceipts,
 ) -> Result<Option<OutcomeStatus>, ExecutionError> {
     if let Some(obj) = game.object(object_id) {
         let from_zone = obj.zone;
@@ -51,17 +54,20 @@ fn exile_object(
         let pre_snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
         let additional_effects = ctx.additional_replacement_effects_snapshot();
 
-        let result = apply_zone_change_with_additional_effects(
-            game,
-            object_id,
-            from_zone,
-            requested_zone,
-            ctx.cause.clone(),
-            &mut ctx.decision_maker,
-            &additional_effects,
-        );
+        let result = apply_zone_change_with_context_and_additional_effects(
+    game,
+    object_id,
+    from_zone,
+    requested_zone,
+    ctx.cause.clone(),
+    ctx,
+    &additional_effects
+)?;
 
-        match result {
+        let original = result.original.clone();
+        receipts.push((object_id, result));
+        if ctx.decision_maker.awaiting_choice() { return Ok(None); }
+        match original {
             EventOutcome::Prevented => return Ok(Some(crate::effect::OutcomeStatus::Prevented)),
             EventOutcome::Proceed(result) => {
                 if !result.new_object_ids.is_empty() {
@@ -221,6 +227,10 @@ impl EffectExecutor for ExileEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let mut receipts: ExileZoneReceipts = Vec::new();
+        let result = (|| -> Result<EffectOutcome, ExecutionError> {
         let pending_start = game.effect_store.pending_trigger_events.len();
         // CR 603.10a: a multi-object exile shares one pre-event look-back.
         let pinned_lookback = (!self.spec.is_single()
@@ -241,7 +251,7 @@ impl EffectExecutor for ExileEffect {
                     let outcome = apply_single_target_object_from_context(
                         game,
                         ctx,
-                        |game, ctx, object_id| exile_object(game, ctx, object_id, self.face_down, self.source_controller_may_look),
+                        |game, ctx, object_id| exile_object(game, ctx, object_id, self.face_down, self.source_controller_may_look, &mut receipts),
                     )?;
 
                     // Reflexive follow-ups such as "when a creature card is
@@ -300,7 +310,9 @@ impl EffectExecutor for ExileEffect {
                     for target in selected {
                         if let ResolvedTarget::Object(object_id) = target {
                             let pre_memory = OutcomeObjectMemory::from_object_id(game, object_id);
-                            match exile_object(game, ctx, object_id, self.face_down, self.source_controller_may_look)? {
+                            let status = exile_object(game, ctx, object_id, self.face_down, self.source_controller_may_look, &mut receipts)?;
+                            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                            match status {
                                 None => {
                                     exiled_count += 1;
                                     if let Some(memory) = pre_memory.as_ref() {
@@ -351,15 +363,19 @@ impl EffectExecutor for ExileEffect {
                     let pre_snapshot =
                         ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
                     let additional_effects = ctx.additional_replacement_effects_snapshot();
-                    match apply_zone_change_with_additional_effects(
-                        game,
-                        object_id,
-                        from_zone,
-                        requested_zone,
-                        ctx.cause.clone(),
-                        &mut ctx.decision_maker,
-                        &additional_effects,
-                    ) {
+                    let receipt = apply_zone_change_with_context_and_additional_effects(
+    game,
+    object_id,
+    from_zone,
+    requested_zone,
+    ctx.cause.clone(),
+    ctx,
+    &additional_effects
+)?;
+                    let original = receipt.original.clone();
+                    receipts.push((object_id, receipt));
+                    if ctx.decision_maker.awaiting_choice() { return Ok(false); }
+                    match original {
                         EventOutcome::Proceed(result) => {
                             if !result.new_object_ids.is_empty() {
                                 ctx.refresh_target_snapshot(pre_snapshot.clone());
@@ -410,7 +426,8 @@ impl EffectExecutor for ExileEffect {
                 },
             ) {
                 Ok(result) => result,
-                Err(_) => return Ok(EffectOutcome::target_invalid()),
+                Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::target_invalid()),
+                Err(error) => return Err(error),
             };
 
             // An explicit self-exile in this resolution exports its new identity
@@ -463,7 +480,16 @@ impl EffectExecutor for ExileEffect {
                 }
             }
         }
-        outcome
+        let original = outcome?;
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        super::finish_zone_change_receipts(game, ctx, original, receipts)
+        })();
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
+        }
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        result
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

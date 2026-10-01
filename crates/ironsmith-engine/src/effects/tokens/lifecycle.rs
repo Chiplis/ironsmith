@@ -27,15 +27,16 @@ pub(crate) fn execute_token_instruction_atomically<'a>(
     if ctx.decision_maker.awaiting_choice() {
         return Ok(crate::effect::EffectOutcome::with_objects(Vec::new()));
     }
+    game.clear_pending_decision_controllers();
     let checkpoint = game.clone();
     let context_checkpoint = crate::effects::context::ExecutionContextCheckpoint::capture(ctx);
     let result = execute(game, ctx);
     let pending = ctx.decision_maker.awaiting_choice();
     if pending || result.is_err() {
-        *game = checkpoint;
+        game.restore_execution_checkpoint(checkpoint, pending && result.is_ok());
         context_checkpoint.restore(ctx);
     }
-    if pending {
+    if pending && result.is_ok() {
         return Ok(crate::effect::EffectOutcome::with_objects(Vec::new()));
     }
     result
@@ -72,12 +73,43 @@ pub(crate) fn remaining_token_slots(game: &GameState, controller: PlayerId) -> u
     TOKEN_PER_PLAYER_LIMIT.saturating_sub(existing)
 }
 
+/// Keep the complete entry receipt while exposing only its original arrival
+/// for the owner's authored token links, combat setup and cleanup registration.
+/// The owner must finish these receipts after every original token is complete.
+pub(crate) fn retain_token_entry_receipt(
+    game: &mut GameState,
+    provisional: ObjectId,
+    entry: crate::game_state::EntryCommitResult,
+    receipts: &mut Vec<(ObjectId, crate::events::processing::PreparedEventOutcome<crate::effects::zones::AppliedZoneChange>)>,
+) -> Result<Option<crate::game_state::EntersResult>, ExecutionError> {
+    use crate::events::processing::{EventOutcome, PreparedEventOutcome};
+    if entry.pending { return Err(ExecutionError::InternalError("pending token entry reached original commit owner".into())); }
+    let (original, arrival) = match entry.original {
+        EventOutcome::Proceed(result) => {
+            let final_zone = game.object(result.new_id).map(|object| object.zone)
+                .ok_or_else(|| ExecutionError::InternalError("token entry arrival missing before authored work".into()))?;
+            let mut ids = game.take_zone_change_results(provisional);
+            if ids.is_empty() { ids.push(result.new_id); }
+            game.record_zone_change_results(provisional, ids.clone());
+            (EventOutcome::Proceed(crate::effects::zones::AppliedZoneChange {
+                final_zone, new_object_id: Some(result.new_id), new_object_ids: ids,
+            }), Some(result))
+        }
+        EventOutcome::Prevented => (EventOutcome::Prevented, None),
+        EventOutcome::Replaced => (EventOutcome::Replaced, None),
+        EventOutcome::NotApplicable => (EventOutcome::NotApplicable, None),
+    };
+    receipts.push((provisional, PreparedEventOutcome { original, programs: entry.programs }));
+    Ok(arrival)
+}
+
 pub(crate) fn create_replacement_additional_tokens(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     controller_id: PlayerId,
     additional_tokens: &[(ironsmith_core::AdditionalTokenKind, u32)],
     events: &mut Vec<TriggerEvent>,
+    receipts: &mut Vec<(ObjectId, crate::events::processing::PreparedEventOutcome<crate::effects::zones::AppliedZoneChange>)>,
 ) -> Result<Vec<ObjectId>, ExecutionError> {
     let mut created_ids = Vec::new();
     for (token_kind, requested_count) in additional_tokens {
@@ -96,9 +128,9 @@ pub(crate) fn create_replacement_additional_tokens(
                 id,
                 Zone::Battlefield,
                 &mut ctx.decision_maker,
-            );
+            )?;
             if ctx.decision_maker.awaiting_choice() { return Ok(Vec::new()); }
-            let Some(entry_result) = entry_result else {
+            let Some(entry_result) = retain_token_entry_receipt(game, id, entry_result, receipts)? else {
                 game.remove_object(id);
                 continue;
             };

@@ -112,7 +112,7 @@ fn cast(graveyard_types: usize, want: &'static str) -> (Vec<String>, Vec<String>
         .unwrap()
         .mana_pool
         .add(ManaSymbol::Colorless, 1);
-    let action = compute_legal_actions(&game, alice)
+    let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))
         .expect("castable");

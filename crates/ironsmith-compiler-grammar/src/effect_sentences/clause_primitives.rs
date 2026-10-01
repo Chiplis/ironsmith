@@ -1248,6 +1248,19 @@ pub fn parse_until_duration_triggered_clause(
     let either_of_watched_objects =
         crate::word_primitives::sequence_occurs(&trigger_words, &["either", "of", "those"]);
 
+    // "Until end of turn, whenever you play a land or cast a spell this way,
+    // its owner draws a card": "this way" restricts the played land / cast
+    // spell to the cards the preceding permission made playable.
+    let event_words = trigger_clause
+        .tokens()
+        .iter()
+        .position(|token| token.is_comma())
+        .map(|comma| LexedClause::new(&trigger_clause.tokens()[..comma]).word_refs())
+        .unwrap_or_default();
+    if crate::word_primitives::parse_sequence_suffix(&event_words, &["this", "way"]) {
+        restrict_play_or_cast_trigger_to_prior_cards(&mut trigger);
+    }
+
     Ok(Some(EffectAst::Delayed(
         DelayedEffectAst::DelayedTriggerForDuration {
             trigger,
@@ -1258,6 +1271,45 @@ pub fn parse_until_duration_triggered_clause(
             while_any_tagged_object_in_zone: None,
         },
     )))
+}
+
+/// Bind the played land / cast spell of a "... this way" play-or-cast
+/// trigger to the prior object antecedent (the cards made playable).
+fn restrict_play_or_cast_trigger_to_prior_cards(trigger: &mut crate::model::ast::TriggerSpec) {
+    fn restrict(filter: &mut ObjectFilter) {
+        let it = crate::tag::CompilerReferenceTag::It.as_str();
+        if filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == it
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }) {
+            return;
+        }
+        filter
+            .tagged_constraints
+            .push(crate::target::TaggedObjectConstraint {
+                tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            });
+    }
+    match trigger {
+        crate::model::ast::TriggerSpec::WithIntro { trigger, .. } => {
+            restrict_play_or_cast_trigger_to_prior_cards(trigger)
+        }
+        crate::model::ast::TriggerSpec::Either(left, right) => {
+            restrict_play_or_cast_trigger_to_prior_cards(left);
+            restrict_play_or_cast_trigger_to_prior_cards(right);
+        }
+        crate::model::ast::TriggerSpec::AnyOf(triggers) => {
+            for trigger in triggers {
+                restrict_play_or_cast_trigger_to_prior_cards(trigger);
+            }
+        }
+        crate::model::ast::TriggerSpec::PlayerPlaysLand { filter, .. } => restrict(filter),
+        crate::model::ast::TriggerSpec::SpellCast { filter, .. } => {
+            restrict(filter.get_or_insert_with(ObjectFilter::default))
+        }
+        _ => {}
+    }
 }
 
 pub fn is_damage_source_target(target: &TargetAst) -> bool {

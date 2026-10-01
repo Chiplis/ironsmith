@@ -27,6 +27,18 @@ pub fn parse_pay(
         ParseOutcome::NoMatch => {}
         ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
+    // "You may pay {W} to end this effect" (Licids) is a later special
+    // action that ends a continuous effect, not a mana payment made now.
+    // The leading-pip reading below would keep only the payment.
+    if clause_words
+        .windows(4)
+        .any(|window| window == ["to", "end", "this", "effect"])
+    {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported pay-to-end-effect clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
     let pips = {
         use winnow::prelude::*;
         let mut stream = LexStream::new(tokens);

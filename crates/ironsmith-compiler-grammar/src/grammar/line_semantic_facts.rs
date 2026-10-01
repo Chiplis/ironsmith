@@ -313,6 +313,8 @@ fn parse_line_semantic_facts_tokens_with_optional_context(
                 first_time_each_or_this_turn: trigger_frequency.first_time_each_or_this_turn,
                 first_time_during_each_of_your_turns: trigger_frequency
                     .first_time_during_each_of_your_turns,
+                first_time_during_each_of_their_turns: trigger_frequency
+                    .first_time_during_each_of_their_turns,
                 becomes_crewed: trigger_frequency.becomes_crewed,
                 do_this_limit_each_turn: trigger_frequency.do_this_limit_each_turn,
             },

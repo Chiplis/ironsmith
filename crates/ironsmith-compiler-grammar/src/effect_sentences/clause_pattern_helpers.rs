@@ -2165,14 +2165,61 @@ pub fn parse_keyword_mechanic_clause(
                 }
             }
             clause_shapes::PhaseSubjectShape::Target(target_tokens) => {
-                let target = parse_target_phrase(target_tokens)?;
-                match direction {
+                let phase = |target: TargetAst| match direction {
                     clause_shapes::PhaseDirectionShape::In => {
                         EffectAst::subject_verb_phase_in(target)
                     }
                     clause_shapes::PhaseDirectionShape::Out => {
                         EffectAst::subject_verb_phase_out(target)
                     }
+                };
+                // "this creature and that creature phase out" (Dream
+                // Fighter): two conjoined object subjects each phase.
+                let and_positions = target_tokens
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, token)| token.is_word("and"))
+                    .map(|(index, _)| index)
+                    .collect::<Vec<_>>();
+                let conjoined = match and_positions.as_slice() {
+                    [split] if *split > 0 && *split + 1 < target_tokens.len() => {
+                        let left_tokens = &target_tokens[..*split];
+                        let right_tokens = &target_tokens[*split + 1..];
+                        let quantified = |tokens: &[OwnedLexToken]| {
+                            tokens
+                                .first()
+                                .is_some_and(|token| token.is_any_word(&["each", "all", "other"]))
+                        };
+                        if quantified(left_tokens) || quantified(right_tokens) {
+                            None
+                        } else {
+                            match (
+                                parse_target_phrase(left_tokens),
+                                parse_target_phrase(right_tokens),
+                            ) {
+                                (Ok(left), Ok(right))
+                                    if !matches!(
+                                        left,
+                                        TargetAst::Player(..) | TargetAst::PlayerOrPlaneswalker(..)
+                                    ) && !matches!(
+                                        right,
+                                        TargetAst::Player(..) | TargetAst::PlayerOrPlaneswalker(..)
+                                    ) =>
+                                {
+                                    Some((left, right))
+                                }
+                                _ => None,
+                            }
+                        }
+                    }
+                    _ => None,
+                };
+                if let Some((left, right)) = conjoined {
+                    EffectAst::Sequence {
+                        effects: vec![phase(left), phase(right)],
+                    }
+                } else {
+                    phase(parse_target_phrase(target_tokens)?)
                 }
             }
         },

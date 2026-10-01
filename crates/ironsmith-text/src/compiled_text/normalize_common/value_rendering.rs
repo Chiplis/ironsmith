@@ -5942,6 +5942,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the number of differently named {}",
             describe_count_filter_value_subject(filter)
         ),
+        Value::UnlockedDoorsAmong(filter) => format!(
+            "the number of unlocked doors among {}",
+            describe_count_filter_value_subject(filter)
+        ),
         Value::DistinctManaValues(filter) => format!(
             "the number of different mana values among {}",
             describe_count_filter_value_subject(filter)
@@ -6512,6 +6516,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::MagicGamesLostToOpponentsSinceLastWin => {
             "the number of Magic games you've lost to one of your opponents since you last won a game against them".to_string()
         }
+        Value::DraftRemovedCardCount { card_name } => format!(
+            "the number of cards you removed from the draft with cards named {}",
+            title_case_card_name_fragment(card_name)
+        ),
         Value::DraftNotedHighestNumber { card_name } => format!(
             "the highest number you noted for cards named {}",
             title_case_card_name_fragment(card_name)

@@ -42,7 +42,7 @@ fn setup(players: usize, lands: usize) -> GameState {
 fn announce(g: &mut GameState, def: &CardDefinition, actor: u8, dm: &mut Choices) -> Result<(TriggerQueue,Value),String> {
     g.turn.priority_player=Some(PlayerId(actor));
     let source=g.create_object_from_definition(def,PlayerId(actor),Zone::Hand);
-    let action=compute_legal_actions(g,PlayerId(actor)).into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source)).ok_or("intended cast unavailable")?;
+    let action=compute_legal_actions(g,PlayerId(actor)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source)).ok_or("intended cast unavailable")?;
     let mana=g.player(PlayerId(actor)).unwrap().mana_pool.total();
     let mut q=TriggerQueue::new();
     let mut state=PriorityLoopState::new(g.players_in_game());
@@ -79,7 +79,7 @@ fn cast(g: &mut GameState, def: &CardDefinition, actor: u8, dm: &mut Choices) ->
 
 fn finish(g:&mut GameState,q:&mut TriggerQueue,dm:&mut Choices)->Result<(),String>{let mut state=PriorityLoopState::new(g.players_in_game());for _ in 0..24{advance_priority_with_dm(g,q,dm).map_err(|e|e.to_string())?;if g.stack.is_empty(){return Ok(());}state.reset_for_new_priority_window(g);for _ in 0..g.players_in_game(){apply_priority_response_with_dm(g,q,&mut state,&PriorityResponse::PriorityAction(LegalAction::PassPriority),dm).map_err(|e|e.to_string())?;}}Err("finish budget".into())}
 fn activate(g:&mut GameState,source:ObjectId,index:usize,dm:&mut Choices)->Result<Value,String>{
- let action=compute_legal_actions(g,PlayerId(0)).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index}if *s==source&&*ability_index==index)).ok_or("intended activation unavailable")?;
+ let action=compute_legal_actions(g,PlayerId(0)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index}if *s==source&&*ability_index==index)).ok_or("intended activation unavailable")?;
  let before=g.player(PlayerId(0)).unwrap().mana_pool.total();let mut q=TriggerQueue::new();let mut st=PriorityLoopState::new(g.players_in_game());let mut progress=apply_priority_response_with_dm(g,&mut q,&mut st,&PriorityResponse::PriorityAction(action.clone()),dm).map_err(|e|e.to_string())?;
  for _ in 0..24{if st.pending_activation.is_none()&&!g.stack.is_empty(){break;}let GameProgress::NeedsDecisionCtx(ctx)=progress else{return Err(format!("activation stopped:{progress:?}"));};if matches!(ctx,DecisionContext::Priority(_)){return Err("activation returned priority without stack".into());}progress=apply_decision_context_with_dm(g,&mut q,&mut st,&ctx,dm).map_err(|e|e.to_string())?;}
  let paid=before-g.player(PlayerId(0)).unwrap().mana_pool.total();let error=finish(g,&mut q,dm).err();Ok(json!({"action":format!("{action:?}"),"mana_paid":paid,"resolution_error":error}))

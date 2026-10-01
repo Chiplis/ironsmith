@@ -34,7 +34,7 @@ fn target_dependent_flash_requires_an_available_matching_target() {
         .build();
     let opponent_target = game.create_object_from_definition(&permanent, bob, Zone::Battlefield);
     let can_cast = |game: &GameState| {
-        compute_legal_actions(game, alice).iter().any(|action| {
+        compute_legal_actions(game, alice).expect("fixture has complete replacement state").iter().any(|action| {
             matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell)
         })
     };
@@ -81,7 +81,7 @@ fn attempt_targeted_cast(
     let alice = PlayerId::from_index(0);
     let original_zone = game.object(spell).unwrap().zone;
     let mut game = game.clone();
-    let action = compute_legal_actions(&game, alice).into_iter().find(|action|
+    let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state").into_iter().find(|action|
         matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell)
     ).expect("cast can begin");
     let mut queue = ironsmith::triggers::TriggerQueue::new();

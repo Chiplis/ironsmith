@@ -52,7 +52,7 @@ pub(super) fn loxodon_smiter_discard_replacement_ignores_own_effects_and_costs()
             false,
             crate::provenance::ProvNodeId::default(),
             &mut dm,
-        );
+        ).expect("root discard should execute").expect("root discard should finish without a pending choice");
 
         assert_eq!(
             result.final_zone,
@@ -104,7 +104,7 @@ pub(super) fn loxodon_smiter_discard_replacement_only_applies_to_itself() {
         false,
         crate::provenance::ProvNodeId::default(),
         &mut dm,
-    );
+    ).expect("root discard should execute").expect("root discard should finish without a pending choice");
 
     assert_eq!(result.final_zone, Zone::Graveyard);
     assert!(
@@ -160,7 +160,7 @@ pub(super) fn magma_mine_activated_ability_sacrifices_source_and_deals_counter_s
         })
         .expect("Magma Mine should have a damage activated ability");
 
-    let activate_action = compute_legal_actions(&game, alice)
+    let activate_action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -258,7 +258,7 @@ pub(super) fn magma_mine_activated_ability_uses_current_pressure_counter_count_w
         })
         .expect("Magma Mine should have a damage activated ability");
 
-    let activate_action = compute_legal_actions(&game, alice)
+    let activate_action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -356,7 +356,7 @@ pub(super) fn activate_sage_of_hours_extra_turn_ability(counter_count: u32) -> G
     .expect("+1/+1 counters should be addable to Sage of Hours");
 
     let ability_index = sage_of_hours_extra_turn_ability_index(&game, sage_id);
-    let activate_action = compute_legal_actions(&game, alice)
+    let activate_action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -510,7 +510,7 @@ pub(super) fn molten_hydra_activated_damage_uses_number_of_removed_plus1_counter
         })
         .expect("Molten Hydra should have a damage activated ability");
 
-    let activate_action = compute_legal_actions(&game, alice)
+    let activate_action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -607,7 +607,7 @@ pub(super) fn molten_hydra_activated_damage_can_target_creatures() {
         })
         .expect("Molten Hydra should have a damage activated ability");
 
-    let activate_action = compute_legal_actions(&game, alice)
+    let activate_action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -690,7 +690,7 @@ pub(super) fn molten_hydra_activated_damage_is_zero_when_no_counters_are_removed
         })
         .expect("Molten Hydra should have a damage activated ability");
 
-    let activate_action = compute_legal_actions(&game, alice)
+    let activate_action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -2187,7 +2187,7 @@ pub(super) fn x_distribution_lookahead_requires_a_feasible_announced_division() 
     let spell_id = game.create_object_from_definition(&spell, alice, Zone::Hand);
 
     assert!(
-        !compute_legal_actions(&game, alice)
+        !compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .into_iter()
             .any(|action| {
                 matches!(action, LegalAction::CastSpell { spell_id: id, .. } if id == spell_id)
@@ -2200,7 +2200,7 @@ pub(super) fn x_distribution_lookahead_requires_a_feasible_announced_division() 
         .mana_pool
         .add(ManaSymbol::Colorless, 1);
     assert!(
-        compute_legal_actions(&game, alice)
+        compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .into_iter()
             .any(|action| {
                 matches!(action, LegalAction::CastSpell { spell_id: id, .. } if id == spell_id)
@@ -2324,7 +2324,7 @@ pub(super) fn x_dependent_cast_prohibition_uses_lookahead_and_rolls_back_illegal
     game.create_object_from_definition(&restriction_source, alice, Zone::Battlefield);
     game.refresh_continuous_state();
 
-    let cast_action = compute_legal_actions(&game, alice)
+    let cast_action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -2584,7 +2584,7 @@ pub(super) fn mana_optional_cost_target_hypothesis_exposes_legal_cast() {
     let spell_id = game.create_object_from_definition(&definition, alice, Zone::Hand);
 
     assert!(
-        compute_legal_actions(&game, alice)
+        compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .into_iter()
             .any(|action| {
                 matches!(action, LegalAction::CastSpell { spell_id: id, .. } if id == spell_id)
@@ -2682,7 +2682,7 @@ pub(super) fn joint_optional_cost_hypothesis_exposes_targetable_cast() {
     let spell_id = game.create_object_from_definition(&definition, alice, Zone::Hand);
 
     assert!(
-        compute_legal_actions(&game, alice)
+        compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .into_iter()
             .any(|action| {
                 matches!(action, LegalAction::CastSpell { spell_id: id, .. } if id == spell_id)
@@ -2751,7 +2751,7 @@ pub(super) fn bestow_aura_view_can_receive_flash_before_casting_begins() {
         .expect("bestow probe should parse");
     let bestow_id = game.create_object_from_definition(&bestow, alice, Zone::Hand);
 
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !actions.iter().any(|action| matches!(
             action,
@@ -2960,7 +2960,7 @@ pub(super) fn setup_spell_mana_window_probe()
         .with_spell_effect(vec![Effect::gain_life(1)])
         .build();
     let spell_id = game.create_object_from_definition(&spell, alice, Zone::Hand);
-    let cast_action = compute_legal_actions(&game, alice)
+    let cast_action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -3162,7 +3162,7 @@ pub(super) fn activation_mana_ability_window_precedes_every_cost_payment() {
             functional_zones: vec![Zone::Battlefield],
         });
 
-    let activate_action = compute_legal_actions(&game, alice)
+    let activate_action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -4216,7 +4216,7 @@ pub(super) fn phyrexian_colossus_untap_activation_requires_eight_life() {
     let colossus_id = game.create_object_from_definition(&colossus_def, alice, Zone::Battlefield);
 
     game.player_mut(alice).expect("alice exists").life = 20;
-    let can_activate_with_twenty = compute_legal_actions(&game, alice)
+    let can_activate_with_twenty = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .any(|action| matches!(action, LegalAction::ActivateAbility { source, .. } if source == colossus_id));
     assert!(
@@ -4225,7 +4225,7 @@ pub(super) fn phyrexian_colossus_untap_activation_requires_eight_life() {
     );
 
     game.player_mut(alice).expect("alice exists").life = 7;
-    let can_activate_with_seven = compute_legal_actions(&game, alice)
+    let can_activate_with_seven = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .any(|action| matches!(action, LegalAction::ActivateAbility { source, .. } if source == colossus_id));
     assert!(
@@ -4349,7 +4349,7 @@ pub(super) fn skoa_embermage_grandeur_activation_requires_named_card_and_two_mou
             game.create_object_from_card(&named_copy, alice, Zone::Hand);
         }
 
-        crate::decision::compute_legal_actions(&game, alice)
+        crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .into_iter()
             .any(|action| matches!(action, LegalAction::ActivateAbility { source, .. } if source == skoa_id))
     };
@@ -5486,7 +5486,7 @@ pub(super) fn awaken_cast_action_is_available_even_when_normal_cast_is_legal() {
         .build();
     let spell_id = game.create_object_from_definition(&spell, alice, Zone::Hand);
 
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action,

@@ -919,6 +919,24 @@ fn declare_blockers_internal(
             })
         })
         .collect::<Vec<_>>();
+    // "can't block unless ... also blocks" (Okk, Orcish Conscripts): judged
+    // against this defending player's whole blocker declaration.
+    for &blocker in &own_blockers {
+        let abilities = static_abilities_for_object(game, blocker, &all_effects);
+        for ability in &abilities {
+            if let Some(can_block) =
+                ability.can_block_with_blocking_group(game, blocker, &own_blockers)
+                && !can_block
+            {
+                let attacker = attackers_by_blocker
+                    .get(&blocker)
+                    .and_then(|attackers| attackers.first())
+                    .copied()
+                    .unwrap_or(blocker);
+                return Err(CombatError::CreatureCannotBlock { blocker, attacker });
+            }
+        }
+    }
     let blocking_creature_count = own_blockers.len();
     if blocking_creature_count == 1
         && let Some(&blocker) = own_blockers.first()

@@ -68,6 +68,66 @@ pub fn parse_effect_sentence_lexed(
 fn parse_effect_sentence_lexed_uncached(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    // "This creature can't be blocked this turn except by Walls" (Varchild's
+    // Crusader): the self restriction is read as a granted static rule; the
+    // mid-sentence "this turn" scopes that grant to the end of the turn
+    // rather than leaving it in place forever.
+    if !tokens
+        .first()
+        .is_some_and(|token| token.parser_text().eq_ignore_ascii_case("target"))
+        && crate::slice_primitives::find_window_by(tokens, 5, |window| {
+            window[0].is_word("blocked")
+                && window[1].is_word("this")
+                && window[2].is_word("turn")
+                && window[3].is_word("except")
+                && window[4].is_word("by")
+        })
+        .is_some()
+    {
+        let mut effects = parse_effect_sentence_lexed_uncached_inner(tokens)?;
+        if let [
+            EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::Grants(crate::cards::builders::GrantActionAst::GrantAbilitiesToTarget {
+                        duration,
+                        ..
+                    }),
+                ..
+            }),
+        ] = effects.as_mut_slice()
+            && *duration == Until::Forever
+        {
+            *duration = Until::EndOfTurn;
+        }
+        return Ok(effects);
+    }
+    parse_effect_sentence_lexed_uncached_inner(tokens)
+}
+
+fn parse_effect_sentence_lexed_uncached_inner(
+    tokens: &[OwnedLexToken],
+) -> Result<Vec<EffectAst>, CardTextError> {
+    // "If you do, that creature gains first strike until end of turn and
+    // must be blocked this turn if able" (Magitek Scythe): the requirement
+    // conjunct shares the grant's subject; spell it out so the result-gated
+    // body keeps both halves.
+    if tokens
+        .first()
+        .is_some_and(|token| token.parser_text().eq_ignore_ascii_case("if"))
+        && let Some(and_idx) = crate::slice_primitives::find_window_by(tokens, 5, |window| {
+            window[0].is_word("turn")
+                && window[1].is_word("and")
+                && window[2].is_word("must")
+                && window[3].is_word("be")
+                && window[4].is_word("blocked")
+        })
+        .map(|idx| idx + 1)
+    {
+        let mut rewritten = tokens[..=and_idx].to_vec();
+        rewritten.extend(crate::lexer::synthetic_word_tokens(&["it"]));
+        rewritten.extend_from_slice(&tokens[and_idx + 1..]);
+        return parse_effect_sentence_lexed(&rewritten);
+    }
     // Preserve both actors before the ordinary subject/verb fallback can
     // reduce a coordinated subject to its first player.
     if let Some(effects) = crate::effect_sentences::subject_verb_primitives::parse_sentence_you_and_player_each_sacrifice(
@@ -679,6 +739,23 @@ pub(crate) fn parse_effect_sentence_with_where_x_lexed(
         where_value,
         primary_where_tokens,
     );
+    // "where X is the number of black permanents target opponent controls"
+    // (Reap): a player named only inside the where-X value is still a target
+    // the spell must choose before X can be read.
+    if let Value::Count(filter) = where_value.unhinted()
+        && let Some(player @ PlayerFilter::Target(_)) = filter
+            .controller
+            .as_ref()
+            .or(filter.owner.as_ref())
+        && !stripped.windows(2).any(|pair| {
+            pair[0].is_word("target") && pair[1].is_any_word(&["player", "opponent"])
+        })
+    {
+        prelude_effects.push(EffectAst::subject_verb_target_only(TargetAst::Player(
+            player.clone(),
+            None,
+        )));
+    }
 
     let search_like = where_shape.stripped_starts_search;
     let granted_entry_static = if crate::word_primitives::any_sequence_occurs(

@@ -106,7 +106,7 @@ fn due_respect_registers_a_turn_scoped_entry_replacement_and_expires_at_cleanup(
     let during_turn =
         game.create_object_from_definition(&artifact("During-Turn Permanent"), alice, Zone::Hand);
     let during_turn = game
-        .move_object_with_etb_processing(during_turn, Zone::Battlefield)
+        .move_object_with_etb_processing(during_turn, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
         .expect("permanent should enter during the protected turn");
     assert!(
         during_turn.enters_tapped && game.is_tapped(during_turn.new_id),
@@ -117,7 +117,7 @@ fn due_respect_registers_a_turn_scoped_entry_replacement_and_expires_at_cleanup(
     let after_cleanup =
         game.create_object_from_definition(&artifact("Post-Cleanup Permanent"), alice, Zone::Hand);
     let after_cleanup = game
-        .move_object_with_etb_processing(after_cleanup, Zone::Battlefield)
+        .move_object_with_etb_processing(after_cleanup, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
         .expect("permanent should enter after cleanup");
     assert!(
         !after_cleanup.enters_tapped && !game.is_tapped(after_cleanup.new_id),

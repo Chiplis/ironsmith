@@ -4249,6 +4249,10 @@ impl StaticAbilityKind for SourceLineStaticGroup {
         StaticAbilityId::SourceLineStaticGroup
     }
 
+    fn source_line_static_group_member_count(&self) -> Option<usize> {
+        Some(self.member_count)
+    }
+
     fn display(&self) -> String {
         String::new()
     }

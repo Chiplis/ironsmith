@@ -9,6 +9,19 @@ pub(super) fn matches_subject(
     allow_calculated_pt: bool,
     view: Option<&crate::derived_view::DerivedGameView<'_>>,
 ) -> bool {
+    // Numeric comparisons can already bind an outer candidate. Preserve that
+    // lexical binding; otherwise relative owner/controller predicates refer
+    // to the object being matched, for live objects and snapshots alike.
+    let candidate_context = if ctx.filter_candidate_players.is_none()
+        && [&filter.owner, &filter.controller].into_iter().any(|player| matches!(player,
+            Some(PlayerFilter::OwnerOf(ObjectRef::FilterCandidate)
+                | PlayerFilter::ControllerOf(ObjectRef::FilterCandidate))))
+    {
+        let mut bound = ctx.clone();
+        bound.filter_candidate_players = Some((subject.controller(game).unwrap_or(subject.owner()), subject.owner()));
+        Some(bound)
+    } else { None };
+    let ctx = candidate_context.as_ref().unwrap_or(ctx);
     // Specific object check
     if let Some(id) = filter.specific
         && subject.object_id() != id
@@ -171,6 +184,15 @@ pub(super) fn matches_subject(
             .turn_store
             .turn_history
             .object_was_surveilled_this_turn(subject.stable_id())
+    {
+        return false;
+    }
+
+    if filter.fought_this_turn
+        && !game
+            .turn_store
+            .turn_history
+            .object_fought_this_turn(subject.object_id(), subject.stable_id())
     {
         return false;
     }
@@ -814,6 +836,16 @@ pub(super) fn matches_subject(
         {
             return false;
         }
+    }
+    if filter.attacking_battle
+        && !game.combat.as_ref().is_some_and(|combat| {
+            combat.attackers.iter().any(|attacker| {
+                attacker.creature == subject.object_id()
+                    && matches!(attacker.target, crate::combat_state::AttackTarget::Battle(_))
+            })
+        })
+    {
+        return false;
     }
     if filter.attacked_this_turn && !game.creature_attacked_this_turn(subject.object_id()) {
         return false;

@@ -84,6 +84,12 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_negated_subject_descriptor(input)),
     },
     Reading {
+        id: RuleId::new("player-controls-more-than-you"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_player_controls_more_than_you(input)),
+    },
+    Reading {
         id: RuleId::new("cards-in-hand"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -252,6 +258,23 @@ pub(super) fn read(input: &ConditionClause<'_>) -> ParseOutcome<RuleMatch<Predic
         crate::parse_trace::event(format!("{REGISTRY}: {} read the input", matched.value.rule));
     }
     outcome
+}
+
+/// "an opponent controls more lands than you": a per-player comparison against
+/// your own count, never an existential count of the opponent's permanents.
+fn read_player_controls_more_than_you(
+    input: &ConditionClause<'_>,
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(input.tokens);
+    if !words.iter().any(|word| *word == "more") || !words.ends_with(&["than", "you"]) {
+        return Ok(None);
+    }
+    match crate::grammar::filters::parse_condition_predicate_lexed(input.tokens) {
+        Ok(predicate @ PredicateAst::Player(PlayerPredicateAst::PlayerControlsMoreThanYou { .. })) => {
+            Ok(Some(predicate))
+        }
+        _ => Ok(None),
+    }
 }
 
 fn read_life_total_or_less_condition(

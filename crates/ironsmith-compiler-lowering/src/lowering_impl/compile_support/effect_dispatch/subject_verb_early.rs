@@ -361,6 +361,7 @@ pub(super) fn compile_exile_top_of_library(
 
 pub(super) fn compile_clash(
     subject_verb: &SubjectVerbEffectAst,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<EffectCompileOutcome, CardTextError> {
     let SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash { opponent }) =
         &subject_verb.action
@@ -368,12 +369,20 @@ pub(super) fn compile_clash(
         unreachable!("typed clash route requires a Clash action")
     };
     Ok(match opponent {
-        ClashOpponentAst::Opponent => (
-            vec![Effect::new(
-                crate::effects::ClashEffect::against_any_opponent(),
-            )],
-            Vec::new(),
-        ),
+        ClashOpponentAst::Opponent => {
+            // "Clash with an opponent. ... Otherwise, that player ...": the
+            // clash publishes the opponent it chose (CR 701.30a) as the
+            // player antecedent for later clauses.
+            ctx.last_player_filter = Some(PlayerFilter::TaggedPlayer(
+                crate::tag::CompilerReferenceTag::ClashOpponent.bind().into(),
+            ));
+            (
+                vec![Effect::new(
+                    crate::effects::ClashEffect::against_any_opponent(),
+                )],
+                Vec::new(),
+            )
+        }
         ClashOpponentAst::TargetOpponent => {
             let choice = ChooseSpec::target(ChooseSpec::Player(PlayerFilter::Opponent));
             (
@@ -1077,7 +1086,7 @@ pub(super) fn compile_subject_verb_early(
             Ok((vec![Effect::fight(ChooseSpec::Iterated, spec2)], choices))
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash { .. }) => {
-            compile_clash(subject_verb)
+            compile_clash(subject_verb, ctx)
         }
         SubjectVerbActionAst::Random(RandomActionAst::FlipCoin) => {
             compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
@@ -2074,6 +2083,10 @@ pub(super) fn compile_subject_verb_early(
         }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let player_filter = subject.clone_player_filter();
+            // "reveal the top X cards of your library, where X is its power":
+            // the count names the antecedent current before this look, so
+            // resolve it before the looked-at cards become the antecedent.
+            let count = resolve_value_it_tag(count, &current_reference_env(ctx))?;
             let resolved_tag = if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                 ctx.next_tag("revealed")
             } else {
@@ -2500,6 +2513,7 @@ pub(super) fn compile_subject_verb_early(
                 duration,
                 source_filter,
                 excluded_source_target,
+                source_of_your_choice,
             },
         ) => {
             // Target-relative filters cannot be kept as a dynamic damage
@@ -2507,6 +2521,7 @@ pub(super) fn compile_subject_verb_early(
             // the spell's target context is no longer available. Resolve the
             // matching sources now and register identity-specific shields.
             if excluded_source_target.is_none()
+                && !*source_of_your_choice
                 && source_filter_needs_resolution_context(source_filter)
             {
                 return Ok(Some((
@@ -2531,6 +2546,9 @@ pub(super) fn compile_subject_verb_early(
                 )?;
                 effect = effect.excluding_target_source(spec);
                 choices = target_choices;
+            }
+            if *source_of_your_choice {
+                effect = effect.with_source_of_your_choice();
             }
             Ok((vec![Effect::new(effect)], choices))
         }

@@ -137,19 +137,45 @@ fn grant_opposition_agent_play_permission(
     }
 }
 
+#[derive(Debug)]
+#[must_use = "finish found-card movements and retain all replacement instructions"]
+pub(crate) struct FoundCardsExileReceipt {
+    pub moved_ids: Vec<ObjectId>,
+    pub receipts: Vec<(ObjectId, crate::events::processing::PreparedEventOutcome<crate::effects::zones::AppliedZoneChange>)>,
+}
+
 pub(crate) fn move_found_card_for_opposition_agent(
     game: &mut GameState,
+    ctx: &mut ExecutionContext,
     card_id: ObjectId,
     search: OppositionAgentSearch,
-) -> Option<ObjectId> {
-    let permission = OppositionAgentFoundCardPermission {
-        controller: search.controller,
-        source: search.source,
+) -> Result<crate::events::processing::PreparedEventOutcome<crate::effects::zones::AppliedZoneChange>, ExecutionError> {
+    use crate::events::processing::{EventOutcome, PreparedEventOutcome};
+    let Some(from) = game.object(card_id).map(|card| card.zone) else {
+        return Ok(PreparedEventOutcome { original: EventOutcome::NotApplicable, programs: Vec::new() });
     };
-    let new_id = game.move_object_by_effect(card_id, Zone::Exile)?;
-    game.add_exiled_with_source_link(search.source, new_id);
-    grant_opposition_agent_play_permission(game, new_id, permission);
-    Some(new_id)
+    let additional = ctx.additional_replacement_effects_snapshot();
+    let receipt = crate::effects::zones::apply_zone_change_with_context_and_additional_effects(
+        game, card_id, from, Zone::Exile, ctx.cause.clone(), ctx, &additional,
+    )?;
+    if ctx.decision_maker.awaiting_choice() { return Ok(receipt); }
+    let permission = OppositionAgentFoundCardPermission { controller: search.controller, source: search.source };
+    let ids = match &receipt.original {
+        EventOutcome::Proceed(change) => change.new_object_ids.clone(),
+        EventOutcome::Replaced => {
+            let ids = game.take_zone_change_results(card_id);
+            if !ids.is_empty() { game.record_zone_change_results(card_id, ids.clone()); }
+            ids
+        }
+        _ => Vec::new(),
+    };
+    for id in ids {
+        if game.object(id).is_some_and(|card| card.zone == Zone::Exile) {
+            game.add_exiled_with_source_link(search.source, id);
+            grant_opposition_agent_play_permission(game, id, permission);
+        }
+    }
+    Ok(receipt)
 }
 
 pub(crate) fn exile_found_cards_for_opposition_agent(
@@ -157,7 +183,11 @@ pub(crate) fn exile_found_cards_for_opposition_agent(
     ctx: &mut ExecutionContext,
     cards: &[ObjectId],
     searching_player: PlayerId,
-) -> Vec<ObjectId> {
+) -> Result<FoundCardsExileReceipt, ExecutionError> {
+    if ctx.decision_maker.awaiting_choice() { return Ok(FoundCardsExileReceipt { moved_ids: Vec::new(), receipts: Vec::new() }); }
+    let checkpoint = game.clone();
+    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+    let result = (|| -> Result<FoundCardsExileReceipt, ExecutionError> {
     let replacements: Vec<_> = game
         .battlefield
         .iter()
@@ -213,22 +243,50 @@ pub(crate) fn exile_found_cards_for_opposition_agent(
                 FallbackStrategy::FirstOption,
             );
             if ctx.decision_maker.awaiting_choice() {
-                return Vec::new();
+                return Ok(FoundCardsExileReceipt { moved_ids: Vec::new(), receipts: Vec::new() });
             }
-            index
+            match index.as_slice() {
+                [index] => *index,
+                _ => return Err(ExecutionError::InternalError(
+                    "found-card exile replacement choice must name exactly one offered effect".into(),
+                )),
+            }
         } else {
             0
         };
-        if let Some(replacement) = replacements.get(index).or_else(|| replacements.first()) {
-            selected.push((card_id, *replacement));
-        }
+        let replacement = replacements.get(index).ok_or_else(||
+            ExecutionError::InternalError("found-card exile replacement choice is invalid".into()))?;
+        selected.push((card_id, *replacement));
     }
-    selected
-        .into_iter()
-        .filter_map(|(card_id, replacement)| {
-            move_found_card_for_opposition_agent(game, card_id, replacement)
-        })
-        .collect()
+    let opened_batch = game.open_simultaneous_action();
+    let movements = (|| -> Result<FoundCardsExileReceipt, ExecutionError> {
+        let mut moved_ids = Vec::new();
+        let mut receipts = Vec::new();
+        for (card, replacement) in selected {
+            let receipt = move_found_card_for_opposition_agent(game, ctx, card, replacement)?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(FoundCardsExileReceipt { moved_ids: Vec::new(), receipts: Vec::new() }); }
+            match &receipt.original {
+                crate::events::processing::EventOutcome::Proceed(change) => moved_ids.extend(change.new_object_ids.iter().copied()),
+                crate::events::processing::EventOutcome::Replaced => {
+                    let ids = game.take_zone_change_results(card);
+                    if !ids.is_empty() { game.record_zone_change_results(card, ids.clone()); }
+                    moved_ids.extend(ids);
+                }
+                _ => {}
+            }
+            receipts.push((card, receipt));
+        }
+        Ok(FoundCardsExileReceipt { moved_ids, receipts })
+    })();
+    game.close_simultaneous_action(opened_batch);
+    movements
+    })();
+    if result.is_err() || ctx.decision_maker.awaiting_choice() {
+        *game = checkpoint;
+        context_checkpoint.restore(ctx);
+    }
+    if ctx.decision_maker.awaiting_choice() { return result.map(|_| FoundCardsExileReceipt { moved_ids: Vec::new(), receipts: Vec::new() }); }
+    result
 }
 
 pub(crate) fn offer_library_search_casts(
@@ -1076,6 +1134,280 @@ mod tests {
         assert_eq!(game.controlling_player_for(alice), charlie);
     }
 
+    struct ResumedSearchDecisionMaker {
+        inner: CompetingAgentsDecisionMaker,
+        invalid: bool,
+    }
+
+    impl DecisionMaker for ResumedSearchDecisionMaker {
+        fn awaiting_choice(&self) -> bool { self.inner.awaiting_choice() }
+        fn decide_objects(&mut self, game: &GameState, ctx: &crate::decisions::context::SelectObjectsContext) -> Vec<ObjectId> {
+            self.inner.decide_objects(game, ctx)
+        }
+        fn decide_options(&mut self, game: &GameState, ctx: &SelectOptionsContext) -> Vec<usize> {
+            let selected = self.inner.decide_options(game, ctx);
+            if self.invalid && !self.inner.pending { Vec::new() } else { selected }
+        }
+    }
+
+    #[test]
+    fn pending_search_recreated_context_restores_prior_control_on_completion_and_error() {
+        for invalid in [false, true] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+            let alice = PlayerId::from_index(0);
+            let bob = PlayerId::from_index(1);
+            let charlie = PlayerId::from_index(2);
+            let prior_control = game.add_scoped_player_control(bob, alice, None);
+            let older = game.create_object_from_definition(&opposition_agent_definition(), bob, Zone::Battlefield);
+            game.create_object_from_definition(&opposition_agent_definition(), charlie, Zone::Battlefield);
+            let card = game.create_object_from_card(&library_spell_card("Found card"), alice, Zone::Library);
+            let source = ObjectId::from_raw(99_997);
+            let effect = crate::effects::ChooseObjectsEffect::new(
+                ObjectFilter::default().in_zone(Zone::Library), ChoiceCount::exactly(1),
+                PlayerFilter::You, TagKey::from("searched"),
+            ).in_zone(Zone::Library).as_search();
+            let mut dm = ResumedSearchDecisionMaker {
+                inner: CompetingAgentsDecisionMaker {
+                    searching_player: alice, controller: charlie, chosen_source: older,
+                    pause: true, pending: false, replacement_choices: 0,
+                }, invalid,
+            };
+            {
+                let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+                effect.execute(&mut game, &mut ctx).unwrap();
+            }
+            assert!(dm.inner.pending);
+            assert_eq!(game.object(card).unwrap().zone, Zone::Library);
+            assert!(game.exile.is_empty());
+            dm.inner.pause = false;
+            dm.inner.pending = false;
+            let result = {
+                // Gameplay replay recreates this context; a private context token alone
+                // cannot own retained search control across this boundary.
+                let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+                effect.execute(&mut game, &mut ctx)
+            };
+            assert!(!dm.inner.pending);
+            assert_eq!(dm.inner.replacement_choices, 2);
+            if invalid {
+                assert!(result.is_err(), "invalid raw replacement answer must fail");
+                assert_eq!(game.object(card).unwrap().zone, Zone::Library);
+                assert!(game.exile.is_empty());
+            } else {
+                result.unwrap();
+                assert!(game.object(card).is_none());
+                assert_eq!(game.exile.len(), 1);
+                let exiled = game.exile[0];
+                for player in [alice, bob, charlie] {
+                    assert_eq!(game.effect_store.grant_registry.card_can_play_from_zone(
+                        &game, exiled, Zone::Exile, player,
+                    ), player == bob);
+                }
+            }
+            assert_eq!(game.controlling_player_for(alice), bob, "search scope must finish without removing or shadowing the outer scope");
+            game.remove_scoped_player_control(prior_control);
+            assert_eq!(game.controlling_player_for(alice), alice, "no retained search token may leak after completion or failure");
+        }
+    }
+
+    #[test]
+    fn pending_control_view_keeps_innermost_prompt_when_outer_scopes_unwind() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        let outer = game.add_scoped_player_control(bob, alice, None);
+        let checkpoint = game.clone();
+        let inner = game.add_scoped_player_control(charlie, alice, None);
+        game.capture_pending_decision_controllers();
+        game.remove_scoped_player_control(inner);
+        // Both instruction owners encounter the same pending choice while
+        // unwinding. Its actual controller was captured by the inner owner.
+        game.capture_pending_decision_controllers();
+        game.restore_execution_checkpoint(checkpoint, true);
+        assert_eq!(game.controlling_player_for(alice), charlie);
+        game.clear_pending_decision_controllers();
+        assert_eq!(game.controlling_player_for(alice), bob);
+        game.remove_scoped_player_control(outer);
+        assert_eq!(game.controlling_player_for(alice), alice);
+    }
+
+    #[test]
+    fn pending_control_view_does_not_resurrect_a_departed_source_after_rollback() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        let outer = game.add_scoped_player_control(bob, alice, None);
+        let source = game.create_object_from_card(&library_spell_card("Control source"), charlie, Zone::Battlefield);
+        let checkpoint = game.clone();
+        let inner = game.add_scoped_player_control(charlie, alice, Some(source));
+        game.move_object_by_effect(source, Zone::Graveyard).unwrap();
+        assert_eq!(game.controlling_player_for(alice), bob);
+        game.capture_pending_decision_controllers();
+        game.remove_scoped_player_control(inner);
+        game.restore_execution_checkpoint(checkpoint, true);
+        assert_eq!(game.object(source).unwrap().zone, Zone::Battlefield);
+        assert_eq!(game.controlling_player_for(alice), bob, "routing comes from the prompt state, not reapplying restored source tokens");
+        game.clear_pending_decision_controllers();
+        assert_eq!(game.controlling_player_for(alice), bob);
+        game.remove_scoped_player_control(outer);
+        assert_eq!(game.controlling_player_for(alice), alice);
+    }
+
+    #[test]
+    fn failed_instruction_discards_pending_control_view_and_preserves_outer_scope() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        let outer = game.add_scoped_player_control(bob, alice, None);
+        let checkpoint = game.clone();
+        game.add_scoped_player_control(charlie, alice, None);
+        game.capture_pending_decision_controllers();
+        game.restore_execution_checkpoint(checkpoint, false);
+        assert_eq!(game.controlling_player_for(alice), bob);
+        game.remove_scoped_player_control(outer);
+        assert_eq!(game.controlling_player_for(alice), alice);
+    }
+
+    #[test]
+    fn full_stack_search_pending_resume_restores_outer_control_on_completion_and_error() {
+        for invalid in [false, true] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+            let alice = PlayerId::from_index(0);
+            let bob = PlayerId::from_index(1);
+            let charlie = PlayerId::from_index(2);
+            let outer = game.add_scoped_player_control(bob, alice, None);
+            let older = game.create_object_from_definition(&opposition_agent_definition(), bob, Zone::Battlefield);
+            game.create_object_from_definition(&opposition_agent_definition(), charlie, Zone::Battlefield);
+            let card = game.create_object_from_card(&library_spell_card("Found card"), alice, Zone::Library);
+            let stable = game.object(card).unwrap().stable_id;
+            game.push_to_stack(crate::game_state::StackEntry::ability(older, alice,
+                vec![crate::effect::Effect::search_library_to_hand(ObjectFilter::default(), false)]));
+            game.take_pending_trigger_events();
+            let mut dm = ResumedSearchDecisionMaker {
+                inner: CompetingAgentsDecisionMaker {
+                    searching_player: alice, controller: charlie, chosen_source: older,
+                    pause: true, pending: false, replacement_choices: 0,
+                }, invalid,
+            };
+            crate::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+            assert!(dm.inner.pending);
+            assert_eq!(game.stack.len(), 1, "pending stack resolution retains its root");
+            assert_eq!(game.object(card).unwrap().zone, Zone::Library);
+            assert!(game.exile.is_empty());
+            assert!(game.take_pending_trigger_events().is_empty());
+            assert_eq!(game.controlling_player_for(alice), charlie, "outer resolution rollback preserves the actual pending controller");
+            dm.inner.pause = false;
+            dm.inner.pending = false;
+            let result = crate::game_loop::resolve_stack_entry_with(&mut game, &mut dm);
+            assert!(!dm.inner.pending);
+            assert_eq!(dm.inner.replacement_choices, 2);
+            if invalid {
+                assert!(result.is_err());
+                assert_eq!(game.stack.len(), 1);
+                assert_eq!(game.object(card).unwrap().zone, Zone::Library);
+                assert!(game.exile.is_empty());
+                assert!(game.take_pending_trigger_events().is_empty());
+            } else {
+                result.unwrap();
+                assert!(game.stack.is_empty());
+                let arrival = game.find_object_by_stable_id(stable).unwrap();
+                assert_eq!(game.object(arrival).unwrap().zone, Zone::Exile);
+                assert!(game.player(alice).unwrap().hand.is_empty());
+                for player in [alice, bob, charlie] {
+                    assert_eq!(game.effect_store.grant_registry.card_can_play_from_zone(
+                        &game, arrival, Zone::Exile, player), player == bob);
+                }
+            }
+            assert_eq!(game.controlling_player_for(alice), bob);
+            game.remove_scoped_player_control(outer);
+            assert_eq!(game.controlling_player_for(alice), alice);
+        }
+    }
+
+    struct NestedSearchAnswers {
+        inner_player: PlayerId,
+        controller: PlayerId,
+        selected_agent: ObjectId,
+        pause: bool,
+        pending: bool,
+        replacement_choices: usize,
+    }
+    impl DecisionMaker for NestedSearchAnswers {
+        fn awaiting_choice(&self) -> bool { self.pending }
+        fn decide_objects(&mut self, game: &GameState, ctx: &crate::decisions::context::SelectObjectsContext) -> Vec<ObjectId> {
+            assert_eq!(game.controlling_player_for(ctx.player), self.controller);
+            ctx.candidates.iter().filter(|card| card.legal).map(|card| card.id).collect()
+        }
+        fn decide_options(&mut self, game: &GameState, ctx: &SelectOptionsContext) -> Vec<usize> {
+            assert_eq!(game.controlling_player_for(ctx.player), self.controller);
+            assert_eq!(ctx.options.len(), 2);
+            self.replacement_choices += 1;
+            self.pending = self.pause && ctx.player == self.inner_player;
+            vec![ctx.options.iter().find(|option| option.object_id == Some(self.selected_agent)).unwrap().index]
+        }
+    }
+
+    #[test]
+    fn search_inside_added_replacement_keeps_inner_prompt_control_across_payload_rollback() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into(), "Diana".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        let diana = PlayerId::from_index(3);
+        let older = game.create_object_from_definition(&opposition_agent_definition(), bob, Zone::Battlefield);
+        game.create_object_from_definition(&opposition_agent_definition(), diana, Zone::Battlefield);
+        let addition_source = game.create_object_from_card(&library_spell_card("Addition source"), alice, Zone::Battlefield);
+        let outer_card = game.create_object_from_card(&library_spell_card("Outer found"), alice, Zone::Library);
+        let inner_card = game.create_object_from_card(&library_spell_card("Inner found"), charlie, Zone::Library);
+        let outer_stable = game.object(outer_card).unwrap().stable_id;
+        let inner_stable = game.object(inner_card).unwrap().stable_id;
+        let inner_search = crate::effects::SearchLibraryEffect::to_hand(ObjectFilter::default(), PlayerFilter::Specific(charlie), false);
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(crate::replacement::ReplacementEffect::with_matcher(
+            addition_source, alice,
+            crate::events::zones::matchers::WouldChangeZoneMatcher::new(ObjectFilter::specific(outer_card), Some(Zone::Library), Some(Zone::Exile)),
+            crate::replacement::ReplacementAction::Additionally(vec![crate::effect::Effect::new(inner_search)]),
+        ));
+        let effect = crate::effects::ChooseObjectsEffect::new(ObjectFilter::default().in_zone(Zone::Library),
+            ChoiceCount::exactly(1), PlayerFilter::You, TagKey::from("searched"))
+            .in_zone(Zone::Library).as_search();
+        let source = ObjectId::from_raw(99_997);
+        let mut dm = NestedSearchAnswers { inner_player: charlie, controller: diana,
+            selected_agent: older, pause: true, pending: false, replacement_choices: 0 };
+        {
+            let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+            let outcome = effect.execute(&mut game, &mut ctx).unwrap();
+            assert!(outcome.events.is_empty());
+        }
+        assert!(dm.pending);
+        assert_eq!(dm.replacement_choices, 2);
+        assert_eq!(game.object(outer_card).unwrap().zone, Zone::Library);
+        assert_eq!(game.object(inner_card).unwrap().zone, Zone::Library);
+        assert!(game.exile.is_empty());
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_some());
+        assert_eq!(game.controlling_player_for(charlie), diana, "the added-program rollback must retain the actual inner search prompt");
+        dm.pause = false;
+        dm.pending = false;
+        {
+            let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+            effect.execute(&mut game, &mut ctx).unwrap();
+        }
+        assert!(!dm.pending);
+        assert_eq!(dm.replacement_choices, 4);
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+        for stable in [outer_stable, inner_stable] {
+            let arrival = game.find_object_by_stable_id(stable).unwrap();
+            assert_eq!(game.object(arrival).unwrap().zone, Zone::Exile);
+            for player in [alice, bob, charlie, diana] {
+                assert_eq!(game.effect_store.grant_registry.card_can_play_from_zone(&game, arrival, Zone::Exile, player), player == bob);
+            }
+        }
+        assert_eq!(game.controlling_player_for(alice), alice);
+        assert_eq!(game.controlling_player_for(charlie), charlie);
+    }
+
     fn panglacial_wurm_definition() -> crate::cards::CardDefinition {
         CardDefinitionBuilder::new(CardId::new(), "Panglacial Wurm")
             .mana_cost(ManaCost::from_pips(vec![
@@ -1525,11 +1857,12 @@ mod tests {
         assert_eq!(dm.boolean_players, vec![bob]);
         assert_eq!(dm.object_players, vec![bob]);
         assert_eq!(dm.mana_payment_players.len(), 1);
-        assert_eq!(
-            dm.color_players,
-            vec![bob, bob],
-            "Bob should choose the colors produced by Alice's choice lands while controlling her"
-        );
+        assert_eq!(dm.mana_payment_players, vec![bob]);
+        // The selected payment already fixes these outputs. Its confirmation
+        // belongs to Bob; the same colors must not be asked for a second time.
+        assert!(dm.color_players.is_empty());
+        assert_eq!(game.controlling_player_for(alice), alice,
+            "search control must end after the search");
 
         let wurm_stack = game
             .stack
@@ -1540,6 +1873,35 @@ mod tests {
             })
             .expect("Panglacial Wurm should be cast using Bob's green choices");
         assert_eq!(wurm_stack.controller, alice);
+        assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0,
+            "the complete selected seven-mana payment must be consumed");
+    }
+
+    #[test]
+    fn manual_mana_color_choices_use_scoped_controller_and_commit_actual_colors() {
+        for controlled in [false, true] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = PlayerId::from_index(0);
+            let bob = PlayerId::from_index(1);
+            let lands = (0..2).map(|_| game.create_object_from_definition(
+                &green_white_choice_land_definition(), alice, Zone::Battlefield))
+                .collect::<Vec<_>>();
+            let control = controlled.then(|| game.add_scoped_player_control(bob, alice, None));
+            let mut dm = SearchCastColorChoiceDecisionMaker::new(bob, "unused");
+            for land in lands {
+                crate::special_actions::perform_activate_mana_ability(
+                    &mut game, alice, land, 0, &mut dm).unwrap();
+            }
+            let chooser = if controlled { bob } else { alice };
+            assert_eq!(dm.color_players, vec![chooser, chooser]);
+            assert!(dm.mana_payment_players.is_empty());
+            let pool = &game.player(alice).unwrap().mana_pool;
+            assert_eq!(pool.total(), 2);
+            assert_eq!(pool.green, if controlled { 2 } else { 0 });
+            assert_eq!(pool.white, if controlled { 0 } else { 2 });
+            if let Some(control) = control { game.remove_scoped_player_control(control); }
+            assert_eq!(game.controlling_player_for(alice), alice);
+        }
     }
 
     #[test]
@@ -1674,4 +2036,40 @@ mod tests {
             } if source == free_cast_source
         ));
     }
+}
+
+#[cfg(test)]
+mod replacement_invalid_found_card_answer_contract_tests {
+    use super::*;
+    use crate::decision::DecisionMaker;
+    // Keep the identical fixture valid against the legacy vector API and
+    // the new fallible receipt. A vector cannot report an invalid-choice error.
+    trait InvalidChoiceReceipt { fn invalid_choice_error(&self) -> bool; }
+    impl<T> InvalidChoiceReceipt for Result<T, ExecutionError> {
+        fn invalid_choice_error(&self) -> bool { matches!(self, Err(ExecutionError::InternalError(_))) }
+    }
+    impl InvalidChoiceReceipt for Vec<ObjectId> {
+        fn invalid_choice_error(&self) -> bool { false }
+    }
+    struct Answer(Vec<usize>);
+    impl DecisionMaker for Answer {
+        fn decide_options(&mut self, _: &GameState, _: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> { self.0.clone() }
+    }
+    fn invalid(indices: Vec<usize>) {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20); let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        for name in ["First found-card replacer", "Second found-card replacer"] {
+            let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), name)
+                .card_types(vec![crate::types::CardType::Creature]).with_ability(crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility::opponent_search_exile_found_cards())).build();
+            game.create_object_from_definition(&definition, bob, Zone::Battlefield);
+        }
+        let card = game.create_object_from_card(&crate::card::CardBuilder::new(crate::ids::CardId::new(), "Found library card").card_types(vec![crate::types::CardType::Instant]).build(), alice, Zone::Library);
+        game.take_pending_trigger_events(); let ids = game.next_object_id_counter(); let mut dm = Answer(indices);
+        let mut ctx = ExecutionContext::new(ObjectId::from_raw(0), alice, &mut dm);
+        let result = exile_found_cards_for_opposition_agent(&mut game, &mut ctx, &[card], alice);
+        assert!(result.invalid_choice_error(), "found-card replacements must reject malformed required choices before movement or grants");
+        assert_eq!(game.object(card).unwrap().zone, Zone::Library); assert_eq!(game.next_object_id_counter(), ids); assert!(game.exile.is_empty()); assert!(game.take_pending_trigger_events().is_empty());
+    }
+    #[test] fn found_card_empty_answer_is_invalid() { invalid(vec![]); }
+    #[test] fn found_card_out_of_range_answer_is_invalid() { invalid(vec![usize::MAX]); }
+    #[test] fn found_card_multiple_answers_are_invalid() { invalid(vec![0, 1]); }
 }

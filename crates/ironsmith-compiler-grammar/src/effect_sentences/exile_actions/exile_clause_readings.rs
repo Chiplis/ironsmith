@@ -90,6 +90,12 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_exile_one_per_card_type_from_graveyard(input)),
     },
     Reading {
+        id: RuleId::new("exile-all-but-bottom-of-library"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_exile_all_but_bottom_of_library(input)),
+    },
+    Reading {
         id: RuleId::new("battlefield-graveyard-exile-all-pair"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -406,6 +412,56 @@ fn read_mixed_target_and_all_exile_list(
     }
     Ok(None)
 }
+/// "each player exiles all but the bottom six cards of their library": the
+/// top (library size - N) cards, so the bottom N stay in place.
+fn read_exile_all_but_bottom_of_library(
+    input: &ExileClause<'_>,
+) -> Result<Option<EffectAst>, CardTextError> {
+    if input.until_source_leaves {
+        return Ok(None);
+    }
+    let tokens = trim_commas(input.tokens);
+    if tokens.len() < 5
+        || !tokens[0].is_word("all")
+        || !tokens[1].is_word("but")
+        || !tokens[2].is_word("the")
+        || !tokens[3].is_word("bottom")
+    {
+        return Ok(None);
+    }
+    let mut rewritten = tokens[2..].to_vec();
+    rewritten[1].replace_word("top");
+    let Some(mut effect) = parse_exile_top_library_clause(&rewritten, input.subject, input.face_down)
+    else {
+        return Ok(None);
+    };
+    use crate::cards::builders::{
+        LibraryActionAst, PlayerAst, SubjectVerbActionAst, SubjectVerbEffectAst,
+    };
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        subject,
+        action: SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { count, .. }),
+    }) = &mut effect
+    else {
+        return Ok(None);
+    };
+    let crate::effect::Value::Fixed(kept) = count.unhinted().clone() else {
+        return Ok(None);
+    };
+    let library_owner = match subject.player {
+        PlayerAst::That => crate::target::PlayerFilter::IteratedPlayer,
+        PlayerAst::You | PlayerAst::Implicit => crate::target::PlayerFilter::You,
+        PlayerAst::Target => crate::target::PlayerFilter::target_player(),
+        PlayerAst::TargetOpponent => crate::target::PlayerFilter::target_opponent(),
+        _ => return Ok(None),
+    };
+    *count = crate::effect::Value::Add(
+        Box::new(crate::effect::Value::CardsInLibrary(library_owner)),
+        Box::new(crate::effect::Value::Fixed(-kept)),
+    );
+    Ok(Some(effect))
+}
+
 fn read_exile_bottom_library(input: &ExileClause<'_>) -> Result<Option<EffectAst>, CardTextError> {
     let tokens = input.tokens;
     let subject = input.subject;

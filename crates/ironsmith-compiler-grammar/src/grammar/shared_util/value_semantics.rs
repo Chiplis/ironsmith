@@ -225,7 +225,11 @@ pub fn parse_aggregate_scope_value_lexed(tokens: &[OwnedLexToken]) -> Option<Val
         AggregateValueMetric::ColorPairs => Some(Value::ColorPairsAmong(filter)),
         AggregateValueMetric::DistinctNames => Some(Value::DistinctNames(filter)),
         AggregateValueMetric::DistinctManaValues => Some(Value::DistinctManaValues(filter)),
+        AggregateValueMetric::UnlockedDoors => Some(Value::UnlockedDoorsAmong(filter)),
         AggregateValueMetric::DistinctPowers => Some(Value::DistinctPowers(filter)),
+        AggregateValueMetric::DistinctCounterTypes => {
+            Some(Value::DistinctCounterTypesAmong(filter))
+        }
         AggregateValueMetric::Counters => Some(
             Value::CountersOn(Box::new(crate::target::ChooseSpec::All(filter)), None)
                 .with_surface_hint(ValueSurfaceHint::CountersAmong),
@@ -381,6 +385,50 @@ fn history_filter_from_word_prefix(
     // remove only the accidental mana-cost restriction.
     if filter.stack_kind == Some(crate::filter::StackObjectKind::Spell) {
         filter.has_mana_cost = false;
+    }
+    // "instant and sorcery spells": the trailing `spells` noun scopes both
+    // card types. Normalize every arm the same way, and fold arms that then
+    // differ only by card type back into one typed selector.
+    if !filter.any_of.is_empty() {
+        let mut any_spell = false;
+        for branch in &mut filter.any_of {
+            branch.zone = None;
+            if branch.stack_kind == Some(crate::filter::StackObjectKind::Spell) {
+                any_spell = true;
+                branch.has_mana_cost = false;
+                branch.stack_kind = None;
+            }
+        }
+        let template = |branch: &ObjectFilter| {
+            let mut copy = branch.clone();
+            copy.card_types.clear();
+            copy
+        };
+        let first = template(&filter.any_of[0]);
+        if filter
+            .any_of
+            .iter()
+            .all(|branch| template(branch) == first && !branch.card_types.is_empty())
+        {
+            let card_types = filter
+                .any_of
+                .iter()
+                .flat_map(|branch| branch.card_types.clone())
+                .collect::<Vec<_>>();
+            filter.any_of.clear();
+            for card_type in card_types {
+                if !filter.card_types.contains(&card_type) {
+                    filter.card_types.push(card_type);
+                }
+            }
+            if any_spell {
+                filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
+            }
+        } else if any_spell {
+            for branch in &mut filter.any_of {
+                branch.stack_kind = Some(crate::filter::StackObjectKind::Spell);
+            }
+        }
     }
     Some(filter)
 }

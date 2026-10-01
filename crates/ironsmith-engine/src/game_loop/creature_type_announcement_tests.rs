@@ -287,7 +287,7 @@ fn creature_type_announcement_real_cast_pays_x_and_can_roll_back() {
                 Zone::Battlefield,
             )));
         }
-        let action = compute_legal_actions(&game, alice).into_iter().find(|action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == source))
+        let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state").into_iter().find(|action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == source))
             .expect("the spell must be offered before the subtype is known");
         let mut dm = AnnouncedTypeCastDecisions {
             targets,

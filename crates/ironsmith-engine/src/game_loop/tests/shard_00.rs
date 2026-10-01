@@ -333,7 +333,7 @@ pub(super) fn component_pouch_mana_activation_requires_counter_pays_cost_and_add
     let ability_index = component_pouch_mana_ability_index(&def);
 
     assert!(
-        !crate::decision::compute_legal_actions(&game, alice)
+        !crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .iter()
             .any(|action| matches!(
                 action,
@@ -349,7 +349,7 @@ pub(super) fn component_pouch_mana_activation_requires_counter_pays_cost_and_add
         1,
     )
     .expect("component counter should be addable to Component Pouch");
-    let activate_action = crate::decision::compute_legal_actions(&game, alice)
+    let activate_action = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -1804,7 +1804,7 @@ pub(super) fn the_eternity_elevator_threshold_mana_requires_twenty_charge_counte
         .expect("The Eternity Elevator object should have threshold mana ability");
 
     assert!(
-        !crate::decision::compute_legal_actions(&game, alice)
+        !crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .iter()
             .any(|action| matches!(
                 action,
@@ -1817,7 +1817,7 @@ pub(super) fn the_eternity_elevator_threshold_mana_requires_twenty_charge_counte
     game.add_counters(elevator_id, crate::object::CounterType::Charge, 19)
         .expect("charge counters should be addable to The Eternity Elevator");
     assert!(
-        !crate::decision::compute_legal_actions(&game, alice)
+        !crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .iter()
             .any(|action| matches!(
                 action,
@@ -1830,7 +1830,7 @@ pub(super) fn the_eternity_elevator_threshold_mana_requires_twenty_charge_counte
     game.add_counters(elevator_id, crate::object::CounterType::Charge, 1)
         .expect("the twentieth charge counter should be addable");
     assert!(
-        crate::decision::compute_legal_actions(&game, alice)
+        crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .iter()
             .any(|action| matches!(
                 action,
@@ -1901,7 +1901,7 @@ pub(super) fn necrotic_ooze_copies_only_graveyard_creature_activated_abilities_o
         "Necrotic Ooze should copy creature-card activated abilities from all graveyards and ignore noncreature or non-graveyard cards"
     );
 
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action,
@@ -2114,7 +2114,7 @@ pub(super) fn activate_aether_refinery(
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
 
-    let activate_action = crate::decision::compute_legal_actions(game, alice)
+    let activate_action = crate::decision::compute_legal_actions(game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -2206,7 +2206,7 @@ pub(super) fn deal_test_combat_damage_to_player(
         amount,
         true,
         cause.clone(),
-    );
+    ).expect("damage test proposal must process successfully");
     let keywords = crate::rules::damage::source_damage_keywords(game, source, None);
     let mut damage_dealt = 0u32;
     let mut life_lost = 0u32;

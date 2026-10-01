@@ -152,7 +152,7 @@ fn announce(
 ) -> Result<(TriggerQueue, Value), String> {
     g.turn.priority_player = Some(PlayerId(actor));
     let source = g.create_object_from_definition(def, PlayerId(actor), Zone::Hand);
-    let action = compute_legal_actions(g, PlayerId(actor))
+    let action = compute_legal_actions(g, PlayerId(actor)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source))
         .ok_or("intended cast unavailable")?;
@@ -281,7 +281,7 @@ fn action(
     mana: bool,
     dm: &mut Choices,
 ) -> Result<Value, String> {
-    let a = compute_legal_actions(g, PlayerId(0))
+    let a = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| match a {
             LegalAction::ActivateAbility {
@@ -532,7 +532,7 @@ fn run(
         })
         .last()
         .ok_or("source activation absent")?;
-    let actions = compute_legal_actions(&g, PlayerId(0));
+    let actions = compute_legal_actions(&g, PlayerId(0)).expect("fixture has complete replacement state");
     let offered=actions.iter().any(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index}if *s==source&&*ability_index==index));
     if name == "Skirsdag High Priest"
         && g.turn_store.turn_history.total_creatures_died_this_turn()
@@ -566,7 +566,7 @@ fn run(
         next_main(&mut g);
         let hand = find(&g, name, Zone::Hand)?;
         actual["post_return_hand_activation"] = json!(
-            compute_legal_actions(&g, PlayerId(0))
+            compute_legal_actions(&g, PlayerId(0)).expect("fixture has complete replacement state")
                 .iter()
                 .any(|a| matches!(a,LegalAction::ActivateAbility{source:s,..}if *s==hand))
         );

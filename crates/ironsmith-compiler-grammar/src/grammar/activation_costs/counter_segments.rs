@@ -75,8 +75,8 @@ pub fn parse_put_counter_segment_tokens(
     let counter_type = filters::parse_counter_type_from_tokens(counter_tokens)
         .ok_or_else(|| unsupported(counter_tokens, "counter-type"))?;
     let target = &tokens[shape.target_first..];
-    // A card that spells its own name as the recipient ("Put a -0/-1 counter
-    // on Wall of Roots") names the source, not some other object to choose.
+    // A card that spells its own name as the counter recipient names the
+    // source, not some other object to choose.
     let names_source = is_source(&crate::lexer::parser_token_word_refs(target));
     if names_source
         || primitives::parse_all(target, parse_put_counter_source_lexed, "put-counter-source")

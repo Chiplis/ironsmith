@@ -93,7 +93,7 @@ fn activate(board: &mut Board) {
         .unwrap()
         .mana_pool
         .add(ManaSymbol::Green, 6);
-    let action = compute_legal_actions(game, alice)
+    let action = compute_legal_actions(game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::ActivateAbility { source, .. } if *source == board.shepherd))
         .expect("activatable");

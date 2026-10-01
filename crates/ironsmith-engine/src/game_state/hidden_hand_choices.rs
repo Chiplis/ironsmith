@@ -403,6 +403,8 @@ fn public_claim_outcome(
         value: outcome.value.clone(),
         events: Vec::new(),
         execution_facts,
+        instruction_result: outcome.instruction_result.as_deref().map(|original|
+            Box::new(public_claim_outcome(original, hidden_match))),
     }
 }
 
@@ -2101,5 +2103,45 @@ impl GameState {
         // claim (the owner may decline).
         self.mark_hidden_cards_publicly_revealed(&revealed);
         Some(revealed)
+    }
+}
+
+#[cfg(test)]
+mod replacement_public_claim_contract_tests {
+    use super::*;
+    use crate::effect::{EffectOutcome, OutcomeObjectMemory};
+    #[test]
+    fn public_claim_sanitizes_original_and_auxiliary_hidden_memories() {
+        let id = crate::ids::ObjectId::from_raw(941);
+        let player = crate::ids::PlayerId::from_index(0);
+        let memory = OutcomeObjectMemory {
+            object_id: id, stable_id: crate::ids::StableId::from(id),
+            name: "Private card identity".into(), controller: player, owner: player,
+            zone: crate::zone::Zone::Hand, power: Some(8), toughness: Some(9),
+            mana_value: 7, card_types: vec![crate::types::CardType::Creature],
+            colors: crate::color::ColorSet::COLORLESS, subtypes: Vec::new(), is_token: false,
+        };
+        let outcome = EffectOutcome::aggregate_replacement_outcomes(
+            EffectOutcome::count(1).with_affected_object_memory(vec![memory.clone()]),
+            [EffectOutcome::count(2).with_chosen_object_memory(vec![memory])]);
+        let claim = public_claim_outcome(&outcome, true);
+        assert!(claim.instruction_result.is_some());
+        let original = &claim.affected_object_memory().unwrap()[0];
+        assert_eq!(original.object_id, id);
+        assert!(original.name.is_empty());
+        assert_eq!(original.power, None);
+        assert_eq!(original.toughness, None);
+        assert_eq!(original.mana_value, 0);
+        assert!(original.card_types.is_empty());
+        for fact in &claim.execution_facts {
+            if let crate::effect::ExecutionFact::ChosenObjectMemory(memories) = fact {
+                assert!(memories[0].name.is_empty());
+                assert_eq!(memories[0].mana_value, 0);
+            }
+        }
+        assert!(claim.events.is_empty());
+        assert!(claim.instruction_result().events.is_empty());
+        let visible = public_claim_outcome(&outcome, false);
+        assert_eq!(visible.affected_object_memory().unwrap()[0].name, "Private card identity");
     }
 }

@@ -1916,9 +1916,10 @@ fn pending_siege_protector_choice_does_not_commit_entry() {
         siege_id,
         Zone::Battlefield,
         &mut decision_maker,
-    );
+    ).expect("replacement operation must execute successfully in this scenario");
 
-    assert!(result.is_none());
+    assert!(result.pending);
+    assert!(result.programs.is_empty());
     assert!(decision_maker.prompted);
     assert_eq!(
         game.object(siege_id).map(|object| object.zone),
@@ -2707,5 +2708,94 @@ fn verified_library_epoch_private_replay_openings_wait_for_their_zone_or_view() 
             assert_eq!(game.object(top).unwrap().name, "Private land");
             assert!(game.player(alice).unwrap().library.iter().take(2).all(|id| game.is_hidden_card_placeholder(*id)));
         }
+    }
+}
+
+#[cfg(test)]
+mod departure_notification_contract_tests {
+    use super::*;
+    use crate::ability::Ability;
+    use crate::effect::Effect;
+    use crate::triggers::{Trigger, TriggerQueue};
+    use crate::target::ObjectFilter;
+    fn check(phased: bool) {
+        let mut game = GameState::new(vec!["Alice".into(),"Bob".into(),"Charlie".into()],20);
+        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let departing = CardDefinitionBuilder::new(CardId::new(),"Departing creature")
+            .card_types(vec![CardType::Creature]).build();
+        let id = game.create_object_from_definition(&departing,alice,Zone::Battlefield);
+        if phased { game.phase_out(id); }
+        let watcher = CardDefinitionBuilder::new(CardId::new(),"Departure observer")
+            .card_types(vec![CardType::Enchantment])
+            .with_ability(Ability::triggered(Trigger::leaves_battlefield(ObjectFilter::creature()),vec![Effect::gain_life(1)]))
+            .with_ability(Ability::triggered(Trigger::dies(ObjectFilter::creature()),vec![Effect::gain_life(10)]))
+            .with_ability(Ability::triggered(Trigger::new(crate::triggers::zone_changes::ZoneChangeTrigger::new()),vec![Effect::gain_life(100)]))
+            .build();
+        game.create_object_from_definition(&watcher,bob,Zone::Battlefield);
+        game.take_pending_trigger_events();
+        assert!(game.leave_game(alice)); assert!(game.object(id).is_none());
+        let events = game.take_pending_trigger_events();
+        let departures = events.iter().filter(|event| event.object_id() == Some(id)).collect::<Vec<_>>();
+        assert_eq!(departures.len(),usize::from(!phased));
+        let mut queue = TriggerQueue::new();
+        for event in &departures {
+            assert_ne!(event.kind(),crate::events::EventKind::ZoneChange,"departure is not a zone change");
+            assert!(event.downcast::<crate::events::ZoneChangeEvent>().is_none(),"departure must not claim destination objects");
+            let entries=crate::triggers::check_triggers(&game,event);
+            assert_eq!(entries.len(),1,"only the leaves-the-battlefield ability triggers");
+            assert_eq!(entries[0].controller,bob);
+            assert_eq!(entries[0].triggering_event.snapshot().unwrap().object_id,id);
+            for entry in entries { queue.add(entry); }
+        }
+        crate::game_loop::put_triggers_on_stack(&mut game,&mut queue).unwrap();
+        assert_eq!(game.stack.len(),usize::from(!phased));
+        if !phased { crate::game_loop::resolve_stack_entry(&mut game).unwrap(); }
+        assert_eq!(game.player(bob).unwrap().life,20+i32::from(!phased));
+    }
+    #[test] fn phased_in_departure_has_only_ltb_notification_and_resolves() { check(false); }
+    #[test] fn phased_out_departure_emits_no_ltb_notification() { check(true); }
+}
+
+#[cfg(test)]
+mod departure_lki_batch_contract_tests {
+    use super::*;
+    use crate::ability::Ability;
+    use crate::effect::Effect;
+    use crate::target::ObjectFilter;
+    use crate::triggers::{Trigger, TriggerQueue};
+    #[test]
+    fn surviving_controller_gets_departed_sources_lki_trigger() {
+        let mut game=GameState::new(vec!["Alice".into(),"Bob".into(),"Charlie".into()],20);
+        let alice=PlayerId::from_index(0);let bob=PlayerId::from_index(1);
+        let card=CardDefinitionBuilder::new(CardId::new(),"Borrowed departure source")
+            .card_types(vec![CardType::Creature])
+            .with_ability(Ability::triggered(Trigger::this_leaves_battlefield(),vec![Effect::gain_life(2)])).build();
+        let object=game.create_object_from_definition(&card,alice,Zone::Battlefield);
+        game.set_current_controller(object,bob);game.take_pending_trigger_events();
+        assert!(game.leave_game(alice));assert!(game.object(object).is_none());
+        let mut queue=TriggerQueue::new();
+        crate::game_loop::put_triggers_on_stack(&mut game,&mut queue).unwrap();
+        assert_eq!(game.stack.len(),1,"the removed source's LKI ability belongs to surviving Bob");
+        assert_eq!(game.stack[0].controller,bob);
+        crate::game_loop::resolve_stack_entry(&mut game).unwrap();
+        assert_eq!(game.player(bob).unwrap().life,22);
+    }
+    #[test]
+    fn simultaneous_departures_group_one_or_more_and_keep_each() {
+        use crate::triggers::zone_changes::{ZoneChangeTrigger,CountMode};
+        let mut game=GameState::new(vec!["Alice".into(),"Bob".into(),"Charlie".into()],20);
+        let alice=PlayerId::from_index(0);let bob=PlayerId::from_index(1);
+        let card=CardDefinitionBuilder::new(CardId::new(),"Batch departing creature").card_types(vec![CardType::Creature]).build();
+        for _ in 0..2 {game.create_object_from_definition(&card,alice,Zone::Battlefield);}
+        let watcher=CardDefinitionBuilder::new(CardId::new(),"Batch departure observer")
+            .card_types(vec![CardType::Enchantment])
+            .with_ability(Ability::triggered(Trigger::leaves_battlefield(ObjectFilter::creature()),vec![Effect::gain_life(1)]))
+            .with_ability(Ability::triggered(Trigger::new(ZoneChangeTrigger::leaves_battlefield(ObjectFilter::creature()).count(CountMode::OneOrMore)),vec![Effect::gain_life(10)]))
+            .build();game.create_object_from_definition(&watcher,bob,Zone::Battlefield);game.take_pending_trigger_events();
+        assert!(game.leave_game(alice));let mut queue=TriggerQueue::new();
+        crate::game_loop::put_triggers_on_stack(&mut game,&mut queue).unwrap();
+        assert_eq!(game.stack.len(),3,"two per-object and one grouped LTB trigger");
+        while !game.stack.is_empty() {crate::game_loop::resolve_stack_entry(&mut game).unwrap();}
+        assert_eq!(game.player(bob).unwrap().life,32);
     }
 }

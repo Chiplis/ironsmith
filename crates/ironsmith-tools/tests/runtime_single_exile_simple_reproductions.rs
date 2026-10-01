@@ -199,7 +199,7 @@ fn cast_announce(
 ) -> Result<(), String> {
     g.turn.priority_player = Some(dm.actor);
     let id = g.create_object_from_definition(d, dm.actor, Zone::Hand);
-    let a = compute_legal_actions(g, dm.actor)
+    let a = compute_legal_actions(g, dm.actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or("fixture source cast absent")?;
@@ -343,12 +343,12 @@ fn run(
             dm.stage = "actual_graveyard_material_producer".into();
             let mid = current(&g, m);
             if material == "Lotus Petal" {
-                let a=compute_legal_actions(&g,actor).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index:0,..}|LegalAction::ActivateManaAbility{source,ability_index:0,..}if *source==mid)).ok_or("Lotus material action absent")?;
+                let a=compute_legal_actions(&g,actor).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index:0,..}|LegalAction::ActivateManaAbility{source,ability_index:0,..}if *source==mid)).ok_or("Lotus material action absent")?;
                 immediate(&mut g, a, &mut q, dm)?;
             } else {
                 dm.chosen = vec![mid];
                 dm.targets = vec![Target::Player(PlayerId(2))];
-                let a=compute_legal_actions(&g,actor).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index:0,..}if *source==current(&g,altar))).ok_or("Altar material action absent")?;
+                let a=compute_legal_actions(&g,actor).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index:0,..}if *source==current(&g,altar))).ok_or("Altar material action absent")?;
                 announce(&mut g, a, &mut q, dm)?;
             }
             finish(&mut g, &mut q, dm)?;
@@ -393,7 +393,7 @@ fn run(
         vec![]
     };
     let index = c["ability_index"].as_u64().unwrap() as usize;
-    let actions = compute_legal_actions(&g, alice());
+    let actions = compute_legal_actions(&g, alice()).expect("fixture has complete replacement state");
     let action=actions.iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index,..}|LegalAction::ActivateManaAbility{source,ability_index,..}if *source==sid&&*ability_index==index)).cloned();
     dm.trace.push(json!({"stage":"candidate_exact_cost_path","ability_index":index,"cost_path":c["cost_path"],"legal_actions":format!("{actions:?}"),"resource_ids":resources.iter().map(|s|current(&g,*s).0).collect::<Vec<_>>(),"mode":mode}));
     let valid = c["valid"].as_bool().unwrap();

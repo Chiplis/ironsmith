@@ -314,6 +314,19 @@ fn attack_unless_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilit
             }
             _ => StaticAbility::cant_attack_unless_condition(fact.condition, display),
         }),
+        // "can't block unless ... also blocks": a blocking-group condition
+        // judged against the whole blocker declaration.
+        AttackUnlessScope::Block
+            if matches!(
+                fact.condition,
+                crate::static_abilities::CantAttackUnlessConditionSpec::AttackingGroupCondition(
+                    ironsmith_core::AttackingGroupAttackCondition::AtLeastNOtherCreaturesBlock(_)
+                        | ironsmith_core::AttackingGroupAttackCondition::CreatureWithGreaterPowerAlsoBlocks
+                )
+            ) =>
+        {
+            Some(StaticAbility::cant_attack_unless_condition(fact.condition, display))
+        }
         AttackUnlessScope::AttackOrBlock | AttackUnlessScope::Block => {
             let crate::static_abilities::CantAttackUnlessConditionSpec::SourceCondition(condition) =
                 fact.condition

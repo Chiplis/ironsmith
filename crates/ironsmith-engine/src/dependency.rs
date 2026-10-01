@@ -1569,6 +1569,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::DistinctCounterTypesAmong(_)
         | Value::DistinctNames(_)
         | Value::DistinctManaValues(_)
+        | Value::UnlockedDoorsAmong(_)
         | Value::DistinctPowers(_)
         | Value::TurnHistoryCount(_)
         | Value::CreaturesDiedThisTurn
@@ -1645,6 +1646,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::TimesPaid(_)
         | Value::MagicGamesLostToOpponentsSinceLastWin
         | Value::DraftNotedHighestNumber { .. }
+        | Value::DraftRemovedCardCount { .. }
         | Value::TaggedCount
         | Value::EventValue(_)
         | Value::EventValueOffset(_, _)
@@ -2288,6 +2290,7 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::TimesPaid(_)
         | Value::MagicGamesLostToOpponentsSinceLastWin
         | Value::DraftNotedHighestNumber { .. }
+        | Value::DraftRemovedCardCount { .. }
         | Value::TaggedCount
         | Value::TurnHistoryCount(_)
         | Value::EventValue(_)
@@ -2330,7 +2333,8 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         Value::TotalManaValue(filter)
         | Value::GreatestManaValue(filter)
         | Value::LeastManaValue(filter)
-        | Value::DistinctManaValues(filter) => {
+        | Value::DistinctManaValues(filter)
+        | Value::UnlockedDoorsAmong(filter) => {
             matches!(modification.layer(), Layer::Copy)
                 || modification_can_affect_filter(modification, filter)
         }
@@ -3170,6 +3174,8 @@ mod tests {
             condition: None,
             source_type: EffectSourceType::StaticAbility,
             originating_static_ability: None,
+            originating_ability: None,
+            registration_id: None,
         }
     }
 
@@ -3252,6 +3258,8 @@ mod tests {
             condition: None,
             source_type: EffectSourceType::StaticAbility,
             originating_static_ability: None,
+            originating_ability: None,
+            registration_id: None,
         };
 
         let b = ContinuousEffect {
@@ -3267,6 +3275,8 @@ mod tests {
             condition: None,
             source_type: EffectSourceType::StaticAbility,
             originating_static_ability: None,
+            originating_ability: None,
+            registration_id: None,
         };
 
         let card = CardBuilder::new(CardId(1), "Test Artifact")
@@ -3286,6 +3296,7 @@ mod tests {
             CalculatedCharacteristics {
                 name: object.name.clone(),
                 mana_cost: object.mana_cost_owned(),
+                linked_face_mana_value: object.linked_face_mana_value(),
                 compiled_card_text: object.compiled_card_text.clone(),
                 ability_labels: object.ability_labels.clone(),
                 power: object.base_power.as_ref().map(|p| p.base_value()),
@@ -3343,6 +3354,7 @@ mod tests {
             CalculatedCharacteristics {
                 name: land.name.clone(),
                 mana_cost: land.mana_cost_owned(),
+                linked_face_mana_value: land.linked_face_mana_value(),
                 compiled_card_text: land.compiled_card_text.clone(),
                 ability_labels: land.ability_labels.clone(),
                 power: land.base_power.as_ref().map(|p| p.base_value()),
@@ -3383,6 +3395,8 @@ mod tests {
             condition: None,
             source_type: EffectSourceType::StaticAbility,
             originating_static_ability: None,
+            originating_ability: None,
+            registration_id: None,
         };
 
         let granted_ability = Ability::activated(
@@ -3404,6 +3418,8 @@ mod tests {
             condition: None,
             source_type: EffectSourceType::StaticAbility,
             originating_static_ability: None,
+            originating_ability: None,
+            registration_id: None,
         };
 
         assert!(effect_depends_on_with_baseline_and_started_groups(
@@ -3461,6 +3477,7 @@ mod tests {
             CalculatedCharacteristics {
                 name: land.name.clone(),
                 mana_cost: land.mana_cost_owned(),
+                linked_face_mana_value: land.linked_face_mana_value(),
                 compiled_card_text: land.compiled_card_text.clone(),
                 ability_labels: land.ability_labels.clone(),
                 power: land.base_power.as_ref().map(|p| p.base_value()),
@@ -3501,6 +3518,8 @@ mod tests {
             condition: None,
             source_type: EffectSourceType::StaticAbility,
             originating_static_ability: None,
+            originating_ability: None,
+            registration_id: None,
         };
 
         let remove_effect = ContinuousEffect {
@@ -3516,6 +3535,8 @@ mod tests {
             condition: None,
             source_type: EffectSourceType::StaticAbility,
             originating_static_ability: None,
+            originating_ability: None,
+            registration_id: None,
         };
 
         assert!(effect_depends_on_with_baseline_and_started_groups(
@@ -3633,6 +3654,7 @@ mod tests {
             CalculatedCharacteristics {
                 name: object.name.clone(),
                 mana_cost: object.mana_cost_owned(),
+                linked_face_mana_value: object.linked_face_mana_value(),
                 compiled_card_text: object.compiled_card_text.clone(),
                 ability_labels: object.ability_labels.clone(),
                 power: object.base_power.as_ref().map(|power| power.base_value()),
@@ -3856,6 +3878,7 @@ mod tests {
         CalculatedCharacteristics {
             name: object.name.clone(),
             mana_cost: object.mana_cost_owned(),
+            linked_face_mana_value: object.linked_face_mana_value(),
             compiled_card_text: object.compiled_card_text.clone(),
             ability_labels: object.ability_labels.clone(),
             power: object.base_power.as_ref().map(|power| power.base_value()),

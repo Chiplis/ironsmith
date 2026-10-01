@@ -181,7 +181,7 @@ impl DecisionMaker for Script {
 }
 
 fn find_cast(game: &GameState, player: PlayerId, spell: ObjectId) -> Option<LegalAction> {
-    compute_legal_actions(game, player).into_iter().find(
+    compute_legal_actions(game, player).expect("fixture has complete replacement state").into_iter().find(
         |action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell),
     )
 }
@@ -545,7 +545,7 @@ mod b8_uncast_aura_respects_protection {
             pacifism,
             Zone::Battlefield,
             &mut Script::default(),
-        );
+        ).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario");
         assert_eq!(zone_of_card(&game, stable), Some(Zone::Graveyard));
     }
 
@@ -565,7 +565,7 @@ mod b8_uncast_aura_respects_protection {
             pacifism,
             Zone::Battlefield,
             &mut Script::default(),
-        );
+        ).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario");
         let aura = game.find_object_by_stable_id(stable).unwrap();
         assert_eq!(game.object(aura).unwrap().zone, Zone::Battlefield);
         assert_eq!(
@@ -923,7 +923,7 @@ mod t1_delayed_trigger_incarnation {
         assert_eq!(game.object(entered).unwrap().zone, Zone::Battlefield);
         if blink {
             let exiled = game.move_object_by_effect(entered, Zone::Exile).unwrap();
-            game.move_object_with_etb_processing(exiled, Zone::Battlefield)
+            game.move_object_with_etb_processing(exiled, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
                 .unwrap();
         }
         end_step(&mut game, &mut queue, &mut dm);
@@ -1265,4 +1265,13 @@ mod d1_09_per_event_trigger_matching {
             "the watcher wasn't there when Alice scried"
         );
     }
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: ironsmith::game_state::EntryCommitResult)
+    -> Option<ironsmith::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

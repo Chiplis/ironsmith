@@ -22,6 +22,62 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
     let head = parse_for_each_head(words)?;
     let idx = head.item_start;
 
+    // "for each creature put into your graveyard from the battlefield this
+    // turn" (Asmira, Fresh Meat) and "for each creature that left the
+    // battlefield under your control this turn" (Kutzil's Flanker) count the
+    // zone-change events of the turn, read from last-known information, so
+    // dead tokens and cards that have since left the graveyard still count.
+    if !head.other {
+        let moved = match &words[idx..] {
+            [
+                "creature" | "creatures",
+                "put",
+                "into",
+                "your",
+                "graveyard",
+                "from",
+                "the",
+                "battlefield",
+                "this",
+                "turn",
+                ..,
+            ] => Some((
+                ObjectFilter::creature().owned_by(PlayerFilter::You),
+                Some(crate::zone::Zone::Graveyard),
+                10,
+            )),
+            [
+                "creature" | "creatures",
+                "that",
+                "left",
+                "the",
+                "battlefield",
+                "under",
+                "your",
+                "control",
+                "this",
+                "turn",
+                ..,
+            ] => Some((
+                ObjectFilter::creature().controlled_by(PlayerFilter::You),
+                None,
+                10,
+            )),
+            _ => None,
+        };
+        if let Some((filter, to, len)) = moved {
+            return Some((
+                Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::MovedZones {
+                    filter,
+                    from: Some(crate::zone::Zone::Battlefield),
+                    to,
+                })
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+                idx + len,
+            ));
+        }
+    }
+
     // "for each of that spell's colors" (Ancient Cornucopia, Moonveil Regent,
     // Ramos): the colors of the referenced spell.
     if let ["that", "spell's" | "spells", "colors", ..] = &words[idx..] {
@@ -275,6 +331,20 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
                     parsed_counter_type,
                 );
                 return Some((value, reference_end));
+            }
+            // The card's own name inside an ability its Aura or Equipment grants
+            // (Archery Training's "arrow counters on Archery Training"): the
+            // granting permanent, not every permanent.
+            if reference == crate::preprocess::GRANTING_SOURCE_SURFACE_WORDS {
+                return Some((
+                    Value::CountersOn(
+                        Box::new(ChooseSpec::Tagged(
+                            (crate::tag::CompilerReferenceTag::GrantingSource.bind()).into(),
+                        )),
+                        parsed_counter_type,
+                    ),
+                    reference_end,
+                ));
             }
             if let Ok(filter) = parse_object_filter_words(reference, false) {
                 return Some((
@@ -542,6 +612,20 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
                         Value::CountersOn(
                             Box::new(ChooseSpec::Tagged(
                                 (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                            )),
+                            Some(counter_type),
+                        ),
+                        filter_end,
+                    ));
+                }
+                // The card's own name inside an ability its Aura or Equipment grants
+                // (Archery Training's "arrow counters on Archery Training"): the
+                // granting permanent, not every permanent.
+                if reference == crate::preprocess::GRANTING_SOURCE_SURFACE_WORDS {
+                    return Some((
+                        Value::CountersOn(
+                            Box::new(ChooseSpec::Tagged(
+                                (crate::tag::CompilerReferenceTag::GrantingSource.bind()).into(),
                             )),
                             Some(counter_type),
                         ),

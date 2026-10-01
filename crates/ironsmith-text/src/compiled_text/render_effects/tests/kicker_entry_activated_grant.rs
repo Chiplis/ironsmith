@@ -21,7 +21,7 @@ fn kicker_entry_activated_grant_keeps_each_payment_independent() {
         }
         game.object_mut(source).unwrap().optional_costs_paid = paid;
         let entered = game
-            .move_object_with_etb_processing(source, Zone::Battlefield)
+            .move_object_with_etb_processing(source, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
             .unwrap()
             .new_id;
         let blue = mask & 1 != 0;
@@ -123,4 +123,13 @@ fn kicker_entry_activated_grant_renders_discriminated_cost_and_ability() {
         crate::compiled_text::compiled_text_lines(&definition).join("\n"),
         ORACLE
     );
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: crate::game_state::EntryCommitResult)
+    -> Option<crate::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

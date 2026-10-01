@@ -300,7 +300,7 @@ mod tests {
         effect
             .execute(&mut game, &mut ctx)
             .expect("prevention shield should register");
-        let (remaining, _replaced) = crate::events::processing::process_damage_with_event(
+        let (remaining, _replaced) = crate::events::processing::process_damage_summary_for_test(
             &mut game,
             damage_source,
             crate::events::DamageTarget::Object(protected),

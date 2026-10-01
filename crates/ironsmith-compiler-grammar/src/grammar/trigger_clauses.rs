@@ -140,6 +140,8 @@ pub struct FullyUnlockRoomTrigger {
 pub struct EntersOriginClause {
     pub zone: Zone,
     pub owner: Option<PlayerFilter>,
+    /// "from anywhere other than your hand": every origin except `zone`.
+    pub excluded: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -266,16 +268,30 @@ fn parse_enters_origin_clause_word_slice(
         primitives::word_slice_exact("from"),
         alt((
             (
+                primitives::word_slice_exact("anywhere"),
+                primitives::word_slice_exact("other"),
+                primitives::word_slice_exact("than"),
+                primitives::word_slice_exact("your"),
+                primitives::word_slice_exact("hand"),
+            )
+                .value(EntersOriginClause {
+                    zone: Zone::Hand,
+                    owner: Some(PlayerFilter::You),
+                    excluded: true,
+                }),
+            (
                 primitives::word_slice_exact("your"),
                 primitives::word_slice_exact("graveyard"),
             )
                 .value(EntersOriginClause {
                     zone: Zone::Graveyard,
                     owner: Some(PlayerFilter::You),
+                    excluded: false,
                 }),
             primitives::word_slice_exact("graveyard").value(EntersOriginClause {
                 zone: Zone::Graveyard,
                 owner: None,
+                excluded: false,
             }),
             (
                 primitives::word_slice_exact("your"),
@@ -284,14 +300,17 @@ fn parse_enters_origin_clause_word_slice(
                 .value(EntersOriginClause {
                     zone: Zone::Hand,
                     owner: Some(PlayerFilter::You),
+                    excluded: false,
                 }),
             primitives::word_slice_exact("hand").value(EntersOriginClause {
                 zone: Zone::Hand,
                 owner: None,
+                excluded: false,
             }),
             primitives::word_slice_exact("exile").value(EntersOriginClause {
                 zone: Zone::Exile,
                 owner: None,
+                excluded: false,
             }),
         )),
     )
@@ -353,9 +372,25 @@ fn parse_you_or_controlled_object_subject_word_slice(
 ) -> WResult<ObjectFilter> {
     (
         primitives::word_slice_exact("you"),
-        primitives::word_slice_exact("or"),
+        alt((
+            primitives::word_slice_exact("or").void(),
+            // "Whenever you and/or at least one permanent you control
+            // becomes the target ..." (Leyline of Combustion).
+            primitives::word_slice_exact("and/or").void(),
+            (
+                primitives::word_slice_exact("and"),
+                primitives::word_slice_exact("or"),
+            )
+                .void(),
+        )),
     )
         .parse_next(input)?;
+    let _ = winnow::combinator::opt((
+        primitives::word_slice_exact("at"),
+        primitives::word_slice_exact("least"),
+        primitives::word_slice_exact("one"),
+    ))
+    .parse_next(input)?;
     let filter = alt((
         alt((
             primitives::word_slice_exact("permanent"),

@@ -454,7 +454,7 @@ pub fn puzzle_premain_stress_report(copies_per_creature: usize) -> PuzzlePremain
     let sba_work_counters = game.work_counters();
 
     let legal_started = Instant::now();
-    let _ = crate::decision::compute_legal_actions(&game, alice);
+    let _ = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let legal_actions_ms = legal_started.elapsed().as_millis();
     let legal_actions_work_counters = game.work_counters();
 

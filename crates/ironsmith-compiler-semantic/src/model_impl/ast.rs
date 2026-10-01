@@ -252,6 +252,12 @@ pub enum TriggerSpec {
         blocker: ObjectFilter,
         blocked: ObjectFilter,
     },
+    /// One per blocking pair: "[blocker] blocks [blocked object]" where the
+    /// blocker is a filtered subject such as "equipped creature".
+    BlocksObject {
+        blocker: ObjectFilter,
+        blocked: ObjectFilter,
+    },
     ThisBecomesBlocked,
     BecomesBlocked(ObjectFilter),
     ThisBecomesBlockedByObject(ObjectFilter),
@@ -565,6 +571,9 @@ pub enum TriggerSpec {
         owner: Option<PlayerFilter>,
         one_or_more: bool,
         cause_filter: Option<crate::events::cause::CauseFilter>,
+        /// Enter from anywhere other than `from` ("from anywhere other than
+        /// your hand").
+        excluded: bool,
     },
     EntersBattlefieldTapped {
         filter: ObjectFilter,

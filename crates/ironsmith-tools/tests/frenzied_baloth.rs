@@ -91,7 +91,7 @@ fn combat_only_prevention_ban_preserves_shields_and_ends_when_source_leaves() {
                     source_snapshot: None,
                 };
                 let result =
-                    process_simultaneous_damage_assignments_with_event(&mut game, &[event.clone()]);
+                    process_simultaneous_damage_assignments_with_event(&mut game, &[event.clone()]).expect("damage test proposal must process successfully");
                 assert_eq!(
                     result[0].assignments.iter().map(|a| a.amount).sum::<u32>(),
                     if combat { 3 } else { 0 },
@@ -100,7 +100,7 @@ fn combat_only_prevention_ban_preserves_shields_and_ends_when_source_leaves() {
                 if combat {
                     game.move_object_by_effect(baloth, Zone::Graveyard).unwrap();
                     let result =
-                        process_simultaneous_damage_assignments_with_event(&mut game, &[event]);
+                        process_simultaneous_damage_assignments_with_event(&mut game, &[event]).expect("damage test proposal must process successfully");
                     assert!(
                         result[0].assignments.is_empty(),
                         "combat prohibition does not consume shields; source leaving restores prevention"
@@ -140,7 +140,7 @@ fn mixed_simultaneous_damage_allocates_shields_only_to_preventable_events() {
     let results = process_simultaneous_damage_assignments_with_event(
         &mut game,
         &[event(source, true), event(other, false)],
-    );
+    ).expect("damage test proposal must process successfully");
     assert_eq!(
         results[0].assignments.iter().map(|a| a.amount).sum::<u32>(),
         3

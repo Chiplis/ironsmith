@@ -129,6 +129,7 @@ pub fn printed_ability_line(
     ) -> Option<String> {
         match origin {
             AbilityOrigin::Printed(index) => object.ability_label(*index),
+            AbilityOrigin::Temporary(_) | AbilityOrigin::Level { .. } => None,
             AbilityOrigin::Borrowed { source, origin, .. } => game
                 .object(*source)
                 .and_then(|lender| resolve(game, lender, origin, ability)),

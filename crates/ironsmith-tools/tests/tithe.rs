@@ -109,7 +109,7 @@ fn cast(alice_lands: usize, bob_lands: usize) -> (Vec<String>, usize) {
         .unwrap()
         .mana_pool
         .add(ManaSymbol::White, 1);
-    let action = compute_legal_actions(&game, alice)
+    let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))
         .expect("castable");

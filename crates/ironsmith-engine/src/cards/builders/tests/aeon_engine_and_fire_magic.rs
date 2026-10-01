@@ -56,7 +56,7 @@ fn aeon_engine_activation_reverses_a_four_player_game_after_paying_its_costs() {
         .iter()
         .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
         .expect("Aeon Engine has an activated ability");
-    let action = crate::decision::compute_legal_actions(&game, bob)
+    let action = crate::decision::compute_legal_actions(&game, bob).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(

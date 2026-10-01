@@ -13,6 +13,15 @@ impl EffectExecutor for AdditionalPhasesEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let player = ctx.iteration.iterated_player.unwrap_or(ctx.controller);
+        // "After this main phase, ..." / "If it's your main phase, ... after
+        // this phase": outside the controller's own main phase there is no
+        // "this main phase" to follow, so no phases are added.
+        if self.after_main_phase
+            && (!matches!(game.turn.phase, Phase::FirstMain | Phase::NextMain)
+                || !game.is_active_player(player))
+        {
+            return Ok(EffectOutcome::resolved());
+        }
         if !ctx.claim_shared_team_structure_operation(game, player, "additional_phases") {
             return Ok(EffectOutcome::resolved());
         }

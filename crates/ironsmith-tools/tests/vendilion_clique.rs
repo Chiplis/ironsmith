@@ -105,7 +105,7 @@ fn run(choose: bool) -> (GameState, Choices) {
         choose,
         offered: Vec::new(),
     };
-    game.move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm)
+    game.move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .expect("enters");
     let mut queue = TriggerQueue::new();
     for event in game.take_pending_trigger_events() {
@@ -167,4 +167,13 @@ fn choosing_nothing_leaves_the_hand_and_draws_nothing() {
         ]
     );
     assert_eq!(player.library.len(), 2);
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: ironsmith::game_state::EntryCommitResult)
+    -> Option<ironsmith::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

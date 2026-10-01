@@ -84,7 +84,7 @@ fn damage_with(option_word: &'static str) -> u32 {
         Zone::Hand,
     );
     game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Green, 6);
-    let action = compute_legal_actions(&game, alice)
+    let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))
         .expect("castable");

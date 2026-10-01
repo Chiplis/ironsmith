@@ -477,19 +477,37 @@ fn parse_graveyard_condition(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
             crate::slice_primitives::push_unique(&mut subtypes, subtype);
         }
     }
-    if card_types.is_empty() && subtypes.is_empty() {
-        let (count, used) =
-            leaf::parse_leaf_number_prefix_words(&descriptor_words)?.into_fixed()?;
-        if descriptor_words.get(used..) != Some(&["or", "more", "cards"][..]) {
-            return None;
-        }
+    // "N or more [<type>] cards in your graveyard": a counted threshold, not
+    // a single-card presence check (Gate to the Afterlife: "six or more
+    // creature cards").
+    if let Some((count, used)) = leaf::parse_leaf_number_prefix_words(&descriptor_words)
+        .and_then(|parsed| parsed.into_fixed())
+        && descriptor_words.get(used..used + 2) == Some(&["or", "more"][..])
+        && descriptor_words
+            .last()
+            .is_some_and(|word| *word == "cards" || *word == "card")
+        && descriptor_words
+            .get(used + 2..descriptor_words.len() - 1)
+            .is_some_and(|type_words| {
+                type_words.iter().all(|word| {
+                    leaf::parse_leaf_card_type_complete(word).is_ok()
+                        || leaf::parse_leaf_subtype_flexible_complete(word).is_ok()
+                })
+            })
+    {
+        let mut filter = ObjectFilter::default()
+            .in_zone(crate::zone::Zone::Graveyard)
+            .owned_by(PlayerFilter::You);
+        filter.card_types = card_types;
+        filter.subtypes = subtypes;
         return Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast {
             player: PlayerAst::You,
-            filter: ObjectFilter::default()
-                .in_zone(crate::zone::Zone::Graveyard)
-                .owned_by(PlayerFilter::You),
+            filter,
             count,
         }));
+    }
+    if card_types.is_empty() && subtypes.is_empty() {
+        return None;
     }
     Some(PredicateAst::CardInYourGraveyard {
         card_types,

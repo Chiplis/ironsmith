@@ -97,7 +97,7 @@ fn scenario(
         .collect();
     game.effect_store.pending_trigger_events.clear();
     let source = game.create_object_from_definition(def, PlayerId(0), Zone::Hand);
-    let action = compute_legal_actions(&game, PlayerId(0))
+    let action = compute_legal_actions(&game, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..} if *spell_id==source))
         .ok_or("legal normal cast unavailable")?;

@@ -46,6 +46,7 @@ fn parse_sticker_filter_prefix<'a>(
     let action = alt((
         primitives::word_slice_exact("art").value(KeywordActionKind::ArtSticker),
         primitives::word_slice_exact("ability").value(KeywordActionKind::AbilitySticker),
+        primitives::word_slice_exact("name").value(KeywordActionKind::NameSticker),
         (
             primitives::word_slice_exact("power"),
             primitives::word_slice_exact("and"),

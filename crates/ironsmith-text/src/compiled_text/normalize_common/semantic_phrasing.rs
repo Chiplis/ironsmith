@@ -992,7 +992,20 @@ fn normalize_leaked_negative_result_id(line: &str) -> Option<String> {
     } else {
         "otherwise,"
     };
-    Some(format!("{}{replacement}{}", &line[..start], &line[end..]))
+    let rest = &line[end..];
+    // The branch rendered as its own sentence; after "Otherwise," a leading
+    // reference word continues that sentence ("Otherwise, that player ...").
+    let rest = match rest.strip_prefix(' ') {
+        Some(tail)
+            if ["That ", "Their ", "Its ", "Target ", "Each ", "You "]
+                .iter()
+                .any(|word| tail.starts_with(word)) =>
+        {
+            format!(" {}", lowercase_first(tail))
+        }
+        _ => rest.to_string(),
+    };
+    Some(format!("{}{replacement}{rest}", &line[..start]))
 }
 
 fn restore_source_linked_exile_return_surface(line: &str) -> Option<String> {
@@ -2165,6 +2178,7 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     normalized = normalize_post_search_shuffle_tails(&normalized);
     normalized = normalize_else_branch_otherwise_surface(&normalized);
+    normalized = normalize_chosen_player_may_surface(&normalized);
     normalized = normalize_redundant_choose_target_opponent_scaffold(&normalized);
     normalized = normalize_choose_target_player_search_scaffold(&normalized);
     normalized = normalize_search_outside_game_reveal_surface(&normalized);
@@ -6733,6 +6747,19 @@ fn normalize_post_search_shuffle_tails(line: &str) -> String {
 /// happen, ...") never appears in printed text. Gated on a preceding
 /// conditional marker so a bare else branch without an antecedent keeps the
 /// explicit form.
+/// "Another player of your choice may ..." lowers to a player choice followed
+/// by that player's optional action; oracle names the chosen player inline.
+fn normalize_chosen_player_may_surface(line: &str) -> String {
+    line.replace(
+        "choose a player other than you, then that player may ",
+        "another player of your choice may ",
+    )
+    .replace(
+        "Choose a player other than you, then that player may ",
+        "Another player of your choice may ",
+    )
+}
+
 fn normalize_else_branch_otherwise_surface(line: &str) -> String {
     const NEEDLE: &str = ". If that doesn't happen, ";
     let Some(idx) = line.find(NEEDLE) else {
@@ -6756,11 +6783,19 @@ fn normalize_else_branch_otherwise_surface(line: &str) -> String {
     if !has_antecedent {
         return line.to_string();
     }
-    format!(
-        "{}. Otherwise, {}",
-        &line[..idx],
-        &line[idx + NEEDLE.len()..]
-    )
+    // The branch rendered as its own sentence; once it follows "Otherwise,"
+    // a leading reference word continues that sentence ("Otherwise, that
+    // player gains control ...").
+    let rest = &line[idx + NEEDLE.len()..];
+    let rest = if ["That ", "Their ", "Its ", "Target ", "Each ", "You "]
+        .iter()
+        .any(|word| rest.starts_with(word))
+    {
+        lowercase_first(rest)
+    } else {
+        rest.to_string()
+    };
+    format!("{}. Otherwise, {rest}", &line[..idx])
 }
 
 /// The Wish family's search-outside-the-game program renders as three

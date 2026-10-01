@@ -133,6 +133,11 @@ mod tests;
 
 #[path = "count_shapes/count_shapes_core.rs"]
 mod count_shapes_core_programs;
+
+/// "times this <source> was kicked" (the words after "the number of").
+pub(crate) fn is_kick_count_words(words: &[&str]) -> bool {
+    is_kick_count(words)
+}
 use count_shapes_core_programs::{
     exact_one_of, is_kick_count, parse_exact_dynamic_count_basis, parse_for_each_head,
     value_boundary,

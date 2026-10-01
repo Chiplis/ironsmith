@@ -28,7 +28,7 @@ fn rock_hydra_prevents_only_one_damage_for_each_counter_it_can_remove() {
         game.create_object_from_definition(&damage_source_definition, bob, Zone::Battlefield);
     game.update_replacement_effects();
 
-    let (remaining, prevented) = crate::events::processing::process_damage_with_event(
+    let (remaining, prevented) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         damage_source,
         crate::events::DamageTarget::Object(hydra),
@@ -48,7 +48,7 @@ fn rock_hydra_prevents_only_one_damage_for_each_counter_it_can_remove() {
     );
 
     game.add_counters(hydra, CounterType::PlusOnePlusOne, 3);
-    let (remaining, prevented) = crate::events::processing::process_damage_with_event(
+    let (remaining, prevented) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         damage_source,
         crate::events::DamageTarget::Object(hydra),

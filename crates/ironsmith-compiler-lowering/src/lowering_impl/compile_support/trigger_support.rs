@@ -468,6 +468,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::BlocksObjectWithLesserPower { blocker, blocked } => {
             Trigger::blocks_object_with_lesser_power(blocker, blocked)
         }
+        TriggerSpec::BlocksObject { blocker, blocked } => Trigger::blocks_object(blocker, blocked),
         TriggerSpec::ThisBecomesBlocked => Trigger::this_becomes_blocked(),
         TriggerSpec::BecomesBlocked(filter) => Trigger::becomes_blocked(filter),
         TriggerSpec::ThisBecomesBlockedByObject(filter) => {
@@ -763,6 +764,14 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             filter,
             one_or_more,
         } => Trigger::tokens_created(player, filter, one_or_more),
+        // "Whenever one or more permanents you control leave the battlefield"
+        // is a batch trigger: it fires once per event (CR 603.2c).
+        TriggerSpec::LeavesBattlefield(filter) if filter.union_is_one_or_more() => Trigger::new(
+            crate::triggers::zone_changes::ZoneChangeTrigger::new()
+                .from(crate::zone::Zone::Battlefield)
+                .filter(filter)
+                .count(crate::triggers::CountMode::OneOrMore),
+        ),
         TriggerSpec::LeavesBattlefield(filter) => Trigger::leaves_battlefield(filter),
         TriggerSpec::ExiledFromBattlefield(filter) => Trigger::new(
             crate::triggers::zone_changes::ZoneChangeTrigger::new()
@@ -1135,12 +1144,18 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             owner,
             one_or_more,
             cause_filter,
+            excluded,
         } => {
             if let Some(owner) = owner {
                 filter.owner = Some(owner);
             }
-            let trigger = crate::triggers::ZoneChangeTrigger::new()
-                .from(from)
+            let trigger = crate::triggers::ZoneChangeTrigger::new();
+            let trigger = if excluded {
+                trigger.from_any_except(from)
+            } else {
+                trigger.from(from)
+            };
+            let trigger = trigger
                 .to(crate::zone::Zone::Battlefield)
                 .filter(filter)
                 .cause_filter(cause_filter);
@@ -1406,6 +1421,9 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::Expend { .. } => true,
         TriggerSpec::StateBased { .. } => false,
         TriggerSpec::BecomesTargetedBySourceController {
+            source_controller, ..
+        }
+        | TriggerSpec::PlayerOrObjectBecomesTargetedBySourceController {
             source_controller, ..
         } => *source_controller != PlayerFilter::Any,
         // A card put into an owner-restricted graveyard binds "that player" to the

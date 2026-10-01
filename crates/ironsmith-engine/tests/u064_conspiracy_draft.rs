@@ -343,7 +343,7 @@ fn u064_hidden_agenda_is_secret_owner_controlled_and_revealed_by_priority_action
         conspiracy_id: hidden_id,
     };
     assert!(ironsmith::special_actions::can_perform_check(&action, &game, alice).is_ok());
-    assert!(ironsmith::decision::compute_legal_actions(&game, alice).iter().any(
+    assert!(ironsmith::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state").iter().any(
         |candidate| matches!(candidate, LegalAction::SpecialAction(found) if *found == action)
     ));
     perform(action, &mut game, alice, &mut TestDecisionMaker).unwrap();

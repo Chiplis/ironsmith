@@ -239,6 +239,19 @@ pub fn parse_same_name_target_fanout_sentence(
             if verb == fanout_grammar::SameNameFanoutVerb::Return
                 && let Some(first_filter) = target_object_filter_mut(&mut first_target)
             {
+                // "Return target creature card and all other cards with the
+                // same name as that card from your graveyard": the trailing
+                // zone scopes the first target too. A "card" noun never
+                // names a permanent, so a defaulted battlefield zone yields.
+                let first_names_card = first_target_tokens
+                    .iter()
+                    .any(|token| token.is_word("card") || token.is_word("cards"));
+                if first_names_card
+                    && first_filter.zone == Some(Zone::Battlefield)
+                    && filter.zone.is_some_and(|zone| zone != Zone::Battlefield)
+                {
+                    first_filter.zone = None;
+                }
                 if first_filter.zone.is_none() {
                     first_filter.zone = filter.zone;
                     if first_filter.zone.is_none() && mentions_graveyard {

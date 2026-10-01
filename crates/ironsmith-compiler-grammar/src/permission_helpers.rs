@@ -130,6 +130,7 @@ struct OnceEachTurnGraveyardCastRest<'a> {
     subject_tokens: &'a [OwnedLexToken],
     cost_tokens: Option<&'a [OwnedLexToken]>,
     exiles_after_resolution: bool,
+    exile_rider_subject_tokens: Option<&'a [OwnedLexToken]>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -426,6 +427,7 @@ fn parse_once_each_turn_graveyard_cast_rest_tokens<'a>(
         subject_tokens: fact.subject_tokens,
         cost_tokens: fact.cost_tokens,
         exiles_after_resolution: fact.exiles_after_resolution,
+        exile_rider_subject_tokens: fact.exile_rider_subject_tokens,
     })
 }
 
@@ -952,9 +954,24 @@ fn parse_once_each_turn_graveyard_cast_permission(
             parsed.exiles_after_resolution,
         );
 
+    let mut spec = crate::model::CompilerGrantSpecCore::new(grantable, filter, Zone::Graveyard);
+    if let Some(subject) = parsed.exile_rider_subject_tokens {
+        let Some(rider_filter) = permission_subject_facts::parse_permission_subject_filter_tokens(subject)? else {
+            return Ok(None);
+        };
+        // This permission casts from the caster's own graveyard. Bind the
+        // destination to the spell's owner, so changing its controller later
+        // cannot rebind the authored "your graveyard" condition.
+        spec = spec.with_cast_this_way_filter(rider_filter).with_cast_this_way_grant(
+            crate::model::CompilerStaticAbilityCore::exile_to_exile_instead_of_graveyard(
+                crate::filter::ObjectFilter::source(),
+                crate::filter::PlayerFilter::OwnerOf(crate::filter::ObjectRef::FilterCandidate),
+            ),
+        );
+    }
     Ok(Some(PermissionClauseSpec::GrantBySpec {
         player: PlayerAst::You,
-        spec: crate::model::CompilerGrantSpecCore::new(grantable, filter, Zone::Graveyard),
+        spec,
         lifetime: PermissionLifetime::Static,
     }))
 }

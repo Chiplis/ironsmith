@@ -128,8 +128,15 @@ pub fn parse_exert_attack_keyword_line(
         ))
     })?;
 
-    let followup = sentence_tokens
-        .get(1)
+    // The reflexive "When you do, ..." owns every following sentence of the
+    // line ("Sacrifice the token at the beginning of the next end step",
+    // Sandstorm Crasher), not only its first.
+    let followup_tokens = sentence_tokens.get(1).map(|sentence| {
+        let start = (sentence.as_ptr() as usize - parse_tokens.as_ptr() as usize)
+            / std::mem::size_of::<OwnedLexToken>();
+        &parse_tokens[start.min(parse_tokens.len())..]
+    });
+    let followup = followup_tokens
         .and_then(|tokens| semantic_grammar::parse_exert_reflexive_followup_tokens(tokens));
     let linked_trigger = if let Some(followup) = followup {
         let normalized_followup_tokens = normalize_exert_followup_source_reference_tokens(

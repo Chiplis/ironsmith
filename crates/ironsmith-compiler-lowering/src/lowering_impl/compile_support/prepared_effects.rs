@@ -1886,6 +1886,28 @@ fn materialize_trailing_self_replacement(
             // tests, the target the default action declared.
             replacement_imports.last_object_tag = Some(tag);
         }
+        if shared_target_prelude.is_none() {
+            // "You may search your library for a basic land card, ... put
+            // that card on top. If you control a Dragon, put that card onto
+            // the battlefield tapped instead": the replacement's pronoun
+            // names the card this instruction found, not an ambient trigger
+            // or source object the instruction did not introduce.
+            let instruction_effects = prefix_lowered
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .chain(default_lowered.effects.flattened_default_effects())
+                .cloned()
+                .collect::<Vec<_>>();
+            if let Some(search_tag) = unique_library_search_result_tag(&instruction_effects)
+                && replacement_imports
+                    .last_object_tag
+                    .as_ref()
+                    .is_none_or(|tag| !effects_produce_object_tag(&instruction_effects, tag))
+            {
+                replacement_imports.last_object_tag = Some(search_tag);
+            }
+        }
         let replacement_lowered =
             compile_statement_effects_with_imports(&effective_if_true, &replacement_imports)?;
         let mut default_effects = prefix_lowered.effects.flattened_default_effects().to_vec();
@@ -1998,6 +2020,8 @@ fn materialize_trailing_self_replacement(
         } else {
             replacement_effects
         };
+        let replacement_effects =
+            continue_search_into_dependent_replacement(&default_effects, replacement_effects);
 
         let mut choices = prefix_lowered.choices;
         for choice in default_lowered
@@ -2023,6 +2047,143 @@ fn materialize_trailing_self_replacement(
         }));
     }
     Ok(None)
+}
+
+/// Every object tag an effect list introduces (tagged results and choices).
+fn collect_produced_object_tags(effect: &Effect, tags: &mut Vec<TagKey>) {
+    if effect
+        .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+        .is_some()
+    {
+        return;
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        tags.push(tagged.tag.clone());
+    }
+    if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
+        tags.push(choose.tag.clone());
+    }
+    effect.visit_child_effects(&mut |child| collect_produced_object_tags(child, tags));
+}
+
+fn effects_produce_object_tag(effects: &[Effect], tag: &TagKey) -> bool {
+    let mut tags = Vec::new();
+    for effect in effects {
+        collect_produced_object_tags(effect, &mut tags);
+    }
+    tags.contains(tag)
+}
+
+fn collect_library_search_result_tags(effect: &Effect, tags: &mut Vec<TagKey>) {
+    if effect
+        .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+        .is_some()
+    {
+        return;
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>()
+        && tagged
+            .effect
+            .downcast_ref::<crate::effects::SearchLibraryEffect>()
+            .is_some()
+    {
+        tags.push(tagged.tag.clone());
+        return;
+    }
+    if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        && choose.is_search
+    {
+        tags.push(choose.tag.clone());
+        return;
+    }
+    effect.visit_child_effects(&mut |child| collect_library_search_result_tags(child, tags));
+}
+
+/// The result tag of the single library search an instruction performs.
+fn unique_library_search_result_tag(effects: &[Effect]) -> Option<TagKey> {
+    let mut tags = Vec::new();
+    for effect in effects {
+        collect_library_search_result_tags(effect, &mut tags);
+    }
+    tags.dedup();
+    match tags.as_slice() {
+        [tag] => Some(tag.clone()),
+        _ => None,
+    }
+}
+
+fn replacement_move_target_tag(effect: &Effect) -> Option<&TagKey> {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return replacement_move_target_tag(&tagged.effect);
+    }
+    let move_to_zone = effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    match move_to_zone.target.base() {
+        ChooseSpec::Tagged(tag) => Some(tag),
+        _ => None,
+    }
+}
+
+/// A replacement that moves the card a default search found ("put that card
+/// onto the battlefield tapped instead") replaces only that card's final
+/// destination. The search itself still happens: a self-replacement branch
+/// substitutes for the whole default instruction list, so the branch must
+/// first perform the default instructions that produce the card it moves.
+fn continue_search_into_dependent_replacement(
+    default_effects: &[Effect],
+    replacement_effects: Vec<Effect>,
+) -> Vec<Effect> {
+    let Some(search_tag) = unique_library_search_result_tag(default_effects) else {
+        return replacement_effects;
+    };
+    let moves_found_card = replacement_effects
+        .iter()
+        .any(|effect| replacement_move_target_tag(effect) == Some(&search_tag));
+    if !moves_found_card || effects_produce_object_tag(&replacement_effects, &search_tag) {
+        return replacement_effects;
+    }
+    // The replacement supplies the found card's destination, so the default
+    // disposition of that card ("put it into your hand") does not happen,
+    // and an instruction the replacement repeats ("then shuffle") happens
+    // once, at the replacement's position.
+    let repeated = replacement_effects
+        .iter()
+        .map(|effect| format!("{effect:?}"))
+        .collect::<Vec<_>>();
+    let mut continued = default_effects
+        .iter()
+        .filter(|effect| !repeated.contains(&format!("{effect:?}")))
+        .filter_map(|effect| without_found_card_disposition(effect, &search_tag))
+        .collect::<Vec<_>>();
+    continued.extend(replacement_effects);
+    continued
+}
+
+/// Remove the default destination of a searched card (`ForEachTagged` over
+/// the search result moving each card to a zone). `None` drops the effect.
+fn without_found_card_disposition(effect: &Effect, search_tag: &TagKey) -> Option<Effect> {
+    if let Some(for_each) = effect.downcast_ref::<crate::effects::ForEachTaggedEffect<Effect>>()
+        && &for_each.tag == search_tag
+        && !for_each.effects.is_empty()
+        && for_each.effects.iter().all(|inner| {
+            inner
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
+                .is_some_and(|move_to_zone| {
+                    matches!(move_to_zone.target.base(), ChooseSpec::Iterated)
+                })
+        })
+    {
+        return None;
+    }
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        let mut sequence = sequence.clone();
+        sequence.effects = sequence
+            .effects
+            .iter()
+            .filter_map(|inner| without_found_card_disposition(inner, search_tag))
+            .collect();
+        return Some(Effect::new(sequence));
+    }
+    Some(effect.clone())
 }
 
 pub(super) fn last_tagged_default_target(
@@ -2147,9 +2308,11 @@ fn link_source_move_to_damaged_death_card(lowered: &mut LoweredEffects, conditio
         return;
     }
 
+    // "put that card onto the battlefield" names every creature this
+    // creature damaged that died this turn (Krovikan Vampire rulings), not
+    // one chosen card; the shared tag links each of them to the follow-up.
     let mut replacement = move_to_zone.clone();
-    replacement.target =
-        ChooseSpec::Object(filter).with_count(crate::effect::ChoiceCount::exactly(1));
+    replacement.target = ChooseSpec::All(filter);
     *effect = Effect::new(tagged.with_effect(Effect::new(replacement)));
 }
 

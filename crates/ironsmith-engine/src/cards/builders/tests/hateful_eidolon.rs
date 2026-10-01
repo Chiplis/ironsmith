@@ -42,7 +42,7 @@ fn hateful_eidolon_draws_for_each_aura_you_controlled_attached_to_the_dead_creat
     game.move_object_by_sba(victim, Zone::Graveyard)
         .expect("the enchanted creature should die");
     assert!(
-        crate::rules::state_based::apply_state_based_actions(&mut game),
+        crate::rules::state_based::apply_state_based_actions(&mut game).expect("replacement operation must finish without execution error"),
         "the unattached Auras should then be put into their owners' graveyards"
     );
 

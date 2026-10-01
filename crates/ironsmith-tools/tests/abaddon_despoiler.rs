@@ -144,7 +144,7 @@ fn cascade_threshold_uses_total_opponent_loss_and_only_your_turn() {
             .unwrap()
             .mana_pool
             .add(ManaSymbol::Colorless, mana_value as u32);
-        let action = compute_legal_actions(&game, caster)
+        let action = compute_legal_actions(&game, caster).expect("fixture has complete replacement state")
             .into_iter()
             .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..} if *spell_id==spell))
             .unwrap();
@@ -232,7 +232,7 @@ fn cascade_threshold_uses_total_opponent_loss_and_only_your_turn() {
                 .unwrap()
                 .mana_pool
                 .add(ManaSymbol::Colorless, 3);
-            let action = compute_legal_actions(&game, bob)
+            let action = compute_legal_actions(&game, bob).expect("fixture has complete replacement state")
                 .into_iter()
                 .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..} if *spell_id==next_spell))
                 .unwrap();
@@ -383,7 +383,7 @@ fn cascade_threshold_counts_chosen_x_on_the_stack() {
             .unwrap()
             .mana_pool
             .add(ManaSymbol::Colorless, 3);
-        let action = compute_legal_actions(&game, alice)
+        let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .into_iter()
             .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..} if *spell_id==spell))
             .unwrap();

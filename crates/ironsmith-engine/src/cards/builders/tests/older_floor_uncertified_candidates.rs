@@ -415,7 +415,7 @@ fn krydle_binds_loss_and_mill_to_the_damaged_player_but_gain_and_scry_to_you() {
         "noncombat damage from Krydle must not trigger the combat-damage ability"
     );
 
-    let (dealt, prevented) = crate::events::processing::process_damage_with_event(
+    let (dealt, prevented) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         krydle,
         crate::events::DamageTarget::Player(bob),

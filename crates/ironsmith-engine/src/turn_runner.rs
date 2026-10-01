@@ -227,6 +227,7 @@ struct PendingSectorDesignationChoices {
 
 #[derive(Debug, Clone)]
 struct PendingDrawReplacementChoice {
+    draw_step_player: PlayerId,
     player: PlayerId,
     applicable_effects: Vec<crate::replacement::ReplacementEffectId>,
     event: crate::events::Event,
@@ -276,7 +277,7 @@ struct PendingTurnDraw {
 struct PendingDrawReplacementEffects {
     player: PlayerId,
     effects: Vec<crate::effect::Effect>,
-    effect_id: crate::replacement::ReplacementEffectId,
+    context: Box<crate::events::processing::ReplacementEventContext>,
     source: ObjectId,
     controller: PlayerId,
     answers: Vec<AttackCostAnswer>,
@@ -797,6 +798,10 @@ pub struct TurnRunner {
     remaining_draw_players: Vec<PlayerId>,
     /// Draw events accumulated while shared-team draw choices pause and resume.
     shared_draw_events: Vec<crate::triggers::TriggerEvent>,
+    /// Private draw-step state retained across prompts, never partially published.
+    draw_step_working_game: Option<Box<GameState>>,
+    /// Runner state before the draw operation, restored if execution fails.
+    draw_step_checkpoint: Option<Box<TurnRunner>>,
     /// Commander-specific choice that paused the runner.
     pending_commander_choice: Option<PendingCommanderChoice>,
     /// Legend-rule keep choice that paused the runner.
@@ -851,6 +856,8 @@ impl TurnRunner {
             pending_cleanup_discard: None,
             remaining_draw_players: Vec::new(),
             shared_draw_events: Vec::new(),
+            draw_step_working_game: None,
+            draw_step_checkpoint: None,
             pending_commander_choice: None,
             pending_legend_choice: None,
             resolved_legend_keeps: Vec::new(),
@@ -1079,7 +1086,7 @@ impl TurnRunner {
                 // a step other than upkeep begins.
                 game.clear_forecast_revealed_hand_cards();
                 game.turn.step = Some(Step::Draw);
-                game.refresh_continuous_state();
+                game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
                 // CR 614.10 / 500.11: "Skip your draw step" (Necropotence)
                 // proceeds past the whole step as though it didn't exist: no
                 // turn-based draw, no "beginning of draw step" triggers and no
@@ -1104,7 +1111,7 @@ impl TurnRunner {
                     );
                     return Ok(TurnAction::Continue);
                 }
-                let draw_events = match self.execute_draw_step_with_choices(game) {
+                let draw_events = match self.execute_draw_step_with_choices(game)? {
                     RunnerProgress::Complete(draw_events) => draw_events,
                     RunnerProgress::NeedsDecision(ctx) => return Ok(TurnAction::Decision(ctx)),
                 };
@@ -1258,7 +1265,7 @@ impl TurnRunner {
                 // Refresh continuous state for the new step before combat
                 // queries so conditional abilities share the characteristics
                 // cache instead of recursively rebuilding it.
-                game.refresh_continuous_state();
+                game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
                 let ctx = get_declare_attackers_decision(game, &self.combat);
                 self.state = TurnState::DeclareAttackersApply;
                 Ok(TurnAction::Decision(ctx))
@@ -1509,7 +1516,7 @@ impl TurnRunner {
 
                 game.turn.priority_player = Some(defending_player);
 
-                game.refresh_continuous_state();
+                game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
                 let ctx = get_declare_blockers_decision(game, &self.combat, defending_player);
                 self.state = TurnState::DeclareBlockersApply;
                 Ok(TurnAction::Decision(ctx))
@@ -1662,7 +1669,7 @@ impl TurnRunner {
 
             TurnState::CombatDamageFirstStrikeAssign => {
                 if self.pending_combat_damage_choices.is_none()
-                    && let Some(ctx) = self.next_combat_damage_assignment_decision(game, true, false) {
+                    && let Some(ctx) = self.next_combat_damage_assignment_decision(game, true, false)? {
                     return Ok(TurnAction::Decision(ctx));
                 }
                 if let Some(ctx) = self.apply_combat_damage_with_choices(game, tq, true)? {
@@ -1702,7 +1709,7 @@ impl TurnRunner {
 
             TurnState::CombatDamageRegularAssign => {
                 if self.pending_combat_damage_choices.is_none()
-                    && let Some(ctx) = self.next_combat_damage_assignment_decision(game, false, true) {
+                    && let Some(ctx) = self.next_combat_damage_assignment_decision(game, false, true)? {
                     return Ok(TurnAction::Decision(ctx));
                 }
                 if let Some(ctx) = self.apply_combat_damage_with_choices(game, tq, false)? {
@@ -2172,10 +2179,8 @@ impl TurnRunner {
         game: &mut GameState,
         first_strike: bool,
         use_snapshot: bool,
-    ) -> Option<DecisionContext> {
-        if !game.continuous_state_is_clean() {
-            game.refresh_continuous_state();
-        }
+    ) -> Result<Option<DecisionContext>, GameLoopError> {
+        game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
         // The refresh may have removed permanents from combat (CR 506.4).
         self.sync_combat_from_game(game);
         let first_step_strikers = use_snapshot.then_some(&self.first_step_strikers);
@@ -2189,13 +2194,13 @@ impl TurnRunner {
         {
             prompt.record(game, &distribution);
         }
-        crate::game_loop::next_combat_damage_assignment_prompt(
+        Ok(crate::game_loop::next_combat_damage_assignment_prompt(
             game,
             &self.combat,
             first_strike,
             first_step_strikers,
         )
-        .map(|prompt| DecisionContext::Distribute(prompt.decision_context(game)))
+        .map(|prompt| DecisionContext::Distribute(prompt.decision_context(game))))
     }
 
     /// Signal that the priority loop has completed.
@@ -2478,6 +2483,17 @@ impl TurnRunner {
         game: &mut GameState,
         recursive: bool,
     ) -> Result<TurnAction, GameLoopError> {
+        let checkpoint = self.clone();
+        let result = self.advance_cleanup_discard_with_choices_inner(game, recursive);
+        if result.is_err() { *self = checkpoint; }
+        result
+    }
+
+    fn advance_cleanup_discard_with_choices_inner(
+        &mut self,
+        game: &mut GameState,
+        recursive: bool,
+    ) -> Result<TurnAction, GameLoopError> {
         let (cards, answers) = if let Some(mut pending) = self.pending_cleanup_discard.take() {
             let Some(answer) = pending.choices.response.take() else {
                 let prompt = pending.choices.prompt.clone();
@@ -2500,7 +2516,8 @@ impl TurnRunner {
         let discarding_player = cleanup_discard_owner(game, &cards);
         let mut hypothetical = game.clone();
         let mut dm = QueuedAttackCostDecisionMaker::new(answers.clone());
-        crate::turn::apply_cleanup_discard(&mut hypothetical, &cards, &mut dm);
+        crate::turn::apply_cleanup_discard(&mut hypothetical, &cards, &mut dm)
+            .map_err(GameLoopError::ExecutionFailed)?;
         if let Some(prompt) = dm.pending_prompt {
             self.pending_cleanup_discard = Some(PendingCleanupDiscard {
                 cards,
@@ -2524,7 +2541,35 @@ impl TurnRunner {
     fn execute_draw_step_with_choices(
         &mut self,
         game: &mut GameState,
-    ) -> RunnerProgress<Vec<crate::triggers::TriggerEvent>> {
+    ) -> Result<RunnerProgress<Vec<crate::triggers::TriggerEvent>>, GameLoopError> {
+        if self.draw_step_checkpoint.is_none() {
+            self.draw_step_checkpoint = Some(Box::new(self.clone()));
+        }
+        let mut working = self.draw_step_working_game.take()
+            .unwrap_or_else(|| Box::new(game.clone()));
+        match self.execute_draw_step_on_working_game(&mut working) {
+            Ok(RunnerProgress::Complete(events)) => {
+                *game = *working;
+                self.draw_step_checkpoint = None;
+                Ok(RunnerProgress::Complete(events))
+            }
+            Ok(RunnerProgress::NeedsDecision(prompt)) => {
+                self.draw_step_working_game = Some(working);
+                Ok(RunnerProgress::NeedsDecision(prompt))
+            }
+            Err(error) => {
+                if let Some(checkpoint) = self.draw_step_checkpoint.take() {
+                    *self = *checkpoint;
+                }
+                Err(error)
+            }
+        }
+    }
+
+    fn execute_draw_step_on_working_game(
+        &mut self,
+        game: &mut GameState,
+    ) -> Result<RunnerProgress<Vec<crate::triggers::TriggerEvent>>, GameLoopError> {
         if self.remaining_draw_players.is_empty() {
             let active_players = game.turn_players();
             if active_players
@@ -2532,7 +2577,7 @@ impl TurnRunner {
                 .any(|player| game.player_skips_draw_step(*player))
             {
                 game.reset_priority_for_new_window();
-                return RunnerProgress::Complete(Vec::new());
+                return Ok(RunnerProgress::Complete(Vec::new()));
             }
             self.remaining_draw_players = active_players;
             self.shared_draw_events.clear();
@@ -2543,10 +2588,10 @@ impl TurnRunner {
                 game.turn_store.tracked_draw_step_player = None;
                 game.turn_store.cards_drawn_this_draw_step = 0;
                 game.reset_priority_for_new_window();
-                return RunnerProgress::Complete(std::mem::take(&mut self.shared_draw_events));
+                return Ok(RunnerProgress::Complete(std::mem::take(&mut self.shared_draw_events)));
             };
-            match self.execute_draw_step_for_player_with_choices(game, active_player) {
-                RunnerProgress::NeedsDecision(ctx) => return RunnerProgress::NeedsDecision(ctx),
+            match self.execute_draw_step_for_player_with_choices(game, active_player)? {
+                RunnerProgress::NeedsDecision(ctx) => return Ok(RunnerProgress::NeedsDecision(ctx)),
                 RunnerProgress::Complete(events) => {
                     self.shared_draw_events.extend(events);
                     self.remaining_draw_players.remove(0);
@@ -2559,249 +2604,61 @@ impl TurnRunner {
         &mut self,
         game: &mut GameState,
         active_player: PlayerId,
-    ) -> RunnerProgress<Vec<crate::triggers::TriggerEvent>> {
+    ) -> Result<RunnerProgress<Vec<crate::triggers::TriggerEvent>>, GameLoopError> {
         game.sync_draw_step_tracking();
-        if let Some(pending) = self.pending_draw_reveal.take() {
-            return self.finish_pending_draw_reveal_choices(game, pending);
-        }
         if let Some(pending) = self.pending_turn_draw.take() {
+            if pending.player != active_player {
+                return Err(GameLoopError::ResolutionFailed("draw continuation belongs to another player".into()));
+            }
             return self.run_turn_draw_with_choices(game, pending);
         }
-        if let Some(mut pending) = self.pending_draw_replacement_effects.take() {
-            if pending.player == active_player {
-                let Some(answer) = pending.response.take() else {
-                    let prompt = pending
-                        .prompt
-                        .clone()
-                        .expect("a paused draw replacement has a prompt");
-                    self.pending_draw_replacement_effects = Some(pending);
-                    return RunnerProgress::NeedsDecision(prompt);
-                };
-                pending.answers.push(answer);
-                return self.run_draw_replacement_effects(game, pending);
-            }
-            self.pending_draw_replacement_effects = Some(pending);
-        }
-        if !game
-            .player(active_player)
-            .is_some_and(|player| player.is_in_game())
+        if !game.player(active_player).is_some_and(|player| player.is_in_game())
+            || game.player_skips_draw_step(active_player)
+            || game.should_skip_first_turn_draw(active_player)
+            || !game.can_draw(active_player)
         {
-            game.reset_priority_for_new_window();
-            return RunnerProgress::Complete(Vec::new());
+            return Ok(RunnerProgress::Complete(Vec::new()));
         }
-        if game.player_skips_draw_step(active_player) {
-            game.reset_priority_for_new_window();
-            return RunnerProgress::Complete(Vec::new());
+        let previous_draws = game.turn_store.turn_history.cards_drawn_by_player(active_player);
+        if !game.can_draw_extra_cards(active_player) && previous_draws > 0 {
+            return Ok(RunnerProgress::Complete(Vec::new()));
         }
-        if game.should_skip_first_turn_draw(active_player) {
-            game.reset_priority_for_new_window();
-            return RunnerProgress::Complete(Vec::new());
-        }
-
-        let current_draws = game
-            .turn_store
-            .turn_history
-            .cards_drawn_by_player(active_player);
-        let is_first_draw = current_draws == 0;
-        let can_draw = if !game.can_draw_extra_cards(active_player) {
-            current_draws == 0
-        } else {
-            true
-        };
-
-        let mut drawn = Vec::new();
-        if can_draw {
-            use crate::events::processing::{
-                TraitEventResult, process_event_with_chosen_replacement_trait_and_applied_effects,
-                process_trait_event,
-            };
-
-            let mut final_draw_count = 1;
-            let replacement_result = if self.pending_commander_choice.is_some() {
-                None
-            } else if let Some(pending) = self.pending_draw_replacement.take() {
-                if pending.player != active_player {
-                    self.pending_draw_replacement = Some(pending);
-                    None
-                } else if let Some(chosen_index) = self.pending_option.take() {
-                    let chosen_effect = pending
-                        .applicable_effects
-                        .get(chosen_index)
-                        .copied()
-                        .or_else(|| pending.applicable_effects.first().copied());
-                    chosen_effect.map(|chosen_effect| {
-                        process_event_with_chosen_replacement_trait_and_applied_effects(
-                            game,
-                            pending.event,
-                            chosen_effect,
-                            &pending.applied_effects,
-                            &pending.applied_effect_keys,
-                        )
-                    })
-                } else {
-                    let context = draw_replacement_choice_context(game, &pending);
-                    self.pending_draw_replacement = Some(pending);
-                    return RunnerProgress::NeedsDecision(context);
-                }
-            } else {
-                game.update_replacement_effects();
-                let (in_draw_step, drawn_this_draw_step) =
-                    game.draw_step_context_for_player(active_player);
-                Some(process_trait_event(
-                    game,
-                    crate::events::Event::draw_in_instruction(
-                        active_player,
-                        1,
-                        is_first_draw,
-                        true,
-                        in_draw_step && drawn_this_draw_step == 0,
-                    ),
-                ))
-            };
-
-            if let Some(result) = replacement_result {
-                match result {
-                    TraitEventResult::NeedsChoice {
-                        player,
-                        applicable_effects,
-                        event,
-                        applied_effects,
-                        applied_effect_keys,
-                    } => {
-                        let pending = PendingDrawReplacementChoice {
-                            player,
-                            applicable_effects,
-                            event: *event,
-                            applied_effects,
-                            applied_effect_keys,
-                        };
-                        let context = draw_replacement_choice_context(game, &pending);
-                        self.pending_draw_replacement = Some(pending);
-                        return RunnerProgress::NeedsDecision(context);
-                    }
-                    TraitEventResult::Replaced {
-                        effects,
-                        effect_id,
-                        source,
-                        controller,
-                        ..
-                    } => {
-                        // CR 616.1 / 608.2d: the replacement's own choices
-                        // belong to its controller, so surface them.
-                        return self.run_draw_replacement_effects(
-                            game,
-                            PendingDrawReplacementEffects {
-                                player: active_player,
-                                effects,
-                                effect_id,
-                                source,
-                                controller,
-                                answers: Vec::new(),
-                                prompt: None,
-                                response: None,
-                            },
-                        );
-                    }
-                    TraitEventResult::Prevented => {
-                        game.reset_priority_for_new_window();
-                        return RunnerProgress::Complete(Vec::new());
-                    }
-                    TraitEventResult::Proceed(event) | TraitEventResult::Modified(event) => {
-                        final_draw_count = crate::events::downcast_event::<
-                            crate::events::cards::DrawEvent,
-                        >(event.inner())
-                        .map(|draw| draw.count)
-                        .unwrap_or(1);
-                    }
-                    TraitEventResult::NeedsInteraction { .. } => {}
-                }
-            }
-
-            if final_draw_count != 1 {
-                return self.run_turn_draw_with_choices(game, PendingTurnDraw {
-                    player: active_player,
-                    count: final_draw_count as usize,
-                    previous_draws: current_draws,
-                    choices: PendingUntapChoices {
-                        answers: Vec::new(), prompt: None, response: None,
-                    },
-                });
-            } else {
-                match self.pending_commander_choice.take() {
-                    Some(PendingCommanderChoice::DrawToHand { object_id }) => {
-                        let send_to_command = self.pending_boolean.take().unwrap_or(false);
-                        let final_zone = if send_to_command {
-                            crate::zone::Zone::Command
-                        } else {
-                            crate::zone::Zone::Hand
-                        };
-                        if let Some(new_id) = game.move_object_by_effect(object_id, final_zone)
-                            && final_zone == crate::zone::Zone::Hand
-                        {
-                            drawn.push(new_id);
-                        }
-                    }
-                    Some(other) => {
-                        self.pending_commander_choice = Some(other);
-                    }
-                    None => {
-                        if let Some(card_id) = game
-                            .player(active_player)
-                            .and_then(|player| player.library.last().copied())
-                        {
-                            if game.is_commander(card_id) {
-                                if let Some(obj) = game.object(card_id) {
-                                    let ctx = DecisionContext::Boolean(
-                                    BooleanContext::new(
-                                        obj.owner,
-                                        Some(card_id),
-                                        "move it to the command zone instead of putting it into its owner's hand",
-                                    )
-                                    .with_source_name(obj.name.to_string()),
-                                );
-                                    self.pending_commander_choice =
-                                        Some(PendingCommanderChoice::DrawToHand {
-                                            object_id: card_id,
-                                        });
-                                    return RunnerProgress::NeedsDecision(ctx);
-                                }
-                            } else if let Some(new_id) =
-                                game.move_object_by_effect(card_id, crate::zone::Zone::Hand)
-                            {
-                                drawn.push(new_id);
-                            }
-                        } else {
-                            game.record_empty_library_draw_attempt(active_player);
-                        }
-                    }
-                }
-            }
-        }
-
-        self.finish_turn_draw(game, active_player, drawn, current_draws)
+        self.run_turn_draw_with_choices(game, PendingTurnDraw {
+            player: active_player, count: 1, previous_draws,
+            choices: PendingUntapChoices { answers: Vec::new(), prompt: None, response: None },
+        })
     }
 
     fn run_turn_draw_with_choices(
         &mut self,
         game: &mut GameState,
         mut pending: PendingTurnDraw,
-    ) -> RunnerProgress<Vec<crate::triggers::TriggerEvent>> {
+    ) -> Result<RunnerProgress<Vec<crate::triggers::TriggerEvent>>, GameLoopError> {
         if let Some(answer) = pending.choices.response.take() {
             pending.choices.answers.push(answer);
         } else if let Some(prompt) = pending.choices.prompt.clone() {
             self.pending_turn_draw = Some(pending);
-            return RunnerProgress::NeedsDecision(prompt);
+            return Ok(RunnerProgress::NeedsDecision(prompt));
         }
         let mut hypothetical = game.clone();
         let mut dm = QueuedAttackCostDecisionMaker::new(pending.choices.answers.clone());
-        let drawn = hypothetical.draw_cards_with_dm(pending.player, pending.count, &mut dm);
-        if let Some(prompt) = dm.pending_prompt {
+        let provenance = hypothetical.provenance_graph_mut()
+            .alloc_root_event(crate::events::EventKind::CardsDrawn);
+        let outcome = {
+            let mut ctx = crate::effects::ExecutionContext::new(ObjectId::from_raw(0), pending.player, &mut dm)
+                .with_cause(crate::events::cause::EventCause::from_game_rule())
+                .with_provenance(provenance);
+            crate::effects::cards::execute_turn_draw_proposal(&mut hypothetical, &mut ctx, pending.player)
+        }.map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))?;
+        if let Some(prompt) = dm.pending_prompt.take() {
             pending.choices.prompt = Some(prompt.clone());
             self.pending_turn_draw = Some(pending);
-            return RunnerProgress::NeedsDecision(prompt);
+            return Ok(RunnerProgress::NeedsDecision(prompt));
         }
+        for event in &outcome.events { hypothetical.stage_turn_history_event(event); }
         *game = hypothetical;
-        self.finish_turn_draw(game, pending.player, drawn, pending.previous_draws)
+        game.reset_priority_for_new_window();
+        Ok(RunnerProgress::Complete(outcome.events))
     }
 
     fn finish_turn_draw(
@@ -2945,32 +2802,32 @@ impl TurnRunner {
         &mut self,
         game: &mut GameState,
         mut pending: PendingDrawReplacementEffects,
-    ) -> RunnerProgress<Vec<crate::triggers::TriggerEvent>> {
+    ) -> Result<RunnerProgress<Vec<crate::triggers::TriggerEvent>>, GameLoopError> {
         let mut hypothetical = game.clone();
         let mut dm = QueuedAttackCostDecisionMaker::new(pending.answers.clone());
         let outcome = {
             let mut ctx =
                 crate::effects::ExecutionContext::new(pending.source, pending.controller, &mut dm);
             ctx.iteration.iterated_player = Some(pending.player);
-            crate::effects::cards::execute_draw_replacement_effects(
+            crate::effects::cards::execute_scoped_draw_replacement_effects(
                 &mut hypothetical,
                 &mut ctx,
-                pending.effects.clone(),
-                pending.effect_id,
+                &pending.effects,
                 pending.source,
                 pending.controller,
-                pending.player,
+                &pending.context,
             )
         };
+        let outcome = outcome.map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))?;
         if let Some(prompt) = dm.pending_prompt.take() {
             pending.prompt = Some(prompt.clone());
             pending.response = None;
             self.pending_draw_replacement_effects = Some(pending);
-            return RunnerProgress::NeedsDecision(prompt);
+            return Ok(RunnerProgress::NeedsDecision(prompt));
         }
         *game = hypothetical;
         game.reset_priority_for_new_window();
-        RunnerProgress::Complete(outcome.map(|outcome| outcome.events).unwrap_or_default())
+        Ok(RunnerProgress::Complete(outcome.events))
     }
 
     fn finish_pending_draw_reveal_choices(
@@ -3080,7 +2937,7 @@ impl TurnRunner {
             crate::game_loop::drain_pending_trigger_events(game, tq);
             // Every applied SBA can change which static effects exist. Refresh
             // at the fixed-point boundary; this is a no-op while state is clean.
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
             let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
             let all_effects = view.effects_arc();
             let context = StateBasedActionContext::from_trigger_queue(tq);
@@ -3253,7 +3110,7 @@ impl TurnRunner {
                         &legend_keeps,
                         all_effects.as_slice(),
                         &mut dm,
-                    );
+                    ).map_err(GameLoopError::ExecutionFailed)?;
                     if let Some(prompt) = dm.pending_prompt.take() {
                         self.pending_sba_choices = Some(PendingSbaChoices {
                             answers,
@@ -5928,8 +5785,368 @@ mod tests {
         ));
         assert_eq!(runner.combat.attacking_bands, vec![vec![companion]]);
     }
+
+
+    fn replacement_draw_step_fixture() -> (GameState, TurnRunner, TriggerQueue, ObjectId, PlayerId, Vec<ObjectId>) {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.active_player = alice;
+        game.turn.turn_number = 2;
+        game.turn.phase = Phase::Beginning;
+        game.turn.step = Some(Step::Draw);
+        let source = game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Draw step replacement source")
+                .card_types(vec![CardType::Enchantment]).build(),
+            alice, Zone::Battlefield,
+        );
+        for name in ["First draw step library card", "Second draw step library card"] {
+            game.create_object_from_card(
+                &CardBuilder::new(CardId::new(), name).card_types(vec![CardType::Instant]).build(),
+                alice, Zone::Library,
+            );
+        }
+        let library = game.player(alice).unwrap().library.as_slice().to_vec();
+        game.take_pending_trigger_events();
+        let mut runner = TurnRunner::new();
+        runner.state = TurnState::Draw;
+        (game, runner, TriggerQueue::new(), source, alice, library)
+    }
+
+    #[test]
+    fn draw_step_payload_error_is_reported_without_committing_prefix() {
+        let (mut game, mut runner, mut queue, source, alice, library) = replacement_draw_step_fixture();
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(
+            crate::replacement::ReplacementEffect::with_matcher(source, alice,
+                crate::events::cards::matchers::WouldDrawCardMatcher::you(),
+                crate::replacement::ReplacementAction::Instead(vec![
+                    crate::effect::Effect::gain_life(2),
+                    crate::effect::Effect::lose_life(crate::effect::Value::X),
+                ])),
+        );
+        let result = runner.advance(&mut game, &mut queue);
+        assert!(matches!(result, Err(GameLoopError::ResolutionFailed(_))),
+            "a draw-step replacement failure must not become a successful priority window");
+        assert_eq!(game.player(alice).unwrap().life, 20);
+        assert_eq!(game.player(alice).unwrap().library.as_slice(), library.as_slice());
+        assert!(game.player(alice).unwrap().hand.is_empty());
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_some());
+        assert!(game.take_pending_trigger_events().is_empty());
+        assert!(queue.entries.is_empty());
+        assert!(matches!(runner.state(), TurnState::Draw));
+    }
+
+    #[test]
+    fn draw_step_pending_payload_retains_shield_and_replays_once() {
+        let (mut game, mut runner, mut queue, source, alice, library) = replacement_draw_step_fixture();
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(
+            crate::replacement::ReplacementEffect::with_matcher(source, alice,
+                crate::events::cards::matchers::WouldDrawCardMatcher::you(),
+                crate::replacement::ReplacementAction::Instead(vec![
+                    crate::effect::Effect::gain_life(2),
+                    crate::effect::Effect::may(vec![crate::effect::Effect::gain_life(4)]),
+                ])),
+        );
+        let action = runner.advance(&mut game, &mut queue).unwrap();
+        let TurnAction::Decision(DecisionContext::Boolean(choice)) = action else {
+            panic!("the draw-step payload must expose its own boolean choice");
+        };
+        assert_eq!(choice.player, alice);
+        assert_eq!(game.player(alice).unwrap().life, 20);
+        assert_eq!(game.player(alice).unwrap().library.as_slice(), library.as_slice());
+        assert!(game.player(alice).unwrap().hand.is_empty());
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_some(),
+            "a suspended draw step must not consume its replacement shield");
+        assert!(game.take_pending_trigger_events().is_empty());
+        assert!(queue.entries.is_empty());
+        runner.respond_boolean(true);
+        let action = runner.advance(&mut game, &mut queue).unwrap();
+        assert!(matches!(action, TurnAction::RunPriority));
+        assert_eq!(game.player(alice).unwrap().life, 26);
+        assert_eq!(game.player(alice).unwrap().library.as_slice(), library.as_slice());
+        assert!(game.player(alice).unwrap().hand.is_empty());
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+    }
+
+    #[test]
+    fn draw_step_instead_payload_keeps_preceding_draw_replacement_history() {
+        let (mut game, mut runner, mut queue, source, alice, _) = replacement_draw_step_fixture();
+        let mut double = crate::replacement::ReplacementEffect::with_matcher(source, alice,
+            crate::events::cards::matchers::WouldDrawCardMatcher::you(),
+            crate::replacement::ReplacementAction::Double);
+        double.priority_override = Some(crate::events::ReplacementPriority::SelfReplacement);
+        let double = game.effect_store.replacement_effects.add_resolution_effect(double);
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(
+            crate::replacement::ReplacementEffect::with_matcher(source, alice,
+                crate::events::cards::matchers::WouldDrawCardMatcher::you(),
+                crate::replacement::ReplacementAction::Instead(vec![crate::effect::Effect::draw(1)])),
+        );
+        let action = runner.advance(&mut game, &mut queue).unwrap();
+        assert!(matches!(action, TurnAction::RunPriority));
+        assert_eq!(game.player(alice).unwrap().hand.len(), 1,
+            "the draw-step replacement must carry history into its nested draw");
+        assert_eq!(game.player(alice).unwrap().library.len(), 1);
+        assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), 1);
+        assert!(game.effect_store.replacement_effects.get_effect(double).is_some());
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+    }
+    #[test]
+    fn draw_step_commits_the_resolved_recipient() {
+        let (mut game, mut runner, mut queue, source, alice, alice_library) = replacement_draw_step_fixture();
+        let bob = PlayerId::from_index(1);
+        for name in ["First redirected library card", "Second redirected library card"] {
+            game.create_object_from_card(
+                &CardBuilder::new(CardId::new(), name).card_types(vec![CardType::Instant]).build(),
+                bob, Zone::Library,
+            );
+        }
+        let bob_library = game.player(bob).unwrap().library.as_slice().to_vec();
+        let watcher = game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Resolved drawer watcher").card_types(vec![CardType::Enchantment]).build(),
+            bob, Zone::Battlefield,
+        );
+        game.object_mut(watcher).unwrap().abilities_mut().push(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::you_draw_cards(), vec![crate::effect::Effect::gain_life(1)],
+        ));
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(
+            crate::replacement::ReplacementEffect::with_matcher(source, alice,
+                crate::events::cards::matchers::WouldDrawCardMatcher::you(),
+                crate::replacement::ReplacementAction::Redirect {
+                    target: crate::replacement::RedirectTarget::ToPlayer(bob),
+                    which: crate::replacement::RedirectWhich::First,
+                }),
+        );
+        // Prove the shared processor supports this redirect independently of
+        // whether the public turn-action caller preserves its result.
+        let mut processor_game = game.clone();
+        let processed = crate::events::processing::process_trait_event(
+            &mut processor_game, crate::events::Event::draw_in_instruction(alice, 1, true, true, true),
+        );
+        let (crate::events::processing::TraitEventResult::Proceed(event) | crate::events::processing::TraitEventResult::Modified(event)) = processed else {
+            panic!("the draw redirect must produce a modified carrier");
+        };
+        assert_eq!(crate::events::downcast_event::<crate::events::DrawEvent>(event.inner()).unwrap().player, bob);
+        assert!(matches!(runner.advance(&mut game, &mut queue).unwrap(), TurnAction::RunPriority));
+        assert!(game.player(alice).unwrap().hand.is_empty(), "the caller must not draw for the authored recipient");
+        assert_eq!(game.player(alice).unwrap().library.as_slice(), alice_library.as_slice());
+        assert_eq!(game.player(bob).unwrap().hand.len(), 1);
+        assert_eq!(game.player(bob).unwrap().library.len(), bob_library.len()-1);
+        let drawn = game.player(bob).unwrap().hand[0];
+        assert_eq!(game.object(drawn).unwrap().name, "Second redirected library card");
+        assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), 0);
+        assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(bob), 1);
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+        assert_eq!(queue.entries.len(), 1, "the actual drawer must receive exactly one draw trigger");
+        let event = queue.entries[0].triggering_event.downcast::<crate::events::other::CardsDrawnEvent>()
+            .expect("the watcher must retain the actual draw observation");
+        assert_eq!(event.player, bob);
+        assert_eq!(event.amount(), 1);
+    }
+
+    fn shared_draw_step_payload_boundary(pending: bool) {
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+        game.set_teams(vec![vec![alice, bob], vec![charlie]]).unwrap();
+        game.enable_shared_team_turns().unwrap();
+        game.turn.active_player = alice;
+        game.turn.turn_number = 2;
+        game.turn.phase = Phase::Beginning;
+        game.turn.step = Some(Step::Draw);
+        for player in [alice, bob] {
+            game.create_object_from_card(
+                &CardBuilder::new(CardId::new(), "Shared draw library card").card_types(vec![CardType::Instant]).build(),
+                player, Zone::Library,
+            );
+        }
+        let alice_library = game.player(alice).unwrap().library.as_slice().to_vec();
+        let bob_library = game.player(bob).unwrap().library.as_slice().to_vec();
+        let source = game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Shared draw replacement").card_types(vec![CardType::Enchantment]).build(),
+            bob, Zone::Battlefield,
+        );
+        let tail = if pending { crate::effect::Effect::may(vec![crate::effect::Effect::gain_life(4)]) }
+            else { crate::effect::Effect::lose_life(crate::effect::Value::X) };
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(
+            crate::replacement::ReplacementEffect::with_matcher(source, bob,
+                crate::events::cards::matchers::WouldDrawCardMatcher::you(),
+                crate::replacement::ReplacementAction::Instead(vec![crate::effect::Effect::gain_life(2), tail])),
+        );
+        let mut runner = TurnRunner::new();
+        runner.state = TurnState::Draw;
+        let mut queue = TriggerQueue::new();
+        game.take_pending_trigger_events();
+        let action = runner.advance(&mut game, &mut queue);
+        assert!(game.player(alice).unwrap().hand.is_empty(), "a later teammate suspension/failure must not publish an earlier draw");
+        assert_eq!(game.player(alice).unwrap().library.as_slice(), alice_library.as_slice());
+        assert_eq!(game.player(bob).unwrap().library.as_slice(), bob_library.as_slice());
+        assert!(game.player(bob).unwrap().hand.is_empty());
+        assert_eq!(game.player(bob).unwrap().life, 20);
+        assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), 0);
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_some());
+        assert!(game.take_pending_trigger_events().is_empty());
+        assert!(queue.entries.is_empty());
+        if pending {
+            let TurnAction::Decision(DecisionContext::Boolean(choice)) = action.unwrap() else { panic!("expected payload choice"); };
+            assert_eq!(choice.player, bob);
+            runner.respond_boolean(true);
+            assert!(matches!(runner.advance(&mut game, &mut queue).unwrap(), TurnAction::RunPriority));
+            assert_eq!(game.player(alice).unwrap().hand.len(), 1);
+            assert!(game.player(alice).unwrap().library.is_empty());
+            assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), 1);
+            assert_eq!(game.player(bob).unwrap().life, 26);
+            assert_eq!(game.player(bob).unwrap().library.as_slice(), bob_library.as_slice());
+            assert!(game.player(bob).unwrap().hand.is_empty());
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+        } else {
+            assert!(matches!(action, Err(GameLoopError::ResolutionFailed(_))));
+            assert!(matches!(runner.state(), TurnState::Draw));
+        }
+    }
+
+    #[test]
+    fn shared_draw_step_later_payload_error_restores_earlier_teammate() {
+        shared_draw_step_payload_boundary(false);
+    }
+
+    #[test]
+    fn shared_draw_step_later_payload_pending_replays_earlier_teammate_once() {
+        shared_draw_step_payload_boundary(true);
+    }
+
+    #[test]
+    fn draw_step_invalid_replacement_option_does_not_choose_a_fallback() {
+        let (mut game, mut runner, mut queue, source, alice, library) = replacement_draw_step_fixture();
+        let prevent_source = game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Draw choice preventer").card_types(vec![CardType::Enchantment]).build(), alice, Zone::Battlefield,
+        );
+        let double = game.effect_store.replacement_effects.add_one_shot_effect(crate::replacement::ReplacementEffect::with_matcher(
+            source, alice, crate::events::cards::matchers::WouldDrawCardMatcher::you(), crate::replacement::ReplacementAction::Double));
+        let prevent = game.effect_store.replacement_effects.add_one_shot_effect(crate::replacement::ReplacementEffect::with_matcher(
+            prevent_source, alice, crate::events::cards::matchers::WouldDrawCardMatcher::you(), crate::replacement::ReplacementAction::Prevent));
+        assert!(matches!(runner.advance(&mut game, &mut queue).unwrap(), TurnAction::Decision(DecisionContext::SelectOptions(_))));
+        runner.respond_options(vec![usize::MAX]);
+        let result = runner.advance(&mut game, &mut queue);
+        assert!(matches!(result, Err(GameLoopError::ResolutionFailed(_))), "an invalid answer must not select the first offered replacement");
+        assert_eq!(game.player(alice).unwrap().library.as_slice(), library.as_slice());
+        assert!(game.player(alice).unwrap().hand.is_empty());
+        assert!(game.effect_store.replacement_effects.get_effect(double).is_some());
+        assert!(game.effect_store.replacement_effects.get_effect(prevent).is_some());
+        assert!(queue.entries.is_empty());
+        assert!(game.take_pending_trigger_events().is_empty());
+        let TurnAction::Decision(DecisionContext::SelectOptions(choice)) = runner.advance(&mut game, &mut queue).unwrap() else { panic!("the failed operation must offer a fresh valid choice"); };
+        let index = choice.options.iter().find(|option| option.object_id == Some(prevent_source)).unwrap().index;
+        runner.respond_options(vec![index]);
+        assert!(matches!(runner.advance(&mut game, &mut queue).unwrap(), TurnAction::RunPriority));
+        assert_eq!(game.player(alice).unwrap().library.as_slice(), library.as_slice());
+        assert!(game.player(alice).unwrap().hand.is_empty());
+        assert!(game.effect_store.replacement_effects.get_effect(double).is_some());
+        assert!(game.effect_store.replacement_effects.get_effect(prevent).is_none());
+    }
+
+    #[test]
+    fn draw_step_redirected_replacement_choice_resumes_the_same_event() {
+        let (mut game, mut runner, mut queue, source, alice, alice_library) = replacement_draw_step_fixture();
+        let bob = PlayerId::from_index(1);
+        game.create_object_from_card(&CardBuilder::new(CardId::new(), "Bob choice library card").card_types(vec![CardType::Instant]).build(), bob, Zone::Library);
+        let bob_library = game.player(bob).unwrap().library.as_slice().to_vec();
+        let double_source = game.create_object_from_card(&CardBuilder::new(CardId::new(), "Bob draw choice doubler").card_types(vec![CardType::Enchantment]).build(), bob, Zone::Battlefield);
+        let prevent_source = game.create_object_from_card(&CardBuilder::new(CardId::new(), "Bob draw choice preventer").card_types(vec![CardType::Enchantment]).build(), bob, Zone::Battlefield);
+        let mut redirect = crate::replacement::ReplacementEffect::with_matcher(source, alice,
+            crate::events::cards::matchers::WouldDrawCardMatcher::you(),
+            crate::replacement::ReplacementAction::Redirect { target: crate::replacement::RedirectTarget::ToPlayer(bob), which: crate::replacement::RedirectWhich::First });
+        redirect.priority_override = Some(crate::events::ReplacementPriority::SelfReplacement);
+        let redirect = game.effect_store.replacement_effects.add_one_shot_effect(redirect);
+        let double = game.effect_store.replacement_effects.add_one_shot_effect(crate::replacement::ReplacementEffect::with_matcher(double_source, bob,
+            crate::events::cards::matchers::WouldDrawCardMatcher::you(), crate::replacement::ReplacementAction::Double));
+        let prevent = game.effect_store.replacement_effects.add_one_shot_effect(crate::replacement::ReplacementEffect::with_matcher(prevent_source, bob,
+            crate::events::cards::matchers::WouldDrawCardMatcher::you(), crate::replacement::ReplacementAction::Prevent));
+        let TurnAction::Decision(DecisionContext::SelectOptions(choice)) = runner.advance(&mut game, &mut queue).unwrap() else { panic!("Bob must choose between replacements for the redirected event"); };
+        assert_eq!(choice.player, bob);
+        assert_eq!(game.player(alice).unwrap().library.as_slice(), alice_library.as_slice());
+        assert_eq!(game.player(bob).unwrap().library.as_slice(), bob_library.as_slice());
+        assert!(game.effect_store.replacement_effects.get_effect(redirect).is_some());
+        let index = choice.options.iter().find(|option| option.object_id == Some(double_source)).unwrap().index;
+        runner.respond_options(vec![index]);
+        assert!(matches!(runner.advance(&mut game, &mut queue).unwrap(), TurnAction::RunPriority));
+        assert!(game.player(alice).unwrap().hand.is_empty(), "resuming Bob's choice must not fall back to Alice's authored draw");
+        assert!(game.player(bob).unwrap().hand.is_empty());
+        assert_eq!(game.player(alice).unwrap().library.as_slice(), alice_library.as_slice());
+        assert_eq!(game.player(bob).unwrap().library.as_slice(), bob_library.as_slice());
+        assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), 0);
+        assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(bob), 0);
+        for shield in [redirect, double, prevent] { assert!(game.effect_store.replacement_effects.get_effect(shield).is_none()); }
+        assert!(game.take_pending_trigger_events().is_empty());
+        assert!(queue.entries.is_empty());
+    }
+
 }
 
 #[cfg(test)]
 #[path = "turn_runner_draw_choice_tests.rs"]
 mod draw_choice_tests;
+
+#[cfg(test)]
+mod replacement_turn_draw_expansion_contract_tests {
+    use super::*;
+    use crate::card::CardBuilder;
+    use crate::ids::CardId;
+    use crate::types::CardType;
+    use crate::zone::Zone;
+    use crate::effect::{Effect, Value};
+    use crate::replacement::{ReplacementEffect, ReplacementAction};
+    fn fixture(payload: Vec<Effect>) -> (GameState, TurnRunner, PlayerId, PlayerId, crate::replacement::ReplacementEffectId) {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        game.turn.active_player = alice; game.turn.turn_number = 2;
+        game.turn.phase = Phase::Beginning; game.turn.step = Some(Step::Draw);
+        let source = game.create_object_from_card(&CardBuilder::new(CardId::new(), "Turn draw addition source").card_types(vec![CardType::Enchantment]).build(), bob, Zone::Battlefield);
+        for name in ["Draw one", "Draw two"] { game.create_object_from_card(&CardBuilder::new(CardId::new(), name).card_types(vec![CardType::Instant]).build(), alice, Zone::Library); }
+        let mut effect = ReplacementEffect::with_matcher(source, bob,
+            crate::events::cards::matchers::WouldDrawCardMatcher::new(crate::target::PlayerFilter::Specific(alice)),
+            ReplacementAction::Additionally(payload));
+        effect.priority_override = Some(crate::events::ReplacementPriority::SelfReplacement);
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(effect);
+        game.take_pending_trigger_events();
+        let mut runner = TurnRunner::new(); runner.state = TurnState::Draw;
+        (game, runner, alice, bob, shield)
+    }
+    #[test]
+    fn addition_preserves_original_draw_and_its_recipient() {
+        let (mut game, mut runner, alice, bob, shield) = fixture(vec![Effect::gain_life(3)]);
+        let RunnerProgress::Complete(events) = runner.execute_draw_step_with_choices(&mut game).unwrap() else { panic!("draw should complete") };
+        assert_eq!(game.player(alice).unwrap().hand.len(), 1);
+        assert_eq!(game.player(alice).unwrap().library.len(), 1);
+        assert_eq!(game.player(alice).unwrap().life, 20);
+        assert_eq!(game.player(bob).unwrap().life, 23);
+        assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), 1);
+        assert!(events.first().unwrap().downcast::<crate::events::CardsDrawnEvent>().is_some());
+        assert_eq!(events.iter().filter(|event| event.downcast::<crate::events::CardsDrawnEvent>().is_some()).count(), 1);
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+    }
+    #[test]
+    fn addition_error_restores_draw_and_consumption() {
+        let (mut game, mut runner, alice, bob, shield) = fixture(vec![Effect::gain_life(3), Effect::lose_life(Value::X)]);
+        let library = game.player(alice).unwrap().library.as_slice().to_vec(); let ids = game.next_object_id_counter();
+        let error = match runner.execute_draw_step_with_choices(&mut game) { Err(error) => error, Ok(_) => panic!("added draw error must propagate") };
+        assert!(matches!(&error, GameLoopError::ResolutionFailed(message) if message.contains("Cannot resolve value")));
+        assert!(game.player(alice).unwrap().hand.is_empty()); assert_eq!(game.player(alice).unwrap().library.as_slice(), library.as_slice());
+        assert_eq!(game.player(bob).unwrap().life, 20); assert_eq!(game.next_object_id_counter(), ids);
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_some()); assert!(game.take_pending_trigger_events().is_empty());
+    }
+    #[test]
+    fn addition_pending_replays_the_whole_draw_once() {
+        let (mut game, mut runner, alice, bob, shield) = fixture(vec![Effect::gain_life(3), Effect::new(crate::effects::composition::MayEffect::new_for_player(vec![Effect::gain_life(4)], crate::target::PlayerFilter::You))]);
+        let library = game.player(alice).unwrap().library.as_slice().to_vec(); let ids = game.next_object_id_counter();
+        let RunnerProgress::NeedsDecision(DecisionContext::Boolean(prompt)) = runner.execute_draw_step_with_choices(&mut game).unwrap() else { panic!("addition must pause") };
+        assert_eq!(prompt.player, bob); assert!(game.player(alice).unwrap().hand.is_empty());
+        assert_eq!(game.player(alice).unwrap().library.as_slice(), library.as_slice()); assert_eq!(game.player(bob).unwrap().life, 20);
+        assert_eq!(game.next_object_id_counter(), ids); assert!(game.effect_store.replacement_effects.get_effect(shield).is_some()); assert!(game.take_pending_trigger_events().is_empty());
+        runner.respond_boolean(true);
+        let RunnerProgress::Complete(events) = runner.execute_draw_step_with_choices(&mut game).unwrap() else { panic!("answered draw must complete") };
+        assert_eq!(game.player(alice).unwrap().hand.len(), 1); assert_eq!(game.player(bob).unwrap().life, 27);
+        assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), 1);
+        assert_eq!(events.iter().filter(|event| event.downcast::<crate::events::CardsDrawnEvent>().is_some()).count(), 1);
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+    }
+}

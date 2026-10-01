@@ -142,7 +142,7 @@ fn cast(
 ) -> Result<TriggerQueue, String> {
     game.turn.priority_player = Some(alice());
     let id = game.create_object_from_definition(def, alice(), Zone::Hand);
-    let action = compute_legal_actions(game, alice())
+    let action = compute_legal_actions(game, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or_else(|| format!("no legal cast of {}", def.name()))?;
@@ -340,7 +340,7 @@ fn planar_case(
                 .power_toughness(PowerToughness::fixed(2, 6))
                 .build();
             let crew_id = game.create_object_from_definition(&crew, alice(), Zone::Battlefield);
-            let action=compute_legal_actions(&game,alice()).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:id,ability_index}if *id==source&&*ability_index==2)).ok_or("no legal Crew2 activation")?;
+            let action=compute_legal_actions(&game,alice()).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:id,ability_index}if *id==source&&*ability_index==2)).ok_or("no legal Crew2 activation")?;
             let mut queue = announce(&mut game, action, &mut dm)?;
             finish(&mut game, &mut queue, &mut dm)?;
             if !game
@@ -621,7 +621,7 @@ fn combat_case(def: &CardDefinition, kind: &str, trace: &mut Vec<Value>) -> Resu
     }
     game.turn.priority_player = Some(alice());
     trace.push(json!({"stage":"established_state","source":format!("{source:?}"),"ability_index":index,"ability":format!("{:?}",game.current_activated_ability(source,index)),"phase":format!("{:?}",game.turn.phase),"step":format!("{:?}",game.turn.step),"combat":format!("{:?}",game.combat),"history":format!("{:?}",game.turn_store.turn_history),"source_tapped":game.is_tapped(source)}));
-    let action=compute_legal_actions(&game,alice()).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:id,ability_index}if *id==source&&*ability_index==index));
+    let action=compute_legal_actions(&game,alice()).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:id,ability_index}if *id==source&&*ability_index==index));
     let offered = action.is_some();
     let mut announced = false;
     if let Some(action) = action {

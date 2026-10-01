@@ -1,6 +1,6 @@
 //! Commit life changes from their resolved event, never the authored amount/player.
 
-use crate::effect::{EffectOutcome, OutcomeStatus, OutcomeValue};
+use crate::effect::{EffectOutcome, OutcomeValue};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::{TraitEventResult, process_trait_event_with_execution_context};
 use crate::events::{Event, LifeGainEvent, LifeLossEvent, downcast_event};
@@ -88,7 +88,7 @@ fn prepare_life_change(
     if !allowed {
         return Ok(TraitEventResult::Prevented);
     }
-    Ok(process_trait_event_with_execution_context(game, event, ctx))
+    process_trait_event_with_execution_context(game, event, ctx)
 }
 
 fn commit_life_change(
@@ -97,6 +97,10 @@ fn commit_life_change(
     result: TraitEventResult,
 ) -> Result<EffectOutcome, ExecutionError> {
     match result {
+        expanded @ TraitEventResult::Expanded { .. } =>
+            crate::effects::replacement::execute_event_expansion(
+                game, ctx, expanded, commit_life_change,
+            ),
         TraitEventResult::Proceed(event) | TraitEventResult::Modified(event) => {
             let provenance = event.provenance();
             let (actual, mut notification) = if let Some(gain) =
@@ -138,6 +142,13 @@ fn commit_life_change(
             if actual == 0 {
                 return Ok(prevented_life_change());
             }
+            // A proposal can produce several physical life changes. Each
+            // committed observation has its own identity under that proposal.
+            let observation = game.alloc_child_event_provenance(provenance, notification.kind());
+            notification = notification.with_provenance(observation);
+            if let Some(batch) = game.simultaneous_action_batch() {
+                notification = notification.with_simultaneous_batch(batch);
+            }
             if game.object(ctx.source).is_none()
                 && let Some(snapshot) = &ctx.source_snapshot
             {
@@ -152,14 +163,14 @@ fn commit_life_change(
             context,
             ..
         } => {
-            let mut outcome = crate::effects::replacement::execute_replacement_payload(
+            let payload = crate::effects::replacement::execute_replacement_payload(
                 game, ctx, &effects, source, controller, &context, None,
             )?;
             // The payload's notifications happened, but none of the original
             // life change happened "this way".
-            outcome.value = OutcomeValue::Count(0);
-            outcome.status = OutcomeStatus::Replaced;
-            Ok(outcome)
+            let mut original = EffectOutcome::replaced();
+            original.set_value(OutcomeValue::Count(0));
+            Ok(EffectOutcome::aggregate_replacement_outcomes(original, [payload]))
         }
         TraitEventResult::Prevented => Ok(prevented_life_change()),
         TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. } => {

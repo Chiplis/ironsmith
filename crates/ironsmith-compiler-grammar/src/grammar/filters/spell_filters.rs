@@ -329,11 +329,15 @@ pub fn parse_spell_filter_with_grammar_entrypoint_lexed(tokens: &[OwnedLexToken]
     let words_view = GrammarFilterNormalizedWords::new(tokens);
     let words = non_article_word_refs(&words_view.to_word_refs());
 
-    parse_spell_filter_from_words(&words)
+    let mut filter = parse_spell_filter_from_words(&words);
+    crate::util::split_cross_dimension_adjective_disjunction(&mut filter, &words);
+    filter
 }
 
 pub fn parse_spell_filter_with_grammar_entrypoint(tokens: &[OwnedLexToken]) -> ObjectFilter {
     let words = non_article_token_word_refs(tokens);
 
-    parse_spell_filter_from_words(&words)
+    let mut filter = parse_spell_filter_from_words(&words);
+    crate::util::split_cross_dimension_adjective_disjunction(&mut filter, &words);
+    filter
 }

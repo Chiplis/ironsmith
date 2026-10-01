@@ -152,7 +152,7 @@ fn announce(
 ) -> Result<(TriggerQueue, Value), String> {
     g.turn.priority_player = Some(PlayerId(actor));
     let source = g.create_object_from_definition(def, PlayerId(actor), Zone::Hand);
-    let action = compute_legal_actions(g, PlayerId(actor))
+    let action = compute_legal_actions(g, PlayerId(actor)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source))
         .ok_or("intended cast unavailable")?;
@@ -281,7 +281,7 @@ fn action(
     mana: bool,
     dm: &mut Choices,
 ) -> Result<Value, String> {
-    let a = compute_legal_actions(g, PlayerId(0))
+    let a = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| match a {
             LegalAction::ActivateAbility {
@@ -355,7 +355,7 @@ fn next_main(g: &mut GameState) {
 fn play_land(g: &mut GameState, d: &CardDefinition, dm: &mut Choices) -> Result<ObjectId, String> {
     let hand = g.create_object_from_definition(d, g.turn.active_player, Zone::Hand);
     let stable=g.object(hand).unwrap().stable_id;
-    let a = compute_legal_actions(g, g.turn.active_player)
+    let a = compute_legal_actions(g, g.turn.active_player).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::PlayLand{land_id}if *land_id==hand))
         .ok_or("land play missing")?;
@@ -399,7 +399,7 @@ fn run(defs:&HashMap<String,CardDefinition>,name:&str,n:usize,state:&str)->Resul
  if state=="tapped"{dm.targets=vec![Target::Object(resources[0])];producers.push(paid(&mut g,defs,"Twiddle",&mut dm,1)?);if !g.is_tapped(resources[0]){return Err("resource tap failed".into());}}
  dm.names=resource_names;dm.targets=if name=="Earthcraft"||name=="Coral Reef"{vec![Target::Object(host.unwrap())]}else{vec![]};
  let index=match name{"Coral Reef"=>2,"Honor-Worn Shaku"|"Leyline Dowser"|"Radiant, Serra Archangel"|"Spire Mechcycle"=>1,_=>0};
- let actions=compute_legal_actions(&g,PlayerId(0));let offered=actions.iter().any(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index}if *s==source&&*ability_index==index));
+ let actions=compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state");let offered=actions.iter().any(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index}if *s==source&&*ability_index==index));
  let valid=(n>0&&state!="tapped")||(state=="legend_artifact"&&name=="Honor-Worn Shaku");
  let before=json!({"actions":format!("{actions:?}"),"source_index":index,"source_tapped":g.is_tapped(source),"source_counters":format!("{:?}",g.object(source).unwrap().counters),"host":host.map(|id|json!({"id":id.0,"tapped":g.is_tapped(id)})),"resources":resources.iter().map(|id|json!({"id":id.0,"name":g.object(*id).unwrap().name.to_string(),"tapped":g.is_tapped(*id),"fresh":g.is_summoning_sick(*id)})).collect::<Vec<_>>()});
  if !valid||!offered{return Ok((json!({"activation_available":valid}),json!({"activation_available":offered}),json!({"source_cast":source_cast,"producers":producers,"before_activation":before,"activation_dispatched":false,"choice_trace":dm.trace})));}
@@ -428,7 +428,7 @@ fn run(defs:&HashMap<String,CardDefinition>,name:&str,n:usize,state:&str)->Resul
   actual["cleanup_creature"]=json!(g.calculated_card_types(source).contains(&CardType::Creature));expected["cleanup_creature"]=json!(true);
   next_main(&mut g);next_main(&mut g);actual["next_turn_creature"]=json!(g.calculated_card_types(source).contains(&CardType::Creature));expected["next_turn_creature"]=json!(true);
   actual["next_turn_plus"]=json!(counter(&g,source,"+1/+1"));expected["next_turn_plus"]=json!(n);
-  actual["exhaust_repeat_available"]=json!(compute_legal_actions(&g,PlayerId(0)).iter().any(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index}if *s==source&&*ability_index==index)));expected["exhaust_repeat_available"]=json!(false);
+  actual["exhaust_repeat_available"]=json!(compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state").iter().any(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index}if *s==source&&*ability_index==index)));expected["exhaust_repeat_available"]=json!(false);
  }
  Ok((expected,actual,json!({"source_cast":source_cast,"producers":producers,"before_activation":before,"activation":activation,"activation_dispatched":true,"choice_trace":dm.trace,"scope":"Actual paid sources/resources and Twiddle tapped-state producers; real Aura attachment, Forest land play/mana activation, Coral Reef entry counters, color protection and cleanup, exhaust permanence and repeat gate."})))
 }

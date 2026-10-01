@@ -243,7 +243,7 @@ pub(super) fn mark_of_asylum_strict_parser_compiled_text_and_runtime_prevention_
         game.create_object_from_card(&opponent_creature, bob, Zone::Battlefield);
 
     let (noncombat_damage, noncombat_prevented) =
-        crate::events::processing::process_damage_with_event(
+        crate::events::processing::process_damage_summary_for_test(
             &mut game,
             source_id,
             crate::events::DamageTarget::Object(protected_id),
@@ -257,7 +257,7 @@ pub(super) fn mark_of_asylum_strict_parser_compiled_text_and_runtime_prevention_
     );
     assert!(noncombat_prevented);
 
-    let (combat_damage, combat_prevented) = crate::events::processing::process_damage_with_event(
+    let (combat_damage, combat_prevented) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         source_id,
         crate::events::DamageTarget::Object(protected_id),
@@ -272,7 +272,7 @@ pub(super) fn mark_of_asylum_strict_parser_compiled_text_and_runtime_prevention_
     assert!(!combat_prevented);
 
     let (controlled_noncreature_damage, controlled_noncreature_prevented) =
-        crate::events::processing::process_damage_with_event(
+        crate::events::processing::process_damage_summary_for_test(
             &mut game,
             source_id,
             crate::events::DamageTarget::Object(controlled_noncreature_id),
@@ -287,7 +287,7 @@ pub(super) fn mark_of_asylum_strict_parser_compiled_text_and_runtime_prevention_
     assert!(!controlled_noncreature_prevented);
 
     let (opponent_damage, opponent_prevented) =
-        crate::events::processing::process_damage_with_event(
+        crate::events::processing::process_damage_summary_for_test(
             &mut game,
             source_id,
             crate::events::DamageTarget::Object(opponent_creature_id),
@@ -1895,7 +1895,7 @@ pub(super) fn vampire_socialite_static_replacement_requires_opponent_life_loss()
         Zone::Hand,
     );
     let inactive_result = inactive_game
-        .move_object_with_etb_processing(inactive_entering, Zone::Battlefield)
+        .move_object_with_etb_processing(inactive_entering, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
         .expect("inactive Vampire should enter");
     assert_eq!(
         inactive_game
@@ -1918,7 +1918,7 @@ pub(super) fn vampire_socialite_static_replacement_requires_opponent_life_loss()
         Zone::Hand,
     );
     let active_result = active_game
-        .move_object_with_etb_processing(active_entering, Zone::Battlefield)
+        .move_object_with_etb_processing(active_entering, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
         .expect("active Vampire should enter");
     assert_eq!(
         active_game

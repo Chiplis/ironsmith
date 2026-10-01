@@ -55,14 +55,15 @@ fn shared_type_copy_opponents_draw_independently_of_retarget_choice() {
             );
             let triggers = crate::triggers::check_triggers(&game, &event);
             assert_eq!(triggers.len(), 1);
+            assert_eq!(triggers[0].tagged_objects.get(&crate::tag::TagKey::from("triggering")).unwrap()[0].object_id,spell);
             let mut dm = RetargetChoice(retarget);
-            let mut ctx = crate::effects::EffectContext::new(source, alice, &mut dm)
-                .with_triggering_event(event);
-            for segment in &triggers[0].ability.effects.segments {
-                for effect in &segment.default_effects {
-                    crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
-                }
-            }
+            let mut queue=crate::triggers::TriggerQueue::new();
+            for trigger in triggers { queue.add(trigger); }
+            crate::game_loop::put_triggers_on_stack_with_dm(&mut game,&mut queue,&mut dm).unwrap();
+            assert_eq!(game.stack.len(),2,"the captured trigger resolves above the original spell");
+            crate::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();
+            assert_eq!(game.stack[0].object_id,spell,"copying preserves the original stack entry");
+            assert_eq!(game.player(alice).unwrap().life,20,"copy and original have not resolved yet");
             assert_eq!(
                 game.stack.len(),
                 if matching_player.is_some() { 2 } else { 1 }
@@ -83,6 +84,11 @@ fn shared_type_copy_opponents_draw_independently_of_retarget_choice() {
                     assert_eq!(game.object(*top).unwrap().zone, Zone::Library);
                 }
             }
+            let expected_spell_resolutions=if matching_player.is_some(){2}else{1};
+            while !game.stack.is_empty() {
+                crate::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();
+            }
+            assert_eq!(game.player(alice).unwrap().life,20+expected_spell_resolutions,"the actual copy retains the original spell's effects");
         }
     }
 }

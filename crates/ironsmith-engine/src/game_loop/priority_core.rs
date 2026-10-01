@@ -100,47 +100,9 @@ pub fn advance_priority_with_dm(
     // Check for pending replacement effect choice first
     // This takes priority over normal game flow
     let replacement_started_at = PerfTimer::start();
-    if let Some(pending) = &game.effect_store.pending_replacement_choice {
-        let options: Vec<ReplacementOption> = pending
-            .applicable_effects
-            .iter()
-            .enumerate()
-            .filter_map(|(i, id)| {
-                game.effect_store
-                    .replacement_effects
-                    .get_effect(*id)
-                    .map(|e| ReplacementOption {
-                        index: i,
-                        source: e.source,
-                        description: crate::decisions::specs::replacement_option_description(
-                            game, e.source,
-                        ),
-                    })
-            })
-            .collect();
-
-        // Convert to SelectOptionsContext for replacement effect choice
-        let selectable_options: Vec<crate::decisions::context::SelectableOption> = options
-            .iter()
-            .map(|opt| {
-                crate::decisions::context::SelectableOption::new(opt.index, &opt.description)
-                    .with_object(opt.source)
-            })
-            .collect();
-        let ctx = crate::decisions::context::SelectOptionsContext::new(
-            pending.player,
-            None,
-            "Choose replacement effect to apply",
-            selectable_options,
-            1,
-            1,
-        );
-        perf.replacement_choice_ms = replacement_started_at.elapsed_ms();
-        perf.total_ms = total_started_at.elapsed_ms();
-        perf.result_kind = "pending_replacement_choice".to_string();
-        store_priority_advance_perf(perf);
-        return Ok(GameProgress::NeedsDecisionCtx(
-            crate::decisions::context::DecisionContext::SelectOptions(ctx),
+    if game.effect_store.pending_replacement_choice.is_some() {
+        return Err(GameLoopError::InvalidState(
+            "legacy replacement choice has no originating operation continuation; resume replacement choices through their operation owner".into(),
         ));
     }
     perf.replacement_choice_ms = replacement_started_at.elapsed_ms();
@@ -177,11 +139,11 @@ pub fn advance_priority_with_dm(
     // players answering the entry choices. The returns can cause further
     // state-based actions and triggers.
     while game.has_pending_duration_end_returns() && !decision_maker.awaiting_choice() {
-        game.process_pending_duration_end_returns(decision_maker);
+        game.process_pending_duration_end_returns(decision_maker)?;
         if decision_maker.awaiting_choice() {
             break;
         }
-        drain_pending_trigger_events_with_dm(game, trigger_queue, decision_maker);
+        drain_pending_trigger_events_with_dm(game, trigger_queue, decision_maker)?;
         check_and_apply_sbas_with(game, trigger_queue, decision_maker)?;
         put_triggers_on_stack_with_dm(game, trigger_queue, decision_maker)?;
     }
@@ -255,9 +217,9 @@ pub fn advance_priority_with_dm(
     // Putting triggers on the stack above dirties it, so without this the whole
     // menu is computed against a dirty state and every characteristic lookup
     // regenerates all continuous effects from scratch.
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     let analysis_started_at = PerfTimer::start();
-    let ctx = priority_context(game, priority_player);
+    let ctx = priority_context(game, priority_player)?;
     perf.compute_legal_actions_ms = analysis_started_at.elapsed_ms();
     perf.action_count = ctx.actions.len();
     if ctx.analysis_complete {
@@ -288,14 +250,15 @@ pub fn priority_analysis_deferred() -> bool {
 pub fn priority_context(
     game: &GameState,
     player: PlayerId,
-) -> crate::decisions::context::PriorityContext {
+) -> Result<crate::decisions::context::PriorityContext, GameLoopError> {
+    game.try_all_continuous_effects().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     if priority_analysis_deferred() {
         let mut ctx = crate::decisions::context::PriorityContext::new(
-            player,
+            game, player,
             vec![LegalAction::PassPriority],
-        );
+        ).map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
         ctx.analysis_complete = false;
-        ctx
+        Ok(ctx)
     } else {
         analyze_priority_context(game, player)
     }
@@ -305,11 +268,11 @@ pub fn priority_context(
 pub fn analyze_priority_context(
     game: &GameState,
     priority_player: PlayerId,
-) -> crate::decisions::context::PriorityContext {
+) -> Result<crate::decisions::context::PriorityContext, GameLoopError> {
     let priority_players = game.priority_team_players();
     let mut actions = Vec::new();
     for player in priority_players.iter().copied() {
-        for action in compute_legal_actions(game, player) {
+        for action in compute_legal_actions(game, player)? {
             if !actions.contains(&action) {
                 actions.push(action);
             }
@@ -325,32 +288,29 @@ pub fn analyze_priority_context(
     }
     actions.extend(commander_actions);
 
-    crate::decisions::context::PriorityContext::new(priority_player, actions)
+    Ok(crate::decisions::context::PriorityContext::new(game, priority_player, actions)
+        .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?)
 }
 
 pub(super) fn priority_actor_for_action(
     game: &GameState,
     action: &LegalAction,
-) -> Option<PlayerId> {
-    if matches!(action, LegalAction::PassPriority) {
-        return game.turn.priority_player;
-    }
-    game.priority_team_players().into_iter().find(|player| {
-        // Foretell's identity stays private, so ordinary action enumeration
-        // cannot offer it for a placeholder. The explicit public claim still
-        // goes through every timing/ownership/payment check before replay.
+) -> Result<Option<PlayerId>, GameLoopError> {
+    if matches!(action, LegalAction::PassPriority) { return Ok(game.turn.priority_player); }
+    for player in game.priority_team_players() {
         if let LegalAction::SpecialAction(action @ crate::special_actions::SpecialAction::Foretell { card_id }) = action
             && game.is_hidden_card_placeholder(*card_id)
         {
-            return crate::special_actions::can_perform_check(action, game, *player).is_ok();
+            match crate::special_actions::can_perform_check(action, game, player) {
+                Ok(()) => return Ok(Some(player)),
+                Err(crate::special_actions::ActionError::ExecutionFailure { error, .. }) => return Err(error.into()),
+                Err(_) => continue,
+            }
         }
-        crate::decision::compute_actions_for_source(
-            game,
-            *player,
-            crate::decision::legal_action_source(action),
-        )
-        .contains(action)
-    })
+        if crate::decision::compute_actions_for_source(game, player,
+            crate::decision::legal_action_source(action))?.contains(action) { return Ok(Some(player)); }
+    }
+    Ok(None)
 }
 
 /// Apply a player's response to a decision during the priority loop.
@@ -384,13 +344,13 @@ mod deferred_analysis_tests {
         let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
         let alice = PlayerId::from_index(0);
         game.turn.priority_player = Some(alice);
-        let ctx = priority_context(&game, alice);
+        let ctx = priority_context(&game, alice).expect("fixture has complete replacement state");
         assert!(!ctx.analysis_complete);
-        assert_eq!(ctx.actions, vec![LegalAction::PassPriority]);
+        assert_eq!(ctx.actions.to_vec(), vec![LegalAction::PassPriority]);
         assert!(!super::super::priority_mana::should_auto_pass_ctx(
             &crate::decisions::context::DecisionContext::Priority(ctx)
         ));
-        let full = analyze_priority_context(&game, alice);
+        let full = analyze_priority_context(&game, alice).expect("fixture has complete replacement state");
         assert!(full.analysis_complete);
         assert_eq!(game.turn.priority_player, Some(alice));
     }

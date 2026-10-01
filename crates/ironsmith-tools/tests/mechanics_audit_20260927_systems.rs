@@ -392,7 +392,7 @@ fn a12_compleated_and_doubling_can_be_ordered_either_way() {
             choices: 0,
         };
         let permanent = g
-            .move_object_with_etb_processing_with_dm(id, Zone::Battlefield, &mut dm)
+            .move_object_with_etb_processing_with_dm(id, Zone::Battlefield, &mut dm).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
             .unwrap()
             .new_id;
         assert_eq!(
@@ -446,7 +446,7 @@ fn xt1_tribute_chooser_cannot_select_a_teammate() {
         options: vec![],
     };
     let permanent = g
-        .move_object_with_etb_processing_with_dm(id, Zone::Battlefield, &mut dm)
+        .move_object_with_etb_processing_with_dm(id, Zone::Battlefield, &mut dm).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     assert_eq!(dm.payers, vec![PlayerId(2)]);
@@ -495,7 +495,7 @@ fn a12_compleated_adjusts_combined_loyalty_once_and_respects_prospective_ability
                 Zone::Battlefield,
                 vec![(CounterType::Loyalty, 3)],
                 &mut ironsmith::decision::SelectFirstDecisionMaker,
-            )
+            ).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
             .unwrap()
             .new_id;
         assert_eq!(
@@ -503,4 +503,13 @@ fn a12_compleated_adjusts_combined_loyalty_once_and_respects_prospective_ability
             if lose_ability { 8 } else { 6 }
         );
     }
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: ironsmith::game_state::EntryCommitResult)
+    -> Option<ironsmith::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

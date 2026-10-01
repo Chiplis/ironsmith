@@ -226,7 +226,7 @@ fn cast_announce(
 ) -> Result<(), String> {
     g.turn.priority_player = Some(alice());
     let id = g.create_object_from_definition(d, alice(), Zone::Hand);
-    let a = compute_legal_actions(g, alice())
+    let a = compute_legal_actions(g, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or("fixture source cast absent")?;
@@ -311,7 +311,7 @@ fn run(
     if mode != "no_activation" {
         dm.counter_objects = vec![source];
         dm.stage = "actual_paid_counter_removal_activation".into();
-        let actions = compute_legal_actions(&g, alice());
+        let actions = compute_legal_actions(&g, alice()).expect("fixture has complete replacement state");
         let action = actions
             .into_iter()
             .find(|a| matches!(a,LegalAction::ActivateAbility{source:s,..}if *s==source))
@@ -338,7 +338,7 @@ fn run(
         finish(&mut g, &mut q, dm)?;
         let pyro = find(&g, "Prodigal Pyromancer")?;
         g.remove_summoning_sickness(pyro);
-        let action = compute_legal_actions(&g, alice())
+        let action = compute_legal_actions(&g, alice()).expect("fixture has complete replacement state")
             .into_iter()
             .find(|a| matches!(a,LegalAction::ActivateAbility{source:s,..}if *s==pyro))
             .ok_or("Pyromancer actual tap activation unavailable")?;

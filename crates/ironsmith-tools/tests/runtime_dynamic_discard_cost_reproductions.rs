@@ -56,7 +56,7 @@ fn setup(players: usize, lands: usize) -> GameState {
 fn announce(g: &mut GameState, def: &CardDefinition, actor: u8, dm: &mut Choices) -> Result<(TriggerQueue,Value),String> {
     g.turn.priority_player=Some(PlayerId(actor));
     let source=g.create_object_from_definition(def,PlayerId(actor),Zone::Hand);
-    let action=compute_legal_actions(g,PlayerId(actor)).into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source)).ok_or("intended cast unavailable")?;
+    let action=compute_legal_actions(g,PlayerId(actor)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source)).ok_or("intended cast unavailable")?;
     let mana=g.player(PlayerId(actor)).unwrap().mana_pool.total();
     let mut q=TriggerQueue::new();
     let mut state=PriorityLoopState::new(g.players_in_game());
@@ -104,7 +104,7 @@ fn run(defs:&HashMap<String,CardDefinition>,name:&str,resources:usize)->Result<(
   g.create_object_from_definition(&defs["Plains"],PlayerId(1),Zone::Battlefield);
  }
  let source=g.create_object_from_definition(&defs[name],PlayerId(0),Zone::Hand);
- let actions=compute_legal_actions(&g,PlayerId(0));
+ let actions=compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state");
  let offered=actions.iter().any(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source));
  let check=ironsmith::costs::CostCheckContext::new(source,PlayerId(0)).with_x(0).with_reason(ironsmith::costs::PaymentReason::CastSpell);
  let cost_checks:Vec<_>=defs[name].additional_cost.costs().iter().map(|c|format!("{:?}",ironsmith::costs::can_pay_with_check_context(&*c.0,&g,&check))).collect();

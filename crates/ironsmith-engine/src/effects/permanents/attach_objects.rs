@@ -86,16 +86,20 @@ pub(crate) fn entry_attachment_for_move(
     effect: &crate::effect::Effect,
     next: Option<&crate::effect::Effect>,
 ) -> Option<ChooseSpec> {
-    let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
-    let moves_to_battlefield = tagged
-        .effect
-        .downcast_ref::<crate::effects::MoveToZoneEffect>()
-        .is_some_and(|move_effect| move_effect.zone == Zone::Battlefield);
-    if !moves_to_battlefield {
+    let (move_effect, tag) = if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        (tagged.effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?, &tagged.tag)
+    } else {
+        // Search loops already bind their selected objects, so lowering can
+        // emit a bare move of that tag without an additional result wrapper.
+        let move_effect = effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+        let ChooseSpec::Tagged(tag) = move_effect.target.base() else { return None; };
+        (move_effect, tag)
+    };
+    if move_effect.zone != Zone::Battlefield {
         return None;
     }
     let attach = next?.downcast_ref::<AttachObjectsEffect>()?;
-    if attach.individual_targets || !choose_spec_names_tag(&attach.objects, &tagged.tag) {
+    if attach.individual_targets || !choose_spec_names_tag(&attach.objects, tag) {
         return None;
     }
     Some(attach.target.clone())
@@ -866,5 +870,96 @@ mod tests {
             None,
             "Equipment absent from the source snapshot must not be attached"
         );
+    }
+}
+
+#[cfg(test)]
+mod authored_attachment_in_tagged_loop_contract_tests {
+    use super::*;
+    use crate::{Ability,CardDefinitionBuilder,CardId,PlayerId};
+    use crate::object::AuraAttachmentFilter;
+    use crate::static_abilities::StaticAbility;
+    use crate::types::{CardType,Subtype};
+    use crate::effect::Effect;
+
+    fn moves_and_attaches(tag:&str,target:PlayerId)->Vec<Effect> {
+        let mut filter=crate::target::ObjectFilter::default();
+        filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+            tag:tag.into(),relation:crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+        });
+        vec![Effect::new(crate::effects::MoveToZoneEffect::new(ChooseSpec::Tagged(tag.into()),Zone::Battlefield,false)),
+            Effect::new(AttachObjectsEffect::new(ChooseSpec::Object(filter),ChooseSpec::SpecificPlayer(target)))]
+    }
+
+    fn check_entry(loop_body:bool, source_relative:bool, protected:bool) {
+        let mut game=GameState::new(vec!["Alice".into(),"Bob".into()],20);
+        let alice=PlayerId::from_index(0);let bob=PlayerId::from_index(1);
+        if protected {
+            game.effect_store.cant_effects.cant_target_players_from.push(crate::game_state::PlayerCantBeTargetedFrom {
+                player:bob,controller:bob,
+                source_filter:crate::target::ObjectFilter::default().controlled_by(crate::target::PlayerFilter::Opponent),
+            });
+        }
+        let source=if source_relative {
+            CardDefinitionBuilder::new(CardId::new(),"Source Aura").card_types(vec![CardType::Enchantment]).subtypes(vec![Subtype::Aura])
+                .enchants(AuraAttachmentFilter::Player(crate::target::PlayerFilter::Any))
+            .with_ability(Ability::static_ability(StaticAbility::enchant(AuraAttachmentFilter::Player(crate::target::PlayerFilter::Any)))).build()
+        } else {CardDefinitionBuilder::new(CardId::new(),"Entry source").card_types(vec![CardType::Artifact]).build()};
+        let source=game.create_object_from_definition(&source,alice,Zone::Battlefield);
+        if source_relative { assert!(game.attach_object_to_target(source,AttachmentTarget::Player(bob))); }
+        let aura=CardDefinitionBuilder::new(CardId::new(),"Entering Aura")
+            .card_types(vec![CardType::Enchantment]).subtypes(vec![Subtype::Aura])
+            .enchants(AuraAttachmentFilter::Player(crate::target::PlayerFilter::Any))
+            .with_ability(Ability::static_ability(StaticAbility::enchant(AuraAttachmentFilter::Player(crate::target::PlayerFilter::Any)))).build();
+        let original=game.create_object_from_definition(&aura,alice,Zone::Library);
+        assert!(game.object(original).unwrap().aura_attach_filter_owned().is_some(),"native Aura must carry the same entry metadata as compiled enchant player");
+        let snapshot=crate::snapshot::ObjectSnapshot::from_object(game.object(original).unwrap(),&game);
+        let stable=snapshot.stable_id;game.take_pending_trigger_events();
+        struct EntryChoices { asked:usize }
+        impl crate::decision::DecisionMaker for EntryChoices {
+            fn decide_options(&mut self,_:&GameState,_:&crate::decisions::context::SelectOptionsContext)->Vec<usize> {
+                self.asked+=1;vec![0]
+            }
+        }
+        let mut choices=EntryChoices { asked:0 };
+        let mut ctx=ExecutionContext::new(source,alice,&mut choices);ctx.tag_object("picked",snapshot);
+        let mut body=moves_and_attaches("picked",bob);
+        if source_relative {
+            let mut attach=body[1].downcast_ref::<AttachObjectsEffect>().unwrap().clone();
+            attach.target=ChooseSpec::Player(crate::target::PlayerFilter::TaggedPlayer("enchanted".into()));
+            body[1]=Effect::new(attach);
+        }
+        let effect=if loop_body {Effect::new(crate::effects::ForEachTaggedEffect::new("picked",body))}
+            else {Effect::new(crate::effects::SequenceEffect::new(body))};
+        crate::effects::execute_effect(&mut game,&effect,&mut ctx).unwrap();
+        assert!(ctx.pending_entry_attachment.is_none());
+        assert!(game.object(original).is_none());
+        let current=game.find_object_by_stable_id(stable).unwrap();
+        assert_ne!(current,original);assert_eq!(game.object(current).unwrap().zone,Zone::Battlefield);
+        assert_eq!(game.object(current).unwrap().attached_to,Some(AttachmentTarget::Player(bob)));
+        let events=game.take_pending_trigger_events();
+        assert_eq!(events.iter().filter(|event|event.kind()==crate::events::EventKind::EnterBattlefield).count(),1);
+        assert_eq!(game.player(alice).unwrap().library.len(),0);
+        drop(ctx);
+        assert_eq!(choices.asked,0,"an authored entry attachment must not ask for a different attachment at commit");
+    }
+
+    #[test]
+    fn bare_tagged_move_in_sequence_enters_with_authored_attachment(){check_entry(false,false,false);}
+    #[test]
+    fn bare_tagged_move_in_object_loop_enters_with_authored_attachment(){check_entry(true,false,false);}
+    #[test]
+    fn sequence_preserves_source_relative_enchanted_player(){check_entry(false,true,false);}
+    #[test]
+    fn object_loop_preserves_source_relative_enchanted_player(){check_entry(true,true,false);}
+    #[test]
+    fn sequence_source_relative_attachment_does_not_target_hexproof_player(){check_entry(false,true,true);}
+    #[test]
+    fn object_loop_source_relative_attachment_does_not_target_hexproof_player(){check_entry(true,true,true);}
+    #[test]
+    fn unrelated_attachment_does_not_supply_entry_metadata(){
+        let bob=PlayerId::from_index(1);let mut body=moves_and_attaches("picked",bob);
+        body[1]=moves_and_attaches("unrelated",bob).remove(1);
+        assert!(entry_attachment_for_move(&body[0],Some(&body[1])).is_none());
     }
 }

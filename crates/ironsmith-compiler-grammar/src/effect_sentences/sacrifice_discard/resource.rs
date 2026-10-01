@@ -114,6 +114,46 @@ pub fn parse_sacrifice(
         return Ok(wrap_unless_escaped(effect, unless_escaped));
     }
 
+    // "sacrifice another creature or an artifact": one permanent that is
+    // either, not one of each.
+    if !opponent_chooses_object
+        && let Some(or_index) = tokens.iter().position(|token| token.is_word("or"))
+        && tokens.iter().filter(|token| token.is_word("or")).count() == 1
+        && tokens
+            .first()
+            .is_some_and(|token| token.is_any_word(&["a", "an", "another"]))
+        && tokens
+            .get(or_index + 1)
+            .is_some_and(|token| token.is_any_word(&["a", "an", "another"]))
+    {
+        let parse_arm = |arm: &[OwnedLexToken]| -> Option<ObjectFilter> {
+            let other = arm.first().is_some_and(|token| token.is_word("another"));
+            let mut filter = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(
+                &arm[1..],
+                other,
+            ))?;
+            if filter.source || !filter.tagged_constraints.is_empty() {
+                return None;
+            }
+            filter.zone = None;
+            filter.controller = None;
+            Some(filter)
+        };
+        if let (Some(left), Some(right)) = (
+            parse_arm(&tokens[..or_index]),
+            parse_arm(&tokens[or_index + 1..]),
+        ) {
+            let mut union = ObjectFilter::default();
+            union.zone = Some(Zone::Battlefield);
+            union.controller = controller_filter_for_token_player(player);
+            union.any_of = vec![left, right];
+            return Ok(wrap_unless_escaped(
+                EffectAst::subject_verb_sacrifice(player, union, 1, None),
+                unless_escaped,
+            ));
+        }
+    }
+
     // A definite singular choice reference identifies the previously chosen
     // object; it does not ask the player to make a new sacrifice choice.
     if let Some(chosen) = crate::grammar::targets::parse_chosen_object_target(tokens) {
@@ -214,7 +254,16 @@ pub fn parse_sacrifice(
                 normalized_words.join(" ")
             )));
         }
-        let filter = parse_object_filter_lexed(filter_tokens, false)?;
+        let mut filter = parse_object_filter_lexed(filter_tokens, false)?;
+        // A player can only sacrifice permanents they control (CR 701.21a):
+        // the choice of "any number of artifacts, creatures, and/or lands"
+        // ranges over the sacrificing player's permanents only.
+        if filter.controller.is_none()
+            && !opponent_chooses_object
+            && matches!(player, PlayerAst::You | PlayerAst::Implicit)
+        {
+            filter.controller = Some(crate::target::PlayerFilter::You);
+        }
         let tag = crate::util::helper_tag_for_tokens(tokens, "sacrificed");
         // Fixed counts use the sacrifice effect's own controlled-permanent
         // selection; this keeps the chooser and sacrificing actor identical.

@@ -1259,27 +1259,65 @@ impl ProliferateContext {
 // Priority Context
 // ============================================================================
 
-/// Context for priority decisions.
-///
-/// This includes the full legal actions so responses can be converted back.
-#[derive(Debug, Clone)]
-pub struct PriorityContext {
-    /// False while background legal-action analysis is incomplete.
-    pub analysis_complete: bool,
-    /// The player with priority.
-    pub player: PlayerId,
-    /// All legal actions available (including command-zone casts).
-    pub actions: Vec<crate::decision::LegalAction>,
+/// Priority actions and their validated labels, constructed before any prompt.
+/// The action list has no mutable access, so labels cannot drift from actions.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreparedPriorityActions {
+    actions: Vec<crate::decision::LegalAction>,
+    labels: Vec<String>,
+    face_up_costs: Vec<Option<String>>,
+}
+impl PreparedPriorityActions {
+    pub fn new(game: &crate::game_state::GameState, actions: Vec<crate::decision::LegalAction>)
+        -> Result<Self, crate::static_ability_processor::StaticEffectDiscoveryError> {
+        let checked = game.continuous_query_snapshot()?;
+        let game = &checked;
+        let face_up_costs = actions.iter().map(|action| match action {
+            crate::decision::LegalAction::TurnFaceUp { creature_id, method } =>
+                crate::special_actions::turn_face_up_cost_display(game, *creature_id, *method),
+            crate::decision::LegalAction::SpecialAction(
+                crate::special_actions::SpecialAction::TurnFaceUp { permanent_id, method }) =>
+                crate::special_actions::turn_face_up_cost_display(game, *permanent_id, *method),
+            _ => Ok(None),
+        }).collect::<Result<Vec<_>, _>>()?;
+        let labels = actions.iter().zip(&face_up_costs)
+            .map(|(action, cost)| crate::decision::format_action_short(game, action, cost.as_deref())).collect();
+        Ok(Self { actions, labels, face_up_costs })
+    }
+    pub fn iter_with_labels(&self) -> impl Iterator<Item = (&crate::decision::LegalAction, &str)> {
+        self.actions.iter().zip(self.labels.iter().map(String::as_str))
+    }
+    pub fn iter_with_face_up_costs(&self) -> impl Iterator<Item = (&crate::decision::LegalAction, Option<&str>)> {
+        self.actions.iter().zip(self.face_up_costs.iter().map(|cost| cost.as_deref()))
+    }
+    pub fn label(&self, index: usize) -> &str { &self.labels[index] }
+    pub fn into_vec(self) -> Vec<crate::decision::LegalAction> { self.actions }
+}
+impl std::ops::Deref for PreparedPriorityActions {
+    type Target = [crate::decision::LegalAction];
+    fn deref(&self) -> &Self::Target { &self.actions }
+}
+impl IntoIterator for PreparedPriorityActions {
+    type Item = crate::decision::LegalAction;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+    fn into_iter(self) -> Self::IntoIter { self.actions.into_iter() }
+}
+impl<'a> IntoIterator for &'a PreparedPriorityActions {
+    type Item = &'a crate::decision::LegalAction;
+    type IntoIter = std::slice::Iter<'a, crate::decision::LegalAction>;
+    fn into_iter(self) -> Self::IntoIter { self.actions.iter() }
 }
 
+#[derive(Debug, Clone)]
+pub struct PriorityContext {
+    pub analysis_complete: bool,
+    pub player: PlayerId,
+    pub actions: PreparedPriorityActions,
+}
 impl PriorityContext {
-    /// Create a new PriorityContext.
-    pub fn new(player: PlayerId, actions: Vec<crate::decision::LegalAction>) -> Self {
-        Self {
-            player,
-            actions,
-            analysis_complete: true,
-        }
+    pub fn new(game: &crate::game_state::GameState, player: PlayerId, actions: Vec<crate::decision::LegalAction>)
+        -> Result<Self, crate::static_ability_processor::StaticEffectDiscoveryError> {
+        Ok(Self { player, actions: PreparedPriorityActions::new(game, actions)?, analysis_complete: true })
     }
 }
 

@@ -194,7 +194,7 @@ fn announce(
 ) -> Result<(TriggerQueue, Value), String> {
     g.turn.priority_player = Some(PlayerId(actor));
     let source = g.create_object_from_definition(def, PlayerId(actor), Zone::Hand);
-    let action = compute_legal_actions(g, PlayerId(actor))
+    let action = compute_legal_actions(g, PlayerId(actor)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source))
         .ok_or("intended cast unavailable")?;
@@ -294,7 +294,7 @@ fn activate(
     index: usize,
     dm: &mut Choices,
 ) -> Result<Value, String> {
-    let action=compute_legal_actions(g,PlayerId(0)).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index}if *s==source&&*ability_index==index)).ok_or("intended activation unavailable")?;
+    let action=compute_legal_actions(g,PlayerId(0)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index}if *s==source&&*ability_index==index)).ok_or("intended activation unavailable")?;
     let before = g.player(PlayerId(0)).unwrap().mana_pool.total();
     let counters_before = counter_snapshot(g);
     let mut q = TriggerQueue::new();
@@ -411,7 +411,7 @@ fn paid_cast(
     Ok(())
 }
 fn offered(g: &GameState, source: ObjectId, index: usize) -> bool {
-    compute_legal_actions(g,PlayerId(0)).iter().any(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index}if *s==source&&*ability_index==index))
+    compute_legal_actions(g,PlayerId(0)).expect("fixture has complete replacement state").iter().any(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index}if *s==source&&*ability_index==index))
 }
 fn total(g: &GameState, id: ObjectId) -> u32 {
     g.object(id).map(|o| o.counters.values().sum()).unwrap_or(0)

@@ -2234,7 +2234,7 @@ fn compile_subject_verb_effect(
         subject_verb.action,
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash { .. })
     ) {
-        return subject_verb_early::compile_clash(subject_verb);
+        return subject_verb_early::compile_clash(subject_verb, ctx);
     }
     if matches!(
         subject_verb.action,
@@ -2541,6 +2541,23 @@ fn compile_become_copy(
         source_spec
     };
 
+    // "Put a +1/+1 counter on target creature. Each other creature you
+    // control becomes a copy of that creature": "other" is measured against
+    // the copied creature named in the same sentence, so the copy source is
+    // never part of the affected set.
+    let target_spec = match (target_spec, source_spec.base()) {
+        (ChooseSpec::All(mut filter), ChooseSpec::Tagged(source_tag)) if filter.other => {
+            let excludes_source = filter.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+                    && constraint.tag == *source_tag
+            });
+            if !excludes_source {
+                filter = filter.not_tagged(source_tag.clone());
+            }
+            ChooseSpec::All(filter)
+        }
+        (spec, _) => spec,
+    };
     let granted_modifications = lower_granted_ability_grant_modifications(granted_abilities)?;
     let apply_target_spec = declared_copy_target
         .as_ref()
@@ -2929,7 +2946,7 @@ where
     Ok((prelude_effects, merged_choices))
 }
 
-fn player_target_choice_matches_filter(choice: &ChooseSpec, player: &PlayerFilter) -> bool {
+pub(super) fn player_target_choice_matches_filter(choice: &ChooseSpec, player: &PlayerFilter) -> bool {
     let ChooseSpec::Player(choice_filter) = choice.base() else {
         return false;
     };
@@ -2972,6 +2989,7 @@ fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSp
         | Value::DistinctCounterTypesAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctManaValues(filter)
+        | Value::UnlockedDoorsAmong(filter)
         | Value::DistinctPowers(filter) => {
             collect_object_filter_player_target_choices(filter, choices);
         }
@@ -3031,6 +3049,14 @@ fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSp
         Value::NoncombatDamageDealtBySourcesControlledThisTurn { player, .. } => {
             collect_player_filter_target_choice(player, choices);
         }
+        // "cards that were put into target player's graveyard from their
+        // library this turn" (Cruel Calculations).
+        Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::PutIntoGraveyard {
+            owner,
+            ..
+        }) => {
+            collect_player_filter_target_choice(owner, choices);
+        }
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
@@ -3058,7 +3084,7 @@ fn collect_choose_spec_player_target_choices(spec: &ChooseSpec, choices: &mut Ve
     }
 }
 
-fn collect_object_filter_player_target_choices(
+pub(super) fn collect_object_filter_player_target_choices(
     filter: &ObjectFilter,
     choices: &mut Vec<ChooseSpec>,
 ) {

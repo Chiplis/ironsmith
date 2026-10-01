@@ -205,9 +205,23 @@ impl OutcomeObjectMemory {
     /// owner, and characteristics always win so prior-effect queries never
     /// silently observe post-effect state.
     pub fn to_snapshot(&self, game: &GameState) -> ObjectSnapshot {
-        let mut snapshot = game
-            .object(self.object_id)
-            .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
+        self.to_snapshot_with_fallback(game, None)
+    }
+
+    /// Enrich compact result memory with a matching full pre-effect snapshot.
+    /// Captured memory fields remain authoritative; full LKI retains copyable
+    /// values, abilities and other fields that compact memory does not encode.
+    pub(crate) fn to_snapshot_with_fallback(
+        &self,
+        game: &GameState,
+        fallback: Option<&ObjectSnapshot>,
+    ) -> ObjectSnapshot {
+        let mut snapshot = fallback
+            .filter(|snapshot| snapshot.object_id == self.object_id
+                && snapshot.stable_id == self.stable_id)
+            .cloned()
+            .or_else(|| game.object(self.object_id)
+                .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game)))
             .unwrap_or_else(|| ObjectSnapshot {
                 chosen_subtype: None,
                 secret_chosen_subtype: None,
@@ -386,6 +400,11 @@ pub struct EffectOutcome {
     pub events: Vec<crate::triggers::TriggerEvent>,
     /// Non-triggerable execution metadata preserved across composition.
     pub execution_facts: Vec<ExecutionFact>,
+    /// The authored instruction's result before auxiliary replacement payloads
+    /// are merged for observation. Tags and object references use this boundary;
+    /// the enclosing event stream and facts still retain all actual side effects.
+    #[cfg_attr(feature = "serialization", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub instruction_result: Option<Box<EffectOutcome>>,
 }
 
 impl EffectOutcome {
@@ -455,23 +474,26 @@ impl EffectOutcome {
         outcomes: impl IntoIterator<Item = EffectOutcome>,
         summary_fn: fn(&[(OutcomeStatus, OutcomeValue)]) -> (OutcomeStatus, OutcomeValue),
     ) -> Self {
+        let outcomes = outcomes.into_iter().collect::<Vec<_>>();
+        // Composition preserves every child's primary result, including plain
+        // siblings. Auxiliary objects must not leak back into parent tags.
+        let instruction_result = outcomes.iter().any(|outcome| outcome.instruction_result.is_some())
+            .then(|| Box::new(Self::aggregate_with_summary(
+                outcomes.iter().map(|outcome| outcome.instruction_result().clone()).collect::<Vec<_>>(), summary_fn,
+            )));
         let mut results = Vec::new();
         let mut all_events = Vec::new();
         let mut all_execution_facts = Vec::new();
-
         for outcome in outcomes {
             results.push((outcome.status, outcome.value));
             all_events.extend(outcome.events);
             all_execution_facts.extend(outcome.execution_facts);
         }
-
         let (status, value) = summary_fn(&results);
-        Self::with_details(
-            status,
-            value,
-            all_events,
-            Self::merge_execution_facts(all_execution_facts),
-        )
+        let mut outcome = Self::with_details(status, value, all_events,
+            Self::merge_execution_facts(all_execution_facts));
+        outcome.instruction_result = instruction_result;
+        outcome
     }
 
     pub(crate) fn merge_execution_facts(facts: Vec<ExecutionFact>) -> Vec<ExecutionFact> {
@@ -530,6 +552,7 @@ impl EffectOutcome {
     pub fn from_status(status: OutcomeStatus) -> Self {
         let value = OutcomeValue::None;
         Self {
+            instruction_result: None,
             execution_facts: ExecutionFact::from_status(status),
             status,
             value,
@@ -541,6 +564,7 @@ impl EffectOutcome {
     pub fn from_value(value: OutcomeValue) -> Self {
         let status = OutcomeStatus::Succeeded;
         Self {
+            instruction_result: None,
             execution_facts: Vec::new(),
             status,
             value,
@@ -555,6 +579,7 @@ impl EffectOutcome {
         events: Vec<crate::triggers::TriggerEvent>,
     ) -> Self {
         Self {
+            instruction_result: None,
             execution_facts: ExecutionFact::from_status(status),
             status,
             value,
@@ -570,6 +595,7 @@ impl EffectOutcome {
         execution_facts: Vec<ExecutionFact>,
     ) -> Self {
         Self {
+            instruction_result: None,
             status,
             value,
             events,
@@ -640,13 +666,23 @@ impl EffectOutcome {
 
     /// Add a single execution fact to this outcome.
     pub fn with_execution_fact(mut self, fact: ExecutionFact) -> Self {
-        self.execution_facts.push(fact);
+        self.record_instruction_fact(fact);
         self
+    }
+
+    /// Facts appended by the current instruction owner describe its result,
+    /// including acceptance/terminal failure added by composition wrappers.
+    /// Auxiliary observations enter through aggregate_replacement_outcomes.
+    fn record_instruction_fact(&mut self, fact: ExecutionFact) {
+        if let Some(original) = self.instruction_result.as_deref_mut() {
+            original.record_instruction_fact(fact.clone());
+        }
+        self.execution_facts.push(fact);
     }
 
     /// Add multiple execution facts to this outcome.
     pub fn with_execution_facts(mut self, facts: impl IntoIterator<Item = ExecutionFact>) -> Self {
-        self.execution_facts.extend(facts);
+        for fact in facts { self.record_instruction_fact(fact); }
         self
     }
 
@@ -736,11 +772,44 @@ impl EffectOutcome {
     }
 
     pub fn set_status(&mut self, status: OutcomeStatus) {
+        if let Some(original) = self.instruction_result.as_deref_mut() { original.set_status(status); }
         self.status = status;
     }
 
     pub fn set_value(&mut self, value: OutcomeValue) {
+        if let Some(original) = self.instruction_result.as_deref_mut() { original.set_value(value.clone()); }
         self.value = value;
+    }
+
+    /// Original instruction data for tags, object references and "this way"
+    /// follow-ups. Replacement observers use the enclosing complete outcome.
+    pub fn instruction_result(&self) -> &Self {
+        match self.instruction_result.as_deref() {
+            Some(outcome) => outcome.instruction_result(),
+            None => self,
+        }
+    }
+
+    /// Observe replacement payloads without changing the authored instruction's
+    /// result or letting their object memories become that instruction's result.
+    pub fn aggregate_replacement_outcomes(
+        original: Self,
+        replacements: impl IntoIterator<Item = Self>,
+    ) -> Self {
+        let replacements = replacements.into_iter().collect::<Vec<_>>();
+        if replacements.iter().all(|outcome| outcome.status == OutcomeStatus::Succeeded
+            && matches!(outcome.value, OutcomeValue::None) && outcome.events.is_empty()
+            && outcome.execution_facts.is_empty() && outcome.instruction_result.is_none()) {
+            return original;
+        }
+        let instruction_result = Box::new(original.instruction_result().clone());
+        let status = original.status;
+        let value = original.value.clone();
+        let mut outcome = Self::aggregate(std::iter::once(original).chain(replacements));
+        outcome.status = status;
+        outcome.value = value;
+        outcome.instruction_result = Some(instruction_result);
+        outcome
     }
 
     /// Aggregate multiple outcomes into a single outcome.
@@ -788,7 +857,7 @@ impl EffectOutcome {
 
     /// Access object IDs captured as chosen objects.
     pub fn chosen_objects(&self) -> Option<&[ObjectId]> {
-        self.execution_facts.iter().find_map(|fact| match fact {
+        self.instruction_result().execution_facts.iter().find_map(|fact| match fact {
             ExecutionFact::ChosenObjects(ids) => Some(ids.as_slice()),
             _ => None,
         })
@@ -796,7 +865,7 @@ impl EffectOutcome {
 
     /// Access current object identities explicitly produced by the effect.
     pub fn result_objects(&self) -> Option<&[ObjectId]> {
-        self.execution_facts.iter().find_map(|fact| match fact {
+        self.instruction_result().execution_facts.iter().find_map(|fact| match fact {
             ExecutionFact::ResultObjects(ids) => Some(ids.as_slice()),
             _ => None,
         })
@@ -804,7 +873,7 @@ impl EffectOutcome {
 
     /// Access object IDs captured as affected objects.
     pub fn affected_objects(&self) -> Option<&[ObjectId]> {
-        self.execution_facts.iter().find_map(|fact| match fact {
+        self.instruction_result().execution_facts.iter().find_map(|fact| match fact {
             ExecutionFact::AffectedObjects(ids) => Some(ids.as_slice()),
             _ => None,
         })
@@ -812,7 +881,7 @@ impl EffectOutcome {
 
     /// Access chosen object last-known information captured during execution.
     pub fn chosen_object_memory(&self) -> Option<&[OutcomeObjectMemory]> {
-        self.execution_facts.iter().find_map(|fact| match fact {
+        self.instruction_result().execution_facts.iter().find_map(|fact| match fact {
             ExecutionFact::ChosenObjectMemory(memory) => Some(memory.as_slice()),
             _ => None,
         })
@@ -820,7 +889,7 @@ impl EffectOutcome {
 
     /// Access affected object last-known information captured during execution.
     pub fn affected_object_memory(&self) -> Option<&[OutcomeObjectMemory]> {
-        self.execution_facts.iter().find_map(|fact| match fact {
+        self.instruction_result().execution_facts.iter().find_map(|fact| match fact {
             ExecutionFact::AffectedObjectMemory(memory) => Some(memory.as_slice()),
             _ => None,
         })
@@ -828,7 +897,7 @@ impl EffectOutcome {
 
     /// Access per-player count partitions captured during execution.
     pub fn player_counts(&self) -> Option<&[(PlayerId, i32)]> {
-        self.execution_facts.iter().find_map(|fact| match fact {
+        self.instruction_result().execution_facts.iter().find_map(|fact| match fact {
             ExecutionFact::PlayerCounts(counts) => Some(counts.as_slice()),
             _ => None,
         })
@@ -836,7 +905,7 @@ impl EffectOutcome {
 
     /// Access affected object memory partitioned by iterated player.
     pub fn player_affected_object_memory(&self) -> Option<&[(PlayerId, Vec<OutcomeObjectMemory>)]> {
-        self.execution_facts.iter().find_map(|fact| match fact {
+        self.instruction_result().execution_facts.iter().find_map(|fact| match fact {
             ExecutionFact::PlayerAffectedObjectMemory(memory) => Some(memory.as_slice()),
             _ => None,
         })
@@ -975,6 +1044,9 @@ fn prior_result_memory_matches_filter(memory: &OutcomeObjectMemory, filter: &Obj
 
 impl EffectPredicateRuntimeExt for EffectPredicate {
     fn evaluate_outcome(&self, outcome: &EffectOutcome) -> bool {
+        // Follow-ups ask about this instruction, not an auxiliary replacement
+        // program's independent acceptance, failure or observed event.
+        let outcome = outcome.instruction_result();
         match self {
             Self::Succeeded => outcome.status.is_success(),
             Self::Failed => outcome.status.is_failure(),
@@ -5366,5 +5438,105 @@ mod accepted_optional_result_tests {
         let impossible = accepted.with_execution_fact(ExecutionFact::Impossible);
         assert!(!EffectPredicate::Happened.evaluate_outcome(&impossible));
         assert!(!EffectPredicate::Happened.evaluate_outcome(&EffectOutcome::declined()));
+    }
+}
+
+#[cfg(test)]
+mod replacement_instruction_result_contract_tests {
+    use super::*;
+    fn auxiliary(id: ObjectId) -> EffectOutcome {
+        EffectOutcome::count(7).with_affected_objects(vec![id]).with_event(
+            crate::events::RawEvent::new_with_provenance(
+                crate::events::MarkersChangedEvent::added(
+                    crate::object::CounterType::PlusOnePlusOne, id, 2, None, None),
+                crate::provenance::ProvNodeId::default()))
+    }
+    #[test]
+    fn replacement_observations_preserve_original_count_objects_and_events() {
+        let original = ObjectId::from_raw(901);
+        let payload = ObjectId::from_raw(902);
+        let outcome = EffectOutcome::aggregate_replacement_outcomes(
+            EffectOutcome::count(1).with_affected_objects(vec![original]), [auxiliary(payload)]);
+        assert_eq!(outcome.value, OutcomeValue::Count(1));
+        assert_eq!(outcome.affected_objects(), Some([original].as_slice()));
+        assert_eq!(outcome.total_marker_changes(|event| event.is_added()), 2);
+        assert!(outcome.execution_facts.iter().any(|fact| matches!(fact,
+            ExecutionFact::AffectedObjects(ids) if ids.contains(&payload))));
+    }
+    #[test]
+    fn composed_plain_siblings_keep_their_original_results_without_auxiliary_objects() {
+        let first = ObjectId::from_raw(911);
+        let second = ObjectId::from_raw(912);
+        let payload = ObjectId::from_raw(913);
+        let replaced = EffectOutcome::aggregate_replacement_outcomes(
+            EffectOutcome::count(1).with_result_objects(vec![first]), [auxiliary(payload)]);
+        let combined = EffectOutcome::aggregate_summing_counts([
+            replaced, EffectOutcome::count(1).with_result_objects(vec![second])]);
+        assert_eq!(combined.value, OutcomeValue::Count(2));
+        assert_eq!(combined.result_objects(), Some([first, second].as_slice()));
+        assert_eq!(combined.affected_objects(), None);
+        assert_eq!(combined.events.len(), 1);
+        assert!(combined.instruction_result().instruction_result.is_none());
+    }
+    #[test]
+    fn replaced_empty_instruction_does_not_report_payload_objects_as_its_output() {
+        let payload = ObjectId::from_raw(921);
+        let outcome = EffectOutcome::aggregate_replacement_outcomes(
+            EffectOutcome::count(0), [auxiliary(payload)]);
+        assert_eq!(outcome.value, OutcomeValue::Count(0));
+        assert!(outcome.output_objects().is_empty());
+        assert_eq!(outcome.affected_objects(), None);
+        assert_eq!(outcome.events.len(), 1);
+    }
+    #[cfg(feature = "serialization")]
+    #[test]
+    fn older_serialized_outcomes_default_to_no_primary_annotation() {
+        let original = EffectOutcome::count(2).with_result_objects(vec![ObjectId::from_raw(931)]);
+        let value = serde_json::to_value(&original).unwrap();
+        assert!(value.get("instruction_result").is_none());
+        let restored: EffectOutcome = serde_json::from_value(value).unwrap();
+        assert_eq!(restored, original);
+        let annotated = EffectOutcome::aggregate_replacement_outcomes(original,
+            [auxiliary(ObjectId::from_raw(932))]);
+        let restored: EffectOutcome = serde_json::from_value(serde_json::to_value(&annotated).unwrap()).unwrap();
+        assert_eq!(restored.instruction_result(), annotated.instruction_result());
+        assert_eq!(restored.result_objects(), annotated.result_objects());
+    }
+}
+
+#[cfg(test)]
+mod replacement_instruction_predicate_contract_tests {
+    use super::*;
+    #[test]
+    fn prevented_auxiliary_action_does_not_cancel_original_happened_predicate() {
+        let outcome = EffectOutcome::aggregate_replacement_outcomes(
+            EffectOutcome::count(1), [EffectOutcome::prevented()]);
+        assert_eq!(outcome.value, OutcomeValue::Count(1));
+        assert!(outcome.execution_facts.contains(&ExecutionFact::Prevented));
+        assert!(EffectPredicate::Happened.evaluate_outcome(&outcome));
+        assert!(!EffectPredicate::DidNotHappen.evaluate_outcome(&outcome));
+    }
+    #[test]
+    fn accepted_auxiliary_action_does_not_accept_original_zero_result() {
+        let outcome = EffectOutcome::aggregate_replacement_outcomes(EffectOutcome::count(0),
+            [EffectOutcome::count(0).with_execution_fact(ExecutionFact::Accepted)]);
+        assert_eq!(outcome.value, OutcomeValue::Count(0));
+        assert!(outcome.execution_facts.contains(&ExecutionFact::Accepted));
+        assert!(!EffectPredicate::Happened.evaluate_outcome(&outcome));
+    }
+    #[test]
+    fn original_acceptance_survives_auxiliary_prevention() {
+        let outcome = EffectOutcome::aggregate_replacement_outcomes(
+            EffectOutcome::count(0).with_execution_fact(ExecutionFact::Accepted),
+            [EffectOutcome::prevented()]);
+        assert!(EffectPredicate::Happened.evaluate_outcome(&outcome));
+    }
+    #[test]
+    fn owner_added_acceptance_and_failure_remain_authoritative_after_composition() {
+        let outcome = EffectOutcome::aggregate_replacement_outcomes(EffectOutcome::count(0),
+            [EffectOutcome::count(2)]).with_execution_fact(ExecutionFact::Accepted);
+        assert!(EffectPredicate::Happened.evaluate_outcome(&outcome));
+        let failed = outcome.with_execution_fact(ExecutionFact::Impossible);
+        assert!(!EffectPredicate::Happened.evaluate_outcome(&failed));
     }
 }

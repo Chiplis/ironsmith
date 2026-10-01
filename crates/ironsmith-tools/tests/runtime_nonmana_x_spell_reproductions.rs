@@ -145,7 +145,7 @@ fn announce(
 ) -> Result<(TriggerQueue, Value), String> {
     g.turn.priority_player = Some(PlayerId(actor));
     let source = g.create_object_from_definition(def, PlayerId(actor), Zone::Hand);
-    let action = compute_legal_actions(g, PlayerId(actor))
+    let action = compute_legal_actions(g, PlayerId(actor)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source))
         .ok_or("intended cast unavailable")?;
@@ -246,7 +246,7 @@ fn cast_existing(
     d: &mut Choices,
 ) -> Result<Value, String> {
     g.turn.priority_player = Some(PlayerId(0));
-    let action=compute_legal_actions(g,PlayerId(0)).into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,from_zone,..}if *spell_id==source&&*from_zone==zone)).ok_or("existing cast unavailable")?;
+    let action=compute_legal_actions(g,PlayerId(0)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,from_zone,..}if *spell_id==source&&*from_zone==zone)).ok_or("existing cast unavailable")?;
     let before = g.player(PlayerId(0)).unwrap().mana_pool.total();
     let mut q = TriggerQueue::new();
     let mut st = PriorityLoopState::new(g.players_in_game());
@@ -284,7 +284,7 @@ fn cast_existing(
 fn land(g: &mut GameState, def: &CardDefinition, d: &mut Choices) -> Result<Value, String> {
     let id = g.create_object_from_definition(def, PlayerId(0), Zone::Hand);
     g.turn.priority_player = Some(PlayerId(0));
-    let action = compute_legal_actions(g, PlayerId(0))
+    let action = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::PlayLand{land_id}if *land_id==id))
         .ok_or("land play unavailable")?;
@@ -476,7 +476,7 @@ fn trial(
     } else {
         Zone::Hand
     };
-    let actions = compute_legal_actions(&g, PlayerId(0));
+    let actions = compute_legal_actions(&g, PlayerId(0)).expect("fixture has complete replacement state");
     let offered=actions.iter().any(|a|matches!(a,LegalAction::CastSpell{spell_id,from_zone,..}if *spell_id==source&&*from_zone==zone));
     let ctx = ironsmith::costs::CostCheckContext::new(source, PlayerId(0))
         .with_x(desired)

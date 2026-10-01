@@ -106,7 +106,7 @@ fn cast(
 ) -> Result<ObjectId, String> {
     let source = game.create_object_from_definition(def, PlayerId(0), Zone::Hand);
     emit("before_cast_discovery", json!({"source":source.0}));
-    let action = compute_legal_actions(game, PlayerId(0))
+    let action = compute_legal_actions(game, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..} if *spell_id==source))
         .ok_or("no legal cast")?;
@@ -213,7 +213,7 @@ fn scenario(def: &CardDefinition, case: &str) -> Result<Value, String> {
             .iter()
             .position(|a| matches!(a.kind, ironsmith::ability::AbilityKind::Activated(_)))
             .ok_or("no activated ability")?;
-        let action=compute_legal_actions(&game,PlayerId(0)).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index,..} if *s==source && *ability_index==ability)).ok_or("Grist +1 not legal")?;
+        let action=compute_legal_actions(&game,PlayerId(0)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index,..} if *s==source && *ability_index==ability)).ok_or("Grist +1 not legal")?;
         emit(
             "known_library",
             json!({"top_to_bottom":game.player(PlayerId(0)).unwrap().library.iter().rev().map(|id|game.object(*id).unwrap().name.to_string()).collect::<Vec<_>>()}),

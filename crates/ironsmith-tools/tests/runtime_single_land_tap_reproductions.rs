@@ -152,7 +152,7 @@ fn announce(
 ) -> Result<(TriggerQueue, Value), String> {
     g.turn.priority_player = Some(PlayerId(actor));
     let source = g.create_object_from_definition(def, PlayerId(actor), Zone::Hand);
-    let action = compute_legal_actions(g, PlayerId(actor))
+    let action = compute_legal_actions(g, PlayerId(actor)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source))
         .ok_or("intended cast unavailable")?;
@@ -281,7 +281,7 @@ fn action(
     mana: bool,
     dm: &mut Choices,
 ) -> Result<Value, String> {
-    let a = compute_legal_actions(g, PlayerId(0))
+    let a = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| match a {
             LegalAction::ActivateAbility {
@@ -355,7 +355,7 @@ fn next_main(g: &mut GameState) {
 fn play_land(g: &mut GameState, d: &CardDefinition, dm: &mut Choices) -> Result<ObjectId, String> {
     let hand = g.create_object_from_definition(d, g.turn.active_player, Zone::Hand);
     let stable=g.object(hand).unwrap().stable_id;
-    let a = compute_legal_actions(g, g.turn.active_player)
+    let a = compute_legal_actions(g, g.turn.active_player).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::PlayLand{land_id}if *land_id==hand))
         .ok_or("land play missing")?;
@@ -486,7 +486,7 @@ fn run(
         "Sage of the Maze" => 2,
         _ => 0,
     };
-    let actions = compute_legal_actions(&g, PlayerId(0));
+    let actions = compute_legal_actions(&g, PlayerId(0)).expect("fixture has complete replacement state");
     let offered=actions.iter().any(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index}if *s==source&&*ability_index==index));
     let before = json!({"source_index":index,"source_tapped":g.is_tapped(source),"resources":resources.iter().map(|id|json!({"id":id.0,"name":g.object(*id).unwrap().name.to_string(),"tapped":g.is_tapped(*id),"controller":g.controller_of_id(*id).map(|p|p.index())})).collect::<Vec<_>>(),"other_lands":g.battlefield.iter().filter(|id|g.object(**id).unwrap().card_types.contains(&CardType::Land)&&!resources.contains(id)).map(|id|json!({"name":g.object(*id).unwrap().name.to_string(),"tapped":g.is_tapped(*id),"controller":g.controller_of_id(*id).map(|p|p.index())})).collect::<Vec<_>>(),"actions":format!("{actions:?}")});
     let valid = n > 0 && state != "tapped";

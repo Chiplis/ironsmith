@@ -150,7 +150,7 @@ fn perform(
         .ok_or("missing action source")?;
     let initial_stack_len = game.stack.len();
     game.turn.priority_player = Some(actor);
-    let action = compute_legal_actions(game, actor)
+    let action = compute_legal_actions(game, actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| match a {
             LegalAction::CastSpell { spell_id, .. } => ability.is_none() && *spell_id == source,
@@ -273,7 +273,7 @@ fn report_konda_banner(){
   let mut dm=dm(0,true);dm.target_name=Some("Isamaru, Hound of Konda".into());let mut source=None;let mut paid=0;let mut cast_paid=0;let mut error=None;let mut available=None;
   if mode!="absent"{
    let id=g.create_object_from_definition(&defs["Konda's Banner"],alice(),Zone::Hand);
-   let legal=compute_legal_actions(&g,alice()).iter().any(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id));available=Some(legal);
+   let legal=compute_legal_actions(&g,alice()).expect("fixture has complete replacement state").iter().any(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id));available=Some(legal);
    if legal{let(mut q,cost)=perform(&mut g,id,None,&mut dm)?;cast_paid=cost;error=resolve(&mut g,&mut q,&mut dm).err();source=Some(find(&g,"Konda's Banner",Zone::Battlefield)?);}
   }
   if mode=="equip_nonlegendary"&&source.is_some(){dm.target_name=Some("Skylasher".into());let(mut q,cost)=perform(&mut g,source.unwrap(),Some(2),&mut dm)?;paid=cost;error=resolve(&mut g,&mut q,&mut dm).err();}

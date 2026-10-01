@@ -245,11 +245,55 @@ pub fn parse_sentence_delayed_timing_suffix(
         .as_ref()
         .map(|prefix| prefix.trailing_tokens)
         .unwrap_or_else(|| action_tokens.tokens());
-    let segments = super::super::lex_chain_helpers::split_effect_chain_on_and_lexed(action_body);
-    let split_last_coordinated_action = segments.len() > 1
+    // "exile this permanent and return it to the battlefield ... at the
+    // beginning of the next end step" (Frenetic Sliver): only the return is
+    // delayed; the exile happens now.
+    let exile_then_delayed_return = action_body
+        .first()
+        .is_some_and(|token| token.parser_text().eq_ignore_ascii_case("exile"))
+        .then(|| {
+            crate::slice_primitives::find_window_by(action_body, 2, |window| {
+                window[0].parser_text().eq_ignore_ascii_case("and")
+                    && window[1].parser_text().eq_ignore_ascii_case("return")
+            })
+        })
+        .flatten();
+    let segments = if let Some(and_idx) = exile_then_delayed_return {
+        vec![&action_body[..and_idx], &action_body[and_idx + 1..]]
+    } else {
+        super::super::lex_chain_helpers::split_effect_chain_on_and_lexed(action_body)
+    };
+    let split_last_coordinated_action = exile_then_delayed_return.is_some()
+        || segments.len() > 1
         && segments
             .iter()
             .all(|segment| super::super::lex_chain_helpers::segment_has_effect_head_lexed(segment));
+    // "Target player draws a card at the beginning of the next turn's
+    // upkeep" (Sapphire Charm): the player is targeted as the spell is cast,
+    // and the delayed action refers back to that announced target.
+    let hoisted_target_player = !split_last_coordinated_action
+        && leading_result.is_none()
+        && action_body.len() > 2
+        && action_body[0].parser_text().eq_ignore_ascii_case("target")
+        && ["player", "opponent"]
+            .iter()
+            .any(|word| action_body[1].parser_text().eq_ignore_ascii_case(word));
+    if hoisted_target_player
+        && let Ok(target) = parse_target_phrase(&action_body[..2])
+    {
+        let mut carried = crate::lexer::synthetic_word_tokens(&["that", "player"]);
+        carried.extend_from_slice(&action_body[2..]);
+        if let Ok(delayed_effects) = parse_effect_chain(&carried)
+            && !delayed_effects.is_empty()
+            && let Some(delayed) =
+                wrap_delayed_timing_inside_leading_condition(marker, delayed_effects)
+        {
+            return Ok(Some(vec![
+                EffectAst::subject_verb_explicit_target_only(target),
+                delayed,
+            ]));
+        }
+    }
     let (mut immediate_effects, delayed_effects) = if split_last_coordinated_action {
         let mut immediate = Vec::new();
         for segment in &segments[..segments.len() - 1] {
@@ -637,6 +681,29 @@ fn normalize_unless_payment_clause_tokens(
         payment_clause.replace_leading_word(normalized_first);
     }
 
+    // "unless they put a card from their hand on top of their library"
+    // (Tainted Specter): within the paying player's own cost, "their" is
+    // the payer's "your" (the cost grammar's library-top payment).
+    if normalized_first == "put" {
+        let words = crate::lexer::parser_token_word_refs(payment_clause.tokens());
+        if words.ends_with(&["on", "top", "of", "their", "library"])
+            && crate::word_primitives::sequence_occurs(&words, &["from", "their", "hand"])
+        {
+            let rewritten = payment_clause
+                .tokens()
+                .iter()
+                .map(|token| {
+                    if token.is_word("their") {
+                        OwnedLexToken::word("your".to_string(), token.span)
+                    } else {
+                        token.clone()
+                    }
+                })
+                .collect();
+            payment_clause = SubjectVerbPrimitiveOwnedClause::new(rewritten);
+        }
+    }
+
     Some(payment_clause)
 }
 
@@ -647,6 +714,14 @@ fn parse_unless_put_counters_clause_as_cost(
         .split_once_on_word_trimmed("before")
         .map(|(payment_clause, _)| payment_clause.trimmed())
         .unwrap_or_else(|| clause.trimmed());
+    // "put a card from their hand on top of their library" moves a card; it
+    // places no counter (the library-top payment owns it).
+    if crate::word_primitives::sequence_occurs(
+        &payment_clause.word_refs(),
+        &["on", "top", "of"],
+    ) {
+        return Ok(None);
+    }
     let Ok(effects) = parse_effect_chain(payment_clause.tokens()) else {
         return Ok(None);
     };

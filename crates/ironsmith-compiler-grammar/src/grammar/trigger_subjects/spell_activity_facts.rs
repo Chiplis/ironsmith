@@ -88,7 +88,12 @@ pub fn parse_spell_activity_surface_facts(words: &[&str]) -> SpellActivitySurfac
     let exact_spells_this_turn = global_exact_spells_this_turn
         .or_else(|| exact_spell_count_surface(words))
         .or_else(|| first_spell_each_turn.then_some(1))
-        .or_else(|| second_spell_each_turn.then_some(2));
+        .or_else(|| second_spell_each_turn.then_some(2))
+        .or_else(|| {
+            (!other_than_first_spell)
+                .then(|| qualified_ordinal_spell_count_surface(words))
+                .flatten()
+        });
 
     SpellActivitySurfaceFacts {
         has_spell_noun,
@@ -285,6 +290,44 @@ fn exact_spell_count_surface(words: &[&str]) -> Option<u32> {
             &[ordinal, "spell", "in", "a", "turn"],
         ];
         if any_sequence_present(words, patterns) {
+            return Some(count);
+        }
+    }
+    None
+}
+
+/// `your fourth noncreature spell each turn` / `their first noncreature
+/// spell each turn`: an ordinal over spells matching the qualifier between
+/// the ordinal and the spell noun, not over every spell cast.
+pub fn qualified_ordinal_spell_count_surface(words: &[&str]) -> Option<u32> {
+    for (idx, word) in words.iter().enumerate() {
+        if !matches!(*word, "your" | "their") {
+            continue;
+        }
+        let Some((_, count)) = words
+            .get(idx + 1)
+            .and_then(|ordinal| ordinal_counts(1).find(|(name, _)| name == ordinal))
+        else {
+            continue;
+        };
+        let Some(spell_offset) = words[idx + 2..]
+            .iter()
+            .take(4)
+            .position(|candidate| *candidate == "spell")
+        else {
+            continue;
+        };
+        if spell_offset == 0 {
+            continue;
+        }
+        let spell_idx = idx + 2 + spell_offset;
+        if matches!(
+            words.get(spell_idx + 1..spell_idx + 3),
+            Some(["each" | "this", "turn"])
+        ) || matches!(
+            words.get(spell_idx + 1..spell_idx + 4),
+            Some(["in", "a", "turn"])
+        ) {
             return Some(count);
         }
     }

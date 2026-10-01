@@ -28,10 +28,10 @@ pub(super) fn cascade_replay_surfaces_adventure_choice_after_accepting_free_cast
         .expect("Curious Pair should be added to library");
 
     wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
         alice,
-        compute_legal_actions(&wasm.game, alice),
-    )));
+        compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+    ).expect("fixture has complete replacement state")));
     dispatch_matching_priority_action(
         &mut wasm,
         |action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == bloodbraid_id),
@@ -128,10 +128,10 @@ pub(super) fn saw_in_half_formidable_speaker_no_advances_resolution_chain() {
     );
 
     wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
         alice,
-        compute_legal_actions(&wasm.game, alice),
-    )));
+        compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+    ).expect("fixture has complete replacement state")));
 
     dispatch_matching_priority_action(
         &mut wasm,
@@ -343,10 +343,10 @@ pub(super) fn tainted_pact_declining_first_card_advances_to_second_prompt_in_liv
         .expect("first library card should be added");
 
     wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
         alice,
-        compute_legal_actions(&wasm.game, alice),
-    )));
+        compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+    ).expect("fixture has complete replacement state")));
 
     dispatch_matching_priority_action(
         &mut wasm,
@@ -402,10 +402,10 @@ pub(super) fn tainted_pact_declining_first_revealed_unique_card_prompts_for_seco
         .create_hidden_card_placeholder(alice, Zone::Library, 1, "alice-slot-1".to_string());
 
     wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
         alice,
-        compute_legal_actions(&wasm.game, alice),
-    )));
+        compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+    ).expect("fixture has complete replacement state")));
 
     dispatch_matching_priority_action(
         &mut wasm,
@@ -787,10 +787,10 @@ pub(super) fn demonic_consultation_resolution_prompts_for_card_name_in_wasm_flow
     );
 
     wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
         alice,
-        compute_legal_actions(&wasm.game, alice),
-    )));
+        compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+    ).expect("fixture has complete replacement state")));
 
     dispatch_matching_priority_action(
         &mut wasm,
@@ -841,10 +841,10 @@ pub(super) fn mystical_tutor_resolution_prompts_for_hidden_library_choice_in_was
         .collect();
 
     wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
         alice,
-        compute_legal_actions(&wasm.game, alice),
-    )));
+        compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+    ).expect("fixture has complete replacement state")));
 
     dispatch_matching_priority_action(
         &mut wasm,
@@ -911,10 +911,10 @@ pub(super) fn krrik_casting_black_spell_surfaces_pay_two_life_option_in_wasm_flo
     );
 
     wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
         alice,
-        compute_legal_actions(&wasm.game, alice),
-    )));
+        compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+    ).expect("fixture has complete replacement state")));
 
     dispatch_matching_priority_action(
         &mut wasm,
@@ -1969,10 +1969,10 @@ fn canonical_abby_entry_choice_resumes_without_premature_entry() {
     wasm.game
         .push_to_stack(ironsmith::game_state::StackEntry::new(source, alice));
     wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
         alice,
-        compute_legal_actions(&wasm.game, alice),
-    )));
+        compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+    ).expect("fixture has complete replacement state")));
     for _ in 0..3 {
         dispatch_pass_priority(&mut wasm);
     }

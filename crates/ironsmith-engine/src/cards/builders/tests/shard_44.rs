@@ -196,7 +196,7 @@ pub(super) fn crowd_control_warden_as_enters_counters_reach_the_prospective_perm
     let hand_id = game.create_object_from_definition(&definition, alice, Zone::Hand);
     let mut decisions = crate::decision::SelectFirstDecisionMaker;
     let entered = game
-        .move_object_with_etb_processing_with_dm(hand_id, Zone::Battlefield, &mut decisions)
+        .move_object_with_etb_processing_with_dm(hand_id, Zone::Battlefield, &mut decisions).expect("replacement operation must execute successfully in this scenario")
         .expect("Crowd-Control Warden should enter");
 
     assert_eq!(
@@ -224,7 +224,7 @@ pub(super) fn dermotaxi_as_enters_exile_link_moves_to_the_entered_permanent() {
     let hand_id = game.create_object_from_definition(&definition, alice, Zone::Hand);
     let mut decisions = crate::decision::SelectFirstDecisionMaker;
     let entered = game
-        .move_object_with_etb_processing_with_dm(hand_id, Zone::Battlefield, &mut decisions)
+        .move_object_with_etb_processing_with_dm(hand_id, Zone::Battlefield, &mut decisions).expect("replacement operation must execute successfully in this scenario")
         .expect("Dermotaxi should enter");
 
     assert!(game.get_exiled_with_source_links(hand_id).is_empty());
@@ -250,7 +250,7 @@ pub(super) fn overlaid_terrain_as_enters_setup_finishes_before_entry_commit() {
     let hand_id = game.create_object_from_definition(&definition, alice, Zone::Hand);
     let mut decisions = crate::decision::SelectFirstDecisionMaker;
     let entered = game
-        .move_object_with_etb_processing_with_dm(hand_id, Zone::Battlefield, &mut decisions)
+        .move_object_with_etb_processing_with_dm(hand_id, Zone::Battlefield, &mut decisions).expect("replacement operation must execute successfully in this scenario")
         .expect("Overlaid Terrain should enter");
 
     assert!(game.object(entered.new_id).is_some());
@@ -275,7 +275,7 @@ pub(super) fn wood_elemental_remembers_only_forests_sacrificed_as_it_entered() {
     let hand_id = game.create_object_from_definition(&definition, alice, Zone::Hand);
     let mut decisions = crate::decision::SelectFirstDecisionMaker;
     let entered = game
-        .move_object_with_etb_processing_with_dm(hand_id, Zone::Battlefield, &mut decisions)
+        .move_object_with_etb_processing_with_dm(hand_id, Zone::Battlefield, &mut decisions).expect("replacement operation must execute successfully in this scenario")
         .expect("Wood Elemental should enter");
 
     assert_eq!(game.calculated_power(entered.new_id), Some(2));
@@ -307,7 +307,7 @@ pub(super) fn thief_of_blood_removes_every_permanents_counters_and_keeps_the_tot
     let hand_id = game.create_object_from_definition(&definition, alice, Zone::Hand);
     let mut decisions = crate::decision::SelectFirstDecisionMaker;
     let entered = game
-        .move_object_with_etb_processing_with_dm(hand_id, Zone::Battlefield, &mut decisions)
+        .move_object_with_etb_processing_with_dm(hand_id, Zone::Battlefield, &mut decisions).expect("replacement operation must execute successfully in this scenario")
         .expect("Thief of Blood should enter");
 
     assert_eq!(

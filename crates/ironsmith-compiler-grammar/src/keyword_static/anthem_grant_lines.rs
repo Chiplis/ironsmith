@@ -129,6 +129,7 @@ fn parse_can_block_additional_creature_clause(
 fn triggered_grant_effects_and_condition(
     trigger: &TriggerSpec,
     effects: &[EffectAst],
+    body_leads_with_if: bool,
 ) -> Result<(Vec<EffectAst>, Option<PredicateAst>), CardTextError> {
     if let [
         EffectAst::Conditionals(ConditionalEffectAst::Conditional {
@@ -141,6 +142,37 @@ fn triggered_grant_effects_and_condition(
     {
         let _ = trigger;
         return Ok((if_true.clone(), Some(predicate.clone())));
+    }
+    // "Whenever ..., if <condition>, A. B.": an `if` directly after the
+    // trigger comma is an intervening-if over the whole ability (CR 603.4),
+    // not a condition on the first sentence only.
+    if body_leads_with_if {
+        // Peel sentence wrappers so the leading conditional is found however
+        // the sentences were grouped, then hoist it over everything after it.
+        fn flatten_leading(effects: &[EffectAst], out: &mut Vec<EffectAst>) {
+            for (idx, effect) in effects.iter().enumerate() {
+                match effect {
+                    EffectAst::SourceSentence { effects: inner, .. } if idx == 0 => {
+                        flatten_leading(inner, out)
+                    }
+                    other => out.push(other.clone()),
+                }
+            }
+        }
+        let mut flat = Vec::new();
+        flatten_leading(effects, &mut flat);
+        if flat.len() > 1
+            && let EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate,
+                if_true,
+                if_false,
+            }) = &flat[0]
+            && if_false.is_empty()
+        {
+            let mut flattened = if_true.clone();
+            flattened.extend(flat[1..].iter().cloned());
+            return Ok((flattened, Some(predicate.clone())));
+        }
     }
 
     Ok((effects.to_vec(), None))
@@ -1023,7 +1055,16 @@ fn granted_protection_source_filter(ability: &StaticAbilityAst) -> Option<Object
 pub fn parse_granted_keyword_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    if let Some(where_index) = tokens.iter().position(|token| token.is_word("where")) {
+    // A "where X is ..." inside a quoted granted ability belongs to that
+    // ability (Archery Training), not to this grant's own X threshold.
+    let mut inside_quotes = false;
+    let unquoted_where = tokens.iter().position(|token| {
+        if token.kind == TokenKind::Quote {
+            inside_quotes = !inside_quotes;
+        }
+        !inside_quotes && token.is_word("where")
+    });
+    if let Some(where_index) = unquoted_where {
         let binding_tokens = trim_edge_punctuation(&tokens[where_index..]);
         let Some(value) = parse_value_binding_clause(&binding_tokens) else {
             return Ok(None);
@@ -2406,7 +2447,14 @@ fn granted_scavenge_abilities_from_subject(
                     EffectAst::subject_verb_put_counters(
                         CounterType::PlusOnePlusOne,
                         Value::SourcePower,
-                        TargetAst::Object(ObjectFilter::creature(), None, None),
+                        // Scavenge targets (CR 702.97a): "Put a number of
+                        // +1/+1 counters equal to this card's power on
+                        // target creature."
+                        TargetAst::Object(
+                            ObjectFilter::creature(),
+                            Some(TextSpan::synthetic()),
+                            None,
+                        ),
                         None,
                         false,
                     ),
@@ -2917,6 +2965,78 @@ pub fn parse_static_condition_clause(
     }
     let display = clause_words.join(" ");
 
+    // "you control a Human creature and a non-Human creature" (Of One Mind):
+    // two separate control requirements, not one object matching both.
+    if matches!(clause_words.get(..3), Some(["you", "control", "a" | "an"]))
+        && let Some(and_idx) = tokens.iter().enumerate().position(|(idx, token)| {
+            idx > 3
+                && token.is_word("and")
+                && tokens
+                    .get(idx + 1)
+                    .is_some_and(|next| next.is_word("a") || next.is_word("an"))
+        })
+    {
+        let left_tokens = trim_edge_punctuation(&tokens[..and_idx]);
+        let mut right_tokens = vec![
+            OwnedLexToken::word("you".to_string(), TextSpan::synthetic()),
+            OwnedLexToken::word("control".to_string(), TextSpan::synthetic()),
+        ];
+        right_tokens.extend_from_slice(&tokens[and_idx + 1..]);
+        if let (Ok(left), Ok(right)) = (
+            parse_static_condition_clause(&left_tokens),
+            parse_static_condition_clause(&right_tokens),
+        ) {
+            return Ok(PredicateAst::And(Box::new(left), Box::new(right)));
+        }
+    }
+
+    // "you control a Desert or there is a Desert card in your graveyard":
+    // two complete clauses joined by `or` are a disjunction of conditions;
+    // the single-filter readings below would fuse them into one object.
+    if let Some(or_index) = tokens.iter().position(|token| {
+        token.is_word("or")
+    }) && or_index > 0
+        && tokens
+            .get(or_index + 1)
+            .is_some_and(|token| token.is_word("there") || token.is_word("you"))
+        && tokens
+            .first()
+            .is_some_and(|token| token.is_word("you") || token.is_word("there"))
+        && let Ok(left) = parse_static_condition_clause(&tokens[..or_index])
+        && let Ok(right) = parse_static_condition_clause(&tokens[or_index + 1..])
+    {
+        return Ok(PredicateAst::Or(Box::new(left), Box::new(right)));
+    }
+
+    // "you control a permanent of each color" (Spirit of Resistance): the
+    // colors among permanents you control include all five colors.
+    if matches!(
+        clause_words.as_slice(),
+        ["you", "control", "a", "permanent", "of", "each", "color"]
+            | ["you", "control", "permanent", "of", "each", "color"]
+            | ["you", "control", "permanents", "of", "each", "color"]
+    ) {
+        return Ok(PredicateAst::ValueComparison {
+            left: crate::effect::Value::ColorsAmong(
+                ObjectFilter::permanent().controlled_by(PlayerFilter::You),
+            ),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: crate::effect::Value::Fixed(5),
+        });
+    }
+
+    // "you control at least two creatures that share a creature type"
+    // (Synchronized Eviction): the typed shared-creature-type count belongs
+    // to the predicate grammar, not the plain control-count condition.
+    if clause_words.first() == Some(&"you")
+        && clause_words.ends_with(&["creature", "type"])
+        && clause_words.contains(&"share")
+        && let Ok(predicate @ PredicateAst::ValueComparison { .. }) =
+            crate::grammar::filters::parse_condition_predicate_lexed(&tokens)
+    {
+        return Ok(predicate);
+    }
+
     // A condition on an affected attached object may quantify permanents
     // controlled by that object's controller. Reuse the ordinary control-
     // condition grammar with an explicit temporary subject, then bind the
@@ -3059,6 +3179,23 @@ pub fn parse_static_condition_clause(
                         return Err(CardTextError::ParseError(format!(
                             "missing object phrase in static condition (clause: '{display}')"
                         )));
+                    }
+                    // "there are two or more counters among creatures you
+                    // control", "five or more mana values among cards in your
+                    // graveyard": an aggregate over the matching objects, not
+                    // the number of objects themselves.
+                    if let Some(value) =
+                        crate::grammar::shared_util::value_semantics::parse_aggregate_scope_value_lexed(
+                            filter_tokens,
+                        )
+                        && let Some((operator, threshold)) =
+                            crate::util::comparison_to_value_comparison_operator(shape.comparison)
+                    {
+                        return Ok(PredicateAst::ValueComparison {
+                            left: value,
+                            operator,
+                            right: Value::Fixed(threshold),
+                        });
                     }
                     let filter = parse_permanent_card_count_filter(filter_tokens)
                         .or_else(|| crate::grammar::primitives::probe_shape(parse_object_filter(filter_tokens, false)))
@@ -4010,6 +4147,24 @@ fn promote_attached_to_affected(value: &mut AnthemValue) {
 }
 
 fn promote_counters_on_affected(value: &mut AnthemValue) {
+    // "Creatures you don't control get -1/-1 for each slime counter on
+    // them": the pronoun names each affected creature, not a tagged
+    // antecedent the static ability never binds.
+    if let AnthemValue::PerCount {
+        count: count @ AnthemCountExpression::CountersAmong(..),
+        ..
+    } = value
+        && let AnthemCountExpression::CountersAmong(filter, counter_type) = &*count
+        && let [constraint] = filter.tagged_constraints.as_slice()
+        && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        && constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+        && filter.card_types.is_empty()
+        && filter.subtypes.is_empty()
+        && filter.controller.is_none()
+    {
+        *count = AnthemCountExpression::CountersOnAffected(*counter_type);
+        return;
+    }
     if let AnthemValue::PerCount {
         count: count @ AnthemCountExpression::CountersOnSource(_),
         ..

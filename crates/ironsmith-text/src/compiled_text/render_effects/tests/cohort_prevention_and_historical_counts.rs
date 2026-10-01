@@ -314,7 +314,7 @@ fn cohort_damage_prevention_followup_matches_combat_source_and_returns_only_reci
                     game.set_current_controller(target, bob);
                     let other = game.create_object_from_definition(&body, bob, Zone::Battlefield);
                     let damage_source = if own_source { source } else { other };
-                    let result=crate::events::processing::process_damage_assignments_with_event_with_source_snapshot_opts(&mut game,damage_source,crate::events::DamageTarget::Object(target),2,combat,unpreventable,crate::events::cause::EventCause::effect(),None);
+                    let result=crate::events::processing::process_damage_assignments_with_event_with_source_snapshot_opts(&mut game,damage_source,crate::events::DamageTarget::Object(target),2,combat,unpreventable,crate::events::cause::EventCause::effect(),None).expect("damage test proposal must process successfully");
                     let matches = creature_target && combat && own_source;
                     assert_eq!(
                         result.assignments.iter().map(|a| a.amount).sum::<u32>(),
@@ -340,14 +340,16 @@ fn cohort_damage_prevention_followup_matches_combat_source_and_returns_only_reci
     let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
     let (alice, bob) = (game.players[0].id, game.players[1].id);
     let source = game.create_object_from_definition(&card, alice, Zone::Battlefield);
-    let (damage, _) = crate::events::processing::process_damage_with_event(
+    let processed = crate::events::processing::process_damage_assignments_with_event(
         &mut game,
         source,
         crate::events::DamageTarget::Player(bob),
         2,
         true,
         crate::events::cause::EventCause::effect(),
-    );
+    ).expect("damage test proposal must process successfully");
+    assert!(processed.programs.is_empty());
+    let damage: u32 = processed.assignments.iter().filter(|assignment| assignment.target == crate::events::DamageTarget::Player(bob)).map(|assignment| assignment.amount).sum();
     assert_eq!(damage, 2);
 }
 

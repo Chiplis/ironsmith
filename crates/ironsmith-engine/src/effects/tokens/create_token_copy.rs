@@ -2,7 +2,7 @@
 
 use crate::ability::Ability;
 use crate::card::PtValue;
-use crate::combat_state::{AttackTarget, AttackerInfo};
+use crate::combat_state::AttackTarget;
 use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
@@ -219,8 +219,24 @@ fn build_token_copy_object(
             .abilities_mut()
             .push(Ability::static_ability(static_ability.clone()));
     }
+    // "except it has haste and 'At the beginning of the end step, sacrifice
+    // this token.'" (Kindle the Inner Flame): the copy exception grants a
+    // real, copiable triggered ability that fires at every end step, not a
+    // one-shot cleanup.
+    if grants_end_step_sacrifice_ability(effect) {
+        token.abilities_mut().push(Ability::triggered(
+            crate::triggers::Trigger::beginning_of_end_step(crate::target::PlayerFilter::Any),
+            vec![crate::effect::Effect::new(
+                crate::effects::SacrificeTargetEffect::new(crate::target::ChooseSpec::Source),
+            )],
+        ));
+    }
 
     Ok(token)
+}
+
+fn grants_end_step_sacrifice_ability(effect: &CreateTokenCopyEffect) -> bool {
+    effect.sacrifice_at_next_end_step && effect.sacrifice_at_next_end_step_ability_text.is_some()
 }
 
 fn execute_token_instruction(
@@ -347,7 +363,7 @@ fn execute_token_instruction(
     let cleanup_options = TokenCleanupOptions::new(
         effect.exile_at_end_of_combat,
         false,
-        effect.sacrifice_at_next_end_step,
+        effect.sacrifice_at_next_end_step && !grants_end_step_sacrifice_ability(effect),
         effect.exile_at_next_end_step,
         effect.next_end_step_player.clone(),
     );
@@ -396,32 +412,22 @@ fn execute_token_instruction(
         resolved_base_power_toughness,
         &static_abilities_to_grant,
     )?;
-    let replacement = crate::events::processing::process_token_creation_for_token_with_event(
+    crate::events::processing::execute_token_creation_with_event(
         game,
         controller_id,
         base_count,
         Some(token_preview.clone()),
         ctx.cause.clone(),
         ctx,
-    )?;
-    let replacement = match replacement {
-        crate::events::processing::TokenCreationReplacementResult::Proceed {
-            event,
-            provenance,
-        } => {
+        |game, ctx, replacement, provenance| {
             ctx.provenance = provenance;
-            event
-        }
-        crate::events::processing::TokenCreationReplacementResult::Finished(outcome) => {
-            return Ok(outcome);
-        }
-    };
     let controller_id = replacement.controller;
     let token_preview = replacement.token.clone().unwrap_or(token_preview);
     let count = (replacement.count as usize).min(remaining_token_slots(game, controller_id));
 
     let mut created_ids = Vec::with_capacity(count);
     let mut events = Vec::with_capacity(count);
+    let mut entry_receipts = Vec::new();
 
     for _ in 0..count {
         let id = game.new_object_id();
@@ -441,17 +447,18 @@ fn execute_token_instruction(
         let token_is_creature = token.is_creature();
 
         game.add_object(token);
-        let entry_result = game.move_object_with_etb_processing_with_entry_options(
+        let entry_result = game.move_object_with_etb_processing_with_cause_and_entry_options(
             id,
             Zone::Battlefield,
+            ctx.cause.clone(),
             &mut ctx.decision_maker,
             effect.enters_tapped,
             true,
-        );
+        )?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::with_objects(Vec::new()));
         }
-        let Some(entry_result) = entry_result else {
+        let Some(entry_result) = super::lifecycle::retain_token_entry_receipt(game, id, entry_result, &mut entry_receipts)? else {
             game.remove_object(id);
             continue;
         };
@@ -498,11 +505,7 @@ fn execute_token_instruction(
                     return Ok(EffectOutcome::with_objects(Vec::new()));
                 }
                 if let Some(chosen_target) = chosen_target {
-                    let combat = game.combat.get_or_insert_with(Default::default);
-                    combat.attackers.push(AttackerInfo {
-                        creature: entered_id,
-                        target: chosen_target,
-                    });
+                    game.add_entering_attacker(entered_id, chosen_target);
                 }
             }
         }
@@ -530,6 +533,7 @@ fn execute_token_instruction(
         controller_id,
         &replacement.additional_tokens,
         &mut events,
+        &mut entry_receipts,
     )?;
     if ctx.decision_maker.awaiting_choice() {
         return Ok(EffectOutcome::with_objects(Vec::new()));
@@ -554,9 +558,12 @@ fn execute_token_instruction(
         }
     }
 
-    Ok(EffectOutcome::with_objects(created_ids.clone())
+    let original = EffectOutcome::with_objects(created_ids.clone())
         .with_result_objects(created_ids)
-        .with_events(events))
+        .with_events(events);
+            crate::effects::zones::finish_zone_change_receipts(game, ctx, original, entry_receipts)
+        },
+    )
 }
 
 impl EffectExecutor for CreateTokenCopyEffect {

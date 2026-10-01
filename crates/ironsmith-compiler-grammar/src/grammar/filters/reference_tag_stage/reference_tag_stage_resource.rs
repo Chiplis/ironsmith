@@ -21,11 +21,15 @@ pub(crate) fn lift_shared_trailing_mana_value_from_type_union(
     else {
         return;
     };
-    let Some(connector_idx) =
-        crate::slice_primitives::select_last_position(&words[..mana_idx], |word| {
-            matches!(*word, "or" | "and/or")
-        })
-    else {
+    // The `or` of an "equal or lesser" comparison is not the list connector.
+    let Some(connector_idx) = (0..mana_idx).rev().find(|&idx| {
+        matches!(words[idx], "or" | "and/or")
+            && !(idx > 0
+                && matches!(words[idx - 1], "equal" | "less" | "greater")
+                && words
+                    .get(idx + 1)
+                    .is_some_and(|next| matches!(*next, "lesser" | "greater" | "less" | "equal")))
+    }) else {
         return;
     };
     let selector_count = words[..mana_idx]
@@ -78,6 +82,7 @@ pub(crate) fn lift_shared_trailing_mana_value_from_type_union(
         return;
     }
     let Some(shared) = shared else {
+        lift_shared_trailing_tagged_mana_value(filter);
         return;
     };
 
@@ -168,6 +173,39 @@ pub(crate) fn lift_shared_trailing_mana_value_from_type_union(
     filter.type_or_subtype_union = true;
     filter.set_explicit_card_noun(true);
     filter.set_terminal_noun_after_type_subtype_union_surface(true);
+}
+
+/// "enchantment, instant, or sorcery card with equal or lesser mana value
+/// than that spell" (Saruman of Many Colors): the arm parser leaves the
+/// tagged mana-value comparison on the final arm only; it scopes the list.
+fn lift_shared_trailing_tagged_mana_value(filter: &mut ObjectFilter) {
+    let is_mana_value_relation = |constraint: &crate::filter::TaggedObjectConstraint| {
+        matches!(
+            constraint.relation,
+            TaggedOpbjectRelation::ManaValueLteTagged
+                | TaggedOpbjectRelation::ManaValueLtTagged
+                | TaggedOpbjectRelation::SameManaValueAsTagged
+        )
+    };
+    let Some((last, preceding)) = filter.any_of.split_last_mut() else {
+        return;
+    };
+    if preceding.is_empty()
+        || preceding
+            .iter()
+            .any(|branch| branch.tagged_constraints.iter().any(is_mana_value_relation))
+    {
+        return;
+    }
+    let (lifted, kept): (Vec<_>, Vec<_>) = std::mem::take(&mut last.tagged_constraints)
+        .into_iter()
+        .partition(|constraint| is_mana_value_relation(constraint));
+    last.tagged_constraints = kept;
+    for constraint in lifted {
+        if !filter.tagged_constraints.contains(&constraint) {
+            filter.tagged_constraints.push(constraint);
+        }
+    }
 }
 
 pub(super) fn try_apply_distinct_mana_values_clause(

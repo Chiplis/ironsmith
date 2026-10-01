@@ -98,7 +98,7 @@ fn perform(game: &mut GameState, action: LegalAction, target: Target) {
 }
 
 fn activate_pinger(game: &mut GameState, pinger: ObjectId, target: Target) {
-    let action = compute_legal_actions(game, PlayerId::from_index(0))
+    let action = compute_legal_actions(game, PlayerId::from_index(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::ActivateAbility { source, .. } if *source == pinger))
         .expect("pinger activatable");
@@ -155,7 +155,7 @@ fn targeting_with_a_spell_does_not_trigger() {
         .unwrap()
         .mana_pool
         .add(ManaSymbol::Red, 1);
-    let action = compute_legal_actions(&game, alice)
+    let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == shock))
         .expect("Shock castable");

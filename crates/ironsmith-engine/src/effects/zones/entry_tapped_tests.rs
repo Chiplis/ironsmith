@@ -150,8 +150,8 @@ fn permission_tapped_instruction_obeys_replacement_order() {
                     &mut decisions,
                     true,
                     true,
-                )
-                .unwrap();
+                ).expect("replacement operation must execute successfully in this scenario")
+                .assert_completed_without_additions().unwrap();
             let tapped = intrinsic && !untapped_last;
             assert_eq!(result.enters_tapped, tapped);
             assert_eq!(game.is_tapped(result.new_id), tapped);
@@ -176,8 +176,8 @@ fn tapped_instruction_does_not_apply_an_opponents_untapper() {
             &mut SelectFirstDecisionMaker,
             true,
             true,
-        )
-        .unwrap();
+        ).expect("replacement operation must execute successfully in this scenario")
+        .assert_completed_without_additions().unwrap();
     assert!(result.enters_tapped);
     assert!(game.is_tapped(result.new_id));
 }

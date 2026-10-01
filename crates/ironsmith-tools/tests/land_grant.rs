@@ -78,7 +78,7 @@ fn setup(other: Option<(&str, CardType)>) -> (GameState, ObjectId) {
 }
 
 fn castable(game: &GameState, spell: ObjectId) -> Option<LegalAction> {
-    compute_legal_actions(game, PlayerId::from_index(0))
+    compute_legal_actions(game, PlayerId::from_index(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))
 }

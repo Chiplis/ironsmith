@@ -26,13 +26,13 @@ fn setup(definition: &CardDefinition) -> (GameState, PlayerId, ObjectId) {
             hand,
             Zone::Battlefield,
             &mut SelectFirstDecisionMaker,
-        )
+        ).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     (game, alice, source)
 }
 fn activations(game: &GameState, player: PlayerId, source: ObjectId) -> Vec<LegalAction> {
-    compute_legal_actions(game, player).into_iter().filter(|action| matches!(action, LegalAction::ActivateAbility { source: id, .. } if *id == source)).collect()
+    compute_legal_actions(game, player).expect("fixture has complete replacement state").into_iter().filter(|action| matches!(action, LegalAction::ActivateAbility { source: id, .. } if *id == source)).collect()
 }
 
 #[test]
@@ -157,7 +157,7 @@ fn flash_cast_and_zero_target_loyalty_activation_work_on_opponents_turn() {
     ] {
         game.player_mut(alice).unwrap().mana_pool.add(symbol, 1);
     }
-    let action = compute_legal_actions(&game, alice).into_iter().find(|action| matches!(action, LegalAction::CastSpell { spell_id, casting_method: ironsmith::alternative_cast::CastingMethod::Normal, .. } if *spell_id == hand)).expect("flash allows the actual cast");
+    let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state").into_iter().find(|action| matches!(action, LegalAction::CastSpell { spell_id, casting_method: ironsmith::alternative_cast::CastingMethod::Normal, .. } if *spell_id == hand)).expect("flash allows the actual cast");
     drive_action(&mut game, action);
     assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0);
     ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut SelectFirstDecisionMaker)
@@ -350,4 +350,13 @@ fn timing_permission_scope_does_not_leak_and_generic_grants_end_when_source_leav
         1,
         "permission does not waive negative loyalty costs"
     );
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: ironsmith::game_state::EntryCommitResult)
+    -> Option<ironsmith::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

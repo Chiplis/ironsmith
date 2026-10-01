@@ -136,7 +136,7 @@ fn abby_normal_cast_creates_tokens_for_caster_then_enters_for_opponent() {
                 game.player_mut(alice).unwrap().mana_pool.add(symbol, 1);
             }
         }
-        let action = compute_legal_actions(&game, alice)
+        let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .into_iter()
             .find(
                 |action| matches!(action,LegalAction::CastSpell{spell_id,..} if *spell_id==source),

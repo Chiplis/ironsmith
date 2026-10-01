@@ -228,7 +228,7 @@ fn cohort_entry_unless_another_red_spell_excludes_self_other_players_and_old_tur
         }
         record_cast(&mut game, stack, alice);
         let entered = game
-            .move_object_with_etb_processing(stack, Zone::Battlefield)
+            .move_object_with_etb_processing(stack, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
             .unwrap()
             .new_id;
         let expected = if case == 1 || case == 5 { 0 } else { 2 };
@@ -423,4 +423,13 @@ fn cohort_counter_condition_freezes_chosen_enemy_only_at_resolution_for_one_unta
         crate::turn::execute_untap_step(&mut game);
         assert!(!game.is_tapped(target), "the second untap is unaffected");
     }
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: crate::game_state::EntryCommitResult)
+    -> Option<crate::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

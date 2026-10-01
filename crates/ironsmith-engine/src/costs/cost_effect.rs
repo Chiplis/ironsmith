@@ -131,6 +131,7 @@ fn sacrifice_cost_precheck(
         _ => {
             let mut exec = ExecutionContext::new_default(ctx.source, ctx.payer)
                 .with_tagged_objects(ctx.tagged_objects.clone());
+            exec.replacement = ctx.replacement.clone();
             exec.x_value = ctx.x_value;
             match crate::effects::helpers::resolve_value(game, count, &exec) {
                 Ok(value) => value.max(0) as usize,
@@ -357,18 +358,27 @@ fn simple_exile_from_graveyard_filter(
 
 impl CostPayer for CostEffect {
     fn can_pay(&self, game: &GameState, ctx: &CostContext) -> Result<(), CostPaymentError> {
+        if !ctx.replacement.entry_reserved_objects.is_empty()
+            && let crate::costs::CostProcessingMode::DiscardCards { count, filter } = self.processing_mode()
+            && crate::costs::legal_discard_cost_cards_in_context(game, ctx, &filter).len()
+                < count as usize
+        {
+            return Err(CostPaymentError::InsufficientCardsInHand);
+        }
+
         if let Some(life) =
             transparent_cost_effect(&self.effect).downcast_ref::<crate::effects::PayLifeEffect>()
         {
             let mut exec = ExecutionContext::new_default(ctx.source, ctx.payer)
                 .with_tagged_objects(ctx.tagged_objects.clone());
+            exec.replacement = ctx.replacement.clone();
             exec.source_snapshot = ctx.source_snapshot.clone();
             exec.x_value = ctx.x_value;
             let payer =
                 crate::effects::helpers::resolve_player_from_spec(game, &life.player, &exec)
-                    .map_err(|e| CostPaymentError::Other(format!("{e:?}")))?;
+                    .map_err(CostPaymentError::ExecutionFailed)?;
             let amount = crate::effects::helpers::resolve_value(game, &life.amount, &exec)
-                .map_err(|e| CostPaymentError::Other(format!("{e:?}")))?
+                .map_err(CostPaymentError::ExecutionFailed)?
                 .max(0) as u32;
             return game
                 .can_pay_life_with_reason(payer, amount, ctx.reason)
@@ -393,30 +403,26 @@ impl CostPayer for CostEffect {
         if let Some(result) = dynamic_counter_removal_cost_precheck(&self.effect, game, ctx) {
             return result;
         }
-        if let Some(pay_energy) = self
-            .effect
+        if let Some(pay_energy) = transparent_cost_effect(&self.effect)
             .downcast_ref::<crate::effects::PayEnergyEffect>()
         {
-            let exec_ctx = crate::effects::ExecutionContext::new_default(ctx.source, ctx.payer)
+            let mut exec_ctx = crate::effects::ExecutionContext::new_default(ctx.source, ctx.payer)
                 .with_tagged_objects(ctx.tagged_objects.clone());
+            exec_ctx.replacement = ctx.replacement.clone();
+            exec_ctx.source_snapshot = ctx.source_snapshot.clone();
+            exec_ctx.x_value = ctx.x_value;
             let payer = crate::effects::helpers::resolve_player_from_spec(
                 game,
                 &pay_energy.player,
                 &exec_ctx,
             )
-            .map_err(|_| {
-                CostPaymentError::Other("unable to resolve player for energy cost".to_string())
-            })?;
+            .map_err(CostPaymentError::ExecutionFailed)?;
             let needed = crate::effects::helpers::resolve_value(game, &pay_energy.amount, &exec_ctx)
-                .map_err(|_| {
-                    CostPaymentError::Other("unable to resolve energy amount".to_string())
-                })?
+                .map_err(CostPaymentError::ExecutionFailed)?
                 .max(0) as u32;
-            return game
-                .player(payer)
-                .filter(|player| player.energy_counters >= needed)
-                .map(|_| ())
-                .ok_or_else(|| CostPaymentError::Other("not enough energy counters".to_string()));
+            let player = game.player(payer).ok_or(CostPaymentError::PlayerNotFound)?;
+            return (player.energy_counters >= needed).then_some(())
+                .ok_or(CostPaymentError::InsufficientEnergy);
         }
         self.effect
             .0
@@ -459,6 +465,7 @@ impl CostPayer for CostEffect {
             .with_cost_choice_targets(chosen_targets)
             .with_provenance(ctx.provenance);
         exec_ctx.source_snapshot = ctx.source_snapshot.clone();
+        exec_ctx.replacement = ctx.replacement.clone();
         exec_ctx.effect_outcomes = ctx.effect_outcomes.clone();
         exec_ctx.announced_targets = Some(
             ctx.announced_targets
@@ -478,7 +485,7 @@ impl CostPayer for CostEffect {
         }
 
         let outcome = execute_effect(game, &self.effect, &mut exec_ctx)
-            .map_err(|e| CostPaymentError::Other(format!("{e:?}")))?;
+            .map_err(CostPaymentError::ExecutionFailed)?;
         if let Some(move_to_zone) =
             transparent_cost_effect(&self.effect).downcast_ref::<crate::effects::MoveToZoneEffect>()
         {
@@ -534,7 +541,7 @@ impl CostPayer for CostEffect {
                 0
             } else if let Some(value) = choose.count_value.as_ref() {
                 crate::effects::helpers::resolve_value(game, value, &exec_ctx)
-                    .map_err(|error| CostPaymentError::Other(format!("{error:?}")))?
+                    .map_err(CostPaymentError::ExecutionFailed)?
                     .max(0) as usize
             } else if choose.count.dynamic_x {
                 ctx.x_value
@@ -1236,5 +1243,55 @@ mod tests {
                 .filter_map(|id| game.object(*id))
                 .any(|obj| obj.name == "Silvercoat Lion")
         );
+    }
+}
+
+#[cfg(test)]
+mod energy_cost_error_contract_tests {
+    use super::*;
+    use crate::costs::{CostContext, CostPayer};
+    fn setup() -> (GameState, crate::ids::ObjectId, crate::ids::PlayerId) {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = crate::ids::PlayerId::from_index(0);
+        let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Energy payment source")
+            .card_types(vec![crate::types::CardType::Creature]).build();
+        let source = game.create_object_from_card(&card, alice, crate::zone::Zone::Battlefield);
+        game.player_mut(alice).unwrap().energy_counters = 2;
+        (game, source, alice)
+    }
+    fn cost(amount: crate::effect::Value, player: crate::target::PlayerFilter) -> CostEffect {
+        CostEffect::new(crate::effects::PayEnergyEffect::new(amount, crate::target::ChooseSpec::Player(player)))
+    }
+    #[test]
+    fn ordinary_energy_inability_is_distinct_from_execution_failure() {
+        let (game, source, alice) = setup(); let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let ctx = CostContext::new(source, alice, &mut dm);
+        assert!(cost(crate::effect::Value::Fixed(1), crate::target::PlayerFilter::You).can_pay(&game, &ctx).is_ok());
+        assert_eq!(cost(crate::effect::Value::Fixed(3), crate::target::PlayerFilter::You).can_pay(&game, &ctx),
+            Err(CostPaymentError::InsufficientEnergy));
+        assert_eq!(game.player(alice).unwrap().energy_counters, 2);
+    }
+    #[test]
+    fn energy_precheck_inherits_the_chosen_x_value() {
+        let (game, source, alice) = setup(); let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let mut ctx = CostContext::new(source, alice, &mut dm); ctx.x_value = Some(2);
+        assert!(cost(crate::effect::Value::X, crate::target::PlayerFilter::You).can_pay(&game, &ctx).is_ok());
+        assert_eq!(game.player(alice).unwrap().energy_counters, 2);
+    }
+    #[test]
+    fn unresolved_energy_value_retains_its_typed_execution_error() {
+        let (game, source, alice) = setup(); let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let ctx = CostContext::new(source, alice, &mut dm);
+        assert!(matches!(cost(crate::effect::Value::X, crate::target::PlayerFilter::You).can_pay(&game, &ctx),
+            Err(CostPaymentError::ExecutionFailed(crate::effects::ExecutionError::UnresolvableValue(ref message)))
+                if message == "X value not set"));
+        assert_eq!(game.player(alice).unwrap().energy_counters, 2);
+    }
+    #[test]
+    fn missing_energy_payer_is_a_structural_error() {
+        let (game, source, alice) = setup(); let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let ctx = CostContext::new(source, alice, &mut dm);
+        assert_eq!(cost(crate::effect::Value::Fixed(1), crate::target::PlayerFilter::Specific(
+            crate::ids::PlayerId::from_index(9))).can_pay(&game, &ctx), Err(CostPaymentError::PlayerNotFound));
     }
 }

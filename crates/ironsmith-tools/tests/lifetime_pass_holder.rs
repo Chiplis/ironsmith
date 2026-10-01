@@ -128,7 +128,7 @@ fn lifetime_pass_holder_enters_tapped_opens_on_death_and_returns_on_visit_roll()
     .unwrap();
     let hand = game.create_object_from_definition(&holder, alice, Zone::Hand);
     let entered = game
-        .move_object_with_etb_processing(hand, Zone::Battlefield)
+        .move_object_with_etb_processing(hand, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap();
     assert!(entered.enters_tapped && game.is_tapped(entered.new_id));
     game.push_to_stack(StackEntry::ability(
@@ -227,4 +227,13 @@ fn lifetime_pass_holder_return_cannot_follow_a_new_zone_identity() {
     .unwrap();
     assert!(game.battlefield.is_empty());
     assert_eq!(game.object(new_identity).unwrap().zone, Zone::Graveyard);
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: ironsmith::game_state::EntryCommitResult)
+    -> Option<ironsmith::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

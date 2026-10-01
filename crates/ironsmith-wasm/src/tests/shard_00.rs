@@ -1192,10 +1192,10 @@ pub(super) fn playing_urzas_saga_from_hand_adds_initial_lore_counter_and_surface
         .create_object_from_definition(&urzas_saga(), alice, Zone::Hand);
 
     wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
         alice,
-        compute_legal_actions(&wasm.game, alice),
-    )));
+        compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+    ).expect("fixture has complete replacement state")));
 
     let priority_ctx = match wasm.pending_decision.as_ref() {
         Some(DecisionContext::Priority(ctx)) => ctx,
@@ -1506,10 +1506,10 @@ pub(super) fn dispatch_disables_cancel_when_mana_tap_trigger_adds_stack_object()
     }
 
     wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
         alice,
-        compute_legal_actions(&wasm.game, alice),
-    )));
+        compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+    ).expect("fixture has complete replacement state")));
 
     let priority_ctx = match wasm.pending_decision.as_ref() {
         Some(DecisionContext::Priority(ctx)) => ctx,
@@ -1577,10 +1577,10 @@ pub(super) fn snapshot_surfaces_undo_land_stable_id_for_reversible_land_tap() {
         .0;
 
     wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
         alice,
-        compute_legal_actions(&wasm.game, alice),
-    )));
+        compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+    ).expect("fixture has complete replacement state")));
 
     let priority_ctx = match wasm.pending_decision.as_ref() {
         Some(DecisionContext::Priority(ctx)) => ctx,
@@ -1710,10 +1710,10 @@ pub(super) fn phyrexian_tower_sacrifice_mana_action_uses_selected_creature_witho
             .create_object_from_definition(&ornithopter(), alice, Zone::Battlefield);
 
     wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
         alice,
-        compute_legal_actions(&wasm.game, alice),
-    )));
+        compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+    ).expect("fixture has complete replacement state")));
 
     let snapshot_json = wasm
         .snapshot_json()
@@ -2817,7 +2817,7 @@ pub(super) fn snapshot_redacts_hidden_opponent_priority_hand_actions() {
     let spell_id = wasm
         .add_card_to_zone(1, "Lightning Bolt".to_string(), "hand".to_string(), true)
         .expect("adding hidden spell should succeed");
-    let priority = DecisionContext::Priority(PriorityContext::new(
+    let priority = DecisionContext::Priority(PriorityContext::new(&wasm.game,
         bob,
         vec![
             LegalAction::PassPriority,
@@ -2827,7 +2827,7 @@ pub(super) fn snapshot_redacts_hidden_opponent_priority_hand_actions() {
                 casting_method: ironsmith::alternative_cast::CastingMethod::Normal,
             },
         ],
-    ));
+    ).expect("fixture has complete replacement state"));
 
     let pending_cast_stack_id = wasm
         .priority_state
@@ -3071,10 +3071,10 @@ pub(super) fn canceling_spell_chain_after_land_play_keeps_land_on_battlefield() 
         .create_object_from_definition(&lightning_bolt(), alice, Zone::Hand);
 
     wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
         alice,
-        compute_legal_actions(&wasm.game, alice),
-    )));
+        compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+    ).expect("fixture has complete replacement state")));
 
     let priority_ctx = match wasm.pending_decision.as_ref() {
         Some(DecisionContext::Priority(ctx)) => ctx,

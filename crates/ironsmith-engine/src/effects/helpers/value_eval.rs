@@ -223,6 +223,18 @@ pub(crate) fn resolve(
             });
             Ok(seen.len() as i32)
         }
+        Value::UnlockedDoorsAmong(filter) => {
+            let mut doors = 0i32;
+            context.visit_property_objects(filter, |object| {
+                let (context::PropertyObject::Live(object)
+                | context::PropertyObject::LayerBaseline(object)) = object
+                else {
+                    return;
+                };
+                doors += crate::effects::helpers::room_unlocked_door_count(game, object);
+            });
+            Ok(doors)
+        }
         Value::DistinctPowers(filter) => {
             let mut seen = HashSet::new();
             context.visit_property_objects(filter, |object| {
@@ -863,6 +875,10 @@ pub(crate) fn resolve(
             let _ctx = context.require_execution(value, RESOLUTION_ONLY);
             Ok(0)
         }
+        Value::DraftRemovedCardCount { card_name } => Ok(game
+            .draft_removed_card_count(context.controller, card_name)
+            .try_into()
+            .unwrap_or(i32::MAX)),
         Value::DraftNotedHighestNumber { card_name } => Ok(game
             .draft_noted_highest_number(context.controller, card_name)
             .try_into()

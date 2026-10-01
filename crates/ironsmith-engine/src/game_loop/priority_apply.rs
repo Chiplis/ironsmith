@@ -102,6 +102,33 @@ pub fn apply_priority_response_with_dm(
     response: &PriorityResponse,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
+    if !decision_maker.awaiting_choice() { game.clear_pending_decision_controllers(); }
+    // Land entry can suspend inside an as-enters program. Its face selection,
+    // priority actor and loop bookkeeping are part of the same operation.
+    let checkpoint = matches!(response,
+        PriorityResponse::PriorityAction(LegalAction::PlayLand { .. } | LegalAction::PlayLandBackFace { .. } | LegalAction::ActivateManaAbility { .. })
+    ).then(|| (game.clone(), trigger_queue.clone(), state.clone()));
+    let result = apply_priority_response_with_dm_inner(game, trigger_queue, state, response, decision_maker);
+    if let Some((game_before, queue_before, state_before)) = checkpoint {
+        if result.is_err() || decision_maker.awaiting_choice() {
+            game.restore_execution_checkpoint(game_before, result.is_ok() && decision_maker.awaiting_choice());
+            *trigger_queue = queue_before;
+            *state = state_before;
+        }
+        if decision_maker.awaiting_choice() {
+            return Ok(GameProgress::Continue);
+        }
+    }
+    result
+}
+
+fn apply_priority_response_with_dm_inner(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    state: &mut PriorityLoopState,
+    response: &PriorityResponse,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<GameProgress, GameLoopError> {
     if !matches!(
         response,
         PriorityResponse::PriorityAction(LegalAction::PassPriority)
@@ -290,7 +317,7 @@ pub fn apply_priority_response_with_dm(
 
     if !matches!(action, LegalAction::PassPriority) {
         let actor =
-            super::priority_core::priority_actor_for_action(game, action).ok_or_else(|| {
+            super::priority_core::priority_actor_for_action(game, action)?.ok_or_else(|| {
                 GameLoopError::InvalidState(
                     "selected action is not legal for any member of the priority team".to_string(),
                 )
@@ -314,6 +341,9 @@ pub fn apply_priority_response_with_dm(
             "Pregame actions can't be used during the normal priority loop".to_string(),
         )),
         LegalAction::PlayLand { land_id } | LegalAction::PlayLandBackFace { land_id } => {
+            let checkpoint = game.clone();
+            let trigger_checkpoint = trigger_queue.clone();
+            let instruction = (|| -> Result<(), GameLoopError> {
             // Play the land with ETB replacement handling
             let player = game
                 .turn
@@ -343,15 +373,24 @@ pub fn apply_priority_response_with_dm(
                     .grant_registry
                     .land_play_from_permissions_enters_tapped(game, *land_id, old_zone, player);
             crate::special_actions::apply_land_play_face(game, *land_id, back_face);
-            let result = game.move_object_with_etb_processing_with_entry_options(
+            let result = game.move_object_with_etb_processing_with_cause_and_entry_options_and_controller(
                 *land_id,
                 Zone::Battlefield,
+                crate::events::cause::EventCause::from_special_action(Some(*land_id), player),
                 decision_maker,
+                Some(player),
                 permission_forces_tapped,
                 true,
-            )
-            .ok_or_else(|| GameLoopError::InvalidState("Failed to move land".to_string()))?;
-            let new_id = result.new_id;
+            )?;
+            if decision_maker.awaiting_choice() {
+                return Ok(());
+            }
+            if result.pending { return Err(GameLoopError::ResolutionFailed("land entry pending without an outstanding choice".into())); }
+            let original_entry = match &result.original {
+                crate::events::processing::EventOutcome::Proceed(entry) => Some(entry.clone()),
+                crate::events::processing::EventOutcome::Prevented | crate::events::processing::EventOutcome::Replaced => None,
+                crate::events::processing::EventOutcome::NotApplicable => return Err(GameLoopError::InvalidState("Failed to move land".into())),
+            };
             if let Some(shared_usage_id) = shared_usage_to_consume {
                 let consumed = game
                     .effect_store
@@ -363,21 +402,19 @@ pub fn apply_priority_response_with_dm(
                 );
             }
 
-            game.set_current_controller(new_id, player);
 
             // Check for ETB triggers only if the land entered the battlefield.
-            if game
-                .object(new_id)
-                .map(|o| o.zone == Zone::Battlefield)
-                .unwrap_or(false)
+            if let Some(entry) = original_entry
+                && game.object(entry.new_id).is_some_and(|object| object.zone == Zone::Battlefield)
             {
+                let new_id = entry.new_id;
                 // Drain pending ZoneChangeEvent emitted by ETB move processing.
                 drain_pending_trigger_events(game, trigger_queue);
 
                 let etb_event_provenance = game
                     .provenance_graph_mut()
                     .alloc_root_event(crate::events::EventKind::EnterBattlefield);
-                let etb_event = if result.enters_tapped {
+                let etb_event = if entry.enters_tapped {
                     TriggerEvent::new_with_provenance(
                         EnterBattlefieldEvent::tapped(new_id, old_zone),
                         etb_event_provenance,
@@ -408,6 +445,7 @@ pub fn apply_priority_response_with_dm(
                 }
 
                 handle_saga_enters_battlefield(game, new_id, trigger_queue, decision_maker).map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))?;
+                if decision_maker.awaiting_choice() { return Ok(()); }
             }
 
             // Mark that the player has played a land this turn
@@ -415,6 +453,18 @@ pub fn apply_priority_response_with_dm(
                 player_data.record_land_play();
             }
 
+            crate::special_actions::finish_land_play_receipt(game, *land_id, player, result, decision_maker)
+                .map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))?;
+            if decision_maker.awaiting_choice() { return Ok(()); }
+            drain_pending_trigger_events(game, trigger_queue);
+            Ok(())
+            })();
+            if instruction.is_err() || decision_maker.awaiting_choice() {
+                *game = checkpoint;
+                *trigger_queue = trigger_checkpoint;
+            }
+            instruction?;
+            if decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
             // Player retains priority after playing a land
             advance_priority_with_dm(game, trigger_queue, decision_maker)
         }
@@ -945,53 +995,24 @@ pub fn apply_priority_response_with_dm(
                     let cost_tagged_objects = cost_ctx.tagged_objects.clone();
                     drop(cost_ctx);
 
+                    if decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
                     drain_pending_trigger_events(game, trigger_queue);
 
-                    // Add fixed mana to player's pool
-                    let mana_to_add = crate::events::mana::apply_mana_replacements(
-                        game,
-                        *source,
-                        player,
-                        player,
-                        mana_to_add.clone(),
-                        mana_production_provenance,
-                        source_snapshot.clone(),
-                        decision_maker,
-                    );
-                    if !mana_to_add.is_empty() {
-                        if let Some(player_obj) = game.player_mut(player) {
-                            for symbol in &mana_to_add {
-                                if mana_usage_restrictions.is_empty() {
-                                    player_obj.add_unrestricted_mana(
-                                        *symbol,
-                                        *source,
-                                        source_snapshot.clone(),
-                                    );
-                                } else {
-                                    player_obj.add_restricted_mana_with_snapshot(
-                                        crate::ability::RestrictedManaUnit {
-                                            symbol: *symbol,
-                                            source: *source,
-                                            source_chosen_creature_type:
-                                                mana_source_chosen_creature_type,
-                                            restrictions: mana_usage_restrictions.clone(),
-                                        },
-                                        source_snapshot.clone(),
-                                    );
-                                }
-                            }
-                        }
-                        let event = crate::events::ManaAddedEvent::new(
-                            *source,
-                            player,
-                            player,
-                            mana_to_add,
-                        )
-                        .with_production_provenance(mana_production_provenance)
-                        .with_snapshot(source_snapshot.clone())
-                        .into_trigger_event();
-                        queue_triggers_from_event(game, trigger_queue, event, false);
-                    }
+                    let mut mana_ctx = ExecutionContext::new(*source, player, &mut *decision_maker)
+                        .with_provenance(mana_ability_provenance)
+                        .with_mana_usage_restrictions(mana_usage_restrictions.clone())
+                        .with_mana_source_chosen_creature_type(mana_source_chosen_creature_type)
+                        .with_mana_production_provenance(mana_production_provenance)
+                        .with_tagged_objects(cost_tagged_objects.clone());
+                    if let Some(snapshot) = source_snapshot.clone() { mana_ctx = mana_ctx.with_source_snapshot(snapshot); }
+                    if let Some(x) = x_value_from_costs { mana_ctx = mana_ctx.with_x(x); }
+                    let outcome = crate::effects::EffectExecutor::execute(
+                        &crate::effects::AddManaEffect::new(mana_to_add.clone(), crate::target::PlayerFilter::Specific(player)),
+                        game, &mut mana_ctx,
+                    )?;
+                    if mana_ctx.decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
+                    drop(mana_ctx);
+                    queue_triggers_for_events(game, trigger_queue, outcome.events);
 
                     // Execute additional effects (for complex mana abilities)
                     if !effects_to_run.is_empty() {
@@ -1010,11 +1031,8 @@ pub fn apply_priority_response_with_dm(
                         let mut emitted_events = Vec::new();
 
                         for effect in &effects_to_run {
-                            let outcome = execute_effect(game, effect, &mut ctx).map_err(|e| {
-                                GameLoopError::InvalidState(format!(
-                                    "mana ability effect failed: {e:?}"
-                                ))
-                            })?;
+                            let outcome = execute_effect(game, effect, &mut ctx)?;
+                            if ctx.decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
                             emitted_events.extend(outcome.events);
                         }
                         queue_triggers_for_events(game, trigger_queue, emitted_events);
@@ -1162,150 +1180,25 @@ pub fn apply_priority_response_with_dm(
 ///
 /// When multiple replacement effects could apply to the same event,
 /// the affected player must choose which one to apply first.
+/// Reject a legacy choice that has no continuation for its originating
+/// operation. Live replacement choices are replayed by their operation owner;
+/// an event alone cannot authorize a damage/zone/draw commit or its additions.
 pub(super) fn apply_replacement_choice_response(
     game: &mut GameState,
-    trigger_queue: &mut TriggerQueue,
+    _trigger_queue: &mut TriggerQueue,
     chosen_index: usize,
-    decision_maker: &mut impl DecisionMaker,
+    _decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
-    use crate::events::processing::{
-        TraitEventResult, process_event_with_chosen_replacement_trait_and_applied_effects,
-    };
-
-    // Take the pending choice
-    let pending = game
-        .effect_store
-        .pending_replacement_choice
-        .take()
-        .ok_or_else(|| GameLoopError::InvalidState("No pending replacement choice".to_string()))?;
-    let pending_event_provenance = pending.event.provenance();
-
-    // Get the chosen effect ID
-    let chosen_id = pending
-        .applicable_effects
-        .get(chosen_index)
-        .copied()
-        .ok_or_else(|| {
-            GameLoopError::InvalidState(format!(
-                "replacement effect choice index {chosen_index} is invalid"
-            ))
-        })?;
-
-    let crate::game_state::PendingReplacementChoice {
-        event,
-        applicable_effects: _,
-        applied_effects,
-        applied_effect_keys,
-        player: _,
-    } = pending;
-
-    // Process the event with the chosen replacement effect, preserving any
-    // replacement effects that already affected this event before the prompt.
-    let result = process_event_with_chosen_replacement_trait_and_applied_effects(
-        game,
-        event,
-        chosen_id,
-        &applied_effects,
-        &applied_effect_keys,
-    );
-
-    // Handle the result
-    match result {
-        TraitEventResult::Prevented => {
-            // Event was prevented - nothing more to do
-        }
-        TraitEventResult::Proceed(_) | TraitEventResult::Modified(_) => {
-            // Event can proceed - the actual event application happens
-            // at the point where the event was originally generated
-            // (e.g., damage application, zone change, etc.)
-            // The result is now stored and will be picked up by the caller
-        }
-        TraitEventResult::Replaced {
-            effects,
-            effect_id,
-            source,
-            controller,
-            ..
-        } => {
-            // Event was replaced with different effects - execute them
-            // Consume one-shot effects
-            game.effect_store
-                .replacement_effects
-                .mark_effect_used(effect_id);
-
-            let mut dm = crate::decision::SelectFirstDecisionMaker;
-            let mut ctx = ExecutionContext::new(source, controller, &mut dm)
-                .with_provenance(pending_event_provenance);
-
-            for effect in effects {
-                // Execute each replacement effect
-                let _ = execute_effect(game, &effect, &mut ctx);
-            }
-        }
-        TraitEventResult::NeedsChoice {
-            player,
-            applicable_effects,
-            event,
-            applied_effects,
-            applied_effect_keys,
-        } => {
-            // Build options first (before moving applicable_effects)
-            let options: Vec<_> = applicable_effects
-                .iter()
-                .enumerate()
-                .filter_map(|(i, id)| {
-                    game.effect_store
-                        .replacement_effects
-                        .get_effect(*id)
-                        .map(|e| crate::decision::ReplacementOption {
-                            index: i,
-                            source: e.source,
-                            description: crate::decisions::specs::replacement_option_description(
-                                game, e.source,
-                            ),
-                        })
-                })
-                .collect();
-
-            // Still more choices needed - store and prompt again
-            game.effect_store.pending_replacement_choice =
-                Some(crate::game_state::PendingReplacementChoice {
-                    event: *event,
-                    applicable_effects,
-                    applied_effects,
-                    applied_effect_keys,
-                    player,
-                });
-
-            // Return to prompt for the next choice - convert to SelectOptionsContext
-            let selectable_options: Vec<crate::decisions::context::SelectableOption> = options
-                .iter()
-                .map(|opt| {
-                    crate::decisions::context::SelectableOption::new(opt.index, &opt.description)
-                        .with_object(opt.source)
-                })
-                .collect();
-            let ctx = crate::decisions::context::SelectOptionsContext::new(
-                player,
-                None,
-                "Choose replacement effect to apply",
-                selectable_options,
-                1,
-                1,
-            );
-            return Ok(GameProgress::NeedsDecisionCtx(
-                crate::decisions::context::DecisionContext::SelectOptions(ctx),
-            ));
-        }
-        TraitEventResult::NeedsInteraction { .. } => {
-            // Interactive replacements are handled in resolve_stack_entry_full,
-            // not in the replacement choice flow
-            // This shouldn't happen here, but just proceed if it does
-        }
+    let pending = game.effect_store.pending_replacement_choice.as_ref()
+        .ok_or_else(|| GameLoopError::InvalidState("No pending replacement choice".into()))?;
+    if pending.applicable_effects.get(chosen_index).is_none() {
+        return Err(GameLoopError::InvalidState(format!(
+            "replacement effect choice index {chosen_index} is invalid",
+        )));
     }
-
-    // Continue with normal game flow
-    advance_priority_with_dm(game, trigger_queue, decision_maker)
+    Err(GameLoopError::InvalidState(
+        "legacy replacement choice has no originating operation continuation; resume replacement choices through their operation owner".into(),
+    ))
 }
 
 /// Apply a Targets response for a pending spell cast.
@@ -1730,4 +1623,51 @@ pub(super) fn apply_creature_type_announcement_response(
         .unwrap_or_default();
     pending.stage = CastStage::ChoosingTargets;
     continue_to_targets_or_mana_payment(game, trigger_queue, state, pending, decision_maker)
+}
+
+#[cfg(test)]
+mod replacement_ownerless_choice_contract_tests {
+    use super::*;
+    fn fixture(payload: bool) -> (GameState, TriggerQueue, PlayerId, crate::replacement::ReplacementEffectId) {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let source = game.create_object_from_card(
+            &crate::card::CardBuilder::new(crate::ids::CardId::new(), "Legacy choice diagnostic source")
+                .card_types(vec![crate::types::CardType::Enchantment]).build(), alice, crate::zone::Zone::Battlefield,
+        );
+        let action = if payload { crate::replacement::ReplacementAction::Instead(vec![
+            crate::effect::Effect::gain_life(2), crate::effect::Effect::lose_life(crate::effect::Value::X),
+        ]) } else { crate::replacement::ReplacementAction::Double };
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(
+            crate::replacement::ReplacementEffect::with_matcher(source, alice,
+                crate::events::cards::matchers::WouldDrawCardMatcher::you(), action),
+        );
+        game.effect_store.pending_replacement_choice = Some(crate::game_state::PendingReplacementChoice {
+            event: crate::events::Event::draw(alice, 1, true), applicable_effects: vec![shield],
+            applied_effects: Default::default(), applied_effect_keys: Default::default(), player: alice,
+        });
+        game.take_pending_trigger_events();
+        (game, TriggerQueue::new(), alice, shield)
+    }
+    fn check_response(index: usize, payload: bool) {
+        let (mut game, mut queue, alice, shield) = fixture(payload);
+        let ids = game.next_object_id_counter();
+        let result = apply_replacement_choice_response(&mut game, &mut queue, index, &mut crate::decision::SelectFirstDecisionMaker);
+        assert!(matches!(result, Err(GameLoopError::InvalidState(_))), "an ownerless choice must not report successful event application");
+        assert!(game.effect_store.pending_replacement_choice.is_some(), "preserve invalid continuation for diagnosis and recovery");
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_some());
+        assert_eq!(game.player(alice).unwrap().life, 20); assert_eq!(game.next_object_id_counter(), ids);
+        assert!(game.take_pending_trigger_events().is_empty()); assert!(queue.entries.is_empty());
+    }
+    #[test] fn resolved_ownerless_event_is_rejected_without_consumption() { check_response(0, false); }
+    #[test] fn ownerless_payload_cannot_execute_or_swallow_errors() { check_response(0, true); }
+    #[test] fn invalid_option_retains_pending_event() { check_response(1, false); }
+    #[test] fn priority_cannot_offer_an_unresumable_choice() {
+        let (mut game, mut queue, alice, shield) = fixture(false);
+        let result = advance_priority_with_dm(&mut game, &mut queue, &mut crate::decision::SelectFirstDecisionMaker);
+        assert!(matches!(result, Err(GameLoopError::InvalidState(_))), "a pending event without an operation owner must fail before offering a choice");
+        assert!(game.effect_store.pending_replacement_choice.is_some());
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_some()); assert_eq!(game.player(alice).unwrap().life, 20);
+        assert!(game.take_pending_trigger_events().is_empty()); assert!(queue.entries.is_empty());
+    }
 }

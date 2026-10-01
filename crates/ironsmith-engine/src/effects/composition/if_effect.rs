@@ -312,7 +312,7 @@ impl EffectExecutor for IfEffect {
             .get_outcome(self.condition)
             .cloned()
             .unwrap_or_else(EffectOutcome::impossible);
-        let outcome = &outcome;
+        let outcome = outcome.instruction_result();
 
         if matches!(
             self.predicate,
@@ -700,7 +700,7 @@ mod tests {
                 name: format!("Card {id}"),
                 controller: PlayerId::from_index(0),
                 owner: PlayerId::from_index(0),
-                zone: crate::zone::Zone::Graveyard,
+                zone: crate::zone::Zone::Library,
                 power: None,
                 toughness: None,
                 mana_value: id as i32,
@@ -894,22 +894,19 @@ mod tests {
     }
 
     #[test]
-    fn test_if_missing_condition() {
+    fn test_if_skipped_condition_does_not_happen() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
         let source = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(source, alice);
-
-        // Don't store any result for EffectId(0)
-        let effect = IfEffect::if_then(
-            EffectId(0),
-            EffectPredicate::Happened,
-            vec![Effect::gain_life(5)],
-        );
-        let result = effect.execute(&mut game, &mut ctx);
-
-        // Should error because the condition effect wasn't found
-        assert!(result.is_err());
+        let effect = IfEffect::if_then(EffectId(0), EffectPredicate::Happened, vec![Effect::gain_life(5)]);
+        let outcome = effect.execute(&mut game, &mut ctx).expect("a skipped antecedent did not happen");
+        assert_eq!(game.player(alice).unwrap().life, 20);
+        assert!(outcome.events.is_empty());
+        assert!(ctx.get_outcome(EffectId(0)).is_none());
+        let negative = IfEffect::if_then(EffectId(0), EffectPredicate::DidNotHappen, vec![Effect::gain_life(2)]);
+        negative.execute(&mut game, &mut ctx).expect("did-not-happen branch handles a skipped antecedent");
+        assert_eq!(game.player(alice).unwrap().life, 22);
     }
 
     #[test]
@@ -946,5 +943,49 @@ mod tests {
 
         assert!(effect.get_target_spec().is_some());
         assert_eq!(effect.target_description(), "spell to counter");
+    }
+}
+
+#[cfg(test)]
+mod replacement_original_if_adapter_contract_tests {
+    use super::*;
+    use crate::effect::{Effect, EffectId};
+    #[test]
+    fn auxiliary_player_counts_do_not_create_original_per_player_followups() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = crate::ids::PlayerId::from_index(0); let bob = crate::ids::PlayerId::from_index(1);
+        let source = game.new_object_id(); let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.store_outcome(EffectId(921), EffectOutcome::aggregate_replacement_outcomes(
+            EffectOutcome::count(0), [EffectOutcome::count(1).with_player_counts(vec![(bob,1)])]));
+        IfEffect::if_then(EffectId(921), EffectPredicate::Happened, vec![Effect::lose_life_player(
+            crate::effect::Value::Fixed(1), crate::target::PlayerFilter::IteratedPlayer)])
+            .with_per_player_result(true).execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(game.player(alice).unwrap().life, 20);
+        assert_eq!(game.player(bob).unwrap().life, 20);
+    }
+    #[test]
+    fn auxiliary_chosen_number_does_not_repeat_original_value_followup() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = crate::ids::PlayerId::from_index(0);
+        let source = game.new_object_id(); let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.store_outcome(EffectId(922), EffectOutcome::aggregate_replacement_outcomes(
+            EffectOutcome::count(0), [EffectOutcome::count(1).with_execution_fact(ExecutionFact::ChosenNumber(1))]));
+        IfEffect::if_then(EffectId(922), EffectPredicate::Value(crate::effect::Comparison::Equal(1)),
+            vec![Effect::gain_life(5)]).execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(game.player(alice).unwrap().life, 20);
+    }
+    #[test]
+    fn auxiliary_search_event_does_not_satisfy_original_player_search_followup() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = crate::ids::PlayerId::from_index(0);
+        let source = game.new_object_id(); let mut ctx = ExecutionContext::new_default(source, alice);
+        let auxiliary = EffectOutcome::count(0).with_event(crate::events::RawEvent::new_with_provenance(
+            crate::events::SearchLibraryEvent::new(alice, Some(alice)), crate::provenance::ProvNodeId::default()));
+        ctx.store_outcome(EffectId(923), EffectOutcome::aggregate_replacement_outcomes(
+            EffectOutcome::count(0).with_player_counts(vec![(alice,0)]), [auxiliary]));
+        IfEffect::if_then(EffectId(923), EffectPredicate::SearchedLibrary,
+            vec![Effect::gain_life(5)]).with_per_player_result(true).execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(ctx.get_outcome(EffectId(923)).unwrap().events.len(), 1, "actual auxiliary search remains observable");
+        assert_eq!(game.player(alice).unwrap().life, 20);
     }
 }

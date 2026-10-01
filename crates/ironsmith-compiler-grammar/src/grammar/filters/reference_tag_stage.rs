@@ -1142,6 +1142,7 @@ pub fn parse_object_filter_with_grammar_entrypoint_lexed(
             &mut relation_tokens,
         )?;
     }
+    crate::util::split_cross_dimension_adjective_disjunction(&mut filter, &words);
 
     Ok(filter)
 }

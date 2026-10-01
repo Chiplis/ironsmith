@@ -85,7 +85,7 @@ fn revealed_entry_count_uses_only_chosen_other_artifacts() {
                     choices: vec![],
                 };
                 let entered = game
-                    .move_object_with_etb_processing_with_dm(source, Zone::Battlefield, &mut dm)
+                    .move_object_with_etb_processing_with_dm(source, Zone::Battlefield, &mut dm).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
                     .unwrap();
                 assert_eq!(
                     game.counter_count(entered.new_id, CounterType::PlusOnePlusOne),
@@ -118,4 +118,13 @@ fn revealed_entry_count_preserves_reveal_reference() {
         crate::compiled_text::compiled_text_lines(&definition).join(" "),
         TEXT
     );
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: crate::game_state::EntryCommitResult)
+    -> Option<crate::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

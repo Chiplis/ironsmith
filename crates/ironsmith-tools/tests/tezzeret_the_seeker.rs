@@ -108,7 +108,7 @@ fn activate(game: &mut GameState, tezzeret: ObjectId, ordinal: usize, dm: &mut C
         .nth(ordinal)
         .unwrap()
         .0;
-    let action = compute_legal_actions(game, alice)
+    let action = compute_legal_actions(game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::ActivateAbility { source, ability_index, .. } if *source == tezzeret && *ability_index == index))
         .expect("loyalty ability offered");

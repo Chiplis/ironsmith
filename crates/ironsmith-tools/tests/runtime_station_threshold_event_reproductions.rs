@@ -100,7 +100,7 @@ fn cast(
     eprintln!("AUDIT_STAGE cast {}", def.name());
     g.turn.priority_player = Some(actor);
     let id = g.create_object_from_definition(def, actor, Zone::Hand);
-    let action = compute_legal_actions(g, actor)
+    let action = compute_legal_actions(g, actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or_else(|| format!("{} normal cast unavailable", def.name()))?;
@@ -285,7 +285,7 @@ fn activation(
     last: bool,
 ) -> Result<Value, String> {
     g.turn.priority_player = Some(PlayerId(0));
-    let actions: Vec<_> = compute_legal_actions(g, PlayerId(0))
+    let actions: Vec<_> = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .filter(|a| matches!(a,LegalAction::ActivateAbility{source:s,..}if *s==source))
         .collect();
@@ -322,7 +322,7 @@ fn play_land(
     dm: &mut Choices,
 ) -> Result<ObjectId, String> {
     let id = g.create_object_from_definition(def, PlayerId(0), Zone::Hand);
-    let action = compute_legal_actions(g, PlayerId(0))
+    let action = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::PlayLand{land_id,..}if *land_id==id))
         .ok_or("land play missing")?;
@@ -480,7 +480,7 @@ fn run(
             .iter()
             .find(|id| g.object(**id).is_some_and(|o| o.name == "Shuko"))
             .ok_or("actual destroyed Shuko absent")?;
-        let a=compute_legal_actions(&g,PlayerId(0)).into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,from_zone:Zone::Graveyard,..}if *spell_id==gy));
+        let a=compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,from_zone:Zone::Graveyard,..}if *spell_id==gy));
         dm.trace.push(json!({"stage":"graveyard_spell_legality","action":format!("{a:?}"),"card":format!("{gy:?}"),"land":format!("{land:?}")}));
         dm.resources = vec![land];
         let mut error = None;

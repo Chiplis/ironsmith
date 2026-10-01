@@ -33,7 +33,10 @@ fn resolve_modal_count_value_for_source(
 fn object_filter_is_tagged_reference(filter: &crate::filter::ObjectFilter) -> bool {
     !filter.tagged_constraints.is_empty()
         && filter.tagged_constraints.iter().all(|constraint| {
-            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            matches!(constraint.relation,
+                crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    | crate::filter::TaggedOpbjectRelation::SameObjectId
+            )
         })
 }
 
@@ -117,6 +120,7 @@ pub(crate) fn queue_triggers_from_reported_events(
                     | crate::events::EventKind::Damage
                     | crate::events::EventKind::LifeLoss
                     | crate::events::EventKind::ZoneChange
+                    | crate::events::EventKind::ObjectLeavesGame
             )
         })
     };
@@ -210,7 +214,9 @@ pub(super) fn queue_triggers_for_simultaneous_events(
                 .simultaneous_trigger_key(&trigger.triggering_event)
             {
                 let key = (trigger.source_stable_id, trigger.trigger_identity, group);
-                if group == crate::triggers::matcher_trait::SimultaneousTriggerKey::ZoneChangeBatch
+                if matches!(group,
+                    crate::triggers::matcher_trait::SimultaneousTriggerKey::ZoneChangeBatch
+                        | crate::triggers::matcher_trait::SimultaneousTriggerKey::ObjectLeavesGameBatch)
                 {
                     // Identical ability instances remain separate; match each
                     // occurrence to its corresponding entry from earlier events.
@@ -680,7 +686,15 @@ fn simultaneous_rule_ltb_batch_events(pending_events: &[TriggerEvent]) -> Vec<Tr
 }
 
 pub fn drain_pending_trigger_events(game: &mut GameState, trigger_queue: &mut TriggerQueue) {
-    drain_pending_trigger_events_inner(game, trigger_queue, None);
+    // No decision channel: duration-end requests stay queued. This callback
+    // cannot fail, so the type system proves the matching-only drain infallible.
+    let result = drain_pending_trigger_events_inner::<std::convert::Infallible>(
+        game, trigger_queue, |_| Ok(false),
+    );
+    match result {
+        Ok(()) => {},
+        Err(never) => match never {},
+    }
 }
 
 /// `drain_pending_trigger_events` for a caller with a player decision
@@ -692,15 +706,29 @@ pub fn drain_pending_trigger_events_with_dm(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
     decision_maker: &mut dyn DecisionMaker,
-) {
-    drain_pending_trigger_events_inner(game, trigger_queue, Some(decision_maker));
+) -> Result<(), crate::effects::ExecutionError> {
+    let checkpoint = game.clone();
+    let queue_checkpoint = trigger_queue.clone();
+    let result = drain_pending_trigger_events_inner(game, trigger_queue, |game| {
+        if decision_maker.answers_player_choices() && game.has_pending_duration_end_returns() {
+            game.process_pending_duration_end_returns(decision_maker)?;
+            Ok(!decision_maker.awaiting_choice())
+        } else {
+            Ok(false)
+        }
+    });
+    if result.is_err() || decision_maker.awaiting_choice() {
+        *game = checkpoint;
+        *trigger_queue = queue_checkpoint;
+    }
+    result
 }
 
-fn drain_pending_trigger_events_inner(
+fn drain_pending_trigger_events_inner<E>(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
-    mut decision_maker: Option<&mut dyn DecisionMaker>,
-) {
+    mut execute_duration_returns: impl FnMut(&mut GameState) -> Result<bool, E>,
+) -> Result<(), E> {
     for entry in game.take_pending_trigger_entries() {
         trigger_queue.add(entry);
     }
@@ -712,14 +740,7 @@ fn drain_pending_trigger_events_inner(
             // CR 610.3c: exile-until durations that ended are returned with
             // the players answering the entry choices; without a player
             // decision channel they wait for the next caller that has one.
-            if let Some(dm) = decision_maker.as_deref_mut()
-                && dm.answers_player_choices()
-                && game.has_pending_duration_end_returns()
-            {
-                game.process_pending_duration_end_returns(dm);
-                if dm.awaiting_choice() {
-                    break;
-                }
+            if execute_duration_returns(game)? {
                 continue;
             }
             break;
@@ -738,6 +759,7 @@ fn drain_pending_trigger_events_inner(
                     crate::events::EventKind::Damage
                         | crate::events::EventKind::LifeLoss
                         | crate::events::EventKind::ZoneChange
+                    | crate::events::EventKind::ObjectLeavesGame
                         | crate::events::EventKind::MarkersChanged
                 )
             })
@@ -836,6 +858,7 @@ fn drain_pending_trigger_events_inner(
             game.return_exiled_for_source_leave(source_id);
         }
     }
+    Ok(())
 }
 
 fn suppress_duplicate_one_or_more_zone_change_triggers(
@@ -4279,4 +4302,31 @@ pub(super) fn validate_stack_entry_targets_with_view(
 
     let all_invalid = invalid_count == entry.targets.len();
     (valid_targets, Vec::new(), all_invalid)
+}
+
+#[cfg(test)]
+mod captured_incarnation_target_contract_tests {
+    use super::*;
+    fn reference(relation: crate::filter::TaggedOpbjectRelation) -> ChooseSpec {
+        let mut filter = crate::filter::ObjectFilter::default();
+        filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+            tag: "cost_object".into(), relation,
+        });
+        ChooseSpec::Object(filter)
+    }
+    #[test]
+    fn captured_incarnation_is_a_resolution_reference() {
+        let spec = reference(crate::filter::TaggedOpbjectRelation::SameObjectId);
+        assert!(!requires_target_selection(&spec));
+        assert!(!requires_target_selection(&ChooseSpec::WithCount(Box::new(spec), crate::ChoiceCount::exactly(1))));
+    }
+    #[test]
+    fn explicit_target_of_captured_incarnation_still_requires_selection() {
+        let spec = reference(crate::filter::TaggedOpbjectRelation::SameObjectId);
+        assert!(requires_target_selection(&ChooseSpec::Target(Box::new(spec))));
+    }
+    #[test]
+    fn relational_reference_still_requires_a_candidate() {
+        assert!(requires_target_selection(&reference(crate::filter::TaggedOpbjectRelation::SameNameAsTagged)));
+    }
 }

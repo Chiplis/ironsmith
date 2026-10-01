@@ -1319,6 +1319,11 @@ fn parse_source_has_counter_predicate(tokens: &[OwnedLexToken]) -> Option<Predic
             SourcePredicateAst::SourceHasNoCounter(counter_type),
         ));
     }
+    // "unless it has an even number of counters on it" (Sab-Sunen): the
+    // parity of the total number of counters, not a counter kind.
+    if let Some(parity) = total_counters_parity_phrase(counter_clause) {
+        return Some(source_total_counters_parity_predicate(parity));
+    }
     if predicate_quantity_prefix_tokens(counter_clause.tokens()).is_some() {
         return None;
     }
@@ -1372,6 +1377,26 @@ fn parse_source_doesnt_have_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
     ))
 }
 
+/// "an even number of counters" / "an odd number of counters": the parity of
+/// an object's total counters (Sab-Sunen), not a counter kind named "of".
+fn total_counters_parity_phrase(
+    counter_clause: LexedClause<'_>,
+) -> Option<crate::filter::ParityRequirement> {
+    match counter_clause.word_refs().as_slice() {
+        ["an", "even", "number", "of", "counters"] => Some(crate::filter::ParityRequirement::Even),
+        ["an", "odd", "number", "of", "counters"] => Some(crate::filter::ParityRequirement::Odd),
+        _ => None,
+    }
+}
+
+fn source_total_counters_parity_predicate(
+    parity: crate::filter::ParityRequirement,
+) -> PredicateAst {
+    PredicateAst::Source(SourcePredicateAst::SourceMatches(
+        ObjectFilter::source().with_total_counters_parity(parity),
+    ))
+}
+
 fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     parse_source_has_counted_counter_predicate_with_binding(tokens, false)
 }
@@ -1398,6 +1423,17 @@ fn parse_source_has_counted_counter_predicate_with_binding(
     let target_clause = matched.capture_clause("target", relation.tail_clause)?;
     if !is_counter_on_source_pronoun_tail_clause(target_clause) {
         return None;
+    }
+    // "if it has an odd number of counters on it" (Sab-Sunen): the parity of
+    // the object's total counters, not a counter named "of".
+    if let Some(counter_clause) =
+        matched.capture_clause_by_role(WinnowCaptureRole::Object, relation.tail_clause)
+    {
+        // Same reading as the source-has-counter rule, so the registry sees
+        // equivalent results for the shared surface.
+        if let Some(parity) = total_counters_parity_phrase(counter_clause) {
+            return Some(source_total_counters_parity_predicate(parity));
+        }
     }
     let counter_clause =
         matched.capture_clause_by_role(WinnowCaptureRole::Object, relation.tail_clause)?;
@@ -1497,6 +1533,28 @@ fn parse_triggering_object_source_stat_predicate(tokens: &[OwnedLexToken]) -> Op
         }
         PredicateAst::ItMatches(filter)
     };
+
+    // "its power is greater than this creature's power or its toughness is
+    // greater than this creature's toughness" (Sharp-Eyed Rookie): both
+    // disjuncts survive as an Or.
+    if crate::word_primitives::parse_any_sequence_complete(
+        &words,
+        &[
+            &[
+                "its", "power", "is", "greater", "than", "this", "creatures", "power", "or",
+                "its", "toughness", "is", "greater", "than", "this", "creatures", "toughness",
+            ],
+            &[
+                "its", "power", "is", "greater", "than", "this", "creatures", "or", "its",
+                "toughness", "is", "greater", "than", "this", "creatures",
+            ],
+        ],
+    ) {
+        return Some(PredicateAst::Or(
+            Box::new(triggering_stat_filter(true)),
+            Box::new(triggering_stat_filter(false)),
+        ));
+    }
 
     let single_stat = crate::word_primitives::parse_any_sequence_complete(
         &words,
@@ -1606,6 +1664,14 @@ fn parse_source_verbless_counted_counter_predicate(tokens: &[OwnedLexToken]) -> 
         ];
         let matched = WinnowSequence::new(&atoms).parse_full(rest_clause)?;
         let counter_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, rest_clause)?;
+        if let Some(parity) = total_counters_parity_phrase(counter_clause) {
+            let target_clause =
+                matched.capture_clause_by_role(WinnowCaptureRole::Modifier, rest_clause)?;
+            if !is_counter_on_source_pronoun_tail_clause(target_clause) {
+                continue;
+            }
+            return Some(source_total_counters_parity_predicate(parity));
+        }
         let (count, used) = if let Some((comparison, used)) =
             predicate_quantity_prefix_tokens(counter_clause.tokens())
         {
@@ -1696,6 +1762,35 @@ fn parse_triggering_object_had_counter_predicate(tokens: &[OwnedLexToken]) -> Op
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
             right: Value::Fixed(1),
         });
+    }
+    // "If it had one or more counters on it": an untyped quantity counts
+    // counters of every kind.
+    {
+        let counter_words = TokenWordView::new(counter_clause.tokens());
+        let words = counter_words.word_refs();
+        if let Some((noun, quantity)) = words.split_last()
+            && matches!(*noun, "counter" | "counters")
+        {
+            let count = match quantity {
+                [number, "or", "more"] => crate::grammar::primitives::probe_shape(
+                    crate::grammar::leaf::parse_number_complete(number),
+                ),
+                ["a"] | ["any"] => Some(1),
+                _ => None,
+            };
+            if let Some(count) = count {
+                return Some(PredicateAst::ValueComparison {
+                    left: Value::CountersOn(
+                        Box::new(crate::target::ChooseSpec::Tagged(
+                            (crate::tag::CompilerReferenceTag::Triggering.bind()).into(),
+                        )),
+                        None,
+                    ),
+                    operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                    right: Value::Fixed(count.max(1) as i32),
+                });
+            }
+        }
     }
     // "If it had seven or more verse counters on it": keep the threshold.
     let parsed = parse_terminal_counter_phrase_shape(counter_clause.tokens())?;

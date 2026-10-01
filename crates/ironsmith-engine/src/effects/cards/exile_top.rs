@@ -1,5 +1,6 @@
 //! Exile top cards of library effect implementation.
 
+use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::helpers::{
     resolve_player_filter, resolve_value, view_hidden_candidate_objects,
@@ -89,6 +90,10 @@ impl EffectExecutor for ExileTopOfLibraryEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = (|| {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
         for tag in &self.moved_tags {
@@ -98,26 +103,33 @@ impl EffectExecutor for ExileTopOfLibraryEffect {
         let top_cards = game
             .player(player_id)
             .map(|p| {
-                let lib_len = p.library.len();
-                let exile_count = count.min(lib_len);
-                p.library[lib_len.saturating_sub(exile_count)..].to_vec()
+                let mut cards = p.library.iter().rev()
+                    .filter(|id| !ctx.replacement.entry_reserved_objects.contains(id))
+                    .take(count).copied().collect::<Vec<_>>();
+                // Preserve the existing bottom-to-top processing order within
+                // the selected top group while skipping simultaneous entrants.
+                cards.reverse();
+                cards
             })
             .unwrap_or_default();
 
         let mut moved_ids = Vec::new();
+        let mut receipts = Vec::new();
         for card_id in top_cards {
             // CR 614.1: exiling from the library is an ordinary zone change,
             // so replacement effects apply to it (as for mill and surveil).
             let additional_effects = ctx.additional_replacement_effects_snapshot();
-            let exiled_id = match crate::effects::zones::apply_zone_change_with_additional_effects(
-                game,
-                card_id,
-                Zone::Library,
-                Zone::Exile,
-                ctx.cause.clone(),
-                &mut *ctx.decision_maker,
-                &additional_effects,
-            ) {
+            let receipt = crate::effects::zones::apply_zone_change_with_context_and_additional_effects(
+    game,
+    card_id,
+    Zone::Library,
+    Zone::Exile,
+    ctx.cause.clone(),
+    ctx,
+    &additional_effects
+)?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            let exiled_id = match &receipt.original {
                 crate::events::processing::EventOutcome::Proceed(change) if change.final_zone == Zone::Exile => {
                     change.new_object_id
                 }
@@ -141,6 +153,7 @@ impl EffectExecutor for ExileTopOfLibraryEffect {
                 }
                 moved_ids.push(exiled_id);
             }
+            receipts.push((card_id, receipt));
         }
 
         if !self.face_down {
@@ -154,8 +167,19 @@ impl EffectExecutor for ExileTopOfLibraryEffect {
             );
         }
 
-        Ok(EffectOutcome::with_objects(moved_ids.clone())
-            .with_affected_objects_from_game(game, moved_ids))
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        let original_outcome = EffectOutcome::with_objects(moved_ids.clone())
+            .with_affected_objects_from_game(game, moved_ids);
+        // Face-down state, links, tags and public reveal belong to the original
+        // instruction. The additions observe those finished results.
+        crate::effects::zones::finish_zone_change_receipts(game, ctx, original_outcome, receipts)
+        })();
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
+        }
+        if ctx.decision_maker.awaiting_choice() { return result.map(|_| EffectOutcome::count(0)); }
+        result
     }
 }
 
@@ -360,4 +384,164 @@ mod tests {
         drop(ctx);
         assert!(dm.views.is_empty(), "face-down cards must not be revealed");
     }
+}
+
+
+#[cfg(test)]
+mod additional_owner_contract_tests {
+    use super::*;
+    use crate::effect::{Effect, OutcomeValue};
+    use crate::ids::CardId;
+    use crate::effects::{CounterEffect, SurveilEffect};
+    use crate::effects::cards::ImprintFromHandEffect;
+    use crate::replacement::{ReplacementAction, ReplacementEffect};
+    use crate::target::{ChooseSpec, ObjectFilter};
+    struct ObserveOriginal { owner: u8, alice: PlayerId, source: ObjectId, pause: bool, pending: bool, questions: usize }
+    impl crate::decision::DecisionMaker for ObserveOriginal {
+        fn decide_objects(&mut self, _: &GameState, ctx: &crate::decisions::context::SelectObjectsContext) -> Vec<ObjectId> {
+            ctx.candidates.iter().filter(|c| c.legal).map(|c| c.id).take(ctx.max.unwrap_or(1).min(1)).collect()
+        }
+        fn decide_partition(&mut self, _: &GameState, ctx: &crate::decisions::context::PartitionContext) -> Vec<ObjectId> {
+            ctx.cards.iter().map(|(id,_)| *id).collect()
+        }
+        fn decide_boolean(&mut self, game: &GameState, _: &crate::decisions::context::BooleanContext) -> bool {
+            self.questions += 1;
+            match self.owner {
+                0 => {
+                    let linked = game.get_exiled_with_source_links(self.source);
+                    assert_eq!(linked.len(), 2, "all original exile links precede additions");
+                    assert!(linked.iter().all(|id| game.is_face_down(*id)));
+                    assert!(game.player(self.alice).unwrap().library.is_empty());
+                }
+                1 => { assert_eq!(game.player(self.alice).unwrap().graveyard.len(), 2); assert!(game.player(self.alice).unwrap().library.is_empty()); }
+                2 => { assert_eq!(game.get_imprinted_cards(self.source).len(), 1); assert_eq!(game.get_exiled_with_source_links(self.source).len(), 1); }
+                3 => { assert!(game.stack.is_empty(), "the whole original counter instruction precedes additions"); assert_eq!(game.player(self.alice).unwrap().graveyard.len(), 2); }
+                _ => unreachable!(),
+            }
+            self.pending = self.pause;
+            !self.pause
+        }
+        fn awaiting_choice(&self) -> bool { self.pending }
+    }
+    fn run_owner(owner: u8, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<EffectOutcome, ExecutionError> {
+        match owner {
+            0 => ExileTopOfLibraryEffect::new(2, PlayerFilter::You).face_down().tag_moved("original_exiles").append_tagged("accumulated").execute(game, ctx),
+            1 => SurveilEffect::you(2).execute(game, ctx),
+            2 => ImprintFromHandEffect::new(ObjectFilter::default()).execute(game, ctx),
+            3 => CounterEffect::new(ChooseSpec::all(ObjectFilter::default().in_zone(Zone::Stack))).execute(game, ctx),
+            _ => unreachable!(),
+        }
+    }
+    fn assert_original(owner: u8, outcome: &EffectOutcome) {
+        match owner {
+            0 | 2 => { let OutcomeValue::Objects(ids) = &outcome.value else { panic!("original object summary"); }; assert_eq!(ids.len(), if owner == 0 { 2 } else { 1 }); }
+            1 => {
+                assert_eq!(outcome.count_or_zero(), 2);
+                assert_eq!(outcome.events.iter().filter_map(|e| e.downcast::<crate::events::KeywordActionEvent>()).filter(|e| e.action == crate::events::KeywordActionKind::Surveil).count(), 1);
+            }
+            3 => { assert!(matches!(outcome.value, OutcomeValue::None)); assert_eq!(outcome.events.iter().filter_map(|e| e.downcast::<crate::events::SpellCounteredEvent>()).count(), 2); }
+            _ => unreachable!(),
+        }
+    }
+    fn check_owner(owner: u8, mode: u8) {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let card = crate::card::CardBuilder::new(CardId::new(), "Original zone owner fixture")
+            .card_types(vec![crate::types::CardType::Creature]).power_toughness(crate::card::PowerToughness::fixed(2,2)).build();
+        let from = match owner { 0 | 1 => Zone::Library, 2 => Zone::Hand, 3 => Zone::Stack, _ => unreachable!() };
+        let to = if owner == 0 || owner == 2 { Zone::Exile } else { Zone::Graveyard };
+        let mut originals = Vec::new();
+        for _ in 0..if owner == 2 { 1 } else { 2 } {
+            let id = game.create_object_from_card(&card, alice, from);
+            if owner == 3 { game.stack.push(crate::game_state::StackEntry::new(id, alice)); }
+            originals.push(id);
+        }
+        // The fixture's only added operation changes counters, not zones.
+        // Track the original card explicitly for inspection after consumers
+        // have taken their arrival receipts; do not infer a missing receipt
+        // means the original move failed.
+        let tracked_stable = game.object(originals[0]).unwrap().stable_id;
+        let source = game.create_object_from_card(&card, bob, Zone::Battlefield);
+        let effects = if mode == 3 { vec![Effect::new(crate::effects::PutCountersEffect::new(crate::object::CounterType::PlusOnePlusOne, 1, ChooseSpec::tagged("it")))] }
+            else if mode == 1 { vec![Effect::gain_life(3), Effect::lose_life(Value::X)] }
+            else { vec![Effect::gain_life(3), Effect::may(vec![Effect::gain_life(4)])] };
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(source, bob,
+            crate::events::zones::matchers::WouldChangeZoneMatcher::new(ObjectFilter::specific(originals[0]), Some(from), Some(to)),
+            ReplacementAction::Additionally(effects)));
+        game.take_pending_trigger_events();
+        let before_id = game.next_object_id_counter();
+        let library = game.player(alice).unwrap().library.clone(); let hand = game.player(alice).unwrap().hand.clone();
+        let stack = game.stack.iter().map(|e| e.object_id).collect::<Vec<_>>();
+        let parent_tag = ObjectSnapshot::from_object(game.object(source).unwrap(), &game);
+        let mut dm = ObserveOriginal { owner, alice, source, pause: mode == 2, pending: false, questions: 0 };
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        for name in ["it", "original_exiles", "accumulated"] { ctx.set_tagged_objects(name, vec![parent_tag.clone()]); }
+        let result = run_owner(owner, &mut game, &mut ctx);
+        if mode == 1 { assert!(matches!(result, Err(ExecutionError::UnresolvableValue(_)))); }
+        else {
+            let outcome = result.unwrap();
+            if mode == 2 { assert!(ctx.decision_maker.awaiting_choice()); assert!(outcome.events.is_empty()); }
+            else {
+                assert_original(owner, &outcome);
+                if mode == 3 {
+                    let arrived = game.find_object_by_stable_id(tracked_stable).expect("the original moved card still exists");
+                    assert_eq!(game.object(arrived).unwrap().counters.get(&crate::object::CounterType::PlusOnePlusOne), Some(&1));
+                    assert!(!game.object(source).unwrap().counters.contains_key(&crate::object::CounterType::PlusOnePlusOne));
+                    let occurrences = outcome.execution_facts.iter().filter_map(|fact| match fact { crate::effect::ExecutionFact::AffectedObjectMemory(memory) => Some(memory.as_slice()), _ => None }).flatten().filter(|memory| memory.object_id == arrived && memory.zone == to).count();
+                    assert!(occurrences >= if owner == 0 { 2 } else { 1 }, "added action memory reaches the original owner");
+                    assert_eq!(outcome.affected_object_memory().unwrap_or(&[]).iter().filter(|memory| memory.object_id == arrived && memory.zone == to).count(), usize::from(owner == 0), "original memory excludes auxiliary duplicates and retains its own exile result");
+                } else {
+                    assert_eq!(game.player(bob).unwrap().life, 27);
+                    let gains = outcome.events.iter().filter_map(|e| e.downcast::<crate::events::LifeGainEvent>()).collect::<Vec<_>>();
+                    assert_eq!(gains.iter().map(|e| e.amount).collect::<Vec<_>>(), vec![3,4]);
+                    assert!(gains.iter().all(|e| e.player == bob));
+                }
+                if owner == 0 { assert_eq!(ctx.get_tagged_all("original_exiles").unwrap().len(), 2); assert_eq!(ctx.get_tagged_all("accumulated").unwrap().len(), 3); }
+            }
+        }
+        assert_eq!(ctx.source, source); assert_eq!(ctx.controller, alice);
+        assert_eq!(ctx.get_tagged_all("it").unwrap()[0].object_id, source);
+        assert!(ctx.replacement.suppressed_replacement_effects.is_empty());
+        if mode == 1 || mode == 2 {
+            assert_eq!(ctx.get_tagged_all("original_exiles").unwrap()[0].object_id, source);
+            assert_eq!(ctx.get_tagged_all("accumulated").unwrap().len(), 1);
+        }
+        drop(ctx);
+        assert_eq!(game.player(alice).unwrap().life, 20);
+        if mode == 1 || mode == 2 {
+            assert_eq!(game.player(alice).unwrap().library, library); assert_eq!(game.player(alice).unwrap().hand, hand);
+            assert_eq!(game.stack.iter().map(|e| e.object_id).collect::<Vec<_>>(), stack);
+            assert!(game.player(alice).unwrap().graveyard.is_empty()); assert!(game.exile.is_empty());
+            assert_eq!(game.player(bob).unwrap().life, 20); assert_eq!(game.next_object_id_counter(), before_id);
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_some());
+            assert!(game.get_exiled_with_source_links(source).is_empty()); assert!(game.get_imprinted_cards(source).is_empty());
+            assert!(game.take_pending_trigger_events().is_empty());
+            assert!(originals.iter().all(|id| game.object(*id).unwrap().zone == from));
+        } else { assert!(game.effect_store.replacement_effects.get_effect(shield).is_none()); }
+        if mode == 2 {
+            assert_eq!(dm.questions, 1);
+            let mut dm = ObserveOriginal { owner, alice, source, pause: false, pending: false, questions: 0 };
+            let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+            let outcome = run_owner(owner, &mut game, &mut ctx).unwrap(); assert!(!ctx.decision_maker.awaiting_choice()); drop(ctx);
+            assert_original(owner, &outcome); assert_eq!(dm.questions, 1); assert_eq!(game.player(bob).unwrap().life, 27);
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+            assert_eq!(outcome.events.iter().filter_map(|e| e.downcast::<crate::events::LifeGainEvent>()).map(|e| e.amount).collect::<Vec<_>>(), vec![3,4]);
+        }
+    }
+    #[test] fn additional_exile_top_retains_original_then_payload() { check_owner(0, 0); }
+    #[test] fn additional_exile_top_error_restores_original_and_prefix() { check_owner(0, 1); }
+    #[test] fn additional_exile_top_pending_restores_then_replays_once() { check_owner(0, 2); }
+    #[test] fn additional_exile_top_binds_arrival_and_retains_added_facts() { check_owner(0, 3); }
+    #[test] fn additional_surveil_retains_original_then_payload() { check_owner(1, 0); }
+    #[test] fn additional_surveil_error_restores_original_and_prefix() { check_owner(1, 1); }
+    #[test] fn additional_surveil_pending_restores_then_replays_once() { check_owner(1, 2); }
+    #[test] fn additional_surveil_binds_arrival_and_retains_added_facts() { check_owner(1, 3); }
+    #[test] fn additional_imprint_retains_original_then_payload() { check_owner(2, 0); }
+    #[test] fn additional_imprint_error_restores_original_and_prefix() { check_owner(2, 1); }
+    #[test] fn additional_imprint_pending_restores_then_replays_once() { check_owner(2, 2); }
+    #[test] fn additional_imprint_binds_arrival_and_retains_added_facts() { check_owner(2, 3); }
+    #[test] fn additional_counter_retains_original_then_payload() { check_owner(3, 0); }
+    #[test] fn additional_counter_error_restores_original_and_prefix() { check_owner(3, 1); }
+    #[test] fn additional_counter_pending_restores_then_replays_once() { check_owner(3, 2); }
+    #[test] fn additional_counter_binds_arrival_and_retains_added_facts() { check_owner(3, 3); }
 }

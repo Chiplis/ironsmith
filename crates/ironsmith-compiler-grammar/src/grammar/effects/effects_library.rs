@@ -237,6 +237,42 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         let consumed = raw_filter_tokens.len().saturating_sub(rest_len);
         raw_filter_tokens.drain(0..consumed);
     }
+    // "search your library for a number of basic land cards equal to the
+    // other result" (Wild Endeavor): a trailing "equal to <value>" sets the
+    // dynamic count of a "a number of" search.
+    if prefix_count_value.is_none()
+        && let Some(equal_idx) = raw_filter_tokens
+            .windows(2)
+            .position(|window| window[0].is_word("equal") && window[1].is_word("to"))
+        && equal_idx > 0
+        && let Some((value, used)) =
+            crate::grammar::shared_util::value_expr::parse_value_expr_tokens(
+                &raw_filter_tokens[equal_idx + 2..],
+            )
+        && trim_commas(&raw_filter_tokens[equal_idx + 2 + used..]).is_empty()
+    {
+        let mut head = trim_commas(&raw_filter_tokens[..equal_idx]).to_vec();
+        let words = crate::lexer::token_word_refs(&head);
+        let number_of_len = match words.as_slice() {
+            ["a", "number", "of", ..] => Some(3),
+            ["number", "of", ..] => Some(2),
+            _ => None,
+        };
+        let count_words = crate::lexer::token_word_refs(count_tokens);
+        let counted_by_prefix = count_words.windows(2).any(|window| window == ["number", "of"]);
+        if number_of_len.is_some() || counted_by_prefix {
+            if let Some(len) = number_of_len {
+                head.drain(..len);
+            }
+            prefix_count_value = Some(value);
+            count = if search_mode == SearchSelectionMode::Optional {
+                ChoiceCount::up_to_dynamic_x()
+            } else {
+                ChoiceCount::dynamic_x()
+            };
+            raw_filter_tokens = head;
+        }
+    }
     let (filter_tokens, count_value) = if let Some((base_filter_tokens, count_value)) =
         split_search_library_count_value_clause_lexed(&raw_filter_tokens)?
     {

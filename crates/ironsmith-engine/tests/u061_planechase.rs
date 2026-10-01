@@ -245,7 +245,7 @@ fn u061_face_down_planar_abilities_are_dormant_and_planeswalk_away_uses_lki() {
             .all(|ability| ability.functional_zones.is_empty())
     );
     assert!(
-        !ironsmith::decision::compute_legal_actions(&game, alice)
+        !ironsmith::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .iter()
             .any(|action| matches!(action, LegalAction::ActivateAbility { source, .. } if *source == active))
     );
@@ -253,7 +253,7 @@ fn u061_face_down_planar_abilities_are_dormant_and_planeswalk_away_uses_lki() {
     put_on_top(&mut game, alice, active);
     game.reveal_starting_plane().unwrap();
     assert!(
-        ironsmith::decision::compute_legal_actions(&game, alice)
+        ironsmith::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .iter()
             .any(|action| matches!(action, LegalAction::ActivateAbility { source, .. } if *source == active))
     );
@@ -279,7 +279,7 @@ fn u061_face_down_planar_abilities_are_dormant_and_planeswalk_away_uses_lki() {
             .all(|ability| ability.functional_zones.is_empty())
     );
     assert!(
-        !ironsmith::decision::compute_legal_actions(&game, alice)
+        !ironsmith::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .iter()
             .any(|action| matches!(action, LegalAction::ActivateAbility { source, .. } if *source == recycled))
     );

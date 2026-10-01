@@ -1372,6 +1372,7 @@ pub fn check_triggers(
     }
 
     let view = crate::derived_view::DerivedGameView::new(game);
+
     check_triggers_with_view(game, trigger_event, &view)
 }
 
@@ -1881,6 +1882,16 @@ fn tagged_objects_for_matched_trigger(
     trigger: &Trigger,
     ctx: &TriggerContext<'_>,
 ) -> HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>> {
+    tagged_objects_for_matched_trigger_with_view(game, trigger_event, trigger, ctx, None)
+}
+
+fn tagged_objects_for_matched_trigger_with_view(
+    game: &GameState,
+    trigger_event: &TriggerEvent,
+    trigger: &Trigger,
+    ctx: &TriggerContext<'_>,
+    view: Option<&crate::derived_view::DerivedGameView<'_>>,
+) -> HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>> {
     let mut tagged = tagged_objects_for_trigger_event_impl(
         game,
         trigger_event,
@@ -1993,7 +2004,26 @@ fn tagged_objects_for_matched_trigger(
     // player, you may sacrifice Trickster's Talisman ...'": the granted
     // trigger names the Equipment that granted it.
     if let Some(ability_index) = ctx.ability_index {
-        game.insert_granting_source_tag(ctx.source_id, ability_index, &mut tagged);
+        if let Some(view) = view {
+            // The registry already evaluated the source's ability origins in
+            // this state. Reuse them instead of starting another layer pass.
+            let granting = view.calculated_characteristics_arc(ctx.source_id)
+                .and_then(|chars| chars.abilities.origin(ability_index)
+                    .and_then(|origin| origin.granting_source()));
+            if let Some(granting) = granting.filter(|id| *id != ctx.source_id)
+                && let Some(object) = game.object(granting)
+            {
+                let chars = view.calculated_characteristics_arc(granting);
+                tagged.insert(
+                    crate::tag::TagKey::from(crate::tag::GRANTING_SOURCE_TAG),
+                    vec![ObjectSnapshot::from_object_with_known_characteristics(
+                        object, game, chars.as_deref(),
+                    )],
+                );
+            }
+        } else {
+            game.insert_granting_source_tag(ctx.source_id, ability_index, &mut tagged);
+        }
     }
     tagged
 }
@@ -2108,7 +2138,9 @@ fn build_trigger_registry(
     // A registry rebuild needs every permanent's current abilities. Prime the
     // shared batch evaluator once so a dirty continuous state does not fall
     // back to one full layer/dependency pass per battlefield object.
+
     view.prewarm_characteristics(&game.battlefield);
+
 
     for &obj_id in &game.battlefield {
         if game.is_phased_out(obj_id) {
@@ -2117,9 +2149,11 @@ fn build_trigger_registry(
         let Some(obj) = game.object(obj_id) else {
             continue;
         };
+
         let calculated_abilities = view
             .abilities_rc(obj_id)
             .unwrap_or_else(|| std::sync::Arc::new(obj.abilities_vec()));
+
 
         for (ability_index, ability) in calculated_abilities.iter().enumerate() {
             let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
@@ -2190,6 +2224,7 @@ fn check_battlefield_trigger_subscriber(
         .calculated_characteristics(obj_id)
         .map(|chars| chars.controller)
         .unwrap_or_else(|| game.controller_of(obj));
+
     let calculated_abilities = view
         .abilities_rc(obj_id)
         .unwrap_or_else(|| std::sync::Arc::new(obj.abilities_vec()));
@@ -2268,15 +2303,17 @@ fn check_battlefield_trigger_subscriber(
             source_stable_id: obj.stable_id,
             source_name: obj.name.to_string(),
             source_snapshot: None,
-            tagged_objects: tagged_objects_for_matched_trigger(
+            tagged_objects: tagged_objects_for_matched_trigger_with_view(
                 game,
                 trigger_event,
                 &trigger_ability.trigger,
                 &ctx,
+                Some(view),
             ),
             source_kind: TriggeredAbilitySourceKind::Object,
             trigger_identity,
         };
+
         for _ in 0..trigger_count {
             triggered.push(entry.clone());
         }
@@ -2653,7 +2690,9 @@ fn check_triggers_with_view_and_registry(
     assert_trigger_registry_matches_legacy_scan(game, trigger_event, view, registry);
 
     for subscriber in registry.subscribers_for(trigger_event.kind(), trigger_event.object_id()) {
+
         check_battlefield_trigger_subscriber(game, trigger_event, view, subscriber, &mut triggered);
+
     }
 
     // A permanent can see itself being sacrificed. The sacrifice event carries
@@ -2976,9 +3015,11 @@ fn check_triggers_with_view_and_registry(
     add_initiative_designation_triggers(game, trigger_event, &mut triggered);
     add_ring_designation_triggers(game, trigger_event, &mut triggered);
     add_speed_increase_triggers(game, trigger_event, &mut triggered);
+
     remove_suppressed_triggers(game, view, &mut triggered);
     cap_granted_casualty_triggers(game, &mut triggered);
     append_additional_trigger_copies(game, view, &mut triggered);
+
 
     triggered
 }
@@ -5544,14 +5585,11 @@ mod tests {
         entry.optional_costs_paid = crate::cost::OptionalCostsPaid::from_costs(&def.optional_costs);
         entry.optional_costs_paid.pay(0);
         entry.optional_costs_paid.pay(1);
+        let paid = entry.optional_costs_paid.clone();
         game.push_to_stack(entry);
         game.object_mut(spell_id)
             .expect("spell object should exist")
-            .optional_costs_paid = crate::cost::OptionalCostsPaid {
-            costs: vec![("Conspire".into(), 1), ("Conspire 2".into(), 1)],
-            cast_at_sorcery_timing: false,
-            branch_choices: Vec::new(),
-        };
+            .optional_costs_paid = paid;
 
         let triggered = check_triggers(
             &game,
@@ -5566,6 +5604,8 @@ mod tests {
             2,
             "expected two separate conspire triggers"
         );
+        assert_ne!(triggered[0].trigger_identity, triggered[1].trigger_identity,
+            "printed instances retain distinct trigger identities");
         for trigger in &triggered {
             let debug = format!("{:?}", trigger.ability.effects);
             assert!(
@@ -5844,11 +5884,44 @@ mod tests {
         let after = game.work_counters();
         assert_eq!(triggered.len(), 1);
         assert_eq!(triggered[0].source, effect_source);
+        assert!(!triggered[0].tagged_objects.contains_key(crate::tag::GRANTING_SOURCE_TAG));
         assert_eq!(
             after.dependency_sorts - before.dependency_sorts,
             1,
             "a dirty registry rebuild should sort the shared layer batch once"
         );
+    }
+
+    #[test]
+    fn dirty_registry_preserves_granted_trigger_origin_and_controller() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let receiver = make_battlefield_creature(&mut game, alice, "Trigger receiver");
+        let grantor = make_battlefield_creature(&mut game, bob, "Trigger grantor");
+        game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+            grantor, bob, crate::continuous::EffectTarget::Specific(receiver),
+            crate::continuous::Modification::AddAbilityGeneric(crate::ability::Ability::triggered(
+                Trigger::this_attacks(), vec![Effect::gain_life(2)],
+            )),
+        ));
+        game.refresh_continuous_state();
+        game.mark_continuous_state_dirty();
+        let event = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::with_total_attackers(receiver, AttackEventTarget::Player(bob), 1),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let triggered = check_triggers(&game, &event);
+        assert_eq!(triggered.len(), 1);
+        assert_eq!(triggered[0].source, receiver);
+        assert_eq!(triggered[0].controller, alice);
+        let tagged = &triggered[0].tagged_objects[crate::tag::GRANTING_SOURCE_TAG];
+        assert_eq!(tagged.len(), 1);
+        assert_eq!(tagged[0].object_id, grantor);
+        assert_eq!(tagged[0].stable_id, game.object(grantor).unwrap().stable_id);
+        assert_eq!(tagged[0].controller, bob);
+        assert_eq!(tagged[0].power, Some(2));
+        assert_eq!(tagged[0].zone, Zone::Battlefield);
     }
 
     #[test]
@@ -6174,5 +6247,31 @@ mod tests {
         assert_eq!(batches.iter().map(Vec::len).sum::<usize>(), 3);
         assert_eq!(batches[0].len(), 2);
         assert_eq!(batches[1].len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod native_conspire_payment_identity_contract_tests {
+    use super::*;
+    #[test]
+    fn only_the_paid_printed_instance_triggers() {
+        for paid_index in [None,Some(0),Some(1)] {
+            let mut game=crate::tests::test_helpers::setup_two_player_game();
+            let alice=PlayerId::from_index(0);
+            let definition=crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(),"Two printed optional costs")
+                .card_types(vec![crate::types::CardType::Sorcery]).conspire().conspire().build();
+            let object=game.create_object_from_definition(&definition,alice,Zone::Stack);
+            let mut entry=crate::game_state::StackEntry::new(object,alice);
+            entry.optional_costs_paid=crate::cost::OptionalCostsPaid::from_costs(&definition.optional_costs);
+            if let Some(index)=paid_index {entry.optional_costs_paid.pay(index);}
+            let paid=entry.optional_costs_paid.clone();game.push_to_stack(entry);
+            game.object_mut(object).unwrap().optional_costs_paid=paid;
+            let event=crate::triggers::TriggerEvent::new_with_provenance(crate::events::SpellCastEvent::new(object,alice,Zone::Hand),Default::default());
+            let triggers=check_triggers(&game,&event);
+            assert_eq!(triggers.len(),usize::from(paid_index.is_some()));
+            if let Some(index)=paid_index {
+                assert_eq!(triggers[0].ability.intervening_if,Some(crate::ConditionExpr::ThisSpellPaidLabel(definition.optional_costs[index].cost_ref())));
+            }
+        }
     }
 }

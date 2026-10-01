@@ -17,7 +17,7 @@ fn counter_gated_combat_prevention_and_defender_apply_only_to_source() {
             source,
             Zone::Battlefield,
             &mut crate::decision::SelectFirstDecisionMaker,
-        )
+        ).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     let other = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Other creature")
@@ -132,4 +132,13 @@ fn counter_gated_prevention_generalizes_counter_and_keyword() {
         crate::compiled_text::compiled_text_lines(&definition).join("\n"),
         text
     );
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: crate::game_state::EntryCommitResult)
+    -> Option<crate::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

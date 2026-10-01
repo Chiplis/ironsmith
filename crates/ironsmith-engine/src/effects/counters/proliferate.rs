@@ -7,7 +7,7 @@ use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_value;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::{
-    TraitEventResult, process_trait_event_with_dm_and_applied_effects,
+    TraitEventResult, process_trait_event_with_execution_context,
 };
 use crate::events::{Event, KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
@@ -16,76 +16,7 @@ use crate::snapshot::ObjectSnapshot;
 use crate::triggers::TriggerEvent;
 pub use ironsmith_core::ProliferateEffect;
 
-fn execute_keyword_action_replacement_effects(
-    game: &mut GameState,
-    ctx: &mut ExecutionContext,
-    effects: Vec<crate::effect::Effect>,
-    effect_id: crate::replacement::ReplacementEffectId,
-    action_snapshot: Option<ObjectSnapshot>,
-) -> Result<EffectOutcome, ExecutionError> {
-    let replacement_effect = game
-        .effect_store
-        .replacement_effects
-        .get_effect(effect_id)
-        .cloned();
-    let replacement_key = replacement_effect
-        .as_ref()
-        .map(|effect| effect.application_key());
-    let was_suppressed = !ctx
-        .replacement
-        .suppressed_replacement_effects
-        .insert(effect_id);
-    let key_was_suppressed = if let Some(key) = replacement_key.as_ref() {
-        !ctx.replacement
-            .suppressed_replacement_effect_keys
-            .insert(key.clone())
-    } else {
-        true
-    };
-
-    let original_it = ctx.clear_object_tag("__it__");
-    let original_plain_it = ctx.clear_object_tag("it");
-    if let Some(snapshot) = action_snapshot {
-        ctx.set_tagged_objects("__it__", vec![snapshot.clone()]);
-        ctx.set_tagged_objects("it", vec![snapshot]);
-    }
-
-    let result = (|| -> Result<EffectOutcome, ExecutionError> {
-        let mut outcomes = Vec::new();
-        for effect in effects {
-            outcomes.push(crate::effects::execute_effect(game, &effect, ctx)?);
-            if ctx.decision_maker.awaiting_choice() {
-                break;
-            }
-        }
-        Ok(EffectOutcome::aggregate_summing_counts(outcomes))
-    })();
-
-    if !was_suppressed {
-        ctx.replacement
-            .suppressed_replacement_effects
-            .remove(&effect_id);
-    }
-    if !key_was_suppressed && let Some(key) = replacement_key {
-        ctx.replacement
-            .suppressed_replacement_effect_keys
-            .remove(&key);
-    }
-    match original_it {
-        Some(snapshots) => ctx.set_tagged_objects("__it__", snapshots),
-        None => {
-            ctx.clear_object_tag("__it__");
-        }
-    }
-    match original_plain_it {
-        Some(snapshots) => ctx.set_tagged_objects("it", snapshots),
-        None => {
-            ctx.clear_object_tag("it");
-        }
-    }
-
-    result
-}
+use crate::effects::composition::mechanic_actions::execute_keyword_action_replacement_effects;
 
 /// Effect that proliferates (adds counters to permanents/players with counters).
 ///
@@ -103,6 +34,10 @@ impl EffectExecutor for ProliferateEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+        game.clear_pending_decision_controllers();
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let result = (|| {
@@ -113,7 +48,6 @@ impl EffectExecutor for ProliferateEffect {
 
             let mut proliferated_total = 0;
             let mut outcome = EffectOutcome::count(0);
-            let mut action_events = Vec::with_capacity(count);
 
             for _ in 0..count {
                 let would_event = Event::new_with_provenance(
@@ -122,44 +56,27 @@ impl EffectExecutor for ProliferateEffect {
                         ctx.controller,
                         ctx.source,
                         1,
-                    ),
+                    ).with_snapshot(game.object(ctx.source)
+                        .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
+                        .or_else(|| ctx.source_snapshot.clone())),
                     ctx.provenance,
                 );
-                let applied_effects = ctx.replacement.suppressed_replacement_effects.clone();
-                let applied_effect_keys =
-                    ctx.replacement.suppressed_replacement_effect_keys.clone();
-                if applied_effects.is_empty() && applied_effect_keys.is_empty() {
-                    game.update_replacement_effects();
-                }
-                match process_trait_event_with_dm_and_applied_effects(
-                    game,
-                    would_event,
-                    ctx.decision_maker,
-                    &applied_effects,
-                    &applied_effect_keys,
-                ) {
-                    TraitEventResult::Replaced {
-                        effects, effect_id, ..
-                    } => {
-                        let snapshot = game
-                            .object(ctx.source)
-                            .map(|object| ObjectSnapshot::from_object(object, game));
-                        let replacement_outcome = execute_keyword_action_replacement_effects(
-                            game, ctx, effects, effect_id, snapshot,
-                        )?;
-                        outcome = outcome.with_events(replacement_outcome.events);
-                        if ctx.decision_maker.awaiting_choice() {
-                            return Ok(outcome);
+                let replacement_result = process_trait_event_with_execution_context(game, would_event, ctx)?;
+                let iteration_outcome = crate::effects::replacement::execute_event_expansion_with_bindings(game, ctx, replacement_result, |game, ctx, original| {
+                    let mut outcome = EffectOutcome::count(0);
+                    match original {
+                        TraitEventResult::Replaced { effects, source, controller, context, .. } => {
+                            let snapshot = context.event.inner().snapshot().cloned();
+                            return execute_keyword_action_replacement_effects(game, ctx, effects, source, controller, &context, snapshot);
                         }
-                        continue;
+                        TraitEventResult::Prevented => return Ok(EffectOutcome::prevented()),
+                        TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. } => {
+                            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                            return Err(ExecutionError::InternalError("proliferate suspended without a captured decision".into()));
+                        }
+                        TraitEventResult::Proceed(_) | TraitEventResult::Modified(_) => {}
+                        TraitEventResult::Expanded { .. } => return Err(ExecutionError::InternalError("proliferate commit received an unflattened result".into())),
                     }
-                    TraitEventResult::Prevented => continue,
-                    TraitEventResult::NeedsChoice { .. }
-                    | TraitEventResult::NeedsInteraction { .. } => {
-                        return Ok(outcome);
-                    }
-                    TraitEventResult::Proceed(_) | TraitEventResult::Modified(_) => {}
-                }
 
                 let mut proliferated_count = 0;
                 let mut proliferated_permanents = Vec::new();
@@ -351,24 +268,42 @@ impl EffectExecutor for ProliferateEffect {
 
                 proliferated_total += proliferated_count;
                 outcome = outcome.with_affected_objects(proliferated_permanents);
-                action_events.push(TriggerEvent::new_with_provenance(
-                    KeywordActionEvent::new(
-                        KeywordActionKind::Proliferate,
-                        ctx.controller,
-                        ctx.source,
-                        1,
-                    ),
-                    ctx.provenance,
-                ));
+                outcome.set_value(crate::effect::OutcomeValue::Count(proliferated_count));
+                Ok(outcome.with_event(TriggerEvent::new_with_provenance(
+                    KeywordActionEvent::new(KeywordActionKind::Proliferate, ctx.controller, ctx.source, 1), ctx.provenance,
+                )))
+                }, |_, context, _| {
+                    let action = crate::events::downcast_event::<KeywordActionEvent>(context.event.inner())
+                        .filter(|action| action.action == KeywordActionKind::Proliferate)
+                        .ok_or_else(|| ExecutionError::InternalError("proliferate addition captured an incompatible event".into()))?;
+                    let object_tags = action.snapshot.as_ref().map(|snapshot| vec![
+                        ("__it__".to_owned(), vec![snapshot.clone()]), ("it".to_owned(), vec![snapshot.clone()]),
+                    ]).unwrap_or_default();
+                    Ok(crate::effects::replacement::ReplacementProgramBindings { targets: None, object_tags })
+                })?;
+                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                outcome = EffectOutcome::aggregate([outcome, iteration_outcome]);
             }
 
+            // Counter-placement receipts and the keyword summary can name the
+            // same permanent. Report the affected set once, retaining additions.
+            let mut affected = Vec::new();
+            outcome.execution_facts.retain(|fact| {
+                if let crate::effect::ExecutionFact::AffectedObjects(ids) = fact {
+                    for id in ids {
+                        if !affected.contains(id) { affected.push(*id); }
+                    }
+                    false
+                } else { true }
+            });
+            outcome = outcome.with_affected_objects(affected);
             outcome.set_value(crate::effect::OutcomeValue::Count(proliferated_total));
-            Ok(outcome.with_events(action_events))
+            Ok(outcome)
         })();
         if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            *game = checkpoint;
+            game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
             context_checkpoint.restore(ctx);
-            if ctx.decision_maker.awaiting_choice() {
+            if ctx.decision_maker.awaiting_choice() && result.is_ok() {
                 return Ok(EffectOutcome::count(0));
             }
         }

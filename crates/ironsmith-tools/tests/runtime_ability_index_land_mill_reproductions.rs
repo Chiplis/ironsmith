@@ -101,7 +101,7 @@ fn cast(
     eprintln!("AUDIT_STAGE cast {}", def.name());
     g.turn.priority_player = Some(actor);
     let id = g.create_object_from_definition(def, actor, Zone::Hand);
-    let action = compute_legal_actions(g, actor)
+    let action = compute_legal_actions(g, actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or_else(|| format!("{} normal cast unavailable", def.name()))?;
@@ -285,7 +285,7 @@ fn activation(
     source: ObjectId,
 ) -> Result<Value, String> {
     g.turn.priority_player = Some(PlayerId(0));
-    let a = compute_legal_actions(g, PlayerId(0))
+    let a = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::ActivateAbility{source:s,..}if *s==source));
     let before = g.player(PlayerId(0)).unwrap().mana_pool.total() as i64;
@@ -314,7 +314,7 @@ fn play_land(
 ) -> Result<ObjectId, String> {
     let id = g.create_object_from_definition(def, PlayerId(0), Zone::Hand);
     g.turn.priority_player = Some(PlayerId(0));
-    let a = compute_legal_actions(g, PlayerId(0))
+    let a = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::PlayLand{land_id}if *land_id==id))
         .ok_or_else(|| format!("{} play unavailable", def.name()))?;
@@ -392,7 +392,7 @@ fn run(
         }
         evidence["source_abilities_before"] = json!(format!("{:?}", g.current_abilities(source)));
         evidence["legal_actions_before"] =
-            json!(format!("{:?}", compute_legal_actions(&g, PlayerId(0))));
+            json!(format!("{:?}", compute_legal_actions(&g, PlayerId(0)).expect("fixture has complete replacement state")));
         let outcome = activation(&mut g, &mut q, &mut dm, source)?;
         expected = json!({"activation":activation_expected(10),"lands_before":extras+1,"lands_after":extras,"source_in_graveyard":true,"empty_god_library":true});
         actual = json!({"activation":outcome,"lands_before":lands_before,"lands_after":g.battlefield.iter().filter(|id|g.current_has_card_type(**id,CardType::Land)).count(),"source_in_graveyard":g.player(PlayerId(0)).unwrap().graveyard.iter().any(|id|g.object(*id).is_some_and(|o|o.name==def.name())),"empty_god_library":g.player(PlayerId(0)).unwrap().library.iter().all(|id|!g.calculated_subtypes(*id).contains(&ironsmith::Subtype::God))});

@@ -166,17 +166,17 @@ fn build_board(players: usize, extra_lands: usize, cauldron: bool) -> Board {
     }
 }
 
-fn main() {
+fn main() -> Result<(), ironsmith::effects::ExecutionError> {
     if std::env::var("PROBE_REPORTED").is_ok() {
-        report_reported_board();
-        return;
+        report_reported_board()?;
+        return Ok(());
     }
     if std::env::var("PROBE_REPORTED_LOOP").is_ok() {
         let (mut game, alice, definitions) = reported_board(3);
         let mut queue = TriggerQueue::default();
         let mut dm = SelectFirstDecisionMaker;
         for definition in &definitions {
-            add_with_etb(&mut game, definition, alice, &mut queue, &mut dm);
+            add_with_etb(&mut game, definition, alice, &mut queue, &mut dm).expect("entry execution succeeded");
             let _ =
                 ironsmith::game_loop::put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut dm);
             let mut resolved = 0;
@@ -190,11 +190,11 @@ fn main() {
         let started = Instant::now();
         let mut n = 0u64;
         while started.elapsed().as_secs() < 25 {
-            let _ = ironsmith::decision::compute_legal_actions(&game, alice);
+            let _ = ironsmith::decision::compute_legal_actions(&game, alice)?;
             n += 1;
         }
         println!("iterations={n}");
-        return;
+        return Ok(());
     }
     // Profiling mode: hammer the expensive case so a sampler can catch it.
     if std::env::var("PROBE_LOOP").is_ok() {
@@ -202,11 +202,11 @@ fn main() {
         let started = Instant::now();
         let mut iterations = 0u64;
         while started.elapsed().as_secs() < 25 {
-            let _ = ironsmith::decision::compute_legal_actions(&board.game, board.alice);
+            let _ = ironsmith::decision::compute_legal_actions(&board.game, board.alice)?;
             iterations += 1;
         }
         println!("loop iterations={iterations}");
-        return;
+        return Ok(());
     }
     println!(
         "{:>8} {:>6} {:>9} | {:>10} {:>10} {:>10} {:>10} {:>10}",
@@ -261,7 +261,7 @@ fn main() {
             let sba_ms = started.elapsed().as_secs_f64() * 1000.0;
 
             let started = Instant::now();
-            let actions = ironsmith::decision::compute_legal_actions(&board.game, board.alice);
+            let actions = ironsmith::decision::compute_legal_actions(&board.game, board.alice)?;
             let legal_ms = started.elapsed().as_secs_f64() * 1000.0;
             let perf = ironsmith::decision::last_compute_legal_actions_perf();
 
@@ -329,6 +329,7 @@ fn main() {
             }
         }
     }
+    Ok(())
 }
 
 /// Reproduces the exact board from the reported diagnostics journal:
@@ -413,9 +414,28 @@ fn add_with_etb(
     player: PlayerId,
     queue: &mut TriggerQueue,
     dm: &mut SelectFirstDecisionMaker,
-) -> Option<ObjectId> {
+) -> Result<Option<ObjectId>, ironsmith::effects::ExecutionError> {
+    let checkpoint = game.clone();
+    let queue_checkpoint = queue.clone();
+    let result = add_with_etb_inner(game, definition, player, queue, dm);
+    if result.is_err() {
+        *game = checkpoint;
+        *queue = queue_checkpoint;
+    }
+    result
+}
+
+fn add_with_etb_inner(
+    game: &mut GameState,
+    definition: &CardDefinition,
+    player: PlayerId,
+    queue: &mut TriggerQueue,
+    dm: &mut SelectFirstDecisionMaker,
+) -> Result<Option<ObjectId>, ironsmith::effects::ExecutionError> {
     let temp = game.create_object_from_definition(definition, player, Zone::Command);
-    let result = game.move_object_with_etb_processing_with_dm(temp, Zone::Battlefield, dm)?;
+    let Some(result) = game.move_object_with_etb_processing_with_dm(temp, Zone::Battlefield, dm)? else {
+        return Ok(None);
+    };
     let entered = result.new_id;
     let provenance = game
         .provenance_graph_mut()
@@ -426,10 +446,10 @@ fn add_with_etb(
     );
     game.queue_trigger_event(provenance, event);
     ironsmith::game_loop::drain_pending_trigger_events(game, queue);
-    Some(entered)
+    Ok(Some(entered))
 }
 
-fn report_reported_board() {
+fn report_reported_board() -> Result<(), ironsmith::effects::ExecutionError> {
     println!(
         "{:>5} | {:>10} {:>12} {:>12} {:>12}",
         "cubs", "add_ms", "triggers_ms", "resolve_ms", "legal_ms"
@@ -443,7 +463,7 @@ fn report_reported_board() {
         let mut resolve_ms = 0.0;
         for definition in &definitions {
             let started = Instant::now();
-            add_with_etb(&mut game, definition, alice, &mut queue, &mut dm);
+            add_with_etb(&mut game, definition, alice, &mut queue, &mut dm).expect("entry execution succeeded");
             add_ms += started.elapsed().as_secs_f64() * 1000.0;
 
             let started = Instant::now();
@@ -475,11 +495,11 @@ fn report_reported_board() {
         }
         let clean_before = game.continuous_state_is_clean_public();
         let started = Instant::now();
-        let actions = ironsmith::decision::compute_legal_actions(&game, alice);
+        let actions = ironsmith::decision::compute_legal_actions(&game, alice)?;
         let legal_ms = started.elapsed().as_secs_f64() * 1000.0;
         game.refresh_continuous_state();
         let started = Instant::now();
-        let _ = ironsmith::decision::compute_legal_actions(&game, alice);
+        let _ = ironsmith::decision::compute_legal_actions(&game, alice)?;
         let legal_clean_ms = started.elapsed().as_secs_f64() * 1000.0;
         game.refresh_continuous_state();
         let animated = game
@@ -507,4 +527,5 @@ fn report_reported_board() {
             game.battlefield.len()
         );
     }
+    Ok(())
 }

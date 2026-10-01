@@ -118,7 +118,9 @@ pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<TagKey> 
     }
     if matches!(
         trigger,
-        TriggerSpec::ThisBlocksObject { .. } | TriggerSpec::BlocksObjectWithLesserPower { .. }
+        TriggerSpec::ThisBlocksObject { .. }
+            | TriggerSpec::BlocksObjectWithLesserPower { .. }
+            | TriggerSpec::BlocksObject { .. }
     ) {
         return Some((crate::tag::CompilerReferenceTag::Blocked.bind()).into());
     }

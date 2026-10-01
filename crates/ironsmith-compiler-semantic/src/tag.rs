@@ -320,6 +320,8 @@ pub enum CompilerReferenceTag {
     BeheldChosenType,
     GiftedPlayer,
     LinkedTriggerPlayer,
+    /// The opponent a resolving clash was performed with (CR 701.30a).
+    ClashOpponent,
     /// The object whose effect granted the ability being compiled: the
     /// Equipment or Aura its own name refers to inside a quoted grant
     /// (`Equipped creature has "... Return Trusty Boomerang ..."`).
@@ -481,6 +483,7 @@ impl CompilerReferenceTag {
             Self::BeheldChosenType => "beheld_chosen_type",
             Self::GiftedPlayer => "gifted_player",
             Self::LinkedTriggerPlayer => ironsmith_core::LINKED_TRIGGER_PLAYER_TAG,
+            Self::ClashOpponent => ironsmith_core::CLASH_OPPONENT_TAG,
             Self::GrantingSource => ironsmith_core::GRANTING_SOURCE_TAG,
             Self::WhereXCommanderManaValue => "__where_x_commander_mana_value",
             Self::SourceExiled => "__source_exiled__",
@@ -561,6 +564,7 @@ impl CompilerReferenceTag {
             | Self::DemonstrateOpponent
             | Self::GiftedPlayer
             | Self::LinkedTriggerPlayer
+            | Self::ClashOpponent
             | Self::InitiativeHolder
             | Self::DelegatedLibraryChooser
             | Self::VotedWithYou

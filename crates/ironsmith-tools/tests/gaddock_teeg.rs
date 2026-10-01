@@ -83,7 +83,7 @@ fn teeg_restricts_both_players_and_stops_when_it_leaves() {
                 allowed,
                 "caster={caster:?}, types={types:?}, mana={generic}, X={x}"
             );
-            assert_eq!(compute_legal_actions(&game, caster).iter().any(|action|
+            assert_eq!(compute_legal_actions(&game, caster).expect("fixture has complete replacement state").iter().any(|action|
                 matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell)), allowed);
             attempt_cast(
                 &game,
@@ -201,7 +201,7 @@ fn teeg_checks_flashback_escape_and_exile_against_printed_cost() {
                     from_zone: origin,
                     casting_method: CastingMethod::Alternative(0),
                 };
-                let offered = compute_legal_actions(&game, caster).iter().any(|action|
+                let offered = compute_legal_actions(&game, caster).expect("fixture has complete replacement state").iter().any(|action|
                     matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell));
                 assert_eq!(
                     offered, allowed,

@@ -31,7 +31,7 @@ impl DecisionMaker for Choices {
 fn perform(g: &mut GameState, source: ObjectId, ability: Option<usize>, dm: &mut Choices) -> Result<(), String> {
     g.turn.priority_player = Some(PlayerId(0));
     emit("before_legal_actions", json!({"source":source.0,"ability":ability}));
-    let action = compute_legal_actions(g, PlayerId(0)).into_iter().find(|a| match a {
+    let action = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state").into_iter().find(|a| match a {
         LegalAction::CastSpell{spell_id,..} => ability.is_none() && *spell_id == source,
         LegalAction::ActivateAbility{source:id,ability_index} => *id == source && ability == Some(*ability_index),
         _ => false,

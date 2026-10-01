@@ -25,6 +25,20 @@ pub fn parse_delayed_next_combat_phase_this_turn_sentence(
             crate::lexer::render_token_slice(tokens).trim()
         )));
     }
+    if !shape.this_turn {
+        // "At the beginning of the next combat, ..." (Legion's Initiative):
+        // one shot, whenever that next combat happens.
+        return Ok(Some(vec![EffectAst::Delayed(
+            DelayedEffectAst::DelayedTriggerForDuration {
+                trigger: TriggerSpec::BeginningOfCombat(PlayerFilter::Any),
+                effects: delayed_effects,
+                one_shot: true,
+                duration: crate::effect::Until::Forever,
+                either_of_watched_objects: false,
+                while_any_tagged_object_in_zone: None,
+            },
+        )]));
+    }
     Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
         trigger: TriggerSpec::BeginningOfCombat(PlayerFilter::Any),
         effects: delayed_effects,
@@ -559,17 +573,17 @@ pub fn parse_sentence_delayed_trigger_this_turn(
                 clause_display.trim()
             )));
         }
+        // "When target creature dies this turn" (Graceful Reprieve, Saffi
+        // Eriksdotter): the creature is targeted when the spell or ability
+        // is put on the stack, so hexproof applies and an illegal target
+        // fizzles it (CR 115.1).
         return Ok(Some(vec![
-            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-                filter,
-                count: ChoiceCount::exactly(1),
-                count_value: None,
-                // `target` identifies the chosen object, not its controller.
-                // An implicit chooser still resolves to the spell's controller
-                // without adding a "you control" restriction to the filter.
-                player: PlayerAst::Implicit,
+            EffectAst::TagReferenced {
+                effect: Box::new(EffectAst::subject_verb_explicit_target_only(
+                    TargetAst::Object(filter, crate::util::span_from_tokens(tokens), None),
+                )),
                 tag: crate::tag::TagRef::of(tag),
-            }),
+            },
             EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
                 trigger: if put_into_your_graveyard {
                     TriggerSpec::PutIntoGraveyard(watched_filter)
@@ -644,14 +658,12 @@ pub fn parse_sentence_delayed_trigger_this_turn(
             )));
         }
         return Ok(Some(vec![
-            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-                filter,
-                count: ChoiceCount::exactly(1),
-                count_value: None,
-                // `target` identifies the chosen object, not its controller.
-                player: PlayerAst::Implicit,
+            EffectAst::TagReferenced {
+                effect: Box::new(EffectAst::subject_verb_explicit_target_only(
+                    TargetAst::Object(filter, crate::util::span_from_tokens(tokens), None),
+                )),
                 tag: crate::tag::TagRef::of(tag),
-            }),
+            },
             EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
                 trigger: TriggerSpec::DealsCombatDamageTo {
                     source: watched_filter,
@@ -978,6 +990,20 @@ pub fn merge_filters(base: &ObjectFilter, specific: &ObjectFilter) -> ObjectFilt
     }
 
     merged
+}
+
+/// Declare the explicit target a "this turn" delayed watcher names
+/// ("When target creature dies this turn, ...") and tag it for the
+/// watcher's tracked-object filter.
+fn delayed_watched_target_declaration(filter: ObjectFilter, tag: crate::tag::TagRef) -> EffectAst {
+    EffectAst::TagAffected {
+        effect: Box::new(EffectAst::subject_verb_explicit_target_only(TargetAst::Object(
+            filter,
+            Some(crate::TextSpan::synthetic()),
+            None,
+        ))),
+        tag: crate::tag::TagRef::of(tag),
+    }
 }
 
 #[cfg(test)]

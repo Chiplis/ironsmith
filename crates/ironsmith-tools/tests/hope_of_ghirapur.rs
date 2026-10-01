@@ -104,7 +104,7 @@ fn setup(hope_hit_bob: bool) -> Board {
 fn sacrifice(board: &mut Board) -> (Vec<Target>, bool) {
     let alice = PlayerId::from_index(0);
     let hope = board.hope;
-    let Some(action) = compute_legal_actions(&board.game, alice)
+    let Some(action) = compute_legal_actions(&board.game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::ActivateAbility { source, .. } if *source == hope))
     else {
@@ -147,7 +147,7 @@ fn bob_can_cast_opt(board: &Board) -> bool {
     let opt = board.opt;
     let mut game = board.game.clone();
     game.turn.priority_player = Some(bob);
-    compute_legal_actions(&game, bob)
+    compute_legal_actions(&game, bob).expect("fixture has complete replacement state")
         .iter()
         .any(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == opt))
 }

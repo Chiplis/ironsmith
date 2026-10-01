@@ -72,7 +72,7 @@ fn a_killer_among_us_entry_creates_all_tokens_then_keeps_each_type_choice_privat
         game.set_secret_chosen_subtype(other, alice, Subtype::Goblin);
         let hand = game.create_object_from_definition(&definition, alice, Zone::Hand);
         let source = game
-            .move_object_with_etb_processing(hand, Zone::Battlefield)
+            .move_object_with_etb_processing(hand, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
             .unwrap()
             .new_id;
         let mut queue = TriggerQueue::new();
@@ -127,7 +127,7 @@ fn source_with_choice(
 ) -> ironsmith::ObjectId {
     let hand = game.create_object_from_definition(definition, alice, Zone::Hand);
     let source = game
-        .move_object_with_etb_processing(hand, Zone::Battlefield)
+        .move_object_with_etb_processing(hand, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     let mut queue = TriggerQueue::new();
@@ -209,7 +209,7 @@ fn a_killer_among_us_pays_before_resolving_and_checks_the_targets_current_type()
             target: AttackTarget::Player(bob),
         });
         game.combat = Some(combat);
-        let action = compute_legal_actions(&game, alice)
+        let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .into_iter()
             .find(|a| matches!(a, LegalAction::ActivateAbility {source: id, ..} if *id == source))
             .expect("wrong-type attacking token must still be a legal target");
@@ -339,7 +339,7 @@ fn a_killer_among_us_legality_requires_attacking_token_and_the_payers_own_choice
     game.turn.active_player = bob;
     game.turn.priority_player = Some(alice);
     let offered = |game: &GameState, player, source| {
-        compute_legal_actions(game, player)
+        compute_legal_actions(game, player).expect("fixture has complete replacement state")
             .iter()
             .any(|a| matches!(a, LegalAction::ActivateAbility {source: id, ..} if *id == source))
     };
@@ -374,4 +374,13 @@ fn a_killer_among_us_legality_requires_attacking_token_and_the_payers_own_choice
         !offered(&game, bob, source),
         "the new controller did not make this choice"
     );
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: ironsmith::game_state::EntryCommitResult)
+    -> Option<ironsmith::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

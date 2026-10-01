@@ -196,6 +196,25 @@ pub(super) fn compile_create_token_with_mods_action(
     let player_filter = subject.clone_player_filter();
     let count = per_player_partition_value_for_filter(count, &player_filter);
     let mut choices = subject.into_choices();
+    // "equal to the number of counters among creatures target player
+    // controls" (Ferrafor): a player named only inside the count is still a
+    // target the ability must choose.
+    let mut value_target_prelude = Vec::new();
+    {
+        let mut value_target_choices = Vec::new();
+        super::collect_value_player_target_choices(&count, &mut value_target_choices);
+        for choice in value_target_choices {
+            let reuses_prior_player_target = ctx.last_player_filter.as_ref().is_some_and(|player| {
+                super::player_target_choice_matches_filter(&choice, player)
+            });
+            if !choices.iter().any(|existing| existing == &choice) && !reuses_prior_player_target {
+                value_target_prelude.push(Effect::new(crate::effects::TargetOnlyEffect::new(
+                    choice.clone(),
+                )));
+                push_choice(&mut choices, choice);
+            }
+        }
+    }
     let mut effect = if matches!(player_filter, PlayerFilter::You) {
         crate::effects::CreateTokenEffect::you(token, count.clone())
     } else {
@@ -269,6 +288,7 @@ pub(super) fn compile_create_token_with_mods_action(
     }
 
     let mut compiled = subject.resolution_prelude();
+    compiled.extend(value_target_prelude);
     compiled.push(effect);
     if let Some((power, toughness)) = resolved_dynamic_pt {
         let Some(created_tag) = created_tag.clone() else {
@@ -613,7 +633,26 @@ pub(super) fn compile_grant_abilities_to_target_action(
         })
         .transpose()?;
 
-    compile_tagged_effect_for_target(target, ctx, "granted", |spec| {
+    // "... can be the target of spells and abilities controlled by target
+    // player as though it didn't have shroud" (Autumn Willow): the granted
+    // permission names a player target the granting ability must declare.
+    let granted_player_target = modifications.iter().find_map(|modification| {
+        let crate::continuous::Modification::AddAbility(ability) = modification else {
+            return None;
+        };
+        let crate::static_abilities::StaticAbilityPayload::TargetingAsThoughNoAbility(spec) =
+            &ability.payload
+        else {
+            return None;
+        };
+        match &spec.sources_controlled_by {
+            PlayerFilter::Target(inner) => Some(ChooseSpec::target(ChooseSpec::Player(
+                inner.as_ref().clone(),
+            ))),
+            _ => None,
+        }
+    });
+    let (mut compiled, mut choices) = compile_tagged_effect_for_target(target, ctx, "granted", |spec| {
         let source_reference_surface = spec.source_reference_surface().cloned();
         let effect_spec = if matches!(spec.unhinted(), ChooseSpec::Source) {
             spec.into_unhinted()
@@ -637,7 +676,17 @@ pub(super) fn compile_grant_abilities_to_target_action(
             apply = apply.with_source_reference_surface(surface);
         }
         Effect::new(apply)
-    })
+    })?;
+    if let Some(choice) = granted_player_target
+        && !choices.contains(&choice)
+    {
+        compiled.insert(
+            0,
+            Effect::new(crate::effects::TargetOnlyEffect::new(choice.clone())),
+        );
+        choices.insert(0, choice);
+    }
+    Ok((compiled, choices))
 }
 
 pub(super) fn compile_pump_all_action(
@@ -860,7 +909,12 @@ pub(super) fn compile_become_base_pt_creature_action(
         // exception even without an "in addition" clause.
         let implicitly_preserves_card_types =
             card_types.contains(&CardType::Artifact) && card_types.contains(&CardType::Creature);
-        let type_modification = if *preserve_other_types || implicitly_preserves_card_types {
+        // No authored card type ("becomes a green Wurm with base power and
+        // toughness 6/4", Scale Up): only the creature subtype is set, so the
+        // object keeps its card types and is at least a creature.
+        let type_modification = if card_types.is_empty() {
+            crate::continuous::Modification::AddCardTypes(vec![CardType::Creature])
+        } else if *preserve_other_types || implicitly_preserves_card_types {
             crate::continuous::Modification::AddCardTypes(card_types.clone())
         } else {
             crate::continuous::Modification::SetCardTypes(card_types.clone())
@@ -965,13 +1019,38 @@ pub(super) fn compile_cant_action(
             ))),
         }
     } else {
-        Ok((
-            vec![Effect::new(
-                crate::effects::CantEffect::starting(restriction, duration.clone(), start.clone())
-                    .with_duration_surface(*duration_surface),
-            )],
-            Vec::new(),
-        ))
+        // "creatures target player controls can't block this turn": the
+        // restricted set is scoped by a player target that this effect must
+        // declare, or nothing ever matches it at resolution.
+        let restricted_filter = match &restriction {
+            crate::effect::Restriction::Block(filter)
+            | crate::effect::Restriction::Attack(filter)
+            | crate::effect::Restriction::AttackOrBlock(filter)
+            | crate::effect::Restriction::Untap(filter) => Some(filter),
+            _ => None,
+        };
+        let player_target = restricted_filter
+            .and_then(|filter| filter.controller.as_ref())
+            .and_then(|controller| match controller {
+                PlayerFilter::Target(inner) => Some(ChooseSpec::target(ChooseSpec::Player(
+                    inner.as_ref().clone(),
+                ))),
+                _ => None,
+            });
+        let cant = Effect::new(
+            crate::effects::CantEffect::starting(restriction, duration.clone(), start.clone())
+                .with_duration_surface(*duration_surface),
+        );
+        match player_target {
+            Some(choice) => Ok((
+                vec![
+                    Effect::new(crate::effects::TargetOnlyEffect::new(choice.clone())),
+                    cant,
+                ],
+                vec![choice],
+            )),
+            None => Ok((vec![cant], Vec::new())),
+        }
     }
 }
 
@@ -1247,7 +1326,11 @@ pub(super) fn compile_subject_verb_middle(
             // "that player puts the rest ...". Resolve the disposition's
             // library owner from the tagged revealed collection instead of
             // letting that intervening chooser replace the antecedent.
-            let subject = if *player == PlayerAst::That
+            // "its controller reveals cards until ..., puts that card onto
+            // the battlefield, then puts the rest on the bottom" (Chaos
+            // Mutation): "its" names the revealing player, not the controller
+            // of the matched card, which may not exist.
+            let subject = if matches!(*player, PlayerAst::That | PlayerAst::ItsController)
                 && ctx.last_revealed_tag.as_ref() == Some(&resolved_tag)
                 && let Some(revealed_player) = ctx.last_revealed_player_filter.clone()
             {
@@ -1757,7 +1840,24 @@ pub(super) fn compile_subject_verb_middle(
                         ));
                         ChooseSpec::tagged(tag)
                     }
-                    _ => spec.clone(),
+                    _ => {
+                        // "return that nonland permanent card to the
+                        // battlefield instead" (Emeria Shepherd): a
+                        // demonstrative back-reference to a graveyard card
+                        // carries the noun's battlefield default, which the
+                        // returned card can never satisfy.
+                        let mut spec = spec.clone();
+                        if let Some(filter) = choose_spec_object_filter_mut(&mut spec)
+                            && filter.zone == Some(Zone::Battlefield)
+                            && filter.tagged_constraints.iter().any(|constraint| {
+                                constraint.relation
+                                    == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                            })
+                        {
+                            filter.zone = Some(Zone::Graveyard);
+                        }
+                        spec
+                    }
                 }
             } else {
                 spec.clone()
@@ -2103,6 +2203,16 @@ pub(super) fn compile_subject_verb_middle(
                     lower_source_top_only_choice(&spec, player, ctx, "chosen_top")?;
                 source_choice_prelude.push(choose);
                 spec = chosen_spec;
+            }
+            // "put an Aura card from your hand and/or graveyard onto the
+            // battlefield attached to it": the union's branch zones are the
+            // candidate zones, so the outer zone must not pin the first one.
+            if resolved_attach_spec.is_some()
+                && *zone == Zone::Battlefield
+                && !spec.is_target()
+                && let Some(filter) = choose_spec_object_filter_mut(&mut spec)
+            {
+                normalize_hand_or_graveyard_cross_zone_filter(filter);
             }
             if resolved_attach_spec.is_none()
                 && *zone == Zone::Battlefield
@@ -3101,6 +3211,21 @@ pub(super) fn compile_subject_verb_middle(
             let player_filter = subject.clone_player_filter();
             let count = *count;
             let mut filter = subject.bind_library_filter(filter, ctx)?;
+            // "For each creature exiled this way, its controller searches
+            // their library" (Winds of Abandon): the grammar spells the
+            // possessive library owner as the controller of "the target",
+            // but inside a per-object iteration the chooser's "its" is the
+            // current iterand. The library is the chooser's own, so bind
+            // the owner to the same iterated reference.
+            if matches!(*chooser, PlayerAst::ItsController)
+                && filter.owner
+                    == Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target))
+                && let PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(tag)) =
+                    &chooser_filter
+                && tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+            {
+                filter.owner = Some(chooser_filter.clone());
+            }
             // "any number of creature cards with total mana value 6 or less"
             // (Protean Hulk) bounds the found set, not each card.
             let search_aggregate_constraint = filter.target_set_aggregate_constraint.take();
@@ -3838,6 +3963,10 @@ fn apply_token_definition_granted_abilities(
     token: &mut crate::cards::CardDefinition,
     abilities: &[GrantedAbilityAst],
 ) -> Result<(), CardTextError> {
+    // Abilities the typed token shape already installed from the same words.
+    // A quoted rule re-parsed by the generic grant parser must not install a
+    // second copy of one of them.
+    let shape_ability_count = token.abilities.len();
     for granted in abilities {
         if let GrantedAbilityAst::StaticAbility(ability) = granted
             && let crate::cards::builders::StaticAbilityAst::AttachmentRestriction {
@@ -3859,12 +3988,61 @@ fn apply_token_definition_granted_abilities(
         for ability in
             lower_granted_abilities_ast_to_object_abilities(std::slice::from_ref(granted))?
         {
-            if !token.abilities.contains(&ability) {
-                token.abilities.push(ability);
+            if token.abilities.contains(&ability)
+                || token.abilities[..shape_ability_count]
+                    .iter()
+                    .any(|existing| token_abilities_are_same_printed_ability(existing, &ability))
+            {
+                continue;
             }
+            token.abilities.push(ability);
         }
     }
     Ok(())
+}
+
+/// Whether a generically parsed quoted token ability restates one the typed
+/// token shape already built: a payloadless static ability that differs only
+/// by its authored self-reference surface ("The Void attacks each combat if
+/// able"), or an activated ability with the same cost, targets, timing and
+/// restriction text (the Mercenary "{T}: Target creature you control gets
+/// +1/+0 ... Activate only as a sorcery.").
+fn token_abilities_are_same_printed_ability(
+    existing: &crate::ability::Ability,
+    candidate: &crate::ability::Ability,
+) -> bool {
+    use crate::ability::AbilityKind;
+    if existing.functional_zones != candidate.functional_zones {
+        return false;
+    }
+    match (&existing.kind, &candidate.kind) {
+        (AbilityKind::Static(left), AbilityKind::Static(right)) => {
+            if left.id != right.id || left.id.is_none() {
+                return false;
+            }
+            matches!(
+                &left.payload,
+                ironsmith_core::StaticAbilityPayload::None
+                    | ironsmith_core::StaticAbilityPayload::SelfSubjectSurface { .. }
+            ) && matches!(
+                &right.payload,
+                ironsmith_core::StaticAbilityPayload::None
+                    | ironsmith_core::StaticAbilityPayload::SelfSubjectSurface { .. }
+            )
+        }
+        (AbilityKind::Activated(left), AbilityKind::Activated(right)) => {
+            left.mana_output.is_none()
+                && right.mana_output.is_none()
+                && !left.is_loyalty_ability
+                && !right.is_loyalty_ability
+                && !left.choices.is_empty()
+                && left.mana_cost == right.mana_cost
+                && left.choices == right.choices
+                && left.timing == right.timing
+                && left.additional_restrictions == right.additional_restrictions
+        }
+        _ => false,
+    }
 }
 
 /// Layer-6 removals for a lost-ability list: concrete abilities are removed
@@ -3877,10 +4055,24 @@ fn lower_ability_removal_modifications(
         .iter()
         .cloned()
         .partition(|ability| matches!(ability, GrantedAbilityAst::StaticAbilityFamily(_)));
-    let mut removals = lower_granted_abilities_ast_to_object_abilities(&concrete)?
-        .into_iter()
-        .map(crate::continuous::Modification::RemoveAbility)
-        .collect::<Vec<_>>();
+    let mut removals = Vec::new();
+    for ability in lower_granted_abilities_ast_to_object_abilities(&concrete)? {
+        // "loses all creature types" parses through the same ability list as
+        // "gains all creature types" (Changeling). Losing them is a layer-4
+        // removal of every creature subtype (CR 205.1b), not only the loss of
+        // the changeling characteristic.
+        let loses_all_creature_types = matches!(
+            &ability.kind,
+            crate::ability::AbilityKind::Static(static_ability)
+                if static_ability.id() == crate::static_abilities::StaticAbilityId::Changeling
+        );
+        removals.push(crate::continuous::Modification::RemoveAbility(ability));
+        if loses_all_creature_types {
+            removals.push(crate::continuous::Modification::RemoveAllSubtypesOfFamily(
+                crate::types::SubtypeFamily::Creature,
+            ));
+        }
+    }
     removals.extend(families.into_iter().filter_map(|family| match family {
         GrantedAbilityAst::StaticAbilityFamily(id) => Some(
             crate::continuous::Modification::RemoveStaticAbilityFamily(id),

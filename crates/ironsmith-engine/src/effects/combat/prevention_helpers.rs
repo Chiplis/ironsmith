@@ -18,7 +18,17 @@ pub fn choose_source_of_your_choice(
     game: &GameState,
     ctx: &mut ExecutionContext,
 ) -> SourceChoiceSelection {
-    choose_source_of_your_choice_matching_colors(game, ctx, None)
+    choose_source_of_your_choice_matching_colors(game, ctx, None, None)
+}
+
+/// Choose a damage source restricted to objects matching `filter`
+/// ("a creature of your choice").
+pub fn choose_source_of_your_choice_matching_filter(
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+    filter: &crate::target::ObjectFilter,
+) -> SourceChoiceSelection {
+    choose_source_of_your_choice_matching_colors(game, ctx, None, Some(filter))
 }
 
 /// Choose a source whose current colors overlap the colors used to activate
@@ -40,19 +50,28 @@ pub fn choose_source_sharing_activation_payment_color(
             colors = colors.with(color);
         }
     }
-    choose_source_of_your_choice_matching_colors(game, ctx, Some(colors))
+    choose_source_of_your_choice_matching_colors(game, ctx, Some(colors), None)
 }
 
 fn choose_source_of_your_choice_matching_colors(
     game: &GameState,
     ctx: &mut ExecutionContext,
     required_colors: Option<ColorSet>,
+    required_filter: Option<&crate::target::ObjectFilter>,
 ) -> SourceChoiceSelection {
     let mut candidates = Vec::new();
     candidates.extend(game.stack.iter().map(|entry| entry.object_id));
     candidates.extend(game.battlefield.iter().copied());
     candidates.sort_by_key(|id| id.0);
     candidates.dedup();
+    if let Some(filter) = required_filter {
+        use crate::filter::ObjectFilterExt as _;
+        let filter_ctx = ctx.filter_context(game);
+        candidates.retain(|id| {
+            game.object(*id)
+                .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+        });
+    }
     if let Some(required_colors) = required_colors {
         candidates.retain(|id| {
             game.current_colors(*id)

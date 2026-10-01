@@ -233,7 +233,7 @@ fn cast_announce(
 ) -> Result<(), String> {
     g.turn.priority_player = Some(alice());
     let id = g.create_object_from_definition(d, alice(), Zone::Hand);
-    let a = compute_legal_actions(g, alice())
+    let a = compute_legal_actions(g, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or("fixture source cast absent")?;
@@ -433,7 +433,7 @@ fn run(
             if !g.is_tapped(source) {
                 return Err("Sword did not enter tapped".into());
             }
-            if compute_legal_actions(&g, alice())
+            if compute_legal_actions(&g, alice()).expect("fixture has complete replacement state")
                 .iter()
                 .any(|a| matches!(a,LegalAction::ActivateAbility{source:s,..}if *s==source))
             {
@@ -457,7 +457,7 @@ fn run(
         }
     }
     g.turn.priority_player = Some(alice());
-    let legal_actions = compute_legal_actions(&g, alice());
+    let legal_actions = compute_legal_actions(&g, alice()).expect("fixture has complete replacement state");
     let activation = defs[n]
         .0
         .abilities

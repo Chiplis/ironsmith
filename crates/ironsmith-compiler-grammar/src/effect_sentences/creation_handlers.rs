@@ -577,6 +577,17 @@ fn parse_inline_token_granted_abilities(
             })
             .flatten();
         let reminder = token_definition_grammar::parse_token_reminder_facts_tokens(rule_tokens);
+        let rule_is_triggered_or_activated = rule_tokens
+            .first()
+            .is_some_and(|token| token.is_any_word(&["when", "whenever", "at"]))
+            || rule_tokens
+                .iter()
+                .any(|token| token.kind == TokenKind::Colon);
+        let reminder = if rule_is_triggered_or_activated {
+            reminder.without_rule_effect_keywords()
+        } else {
+            reminder
+        };
         let conflicting_combat_restriction =
             match (&*definition, reminder.creature_combat_restriction()) {
                 (
@@ -642,8 +653,44 @@ fn parse_inline_token_granted_abilities(
             &rule_words,
             &[&["this", "token"], &["this", "creature"]],
         );
+        // An Equipment token's "Equipped creature gets ... and has ..." rule
+        // is already the typed Equipment payload (attached grants); probing
+        // it again as a filtered grant duplicates every keyword (Mabel's
+        // Cragflame "has vigilance, trample, haste, and vigilance").
+        let equipment_rule_owned = merged
+            && matches!(
+            &*definition,
+            crate::model::token_definition::TokenDefinitionSpec::Artifact(artifact)
+                if artifact.equipment_rules.is_some()
+        ) && crate::word_primitives::parse_sequence_prefix(
+            &rule_words,
+            &["equipped", "creature"],
+        ) && rule_words
+            .iter()
+            .position(|word| *word == "has")
+            .is_some_and(|has| {
+                let granted = &rule_words[has + 1..];
+                !granted.is_empty()
+                    && granted.iter().all(|word| {
+                        matches!(
+                            *word,
+                            "and"
+                                | "vigilance"
+                                | "trample"
+                                | "haste"
+                                | "flying"
+                                | "lifelink"
+                                | "deathtouch"
+                                | "menace"
+                                | "reach"
+                                | "hexproof"
+                                | "indestructible"
+                        )
+                    })
+            });
         let filtered_grant_probe = (!starts_triggered_rule
             && !starts_intrinsic_self_rule
+            && !equipment_rule_owned
             && !rule_tokens
                 .iter()
                 .any(|token| token.kind == TokenKind::Colon))

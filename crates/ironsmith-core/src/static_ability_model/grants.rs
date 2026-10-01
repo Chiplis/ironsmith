@@ -909,6 +909,11 @@ pub enum AttackingGroupAttackCondition {
     AtLeastNOtherCreaturesAttack(u32),
     BlackOrGreenCreatureAlsoAttacks,
     CreatureWithGreaterPowerAlsoAttacks,
+    /// "can't block unless at least N other creatures block" (Orcish
+    /// Conscripts): judged against the whole blocker declaration.
+    AtLeastNOtherCreaturesBlock(u32),
+    /// "can't block unless a creature with greater power also blocks" (Okk).
+    CreatureWithGreaterPowerAlsoBlocks,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1043,6 +1048,14 @@ where
 
     fn grant_has_flash(&self) -> bool {
         self.id() == StaticAbilityId::Flash
+    }
+
+    fn grant_is_source_owner_graveyard_exile(&self) -> bool {
+        matches!(&self.payload,
+            StaticAbilityPayload::ExileToExileInsteadOfGraveyard {
+                filter, graveyard_owner: PlayerFilter::OwnerOf(crate::ObjectRef::FilterCandidate),
+                exclude_cycled: false, link_to_source: false,
+            } if *filter == ObjectFilter::source())
     }
 }
 

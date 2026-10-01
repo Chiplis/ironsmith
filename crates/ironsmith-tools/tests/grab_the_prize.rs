@@ -22,7 +22,7 @@ fn probe(types: Vec<CardType>) -> CardDefinition {
         .build()
 }
 fn cast(game: &mut GameState, player: PlayerId, spell: ObjectId) {
-    let action = compute_legal_actions(game, player).into_iter().find(|action|
+    let action = compute_legal_actions(game, player).expect("fixture has complete replacement state").into_iter().find(|action|
         matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell)).expect("spell cast must be legal");
     let mut queue = ironsmith::triggers::TriggerQueue::new();
     let mut state = PriorityLoopState::new(game.players_in_game());
@@ -162,7 +162,7 @@ fn casting_requires_another_card_and_sorcery_timing() {
                 .unwrap()
                 .mana_pool
                 .add(ironsmith::mana::ManaSymbol::Colorless, 1);
-            let offered = compute_legal_actions(&game, alice).iter().any(
+            let offered = compute_legal_actions(&game, alice).expect("fixture has complete replacement state").iter().any(
                 |a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell),
             );
             assert_eq!(

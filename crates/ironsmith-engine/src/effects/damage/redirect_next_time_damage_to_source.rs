@@ -509,7 +509,7 @@ mod tests {
             3,
             false,
             EventCause::effect(),
-        );
+        ).expect("damage test proposal must process successfully");
         let alice_damage: u32 = processed
             .assignments
             .iter()
@@ -534,7 +534,7 @@ mod tests {
             2,
             false,
             EventCause::effect(),
-        );
+        ).expect("damage test proposal must process successfully");
         let second_bob_damage: u32 = second
             .assignments
             .iter()
@@ -573,7 +573,7 @@ mod tests {
             4,
             false,
             EventCause::effect(),
-        );
+        ).expect("damage test proposal must process successfully");
         let alice_damage: u32 = processed
             .assignments
             .iter()
@@ -624,7 +624,7 @@ mod tests {
             3,
             false,
             EventCause::effect(),
-        );
+        ).expect("damage test proposal must process successfully");
         let protected_damage: u32 = processed
             .assignments
             .iter()
@@ -648,7 +648,7 @@ mod tests {
             2,
             false,
             EventCause::effect(),
-        );
+        ).expect("damage test proposal must process successfully");
         let second_protected_damage: u32 = second
             .assignments
             .iter()
@@ -698,7 +698,7 @@ mod tests {
             4,
             false,
             EventCause::effect(),
-        );
+        ).expect("damage test proposal must process successfully");
         let protected_damage: u32 = processed
             .assignments
             .iter()
@@ -751,7 +751,7 @@ mod tests {
             5,
             false,
             EventCause::effect(),
-        );
+        ).expect("damage test proposal must process successfully");
         let alice_damage: u32 = processed
             .assignments
             .iter()
@@ -776,7 +776,7 @@ mod tests {
             2,
             false,
             EventCause::effect(),
-        );
+        ).expect("damage test proposal must process successfully");
         let second_alice_damage: u32 = second
             .assignments
             .iter()
@@ -829,7 +829,7 @@ mod tests {
             4,
             false,
             EventCause::effect(),
-        );
+        ).expect("damage test proposal must process successfully");
         let alice_damage: u32 = processed
             .assignments
             .iter()
@@ -883,7 +883,7 @@ mod tests {
             3,
             false,
             EventCause::effect(),
-        );
+        ).expect("damage test proposal must process successfully");
         let bob_damage: u32 = processed
             .assignments
             .iter()
@@ -931,7 +931,7 @@ mod tests {
             3,
             false,
             EventCause::effect(),
-        );
+        ).expect("damage test proposal must process successfully");
         let protected_damage: u32 = processed
             .assignments
             .iter()
@@ -989,7 +989,7 @@ mod tests {
             2,
             false,
             EventCause::effect(),
-        );
+        ).expect("damage test proposal must process successfully");
         let protected_damage: u32 = processed
             .assignments
             .iter()
@@ -1044,7 +1044,7 @@ mod tests {
             .clear_until_end_of_turn_effects();
 
         let (protected_damage, replacement_prevented) =
-            crate::events::processing::process_damage_with_event(
+            crate::events::processing::process_damage_summary_for_test(
                 &mut game,
                 chosen_source,
                 DamageTarget::Object(protected),

@@ -79,14 +79,16 @@ fn replacement_effects_from_granted_abilities(
     source: crate::ids::ObjectId,
     controller: crate::ids::PlayerId,
     static_ability: &crate::static_abilities::StaticAbility,
+    origin: crate::continuous::AbilityOrigin,
+    printed_face: Option<crate::ids::CardId>,
 ) -> Vec<ReplacementEffect> {
     static_ability
         .generate_effects(source, controller, game)
-        .into_iter()
-        .filter(|effect| {
+        .into_iter().enumerate()
+        .filter(|(_, effect)| {
             crate::continuous::continuous_effect_duration_and_condition_are_active(effect, game)
         })
-        .filter_map(|effect| {
+        .filter_map(|(branch, effect)| {
             // Both grant representations reach here: `AddAbility` carries a
             // static ability directly, `AddAbilityGeneric` carries a full
             // ability whose static kind is the one that can replace an event.
@@ -99,16 +101,14 @@ fn replacement_effects_from_granted_abilities(
                 _ => return None,
             };
             let mut replacement =
-                granted_ability.generate_replacement_effect(source, controller)?;
-            // A source-only grant is how the model interpreter preserves a
-            // condition around a static ability that has no native conditional
-            // runtime form. The granted ability's replacement matcher already
-            // refers to `source`, which is also the object receiving the grant.
-            // Wrapping it in an enter-the-battlefield matcher would incorrectly
-            // restrict every such replacement to zone-entry events (and makes
-            // conditional damage prevention impossible to apply).
+                granted_ability.generate_replacement_effect(source, controller)?
+                    .with_ability_origin(origin.clone(), printed_face, branch + 1);
+            // Source-only conditional grants are already materialized in the
+            // calculated ability list scanned by our caller. Projecting their
+            // replacement here too would apply one ability twice. Non-source
+            // entry grants still need a prospective matcher for the entrant.
             if matches!(effect.applies_to, EffectTarget::Source) {
-                return Some(replacement);
+                return None;
             }
             let grant_target = replacement_matcher_for_effect_target(&effect.applies_to)?;
             let granted_ability = replacement.matcher.take()?;
@@ -128,18 +128,12 @@ fn replacement_effects_from_granted_abilities(
 ///
 /// This function is called during game state refresh to ensure that static ability
 /// replacement effects are properly registered.
-pub fn generate_replacement_effects_from_abilities(game: &GameState) -> Vec<ReplacementEffect> {
+pub fn generate_replacement_effects_from_abilities(game: &GameState)
+    -> Result<Vec<ReplacementEffect>, crate::static_ability_processor::StaticEffectDiscoveryError> {
+    let continuous = game.try_all_continuous_effects()?;
     let mut effects = Vec::new();
 
     let object_ids = game.object_ids_in_deterministic_order();
-    let layered_abilities = game.all_continuous_effects_arc().iter().any(|effect| {
-        matches!(
-            effect.modification.layer(),
-            crate::continuous::Layer::Copy
-                | crate::continuous::Layer::Text
-                | crate::continuous::Layer::Ability
-        )
-    });
 
     // Iterate over all objects and apply static abilities only in zones where they function.
     for object_id in object_ids {
@@ -147,7 +141,8 @@ pub fn generate_replacement_effects_from_abilities(game: &GameState) -> Vec<Repl
             if object.zone == crate::zone::Zone::Battlefield && game.is_phased_out(object_id) {
                 continue;
             }
-            let controller = game.controller_of(object);
+            let Some(chars) = game.try_current_characteristics_with_effects(object_id, &continuous)? else { continue; };
+            let controller = chars.controller;
             let zone = object.zone;
 
             // These payment methods replace every subsequent departure from
@@ -196,47 +191,33 @@ pub fn generate_replacement_effects_from_abilities(game: &GameState) -> Vec<Repl
                 effects.push(spec.build(object_id, controller));
             }
 
-            // Layer-six grants and ability loss also affect replacements.
-            let current_abilities = (zone == crate::zone::Zone::Battlefield
-                && (layered_abilities || game.is_face_down(object_id)))
-            .then(|| game.current_abilities(object_id).unwrap_or_default());
-            let abilities = current_abilities.as_deref().unwrap_or(&object.abilities);
-            for ability in abilities {
-                if let AbilityKind::Static(static_ability) = &ability.kind {
-                    if !ability.functions_in(&zone) {
-                        continue;
-                    }
-                    if let Some(effect) =
-                        static_ability.generate_replacement_effect(object_id, controller)
-                    {
-                        effects.push(effect);
-                    }
-                    effects.extend(replacement_effects_from_granted_abilities(
-                        game,
-                        object_id,
-                        controller,
-                        static_ability,
-                    ));
+            // Carry calculated occurrence origins, not just static value ids.
+            // Printed, layer-granted and registered temporary abilities can
+            // contain equal/cloned values while remaining independent effects.
+            for (slot, ability) in chars.abilities.iter().enumerate() {
+                let AbilityKind::Static(static_ability) = &ability.kind else { continue; };
+                let Some(origin) = chars.abilities.origin(slot).cloned() else { continue; };
+                let temporary = if let crate::continuous::AbilityOrigin::Temporary(token) = &origin {
+                    if !object.temporary_static_ability_grants.iter().enumerate().any(|(index, grant)|
+                        object.temporary_static_ability_grants.origin(index) == Some(token)
+                            && !grant.is_expired(game.turn.turn_number)) { continue; }
+                    true
+                } else { false };
+                // Stack cast-this-way riders are registered temporary abilities;
+                // their event matcher defines scope, not printed battlefield zones.
+                if !temporary && !ability.functions_in(&zone) { continue; }
+                let face = matches!(&origin, crate::continuous::AbilityOrigin::Printed(_))
+                    .then_some(object.card).flatten();
+                if let Some(effect) = static_ability.generate_replacement_effect(object_id, controller) {
+                    effects.push(effect.with_ability_origin(origin.clone(), face, 0));
                 }
-            }
-
-            if current_abilities.is_none() {
-                for grant in &object.temporary_static_ability_grants {
-                    if grant.is_expired(game.turn.turn_number) {
-                        continue;
-                    }
-                    if let Some(ability) = grant.materialize()
-                        && let Some(effect) =
-                            ability.generate_replacement_effect(object_id, controller)
-                    {
-                        effects.push(effect);
-                    }
-                }
+                effects.extend(replacement_effects_from_granted_abilities(
+                    game, object_id, controller, static_ability, origin, face));
             }
         }
     }
 
-    effects
+    Ok(effects)
 }
 
 #[cfg(test)]
@@ -308,14 +289,14 @@ mod tests {
         let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
 
         assert!(
-            generate_replacement_effects_from_abilities(&game)
+            generate_replacement_effects_from_abilities(&game).unwrap()
                 .iter()
                 .all(|effect| effect.source != source),
             "the prevention replacement must be inactive without the required counter"
         );
 
         game.add_counters(source, CounterType::PlusOnePlusOne, 1);
-        let replacements = generate_replacement_effects_from_abilities(&game);
+        let replacements = generate_replacement_effects_from_abilities(&game).unwrap();
         let replacement = replacements
             .iter()
             .find(|effect| effect.source == source)
@@ -327,7 +308,7 @@ mod tests {
 
         game.remove_counters(source, CounterType::PlusOnePlusOne, 1, None, None);
         assert!(
-            generate_replacement_effects_from_abilities(&game)
+            generate_replacement_effects_from_abilities(&game).unwrap()
                 .iter()
                 .all(|effect| effect.source != source),
             "the prevention replacement must deactivate after the last counter is removed"
@@ -417,8 +398,8 @@ mod tests {
             grant_dynamic_entry_counters(&mut game, source_id, alice, creature_id, count);
 
             let entered = game
-                .move_object_with_etb_processing(creature_id, Zone::Battlefield)
-                .expect("creature with a resolution-granted ETB ability should enter")
+                .move_object_with_etb_processing(creature_id, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
+                .assert_completed_without_additions().expect("creature with a resolution-granted ETB ability should enter")
                 .new_id;
             assert_eq!(
                 game.counter_count(entered, CounterType::PlusOnePlusOne),
@@ -456,8 +437,8 @@ mod tests {
             );
 
             let entered = game
-                .move_object_with_etb_processing(creature_id, Zone::Battlefield)
-                .expect("creature with a source-counter-based ETB ability should enter")
+                .move_object_with_etb_processing(creature_id, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
+                .assert_completed_without_additions().expect("creature with a source-counter-based ETB ability should enter")
                 .new_id;
             assert_eq!(
                 game.counter_count(entered, CounterType::PlusOnePlusOne),
@@ -506,8 +487,8 @@ mod tests {
             );
 
             let entered = game
-                .move_object_with_etb_processing(creature_id, Zone::Battlefield)
-                .expect("creature with a color-count-based ETB ability should enter")
+                .move_object_with_etb_processing(creature_id, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
+                .assert_completed_without_additions().expect("creature with a color-count-based ETB ability should enter")
                 .new_id;
             assert_eq!(
                 game.counter_count(entered, CounterType::PlusOnePlusOne),
@@ -535,7 +516,7 @@ mod tests {
         let darksteel_id = game.create_object_from_definition(&darksteel, alice, Zone::Hand);
         game.create_object_from_definition(&island, alice, Zone::Battlefield);
 
-        let effects = generate_replacement_effects_from_abilities(&game);
+        let effects = generate_replacement_effects_from_abilities(&game).unwrap();
         assert!(
             effects.iter().any(|effect| {
                 effect.source == darksteel_id
@@ -563,11 +544,11 @@ mod tests {
             Modification::AddAbility(StaticAbility::from_model(model)), Until::Forever);
         let mut ctx = ExecutionContext::new_default(source, alice);
         apply.execute(&mut game, &mut ctx).unwrap();
-        let entered = game.move_object_with_etb_processing(entering, Zone::Battlefield).unwrap().new_id;
+        let entered = game.move_object_with_etb_processing(entering, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario").assert_completed_without_additions().unwrap().new_id;
         assert_eq!(game.counter_count(entered, CounterType::PlusOnePlusOne), 0,
             "CR 614.12: a general subset replacement on the entrant cannot modify its own entry");
         let later = game.create_object_from_definition(&definition, alice, Zone::Stack);
-        let later = game.move_object_with_etb_processing(later, Zone::Battlefield).unwrap().new_id;
+        let later = game.move_object_with_etb_processing(later, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario").assert_completed_without_additions().unwrap().new_id;
         assert_eq!(game.counter_count(later, CounterType::PlusOnePlusOne), 2,
             "the same granted ability must affect another creature once its source is on the battlefield");
     }
@@ -592,15 +573,413 @@ mod tests {
             ApplyContinuousEffect::with_spec(ChooseSpec::SpecificObject(spell), modification, Until::Forever)
                 .execute(&mut game, &mut ctx).unwrap();
         }
-        let permanent = game.move_object_with_etb_processing(spell, Zone::Battlefield).unwrap().new_id;
+        let permanent = game.move_object_with_etb_processing(spell, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario").assert_completed_without_additions().unwrap().new_id;
         assert_eq!(game.calculated_power(permanent), Some(7));
         assert_eq!(game.current_controller(permanent), Some(bob));
         assert!(game.object_has_static_ability_id(permanent, crate::static_abilities::StaticAbilityId::Flying));
         let hand = game.move_object_by_effect(permanent, Zone::Hand).unwrap();
-        let returned = game.move_object_with_etb_processing(hand, Zone::Battlefield).unwrap().new_id;
+        let returned = game.move_object_with_etb_processing(hand, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario").assert_completed_without_additions().unwrap().new_id;
         assert_eq!(game.calculated_power(returned), Some(2));
         assert_eq!(game.current_controller(returned), Some(alice));
         assert!(!game.object_has_static_ability_id(returned, crate::static_abilities::StaticAbilityId::Flying));
     }
 
+}
+
+#[cfg(test)]
+mod independent_occurrence_gameplay_tests {
+    use super::*;
+    use crate::ability::Ability;
+    use crate::effects::EffectExecutor;
+    #[test]
+    fn cloned_replacement_occurrences_survive_refresh_expiry_and_control_changes() {
+        for temporary in [false, true] {
+            for layered in [false, true] {
+                let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+                let alice=game.players[0].id; let bob=game.players[1].id;
+                let card=crate::card::CardBuilder::new(crate::ids::CardId::new(), "Independent ability source")
+                    .card_types(vec![crate::types::CardType::Artifact]).build();
+                let source=game.create_object_from_card(&card, alice, crate::zone::Zone::Battlefield);
+                let haste=crate::static_abilities::StaticAbility::haste();
+                let doubling=crate::static_abilities::StaticAbility::double_life_change_replacement(
+                    crate::target::PlayerFilter::You, false, "Double life gain");
+                let turn=game.turn.turn_number;
+                if temporary {
+                    for (ability, expiry) in [(haste.clone(), turn), (doubling.clone(), turn+1), (doubling.clone(), turn+1)] {
+                        game.object_mut(source).unwrap().temporary_static_ability_grants.push(
+                            crate::object::TemporaryStaticAbilityGrant { ability: ability.id(),
+                                ability_payload: Some(ability), expires_end_of_turn: expiry });
+                    }
+                } else {
+                    for ability in [haste, doubling.clone(), doubling.clone()] {
+                        game.object_mut(source).unwrap().abilities_mut().push(Ability::static_ability(ability));
+                    }
+                }
+                if layered {
+                    game.effect_store.continuous_effects.add_effect(crate::continuous::ContinuousEffect::new(
+                        source, alice, crate::continuous::EffectTarget::Specific(source),
+                        crate::continuous::Modification::RemoveStaticAbilityFamily(crate::static_abilities::StaticAbilityId::Haste))
+                        .until(crate::effect::Until::Forever));
+                }
+                let keys = |game: &GameState| generate_replacement_effects_from_abilities(game).unwrap()
+                    .into_iter().map(|effect| effect.application_key()).collect::<std::collections::HashSet<_>>();
+                let before=keys(&game); assert_eq!(before.len(), 2);
+                game.refresh_continuous_state(); assert_eq!(keys(&game), before);
+                let mut ctx=crate::effects::EffectContext::new_default(source, alice);
+                let outcome=crate::effects::GainLifeEffect::you(1).execute(&mut game, &mut ctx).unwrap();
+                assert_eq!(game.player(alice).unwrap().life, 24);
+                assert_eq!(outcome.count_or_zero(), 4); assert_eq!(outcome.events.len(), 1);
+                game.cleanup_temporary_object_static_ability_grants_end_of_turn();
+                assert_eq!(keys(&game), before, "expiry of unrelated older grant cannot renumber survivors");
+                assert_eq!(keys(&game.clone()), before);
+                game.set_current_controller(source, bob);
+                assert_eq!(keys(&game), before, "controller changes keep the same occurrences");
+                let mut ctx=crate::effects::EffectContext::new_default(source, bob);
+                let outcome=crate::effects::GainLifeEffect::you(1).execute(&mut game, &mut ctx).unwrap();
+                assert_eq!(game.player(bob).unwrap().life, 24);
+                assert_eq!(outcome.count_or_zero(), 4); assert_eq!(outcome.events.len(), 1);
+            }
+        }
+    }
+    #[test]
+    fn cloned_entry_replacement_occurrences_each_add_their_counter() {
+        let mut game=GameState::new(vec!["Alice".into(), "Bob".into()], 20); let alice=game.players[0].id;
+        let card=crate::card::CardBuilder::new(crate::ids::CardId::new(), "Independent entry source")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let object=game.create_object_from_card(&card, alice, crate::zone::Zone::Hand);
+        let stable=game.object(object).unwrap().stable_id;
+        let ability=crate::static_abilities::StaticAbility::enters_with_counters(crate::object::CounterType::PlusOnePlusOne, 1);
+        for _ in 0..2 { game.object_mut(object).unwrap().abilities_mut().push(Ability::static_ability(ability.clone())); }
+        let mut ctx=crate::effects::EffectContext::new_default(object, alice);
+        crate::effects::MoveToZoneEffect::new(crate::target::ChooseSpec::SpecificObject(object), crate::zone::Zone::Battlefield, false)
+            .execute(&mut game, &mut ctx).unwrap();
+        let object=game.find_object_by_stable_id(stable).unwrap();
+        assert_eq!(game.object(object).unwrap().zone, crate::zone::Zone::Battlefield);
+        assert_eq!(game.counter_count(object, crate::object::CounterType::PlusOnePlusOne), 2);
+    }
+}
+
+#[cfg(test)]
+mod continuous_parent_occurrence_gameplay_tests {
+    use super::*;
+    use crate::ability::Ability;
+    use crate::effects::EffectExecutor;
+    #[test]
+    fn independent_conditional_grant_parents_survive_nested_materialization_and_refresh() {
+        for (depth, temporary) in [1, 2, 3].into_iter().flat_map(|depth| [false, true].map(|temporary| (depth, temporary))) {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = game.players[0].id; let bob = game.players[1].id;
+            let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Nested replacement grant")
+                .card_types(vec![crate::types::CardType::Artifact]).build();
+            let source = game.create_object_from_card(&card, alice, crate::zone::Zone::Battlefield);
+            let mut model: crate::static_abilities::CompiledStaticAbility =
+                ironsmith_core::StaticAbility::double_life_change_replacement(
+                    crate::target::PlayerFilter::You, false, "Double life gain");
+            for _ in 0..depth {
+                model = ironsmith_core::StaticAbility::grant_object_ability_for_filter(
+                    crate::target::ObjectFilter::source(), ironsmith_core::Ability::static_ability(model),
+                    "Source has the granted ability");
+            }
+            model = model.with_condition(crate::effect::Condition::SourceHasCounterAtLeast {
+                counter_type: crate::object::CounterType::PlusOnePlusOne, count: 1,
+                surface: ironsmith_core::SourceCounterThresholdSurface::SourceHas });
+            let parent = crate::static_abilities::StaticAbility::from_model(model);
+            for _ in 0..2 {
+                if temporary {
+                    game.grant_temporary_static_ability_payload_to_object_until_end_of_turn(
+                        source, parent.id(), Some(parent.clone()));
+                } else { game.object_mut(source).unwrap().abilities_mut()
+                    .push(Ability::static_ability(parent.clone())); }
+            }
+            let keys = |game: &GameState| generate_replacement_effects_from_abilities(game).unwrap().into_iter()
+                .map(|effect| effect.application_key()).collect::<std::collections::HashSet<_>>();
+            assert!(keys(&game).is_empty());
+            game.add_counters(source, crate::object::CounterType::PlusOnePlusOne, 1);
+            let before = keys(&game); assert_eq!(before.len(), 2, "depth={depth}");
+            for _ in 0..3 { game.refresh_continuous_state(); assert_eq!(keys(&game), before); }
+            assert_eq!(keys(&game.clone()), before);
+            let mut ctx = crate::effects::EffectContext::new_default(source, alice);
+            let outcome = crate::effects::GainLifeEffect::you(1).execute(&mut game, &mut ctx).unwrap();
+            assert_eq!(game.player(alice).unwrap().life, 24); assert_eq!(outcome.count_or_zero(), 4);
+            assert_eq!(outcome.events.len(), 1);
+            game.set_current_controller(source, bob);
+            assert_eq!(keys(&game), before, "controller binding cannot rename parent occurrence");
+            let mut ctx = crate::effects::EffectContext::new_default(source, bob);
+            let outcome = crate::effects::GainLifeEffect::you(1).execute(&mut game, &mut ctx).unwrap();
+            assert_eq!(game.player(bob).unwrap().life, 24); assert_eq!(outcome.count_or_zero(), 4);
+            assert_eq!(outcome.events.len(), 1);
+            game.remove_counters(source, crate::object::CounterType::PlusOnePlusOne, 1, None, None);
+            assert!(keys(&game).is_empty());
+            game.add_counters(source, crate::object::CounterType::PlusOnePlusOne, 1);
+            assert_eq!(keys(&game), before, "reactivating parent keeps its occurrence");
+            if temporary {
+                game.cleanup_temporary_object_static_ability_grants_end_of_turn();
+                assert!(keys(&game).is_empty(), "expired generating grants leave no descendant replacement");
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod registered_continuous_occurrence_gameplay_tests {
+    use super::*;
+    use crate::effects::EffectExecutor;
+    #[test]
+    fn registered_grants_keep_distinct_keys_through_expiry_and_reregistration() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id;
+        let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Registered grant source")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let source = game.create_object_from_card(&card, alice, crate::zone::Zone::Battlefield);
+        let older = crate::continuous::ContinuousEffect::from_resolution(source, alice, vec![source],
+            crate::continuous::Modification::AddAbility(crate::static_abilities::StaticAbility::haste()))
+            .until(crate::effect::Until::EndOfTurn);
+        game.effect_store.continuous_effects.add_effect(older);
+        let doubling = crate::static_abilities::StaticAbility::double_life_change_replacement(
+            crate::target::PlayerFilter::You, false, "Double life gain");
+        let mut descriptor = crate::continuous::ContinuousEffect::from_resolution(source, alice, vec![source],
+            crate::continuous::Modification::AddAbility(doubling));
+        descriptor.timestamp = 7;
+        // Retained generation metadata cannot merge new registrations.
+        descriptor.originating_ability = Some(Box::new(crate::continuous::ContinuousAbilityOrigin {
+            host: source, ability: crate::continuous::AbilityOrigin::Printed(0),
+            printed_face: game.object(source).unwrap().card, branch: 0 }));
+        let first = game.effect_store.continuous_effects.add_effect(descriptor.clone());
+        let second = game.effect_store.continuous_effects.add_effect(descriptor);
+        let keys = |game: &GameState| generate_replacement_effects_from_abilities(game).unwrap().into_iter()
+            .map(|effect| effect.application_key()).collect::<std::collections::HashSet<_>>();
+        let before = keys(&game); assert_eq!(before.len(), 2);
+        game.refresh_continuous_state(); assert_eq!(keys(&game), before);
+        assert_eq!(keys(&game.clone()), before);
+        let mut ctx = crate::effects::EffectContext::new_default(source, alice);
+        let outcome = crate::effects::GainLifeEffect::you(1).execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(game.player(alice).unwrap().life, 24); assert_eq!(outcome.count_or_zero(), 4);
+        assert_eq!(outcome.events.len(), 1);
+        game.effect_store.continuous_effects.cleanup_end_of_turn();
+        assert_eq!(keys(&game), before, "removing an older unrelated registration cannot renumber survivors");
+        let checkpoint = game.clone();
+        game.effect_store.continuous_effects.remove_effect(first);
+        let survivor = keys(&game); assert_eq!(survivor.len(), 1); assert!(survivor.is_subset(&before));
+        assert_eq!(keys(&checkpoint), before);
+        let outcome = crate::effects::GainLifeEffect::you(1).execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(game.player(alice).unwrap().life, 26); assert_eq!(outcome.count_or_zero(), 2);
+        assert_eq!(outcome.events.len(), 1);
+        let clone = game.effect_store.continuous_effects.effects().iter().find(|effect| effect.id == second).unwrap().clone();
+        let third = game.effect_store.continuous_effects.add_effect(clone);
+        assert_ne!(first, third); assert_ne!(second, third);
+        let restored = keys(&game); assert_eq!(restored.len(), 2);
+        assert_eq!(restored.intersection(&before).count(), 1, "re-registration creates a fresh effect");
+        let outcome = crate::effects::GainLifeEffect::you(1).execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(game.player(alice).unwrap().life, 30); assert_eq!(outcome.count_or_zero(), 4);
+        assert_eq!(outcome.events.len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod surviving_level_parent_gameplay_tests {
+    use super::*;
+    use crate::{ability::{Ability, LevelAbility}, card::{CardBuilder, PowerToughness},
+        continuous::{ContinuousEffect, Modification, TextBoxOverlay}, effects::EffectExecutor,
+        ids::{CardId, ObjectId, PlayerId}, object::CounterType,
+        static_abilities::{StaticAbility, CompiledStaticAbility}, target::PlayerFilter,
+        types::CardType, zone::Zone};
+    use std::collections::HashSet;
+
+    fn fixture() -> (GameState, ObjectId, PlayerId, StaticAbility) {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id;
+        let card = CardBuilder::new(CardId::new(), "Level replacement recipient")
+            .card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(2, 2)).build();
+        let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.object_mut(source).unwrap().counters.insert(CounterType::Level, 1);
+        let leaf = StaticAbility::from_model(CompiledStaticAbility::double_life_change_replacement(
+            PlayerFilter::You, false, "Double life gain"));
+        let parent = StaticAbility::with_level_abilities(vec![LevelAbility {
+            min_level: 1, max_level: None, power_toughness: Some((7, 7)), abilities: vec![leaf] }]);
+        (game, source, alice, parent)
+    }
+
+    fn keys(game: &GameState) -> HashSet<crate::replacement::ReplacementEffectKey> {
+        generate_replacement_effects_from_abilities(game).unwrap().into_iter()
+            .map(|effect| effect.application_key()).collect()
+    }
+
+    #[test]
+    fn selective_loss_overwrite_and_regrant_use_surviving_level_description() {
+        for mode in 0..7 {
+            let (mut game, source, alice, parent) = fixture();
+            game.object_mut(source).unwrap().abilities_mut().push(Ability::static_ability(parent.clone()));
+            let modification = match mode {
+                0 => None,
+                1 | 6 => Some(Modification::RemoveAllAbilities),
+                2 => Some(Modification::RemoveAbility(parent.clone())),
+                3 => Some(Modification::RemoveStaticAbilityFamily(parent.id())),
+                4 => Some(Modification::SetAbilities(vec![Ability::static_ability(StaticAbility::haste())])),
+                5 => Some(Modification::SetTextBox(TextBoxOverlay::new("Haste",
+                    vec![Ability::static_ability(StaticAbility::haste())]))),
+                _ => unreachable!(),
+            };
+            if let Some(modification) = modification {
+                game.effect_store.continuous_effects.add_effect(ContinuousEffect::from_resolution(
+                    source, alice, vec![source], modification));
+            }
+            if mode == 6 {
+                game.effect_store.continuous_effects.add_effect(ContinuousEffect::from_resolution(
+                    source, alice, vec![source], Modification::AddAbility(parent)));
+            }
+            let active = mode == 0 || mode == 6;
+            let expected_pt = if active { 7 } else { 2 };
+            let before = keys(&game);
+            assert_eq!(before.len(), usize::from(active), "mode={mode}");
+            for refreshed in [false, true] {
+                if refreshed { game.refresh_continuous_state(); }
+                let chars = game.current_characteristics(source).unwrap();
+                assert_eq!((chars.power, chars.toughness), (Some(expected_pt), Some(expected_pt)),
+                    "mode={mode},refreshed={refreshed}");
+                assert_eq!(keys(&game), before);
+            }
+            assert_eq!(keys(&game.clone()), before);
+            let mut ctx = crate::effects::EffectContext::new_default(source, alice);
+            let outcome = crate::effects::GainLifeEffect::you(1).execute(&mut game, &mut ctx).unwrap();
+            let gain = if active { 2 } else { 1 };
+            assert_eq!(game.player(alice).unwrap().life, 20 + gain, "mode={mode}");
+            assert_eq!(outcome.count_or_zero(), gain);
+            assert_eq!(outcome.events.len(), 1);
+        }
+    }
+
+    #[test]
+    fn independent_level_description_parents_preserve_keys_through_refresh_and_lifetime() {
+        for temporary in [false, true] {
+            let (mut game, source, alice, parent) = fixture();
+            let bob = game.players[1].id;
+            if temporary {
+                let haste = StaticAbility::haste();
+                game.grant_temporary_static_ability_payload_to_object_until_end_of_turn(
+                    source, haste.id(), Some(haste));
+            }
+            for _ in 0..2 {
+                if temporary {
+                    game.grant_temporary_static_ability_payload_to_object_until_end_of_turn(
+                        source, parent.id(), Some(parent.clone()));
+                } else {
+                    game.object_mut(source).unwrap().abilities_mut().push(Ability::static_ability(parent.clone()));
+                }
+            }
+            let before = keys(&game);
+            assert_eq!(before.len(), 2, "temporary={temporary}");
+            for _ in 0..3 { game.refresh_continuous_state(); assert_eq!(keys(&game), before); }
+            assert_eq!(keys(&game.clone()), before);
+            if temporary {
+                game.object_mut(source).unwrap().temporary_static_ability_grants
+                    .retain(|grant| grant.ability != StaticAbility::haste().id());
+                assert_eq!(keys(&game), before, "removing an earlier grant cannot renumber level parents");
+            }
+            let mut ctx = crate::effects::EffectContext::new_default(source, alice);
+            let outcome = crate::effects::GainLifeEffect::you(1).execute(&mut game, &mut ctx).unwrap();
+            assert_eq!(game.player(alice).unwrap().life, 24);
+            assert_eq!(outcome.count_or_zero(), 4); assert_eq!(outcome.events.len(), 1);
+            game.set_current_controller(source, bob);
+            assert_eq!(keys(&game), before);
+            let mut ctx = crate::effects::EffectContext::new_default(source, bob);
+            let outcome = crate::effects::GainLifeEffect::you(1).execute(&mut game, &mut ctx).unwrap();
+            assert_eq!(game.player(bob).unwrap().life, 24);
+            assert_eq!(outcome.count_or_zero(), 4); assert_eq!(outcome.events.len(), 1);
+            if temporary {
+                game.cleanup_temporary_object_static_ability_grants_end_of_turn();
+                assert!(keys(&game).is_empty());
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod independent_static_copy_gameplay_tests {
+    use super::generate_replacement_effects_from_abilities;
+    use crate::{ability::Ability, card::CardBuilder,
+        continuous::{ContinuousEffect, Modification}, effects::EffectExecutor,
+        game_state::GameState, ids::CardId, static_abilities::{StaticAbility,
+        CompiledStaticAbility, CopyStaticAbilityVariants, StaticAbilityId},
+        target::{ObjectFilter, PlayerFilter}, types::CardType, zone::Zone};
+
+    #[test]
+    fn independent_static_copy_instructions_preserve_variant_occurrences_and_lifetime() {
+        for route in 0..3 {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = game.players[0].id; let bob = game.players[1].id;
+            let donor_card = CardBuilder::new(CardId::new(), "Variant donor")
+                .card_types(vec![CardType::Artifact]).build();
+            let donor = game.create_object_from_card(&donor_card, alice, Zone::Graveyard);
+            let recipient_card = CardBuilder::new(CardId::new(), "Variant recipient")
+                .card_types(vec![CardType::Artifact]).build();
+            let recipient = game.create_object_from_card(&recipient_card, alice, Zone::Battlefield);
+            let leaf = StaticAbility::from_model(CompiledStaticAbility::double_life_change_replacement(
+                PlayerFilter::You, false, "Double life gain"));
+            // Repeated donor aliases remain one selected variant per instruction.
+            // Multiplicity comes from the two independent copy instructions.
+            for _ in 0..2 { game.object_mut(donor).unwrap().abilities_mut()
+                .push(Ability::static_ability(leaf.clone())); }
+            let filter = ObjectFilter::default().in_zone(Zone::Graveyard);
+            let selectors = vec![ironsmith_core::StaticAbilityVariantSelector::Any(
+                StaticAbilityId::DoubleLifeChangeReplacement)];
+            let copy = StaticAbility::copy_static_ability_variants(CopyStaticAbilityVariants::new(
+                filter.clone(), selectors.clone(), "Copy selected variants".into()));
+            let mut registrations = Vec::new();
+            for _ in 0..2 {
+                match route {
+                    0 => registrations.push(game.effect_store.continuous_effects.add_effect(
+                        ContinuousEffect::from_resolution(recipient, alice, vec![recipient],
+                            Modification::CopyStaticAbilityVariants { filter: filter.clone(),
+                                selectors: selectors.clone(), exclude_source_id: true }))),
+                    1 => game.object_mut(recipient).unwrap().abilities_mut()
+                        .push(Ability::static_ability(copy.clone())),
+                    _ => game.grant_temporary_static_ability_payload_to_object_until_end_of_turn(
+                        recipient, copy.id(), Some(copy.clone())),
+                }
+            }
+            let keys = |game: &GameState| generate_replacement_effects_from_abilities(game).unwrap()
+                .into_iter().map(|effect| effect.application_key())
+                .collect::<std::collections::HashSet<_>>();
+            let before = keys(&game); assert_eq!(before.len(), 2, "route={route}");
+            for _ in 0..3 { game.refresh_continuous_state(); assert_eq!(keys(&game), before); }
+            assert_eq!(keys(&game.clone()), before);
+            let mut ctx = crate::effects::EffectContext::new_default(recipient, alice);
+            let outcome = crate::effects::GainLifeEffect::you(1).execute(&mut game, &mut ctx).unwrap();
+            assert_eq!(outcome.count_or_zero(), 4); assert_eq!(outcome.events.len(), 1);
+            assert_eq!(game.player(alice).unwrap().life, 24);
+            game.set_current_controller(recipient, bob);
+            assert_eq!(keys(&game), before, "binding cannot merge or rename copy occurrences");
+            let mut ctx = crate::effects::EffectContext::new_default(recipient, bob);
+            let outcome = crate::effects::GainLifeEffect::you(1).execute(&mut game, &mut ctx).unwrap();
+            assert_eq!(outcome.count_or_zero(), 4); assert_eq!(outcome.events.len(), 1);
+            assert_eq!(game.player(bob).unwrap().life, 24);
+            game.object_mut(donor).unwrap().abilities_mut().clear();
+            assert!(keys(&game).is_empty(), "variant no longer available");
+            game.refresh_continuous_state(); assert!(keys(&game).is_empty());
+            for _ in 0..2 { game.object_mut(donor).unwrap().abilities_mut()
+                .push(Ability::static_ability(leaf.clone())); }
+            assert_eq!(keys(&game), before, "restoring the same donor origins retains copy identity");
+            if route == 0 {
+                game.effect_store.continuous_effects.remove_effect(registrations[0]);
+                let survivor = keys(&game); assert_eq!(survivor.len(), 1);
+                assert!(survivor.is_subset(&before));
+                game.refresh_continuous_state(); assert_eq!(keys(&game), survivor);
+                let mut ctx = crate::effects::EffectContext::new_default(recipient, bob);
+                let outcome = crate::effects::GainLifeEffect::you(1).execute(&mut game, &mut ctx).unwrap();
+                assert_eq!(outcome.count_or_zero(), 2); assert_eq!(outcome.events.len(), 1);
+                assert_eq!(game.player(bob).unwrap().life, 26);
+            } else if route == 2 {
+                game.cleanup_temporary_object_static_ability_grants_end_of_turn();
+                assert!(keys(&game).is_empty());
+            } else {
+                let loss = game.effect_store.continuous_effects.add_effect(
+                    ContinuousEffect::from_resolution(recipient, bob, vec![recipient],
+                        Modification::RemoveAllAbilities));
+                assert!(keys(&game).is_empty());
+                game.refresh_continuous_state(); assert!(keys(&game).is_empty());
+                game.effect_store.continuous_effects.remove_effect(loss);
+                assert_eq!(keys(&game), before);
+            }
+        }
+    }
 }

@@ -17,7 +17,10 @@ pub enum AggregateValueMetric {
     DistinctNames,
     DistinctManaValues,
     DistinctPowers,
+    DistinctCounterTypes,
     Counters,
+    /// "unlocked doors among Rooms you control" (Rampaging Soulrager).
+    UnlockedDoors,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -149,7 +152,9 @@ fn parse_aggregate_metric(
             .value(AggregateValueMetric::Colors),
         alt((
             (
-                primitives::word_slice_exact("different"),
+                // "five or more mana values among cards in your graveyard"
+                // counts distinct mana values with or without "different".
+                opt(primitives::word_slice_exact("different")),
                 primitives::word_slice_exact("mana"),
                 alt((
                     primitives::word_slice_exact("value"),
@@ -183,14 +188,39 @@ fn parse_aggregate_metric(
             primitives::word_slice_exact("among"),
         )
             .value(AggregateValueMetric::DistinctPowers),
-        (
-            alt((
-                primitives::word_slice_exact("counter"),
-                primitives::word_slice_exact("counters"),
-            )),
-            primitives::word_slice_exact("among"),
-        )
-            .value(AggregateValueMetric::Counters),
+        alt((
+            (
+                opt(primitives::word_slice_exact("different")),
+                alt((
+                    primitives::word_slice_exact("kinds"),
+                    primitives::word_slice_exact("kind"),
+                )),
+                primitives::word_slice_exact("of"),
+                alt((
+                    primitives::word_slice_exact("counter"),
+                    primitives::word_slice_exact("counters"),
+                )),
+                primitives::word_slice_exact("among"),
+            )
+                .value(AggregateValueMetric::DistinctCounterTypes),
+            (
+                alt((
+                    primitives::word_slice_exact("counter"),
+                    primitives::word_slice_exact("counters"),
+                )),
+                primitives::word_slice_exact("among"),
+            )
+                .value(AggregateValueMetric::Counters),
+            (
+                primitives::word_slice_exact("unlocked"),
+                alt((
+                    primitives::word_slice_exact("door"),
+                    primitives::word_slice_exact("doors"),
+                )),
+                primitives::word_slice_exact("among"),
+            )
+                .value(AggregateValueMetric::UnlockedDoors),
+        )),
     ))
     .parse_next(input)
 }

@@ -390,8 +390,26 @@ impl AttacksTrigger {
         event: &CreatureAttackedEvent,
         ctx: &TriggerContext,
     ) -> Option<i32> {
+        // "Whenever two or more creatures you control attack a player": the
+        // attackers must share one defending player, so a split attack across
+        // two opponents does not satisfy the group count.
+        let current_defending_player = self
+            .filter
+            .attacking_player_or_planeswalker_controlled_by
+            .is_some()
+            .then(|| {
+                defending_player_for_attack_target(
+                    &crate::combat_state::AttackTarget::from(event.target),
+                    ctx.game,
+                )
+            });
         let count = attack_declaration(event, ctx)?
             .iter()
+            .filter(|info| {
+                current_defending_player.is_none_or(|defender| {
+                    defending_player_for_attack_target(&info.target, ctx.game) == defender
+                })
+            })
             .filter(|info| self.matches_attacker_info(info, ctx))
             .count();
         (count > 0).then_some(count as i32)

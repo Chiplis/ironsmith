@@ -584,15 +584,64 @@ pub(super) fn read_same_name_as_filter_predicate(
         ),
         _ => (filter_tokens, false),
     };
-    let mut filter = parse_object_filter(filter_tokens, false)?;
-    if cast_this_turn {
-        filter.cast_this_turn = true;
-        filter.zone = Some(crate::zone::Zone::Stack);
-    }
-    filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
-        relation: TaggedOpbjectRelation::SameNameAsTagged,
+    // "another creature you control or a creature card in your graveyard":
+    // two independently scoped object phrases (battlefield and graveyard)
+    // are a union, and "another" there excludes the referenced object itself.
+    let union_split = filter_tokens
+        .iter()
+        .position(|token| token.is_word("or"))
+        .filter(|&or_index| {
+            !cast_this_turn
+                && or_index > 0
+                && filter_tokens
+                    .get(or_index + 1)
+                    .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+                && filter_tokens[or_index + 1..]
+                    .iter()
+                    .all(|token| !token.is_word("or"))
+        });
+    let union_filter = union_split.and_then(|or_index| {
+        let mut left =
+            crate::grammar::primitives::probe_shape(parse_object_filter(&filter_tokens[..or_index], false))?;
+        let mut right = crate::grammar::primitives::probe_shape(parse_object_filter(
+            &filter_tokens[or_index + 1..],
+            false,
+        ))?;
+        if left.zone == right.zone {
+            return None;
+        }
+        for branch in [&mut left, &mut right] {
+            if branch.other {
+                branch.other = false;
+                branch.tagged_constraints.push(TaggedObjectConstraint {
+                    tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                    relation: TaggedOpbjectRelation::IsNotTaggedObject,
+                });
+            }
+            branch.tagged_constraints.push(TaggedObjectConstraint {
+                tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                relation: TaggedOpbjectRelation::SameNameAsTagged,
+            });
+        }
+        Some(ObjectFilter {
+            any_of: vec![left, right],
+            ..ObjectFilter::default()
+        })
     });
+    let filter = if let Some(union_filter) = union_filter {
+        union_filter
+    } else {
+        let mut filter = parse_object_filter(filter_tokens, false)?;
+        if cast_this_turn {
+            filter.cast_this_turn = true;
+            filter.zone = Some(crate::zone::Zone::Stack);
+        }
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
+            relation: TaggedOpbjectRelation::SameNameAsTagged,
+        });
+        filter
+    };
     // The authored surface already carries the negation, so state it as a
     // zero count rather than wrapping the comparison in `Not`.
     let comparison = if negated {
@@ -823,6 +872,9 @@ pub(super) const READINGS: &[Reading] = &[
             }))
                 // Readings ranked above this one that read the input read it.
                 && !input.read_by("value-reference-comparison-predicate")
+                // The triggering-object stat comparison owns the full
+                // "its power ... or its toughness ..." disjunction.
+                && !input.read_by("triggering-object-source-stat-predicate")
         },
         read: |input| input.outcome(read_it_demonstrative_value(input)),
     },
@@ -846,6 +898,7 @@ pub(super) const READINGS: &[Reading] = &[
                 && !input.read_by("it-demonstrative-value")
                 // Readings ranked above this one that read the input read it.
                 && !input.read_by("triggering-spell-ordinal-predicate")
+                && !input.read_by("triggering-object-source-stat-predicate")
         },
         read: |input| input.outcome(read_demonstrative_or_descriptor(input)),
     },
@@ -860,6 +913,7 @@ pub(super) const READINGS: &[Reading] = &[
                     .is_some_and(|_| !is_article(token.parser_text()))
             }))
                 && !input.read_by("stack-object-would-destroy-predicate")
+                && !input.read_by("triggering-object-source-stat-predicate")
                 // Readings ranked above this one that read the input read it.
                 && !input.read_by("same-name-as-filter-predicate")
                 && !input.read_by("exploited-triggering-object-predicate")
@@ -891,6 +945,9 @@ pub(super) const READINGS: &[Reading] = &[
                 && !input.read_by("demonstrative-or-descriptor")
                 // Readings ranked above this one that read the input read it.
                 && !input.read_by("triggering-spell-ordinal-predicate")
+                // "if it was cast from your graveyard" names a cast zone,
+                // not an owner descriptor.
+                && !input.read_by("spell-lifecycle-predicate")
         },
         read: |input| input.outcome(read_demonstrative_descriptor(input)),
     },
@@ -1094,6 +1151,7 @@ pub(super) const READINGS: &[Reading] = &[
                 && !input.read_by("demonstrative-or-descriptor")
                 && !input.read_by("implicit-subject-and-predicate")
                 && !input.read_by("it-demonstrative-value")
+                && !input.read_by("triggering-object-source-stat-predicate")
         },
         read: |input| input.outcome(read_or_predicate(input)),
     },

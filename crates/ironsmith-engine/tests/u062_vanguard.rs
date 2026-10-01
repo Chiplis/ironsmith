@@ -61,7 +61,7 @@ fn u062_vanguards_modify_life_hands_and_function_from_command() {
     assert_eq!(game.player(alice).unwrap().max_hand_size, 12);
     assert_eq!(game.player(bob).unwrap().max_hand_size, 6);
     assert!(
-        ironsmith::decision::compute_legal_actions(&game, alice)
+        ironsmith::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .iter()
             .any(|action| matches!(action, LegalAction::ActivateAbility { source, .. } if *source == alice_card))
     );

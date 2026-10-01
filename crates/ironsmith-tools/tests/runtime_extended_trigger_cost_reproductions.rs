@@ -234,7 +234,7 @@ fn cast_announce(
 ) -> Result<(), String> {
     g.turn.priority_player = Some(dm.actor);
     let id = g.create_object_from_definition(d, dm.actor, Zone::Hand);
-    let a = compute_legal_actions(g, dm.actor)
+    let a = compute_legal_actions(g, dm.actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or("fixture source cast absent")?;
@@ -389,7 +389,7 @@ fn run(
         let before = g.player(alice()).unwrap().mana_pool.total();
         let id = g.create_object_from_definition(&defs[n].0, alice(), Zone::Hand);
         let source = g.object(id).unwrap().stable_id;
-        let action = compute_legal_actions(&g, alice())
+        let action = compute_legal_actions(&g, alice()).expect("fixture has complete replacement state")
             .into_iter()
             .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
             .ok_or("canonical source cast missing")?;

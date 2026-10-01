@@ -36,7 +36,7 @@ fn abomination_power_up_cannot_be_reactivated_on_the_same_object() {
         .unwrap()
         .mana_pool
         .add(ManaSymbol::Red, 4);
-    let action = compute_legal_actions(&game, alice)
+    let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source))
         .expect("power-up permits zero fight targets");
@@ -65,7 +65,7 @@ fn abomination_power_up_cannot_be_reactivated_on_the_same_object() {
     }
     assert_eq!(game.stack.len(), 1);
     assert!(
-        !compute_legal_actions(&game, alice).iter().any(
+        !compute_legal_actions(&game, alice).expect("fixture has complete replacement state").iter().any(
             |action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source)
         ),
         "power-up is spent on activation, before its ability resolves"
@@ -73,7 +73,7 @@ fn abomination_power_up_cannot_be_reactivated_on_the_same_object() {
     let mut countered_branch = game.clone();
     countered_branch.stack.clear();
     assert!(
-        !compute_legal_actions(&countered_branch, alice).iter().any(
+        !compute_legal_actions(&countered_branch, alice).expect("fixture has complete replacement state").iter().any(
             |action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source)
         ),
         "removing the unresolved ability cannot refund its activation"
@@ -96,7 +96,7 @@ fn abomination_power_up_cannot_be_reactivated_on_the_same_object() {
         game.turn_store.ability_activations_per_object
     );
     assert!(
-        !compute_legal_actions(&game, alice).iter().any(
+        !compute_legal_actions(&game, alice).expect("fixture has complete replacement state").iter().any(
             |action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source)
         ),
         "the same power-up ability cannot be activated again on this object"
@@ -119,7 +119,7 @@ fn abomination_power_up_cannot_be_reactivated_on_the_same_object() {
         )
         .unwrap();
     let new_index = granted.object(source).unwrap().abilities.len() - 1;
-    let actions = compute_legal_actions(&granted, alice);
+    let actions = compute_legal_actions(&granted, alice).expect("fixture has complete replacement state");
     assert!(!actions.iter().any(|action| matches!(action,LegalAction::ActivateAbility{source:id,ability_index:1} if *id==source)));
     let action = actions.into_iter().find(|action| matches!(action,LegalAction::ActivateAbility{source:id,ability_index} if *id==source && *ability_index==new_index)).expect("newly granted power-up has its own unused activation");
     let mut granted_state = PriorityLoopState::new(granted.players_in_game());
@@ -163,7 +163,7 @@ fn abomination_power_up_cannot_be_reactivated_on_the_same_object() {
         Some(&1)
     );
     assert!(
-        !compute_legal_actions(&granted, alice).iter().any(
+        !compute_legal_actions(&granted, alice).expect("fixture has complete replacement state").iter().any(
             |action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source)
         ),
         "both independent uses are now spent"
@@ -192,12 +192,12 @@ fn abomination_power_up_cannot_be_reactivated_on_the_same_object() {
     )
     .unwrap();
     assert!(
-        compute_legal_actions(&copied, alice).iter().any(
+        compute_legal_actions(&copied, alice).expect("fixture has complete replacement state").iter().any(
             |action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source)
         ),
         "copying a permanent grants a new instance of its power-up ability"
     );
-    let action = compute_legal_actions(&copied, alice)
+    let action = compute_legal_actions(&copied, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source))
         .unwrap();
@@ -235,7 +235,7 @@ fn abomination_power_up_cannot_be_reactivated_on_the_same_object() {
     );
     ironsmith::game_loop::resolve_stack_entry_with(&mut copied, &mut dm).unwrap();
     assert!(
-        !compute_legal_actions(&copied, alice).iter().any(
+        !compute_legal_actions(&copied, alice).expect("fixture has complete replacement state").iter().any(
             |action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source)
         ),
         "the acquired copy is spent after its own activation"
@@ -255,7 +255,7 @@ fn abomination_power_up_cannot_be_reactivated_on_the_same_object() {
         "temporary copy expired"
     );
     assert!(
-        !compute_legal_actions(&copied, alice).iter().any(
+        !compute_legal_actions(&copied, alice).expect("fixture has complete replacement state").iter().any(
             |action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source)
         ),
         "expiration restores the spent printed ability"
@@ -266,7 +266,7 @@ fn abomination_power_up_cannot_be_reactivated_on_the_same_object() {
     )
     .unwrap();
     assert!(
-        compute_legal_actions(&copied, alice).iter().any(
+        compute_legal_actions(&copied, alice).expect("fixture has complete replacement state").iter().any(
             |action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source)
         ),
         "a distinct copy effect grants another fresh instance"
@@ -295,7 +295,7 @@ fn abomination_power_up_cannot_be_reactivated_on_the_same_object() {
         1
     );
     assert!(
-        !compute_legal_actions(&reindexed, alice).iter().any(
+        !compute_legal_actions(&reindexed, alice).expect("fixture has complete replacement state").iter().any(
             |action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source)
         ),
         "removing a preceding ability must not refresh power-up"
@@ -313,14 +313,14 @@ fn abomination_power_up_cannot_be_reactivated_on_the_same_object() {
         .mana_pool
         .add(ManaSymbol::Red, 2);
     assert!(
-        !compute_legal_actions(&game, bob).iter().any(
+        !compute_legal_actions(&game, bob).expect("fixture has complete replacement state").iter().any(
             |action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source)
         ),
         "turn and controller changes must not refresh a used power-up"
     );
     let exiled = game.move_object_by_effect(source, Zone::Exile).unwrap();
     let returned = game
-        .move_object_with_etb_processing(exiled, Zone::Battlefield)
+        .move_object_with_etb_processing(exiled, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     game.turn.priority_player = Some(alice);
@@ -333,7 +333,7 @@ fn abomination_power_up_cannot_be_reactivated_on_the_same_object() {
         .mana_pool
         .add(ManaSymbol::Red, 2);
     assert!(
-        compute_legal_actions(&game, alice).iter().any(
+        compute_legal_actions(&game, alice).expect("fixture has complete replacement state").iter().any(
             |action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==returned)
         ),
         "a new object instance has a fresh power-up ability"
@@ -366,7 +366,7 @@ fn abomination_power_up_reduces_by_source_mana_cost_on_entry_turn() {
     let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
     let source = game.create_object_from_definition(&definition, alice, Zone::Hand);
     let source = game
-        .move_object_with_etb_processing(source, Zone::Battlefield)
+        .move_object_with_etb_processing(source, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     game.turn.active_player = alice;
@@ -380,7 +380,7 @@ fn abomination_power_up_reduces_by_source_mana_cost_on_entry_turn() {
         .unwrap()
         .mana_pool
         .add(ManaSymbol::Red, 4);
-    let action = compute_legal_actions(&game, alice)
+    let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source))
         .expect("power-up permits zero fight targets");
@@ -409,7 +409,7 @@ fn abomination_power_up_reduces_by_source_mana_cost_on_entry_turn() {
     }
     assert_eq!(game.stack.len(), 1);
     assert!(
-        !compute_legal_actions(&game, alice).iter().any(
+        !compute_legal_actions(&game, alice).expect("fixture has complete replacement state").iter().any(
             |action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source)
         ),
         "power-up is spent on activation, before its ability resolves"
@@ -417,7 +417,7 @@ fn abomination_power_up_reduces_by_source_mana_cost_on_entry_turn() {
     let mut countered_branch = game.clone();
     countered_branch.stack.clear();
     assert!(
-        !compute_legal_actions(&countered_branch, alice).iter().any(
+        !compute_legal_actions(&countered_branch, alice).expect("fixture has complete replacement state").iter().any(
             |action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source)
         ),
         "removing the unresolved ability cannot refund its activation"
@@ -489,7 +489,7 @@ fn abomination_fight_uses_countered_power_and_rechecks_target_identity() {
         .unwrap()
         .mana_pool
         .add(ManaSymbol::Red, 2);
-    let action = compute_legal_actions(&game, alice)
+    let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source))
         .unwrap();
@@ -532,7 +532,7 @@ fn abomination_fight_uses_countered_power_and_rechecks_target_identity() {
                 let exiled = branch.move_object_by_effect(target, Zone::Exile).unwrap();
                 returned_target = Some(
                     branch
-                        .move_object_with_etb_processing(exiled, Zone::Battlefield)
+                        .move_object_with_etb_processing(exiled, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
                         .unwrap()
                         .new_id,
                 );
@@ -607,7 +607,7 @@ fn abomination_power_up_combines_with_generic_activation_reduction() {
     let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
     let source = game.create_object_from_definition(&definition, alice, Zone::Hand);
     let source = game
-        .move_object_with_etb_processing(source, Zone::Battlefield)
+        .move_object_with_etb_processing(source, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     let reducer = ironsmith::cards::builders::CardDefinitionBuilder::new(
@@ -635,7 +635,7 @@ fn abomination_power_up_combines_with_generic_activation_reduction() {
         .unwrap()
         .mana_pool
         .add(ManaSymbol::Red, 4);
-    let action = compute_legal_actions(&game, alice)
+    let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source))
         .expect("power-up permits zero fight targets");
@@ -664,7 +664,7 @@ fn abomination_power_up_combines_with_generic_activation_reduction() {
     }
     assert_eq!(game.stack.len(), 1);
     assert!(
-        !compute_legal_actions(&game, alice).iter().any(
+        !compute_legal_actions(&game, alice).expect("fixture has complete replacement state").iter().any(
             |action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source)
         ),
         "power-up is spent on activation, before its ability resolves"
@@ -672,7 +672,7 @@ fn abomination_power_up_combines_with_generic_activation_reduction() {
     let mut countered_branch = game.clone();
     countered_branch.stack.clear();
     assert!(
-        !compute_legal_actions(&countered_branch, alice).iter().any(
+        !compute_legal_actions(&countered_branch, alice).expect("fixture has complete replacement state").iter().any(
             |action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source)
         ),
         "removing the unresolved ability cannot refund its activation"
@@ -710,7 +710,7 @@ fn abomination_power_up_pays_mana_increases_before_reduction() {
     let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
     let source = game.create_object_from_definition(&definition, alice, Zone::Hand);
     let source = game
-        .move_object_with_etb_processing(source, Zone::Battlefield)
+        .move_object_with_etb_processing(source, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     let reducer = ironsmith::cards::builders::CardDefinitionBuilder::new(
@@ -739,7 +739,7 @@ fn abomination_power_up_pays_mana_increases_before_reduction() {
         .unwrap()
         .mana_pool
         .add(ManaSymbol::Red, 4);
-    let action = compute_legal_actions(&game, alice)
+    let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source))
         .expect("power-up permits zero fight targets");
@@ -768,7 +768,7 @@ fn abomination_power_up_pays_mana_increases_before_reduction() {
     }
     assert_eq!(game.stack.len(), 1);
     assert!(
-        !compute_legal_actions(&game, alice).iter().any(
+        !compute_legal_actions(&game, alice).expect("fixture has complete replacement state").iter().any(
             |action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source)
         ),
         "power-up is spent on activation, before its ability resolves"
@@ -776,7 +776,7 @@ fn abomination_power_up_pays_mana_increases_before_reduction() {
     let mut countered_branch = game.clone();
     countered_branch.stack.clear();
     assert!(
-        !compute_legal_actions(&countered_branch, alice).iter().any(
+        !compute_legal_actions(&countered_branch, alice).expect("fixture has complete replacement state").iter().any(
             |action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source)
         ),
         "removing the unresolved ability cannot refund its activation"
@@ -814,7 +814,7 @@ fn abomination_power_up_uses_current_copied_mana_cost() {
     let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
     let source = game.create_object_from_definition(&definition, alice, Zone::Hand);
     let source = game
-        .move_object_with_etb_processing(source, Zone::Battlefield)
+        .move_object_with_etb_processing(source, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     let donor_definition = ironsmith::cards::builders::CardDefinitionBuilder::new(
@@ -870,7 +870,7 @@ fn abomination_power_up_uses_current_copied_mana_cost() {
         .unwrap()
         .mana_pool
         .add(ManaSymbol::Red, 4);
-    let action = compute_legal_actions(&game, alice)
+    let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source))
         .expect("power-up permits zero fight targets");
@@ -899,7 +899,7 @@ fn abomination_power_up_uses_current_copied_mana_cost() {
     }
     assert_eq!(game.stack.len(), 1);
     assert!(
-        !compute_legal_actions(&game, alice).iter().any(
+        !compute_legal_actions(&game, alice).expect("fixture has complete replacement state").iter().any(
             |action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source)
         ),
         "power-up is spent on activation, before its ability resolves"
@@ -907,7 +907,7 @@ fn abomination_power_up_uses_current_copied_mana_cost() {
     let mut countered_branch = game.clone();
     countered_branch.stack.clear();
     assert!(
-        !compute_legal_actions(&countered_branch, alice).iter().any(
+        !compute_legal_actions(&countered_branch, alice).expect("fixture has complete replacement state").iter().any(
             |action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source)
         ),
         "removing the unresolved ability cannot refund its activation"
@@ -967,7 +967,7 @@ fn abomination_activation_records_announced_ability_when_mana_changes_its_text()
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
-    let action = compute_legal_actions(&game, alice)
+    let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source))
         .unwrap();
@@ -1006,7 +1006,7 @@ fn abomination_activation_records_announced_ability_when_mana_changes_its_text()
         "mana ability changed the source during payment"
     );
     assert!(
-        compute_legal_actions(&game, alice).iter().any(
+        compute_legal_actions(&game, alice).expect("fixture has complete replacement state").iter().any(
             |action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source)
         ),
         "the acquired ability was not the one activated"
@@ -1014,9 +1014,18 @@ fn abomination_activation_records_announced_ability_when_mana_changes_its_text()
     ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
     game.effect_store.continuous_effects.cleanup_end_of_turn();
     assert!(
-        !compute_legal_actions(&game, alice).iter().any(
+        !compute_legal_actions(&game, alice).expect("fixture has complete replacement state").iter().any(
             |action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source)
         ),
         "the originally announced printed ability is spent"
     );
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: ironsmith::game_state::EntryCommitResult)
+    -> Option<ironsmith::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

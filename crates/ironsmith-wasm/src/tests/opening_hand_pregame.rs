@@ -42,7 +42,7 @@ fn opening_hand_reveal_action_is_public_one_use_and_schedules_its_consequence() 
         other => panic!("expected Alice opening-actions prompt, got {other:?}"),
     };
     assert_eq!(
-        crate::describe_action(&wasm.game, &reveal_action),
+        crate::describe_action(&wasm.game, &reveal_action).expect("fixture has complete replacement state"),
         "Reveal Chancellor of the Tangle"
     );
 

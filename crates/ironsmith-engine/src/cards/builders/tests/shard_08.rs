@@ -3590,7 +3590,7 @@ pub(super) fn gloomshrieker_enters_returns_target_permanent_card_from_your_grave
             &game,
         );
     let gloom = game
-        .move_object_with_etb_processing(gloom_in_hand, Zone::Battlefield)
+        .move_object_with_etb_processing(gloom_in_hand, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
         .expect("Gloomshrieker should enter")
         .new_id;
 

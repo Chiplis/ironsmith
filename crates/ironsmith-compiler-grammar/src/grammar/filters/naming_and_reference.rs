@@ -504,12 +504,100 @@ where
         map_non_article_end,
         "named",
     )?;
+    remove_word_range(all_words, named_idx, name_end);
+    // "a permanent named A or a permanent named B" / "a card named A and/or a
+    // card named B": each "named" starts its own name. The repeated head noun
+    // matches the outer filter, so the alternatives are name-only branches.
+    let alternative_names = split_repeated_named_alternatives(&name);
+    if alternative_names.len() > 1 && filter.any_of.is_empty() {
+        filter.any_of = alternative_names
+            .into_iter()
+            .map(|name| ObjectFilter {
+                name: Some(name),
+                ..ObjectFilter::default()
+            })
+            .collect();
+        return Ok(true);
+    }
+    let literal_surface = literal_name_surface_after_marker(source_tokens, &[NAMED_WORD]);
+    // "Equipment named Sword of Kaldra, Shield of Kaldra, and Helm of
+    // Kaldra": a serial comma list of names, any of which matches.
+    if let Some(serial_names) = literal_surface
+        .as_deref()
+        .and_then(split_serial_name_list)
+        && filter.any_of.is_empty()
+    {
+        filter.any_of = serial_names
+            .into_iter()
+            .map(|name| ObjectFilter {
+                name: Some(name),
+                ..ObjectFilter::default()
+            })
+            .collect();
+        return Ok(true);
+    }
     filter.name = Some(name);
-    if let Some(surface) = literal_name_surface_after_marker(source_tokens, &[NAMED_WORD]) {
+    if let Some(surface) = literal_surface {
         filter.set_name_surface(surface);
     }
-    remove_word_range(all_words, named_idx, name_end);
     Ok(true)
+}
+
+/// "A, B, and C" / "A, B, or C" (three or more comma-separated names with a
+/// final connective). Two-name lists stay whole: card names themselves contain
+/// commas ("Guan Yu, Sainted Warrior") and "and" ("Fire and Ice").
+fn split_serial_name_list(surface: &str) -> Option<Vec<String>> {
+    if !(surface.contains(", and ") || surface.contains(", or ")) {
+        return None;
+    }
+    let names = surface
+        .split(',')
+        .map(|part| {
+            let part = part.trim();
+            part.strip_prefix("and ")
+                .or_else(|| part.strip_prefix("or "))
+                .unwrap_or(part)
+                .trim()
+                .to_ascii_lowercase()
+        })
+        .collect::<Vec<_>>();
+    (names.len() >= 3 && names.iter().all(|name| !name.is_empty())).then_some(names)
+}
+
+/// Split "A or a permanent named B" (the text after the first "named") into
+/// its separately named alternatives. A single name returns one entry.
+fn split_repeated_named_alternatives(name: &str) -> Vec<String> {
+    let words = name.split_whitespace().collect::<Vec<_>>();
+    let mut names = Vec::new();
+    let mut start = 0usize;
+    let mut idx = 0usize;
+    while idx < words.len() {
+        if words[idx] == NAMED_WORD && idx > start {
+            // Walk back over the repeated head ("or a permanent", "and/or a
+            // card") to the connective that ends the previous name.
+            let Some(connective) = (start..idx)
+                .rev()
+                .find(|&at| matches!(words[at], "or" | "and/or"))
+            else {
+                return vec![name.to_string()];
+            };
+            let mut previous_end = connective;
+            if previous_end > start && words[previous_end - 1] == "and" {
+                previous_end -= 1;
+            }
+            if previous_end <= start || idx - connective > 4 {
+                return vec![name.to_string()];
+            }
+            names.push(words[start..previous_end].join(" "));
+            start = idx + 1;
+        }
+        idx += 1;
+    }
+    if start == 0 || start >= words.len() {
+        return vec![name.to_string()];
+    }
+    names.push(words[start..].join(" "));
+    names
 }
 
 pub(super) fn parse_entered_since_your_last_turn_ended_words(words: &[&str]) -> Option<usize> {
@@ -555,11 +643,15 @@ fn parse_controlled_continuously_since_turn_began_words(
     if active {
         idx += 1;
     }
-    if words.get(idx) != Some(&"player") {
+    // "a creature of their choice that they controlled since the beginning
+    // of the turn" (Keldon Twilight): the pronoun names the controller.
+    let pronoun_subject = !active && words.get(idx) == Some(&"they");
+    if words.get(idx) != Some(&"player") && !pronoun_subject {
         return None;
     }
     idx += 1;
     let positive = match words.get(idx..) {
+        Some(["controlled", ..]) if pronoun_subject => true,
         Some(["has", "not", ..]) | Some(["did", "not", ..]) => {
             idx += 2;
             false
@@ -583,6 +675,9 @@ fn parse_controlled_continuously_since_turn_began_words(
     for expected in TAIL {
         if words.get(idx) == Some(&"the") {
             idx += 1;
+        }
+        if pronoun_subject && *expected == "continuously" && words.get(idx) == Some(&"since") {
+            continue;
         }
         if words.get(idx) != Some(expected) {
             return None;
@@ -1057,6 +1152,12 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
         }
 
         let word = words[idx];
+        // The multi-word "Time Lord" creature type is one subtype atom.
+        if words.get(idx..idx + 2) == Some(&["time", "lord"][..]) {
+            push_unique_filter_value(&mut filter.subtypes, Subtype::TimeLord);
+            idx += 2;
+            continue;
+        }
         // `permanent` is an aggregate spell characteristic rather than a
         // literal card type. Preserve its complete executable domain before
         // applying trailing relative qualifiers such as `that have an
@@ -1345,7 +1446,62 @@ const WITH_CLAUSE_APPLIERS: &[fn(&mut ObjectFilter, &[&str]) -> Option<usize>] =
     apply_with_alternative_cast,
     apply_with_with_counter,
     apply_with_keyword_constraint,
+    apply_with_greater_source_stat,
+    apply_with_triggering_spell_mana_value,
 ];
+
+/// "all permanents with that spell's mana value" (Celestial Kirin): the
+/// mana value of the spell that triggered the ability.
+fn apply_with_triggering_spell_mana_value(
+    filter: &mut ObjectFilter,
+    words: &[&str],
+) -> Option<usize> {
+    let [that, spell, mana, value, ..] = words else {
+        return None;
+    };
+    if *that != "that"
+        || !matches!(*spell, "spell's" | "spells")
+        || *mana != "mana"
+        || *value != "value"
+        || filter.mana_value.is_some()
+    {
+        return None;
+    }
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: (crate::tag::CompilerReferenceTag::Triggering.bind()).into(),
+        relation: TaggedOpbjectRelation::SameManaValueAsTagged,
+    });
+    Some(4)
+}
+
+/// "creatures with greater power" (Locke, Éowyn): greater than the source
+/// object's own power or toughness.
+fn apply_with_greater_source_stat(filter: &mut ObjectFilter, words: &[&str]) -> Option<usize> {
+    let [greater, stat, rest @ ..] = words else {
+        return None;
+    };
+    if *greater != "greater"
+        || rest
+            .first()
+            .is_some_and(|word| matches!(*word, "than" | "or" | "and" | "also"))
+    {
+        return None;
+    }
+    match *stat {
+        "power" if filter.power.is_none() => {
+            filter.power = Some(crate::filter::Comparison::GreaterThanExpr(Box::new(
+                crate::effect::Value::SourcePower,
+            )));
+        }
+        "toughness" if filter.toughness.is_none() => {
+            filter.toughness = Some(crate::filter::Comparison::GreaterThanExpr(Box::new(
+                crate::effect::Value::SourceToughness,
+            )));
+        }
+        _ => return None,
+    }
+    Some(2)
+}
 
 pub(super) fn try_apply_with_clause_tail(
     filter: &mut ObjectFilter,
@@ -1360,6 +1516,16 @@ pub(super) fn try_apply_without_clause_tail(
     filter: &mut ObjectFilter,
     words: &[&str],
 ) -> Option<usize> {
+    // "without flying or reach": the object has none of the listed keywords.
+    if let Some((constraints, _connective, consumed)) =
+        parse_filter_keyword_constraint_list_words(words)
+        && constraints.len() > 1
+    {
+        for constraint in constraints {
+            apply_filter_keyword_constraint(filter, constraint, true);
+        }
+        return Some(consumed);
+    }
     if let Some((constraint, consumed)) = parse_filter_keyword_constraint_words(words) {
         apply_filter_keyword_constraint(filter, constraint, true);
         return Some(consumed);

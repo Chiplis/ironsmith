@@ -108,7 +108,7 @@ fn run(
     let ability_index = index(def)?;
     let mut evidence = json!({"source_owner":0,"active_player":active,"activator":activator,"window":window,"storm_on_stack":storm_stack,"scope":"actual announcement only; ability resolution outside scope"});
     if def.name() == "Lightning Storm" && storm_stack {
-        let cast = compute_legal_actions(&game, PlayerId(0))
+        let cast = compute_legal_actions(&game, PlayerId(0)).expect("fixture has complete replacement state")
             .into_iter()
             .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..} if *spell_id==source))
             .ok_or("storm cast unavailable")?;
@@ -145,7 +145,7 @@ fn run(
         _ => return Err("unknown window".into()),
     }
     game.effect_store.pending_trigger_events.clear();
-    let action=compute_legal_actions(&game,PlayerId(activator)).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:id,ability_index:i}|LegalAction::ActivateManaAbility{source:id,ability_index:i} if *id==source && *i==ability_index));
+    let action=compute_legal_actions(&game,PlayerId(activator)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:id,ability_index:i}|LegalAction::ActivateManaAbility{source:id,ability_index:i} if *id==source && *i==ability_index));
     let legal = action.is_some();
     let mut announced = false;
     if let Some(action) = action {

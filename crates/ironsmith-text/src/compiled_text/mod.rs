@@ -1741,6 +1741,14 @@ fn normalize_conditional_followup_case(line: &str) -> String {
         );
     }
     normalized = normalized.replace("Otherwise, You ", "Otherwise, you ");
+    // A branch whose sentence starts with a player reference ("That player
+    // gains control ...") continues the "Otherwise," sentence.
+    for subject in ["That ", "Their ", "Its ", "Target ", "Each "] {
+        normalized = normalized.replace(
+            &format!("Otherwise, {subject}"),
+            &format!("Otherwise, {}", lowercase_first(subject)),
+        );
+    }
     normalized
 }
 

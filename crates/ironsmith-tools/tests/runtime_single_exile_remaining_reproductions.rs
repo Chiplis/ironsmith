@@ -215,7 +215,7 @@ fn cast_announce(
 ) -> Result<(), String> {
     g.turn.priority_player = Some(dm.actor);
     let id = g.create_object_from_definition(d, dm.actor, Zone::Hand);
-    let a = compute_legal_actions(g, dm.actor)
+    let a = compute_legal_actions(g, dm.actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or("fixture source cast absent")?;
@@ -317,7 +317,7 @@ fn paid_land(
 ) -> Result<ironsmith::ids::StableId, String> {
     let id = g.create_object_from_definition(d, alice(), Zone::Hand);
     let s = g.object(id).unwrap().stable_id;
-    let a = compute_legal_actions(g, alice())
+    let a = compute_legal_actions(g, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::PlayLand{land_id}if *land_id==id))
         .ok_or("source land play absent")?;
@@ -335,7 +335,7 @@ fn sacrifice(
 ) -> Result<(), String> {
     dm.chosen = vec![current(g, m)];
     dm.targets = vec![Target::Player(PlayerId(2))];
-    let a=compute_legal_actions(g,dm.actor).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index:0,..}if *source==current(g,altar))).ok_or("Altar producer absent")?;
+    let a=compute_legal_actions(g,dm.actor).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index:0,..}if *source==current(g,altar))).ok_or("Altar producer absent")?;
     announce(g, a, q, dm)?;
     finish(g, q, dm)?;
     dm.targets.clear();
@@ -513,7 +513,7 @@ fn run(
     dm.chosen.extend(resources.iter().map(|s| current(&g, *s)));
     dm.x = c["x"].as_u64().unwrap_or(0) as u32;
     let index = c["ability_index"].as_u64().unwrap() as usize;
-    let actions = compute_legal_actions(&g, alice());
+    let actions = compute_legal_actions(&g, alice()).expect("fixture has complete replacement state");
     let action=actions.iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index,..}|LegalAction::ActivateManaAbility{source,ability_index,..}if *source==sid&&*ability_index==index)).cloned();
     dm.trace.push(json!({"stage":"candidate_exact_path","ability_index":index,"cost_path":c["cost_path"],"legal_actions":format!("{actions:?}"),"materials":resources.iter().map(|s|json!({"id":current(&g,*s).0,"zone":format!("{:?}",g.object(current(&g,*s)).unwrap().zone)})).collect::<Vec<_>>() }));
     let valid = c["valid"].as_bool().unwrap();
@@ -663,7 +663,7 @@ fn run(
                     vec![]
                 };
                 let id = g.create_object_from_definition(&defs[spell].0, alice(), Zone::Hand);
-                let act = compute_legal_actions(&g, alice())
+                let act = compute_legal_actions(&g, alice()).expect("fixture has complete replacement state")
                     .into_iter()
                     .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id));
                 expected["forbidden_cast_completed"] = json!(false);
@@ -684,7 +684,7 @@ fn run(
                     alice(),
                     Zone::Hand,
                 );
-                let act = compute_legal_actions(&g, alice())
+                let act = compute_legal_actions(&g, alice()).expect("fixture has complete replacement state")
                     .into_iter()
                     .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id));
                 expected["colored_cast_available"] = json!(true);

@@ -122,7 +122,7 @@ fn cast(drawn: u32, mana: u32, bottom: bool) -> Option<(Vec<String>, Option<Play
         .unwrap()
         .mana_pool
         .add(ManaSymbol::Blue, mana);
-    let action = compute_legal_actions(&game, alice)
+    let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))?;
     let mut queue = ironsmith::triggers::TriggerQueue::new();

@@ -356,6 +356,31 @@ pub fn compile_annotated_effects_with_context(
 
     rebind_attachment_host_followups(&mut compiled, ctx);
     bind_exiled_host_before_its_attachments(&mut compiled);
+    // "put a -1/-1 counter on each creature target player controls"
+    // (Contagion Engine): a per-object loop whose own filter names a player
+    // target declares that target; the prelude below exposes it.
+    for effect in &compiled {
+        let mut current = effect;
+        loop {
+            if let Some(tagged) = current.downcast_ref::<crate::effects::TaggedEffect>() {
+                current = tagged.effect.as_ref();
+            } else if let Some(with_id) = current.downcast_ref::<crate::effects::WithIdEffect>() {
+                current = with_id.effect.as_ref();
+            } else {
+                break;
+            }
+        }
+        if let Some(for_each) = current.downcast_ref::<crate::effects::ForEachObject>() {
+            let mut filter_targets = Vec::new();
+            effect_dispatch::collect_object_filter_player_target_choices(
+                &for_each.filter,
+                &mut filter_targets,
+            );
+            for choice in filter_targets {
+                push_choice(&mut choices, choice);
+            }
+        }
+    }
     let compiled = prepend_missing_target_choice_prelude(compiled, &choices);
     card_selection_validation::validate_card_selections(&compiled, &choices)?;
     Ok((compiled, choices))
@@ -959,6 +984,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
         | Value::DistinctCounterTypesAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctManaValues(filter)
+        | Value::UnlockedDoorsAmong(filter)
         | Value::DistinctPowers(filter) => {
             bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
         }
@@ -1184,7 +1210,7 @@ pub fn hand_exile_filter_and_count(
     Ok(Some((resolved_filter, count, zones)))
 }
 
-fn normalize_hand_or_graveyard_cross_zone_filter(filter: &mut ObjectFilter) {
+pub fn normalize_hand_or_graveyard_cross_zone_filter(filter: &mut ObjectFilter) {
     if filter.any_of.is_empty() {
         return;
     }
@@ -2200,6 +2226,7 @@ fn static_ability_for_token_keyword(
 ) -> Option<StaticAbility> {
     Some(match keyword {
         token_grammar::TokenKeywordShape::Firebending(_) => return None,
+        token_grammar::TokenKeywordShape::Devour(_) => return None,
         token_grammar::TokenKeywordShape::Flying => StaticAbility::flying(),
         token_grammar::TokenKeywordShape::WardGeneric(amount) => {
             StaticAbility::ward(TotalCost::mana(ManaCost::from_symbols(vec![
@@ -3087,6 +3114,7 @@ pub fn apply_standard_token_keyword(
         token_grammar::TokenKeywordShape::Flying => builder.flying(),
         token_grammar::TokenKeywordShape::WardGeneric(amount) => builder.ward_generic(amount),
         token_grammar::TokenKeywordShape::Firebending(amount) => builder.firebending(amount),
+        token_grammar::TokenKeywordShape::Devour(amount) => builder.devour(amount),
         token_grammar::TokenKeywordShape::Defender => builder.defender(),
         token_grammar::TokenKeywordShape::Prowess => builder.prowess(),
         token_grammar::TokenKeywordShape::Vigilance => builder.vigilance(),
@@ -3399,7 +3427,19 @@ fn build_creature_token_definition(
             };
         builder = builder.with_ability(ability);
     }
-    Some(builder.build())
+    let mut definition = builder.build();
+    // The keyword list ("with first strike, indestructible, and ...") and
+    // the compact rule flags read from the same words can both install one
+    // keyword. Multiple instances of a keyword are redundant (CR 702.2c
+    // etc.), so the token's printed ability list holds each once.
+    let mut deduped: Vec<Ability> = Vec::with_capacity(definition.abilities.len());
+    for ability in definition.abilities.drain(..) {
+        if !deduped.contains(&ability) {
+            deduped.push(ability);
+        }
+    }
+    definition.abilities = deduped;
+    Some(definition)
 }
 
 pub fn lower_token_definition_shape(shape: TokenDefinitionSpec) -> Option<CardDefinition> {

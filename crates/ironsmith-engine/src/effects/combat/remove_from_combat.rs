@@ -43,45 +43,14 @@ impl EffectExecutor for RemoveFromCombatEffect {
             &self.spec,
             result_policy,
             |game, _ctx, object_id| {
-                let removed = if let Some(combat) = game.combat.as_mut() {
-                    combat.remember_blocked_attackers();
-                    let was_attacking = combat
-                        .attackers
-                        .iter()
-                        .any(|info| info.creature == object_id);
-                    let was_blocking = combat
-                        .blockers
-                        .values()
-                        .any(|blockers| blockers.contains(&object_id));
-
-                    if was_attacking {
-                        combat.attackers.retain(|info| info.creature != object_id);
-                        combat.blockers.remove(&object_id);
-                        combat.blocked_attackers.remove(&object_id);
-                        combat.damage_assignment_order.remove(&object_id);
-                        for band in &mut combat.attacking_bands {
-                            band.retain(|member| *member != object_id);
-                        }
-                        combat.attacking_bands.retain(|band| !band.is_empty());
-                        combat.had_to_attack_this_combat.remove(&object_id);
-                    }
-
-                    if was_attacking || was_blocking {
-                        for blockers in combat.blockers.values_mut() {
-                            blockers.retain(|id| *id != object_id);
-                        }
-                        for order in combat.damage_assignment_order.values_mut() {
-                            order.retain(|id| *id != object_id);
-                        }
-                    }
-
-                    was_attacking || was_blocking
-                } else {
-                    false
-                };
-
+                let removed = game.combat.as_ref().is_some_and(|combat| {
+                    combat.attackers.iter().any(|info| info.creature == object_id)
+                        || combat.blockers.values().any(|blockers| blockers.contains(&object_id))
+                });
                 if removed {
-                    game.clear_ninjutsu_attack_targets_for(object_id);
+                    // Use the same departure boundary as phasing and zone
+                    // movement, including characteristic-cache invalidation.
+                    game.remove_object_from_combat(object_id);
                 }
                 // CR 506.4 / 506.4c: a planeswalker or battle removed from
                 // combat stops being attacked; its attackers attack nothing.

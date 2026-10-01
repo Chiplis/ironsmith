@@ -605,7 +605,7 @@ fn test_single_flexible_mana_source_cannot_pay_two_colored_pips() {
         .build();
     let spell_id = game.create_object_from_definition(&two_color_spell, alice, Zone::Hand);
 
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     assert!(
         !actions.iter().any(|action| matches!(
@@ -635,7 +635,7 @@ fn test_single_flexible_mana_source_can_pay_one_colored_pip() {
         .build();
     let spell_id = game.create_object_from_definition(&one_color_spell, alice, Zone::Hand);
 
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     assert!(
         actions.iter().any(|action| matches!(
@@ -680,7 +680,7 @@ fn test_tapped_lands_do_not_make_spell_castable() {
         .build();
     let spell_id = game.create_object_from_definition(&creature, alice, Zone::Hand);
 
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     assert!(
         !actions.iter().any(|action| matches!(
@@ -729,7 +729,7 @@ fn test_tapped_lands_plus_one_floating_mana_do_not_make_two_mana_spell_castable(
         .build();
     let spell_id = game.create_object_from_definition(&creature, alice, Zone::Hand);
 
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     assert!(
         !actions.iter().any(|action| matches!(
@@ -1038,7 +1038,7 @@ fn test_phyrexian_tower_alternative_mana_abilities_are_one_payment_source() {
     let spell_id = game.create_object_from_definition(&spell, alice, Zone::Hand);
 
     let next_object_id_before_actions = game.next_object_id_counter();
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     assert_eq!(
         game.next_object_id_counter(),
@@ -1766,4 +1766,40 @@ fn u078_on_spend_predicate_does_not_restrict_ordinary_use_or_trigger_on_mismatch
         crate::costs::PaymentReason::CastSpell,
     ));
     assert!(game.take_pending_trigger_entries().is_empty());
+}
+
+#[test]
+fn indexed_grant_cost_keeps_announcement_method_after_provider_leaves() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    let cost_method = |amount| crate::alternative_cast::AlternativeCastingMethod::FromZone {
+        name: "Indexed graveyard permission".into(), zone: Zone::Graveyard,
+        total_cost: TotalCost::mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(amount)])),
+        condition: None, exiles_after_resolution: false,
+    };
+    let first = cost_method(1);
+    let second = cost_method(3);
+    let mut sources = Vec::new();
+    for method in [first.clone(), second] {
+        let source = crate::card::CardBuilder::new(CardId::new(), "Cost permission source")
+            .card_types(vec![CardType::Artifact]).build();
+        let id = game.create_object_from_card(&source, alice, Zone::Battlefield);
+        game.object_mut(id).unwrap().abilities_mut().push(Ability::static_ability(StaticAbility::grants(
+            crate::grant::GrantSpec::new(crate::grant::Grantable::AlternativeCast(method),
+                crate::filter::ObjectFilter::default(), Zone::Graveyard))));
+        sources.push(id);
+    }
+    let card = crate::card::CardBuilder::new(CardId::new(), "Announced permission spell")
+        .card_types(vec![CardType::Instant]).mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)])).build();
+    let spell = game.create_object_from_card(&card, alice, Zone::Graveyard);
+    let casting = CastingMethod::PlayFrom {source: sources[0], zone: Zone::Graveyard, use_alternative: Some(0)};
+    let stack = propose_spell_cast(&mut game, spell, Zone::Graveyard, alice, &casting).unwrap();
+    assert_eq!(game.object(stack).unwrap().cast_alternative_method_owned(), Some(first.clone()));
+    // Paying a sacrifice cost can remove the provider during announcement.
+    game.move_object_by_effect(sources[0], Zone::Graveyard).unwrap();
+    let resolved = crate::decision::resolve_play_from_alternative_method(&game, alice,
+        game.object(stack).unwrap(), Zone::Graveyard, 0);
+    assert_eq!(resolved, Some(first), "pending cost lookup must use the frozen method, not the replacement occupant of index0");
 }

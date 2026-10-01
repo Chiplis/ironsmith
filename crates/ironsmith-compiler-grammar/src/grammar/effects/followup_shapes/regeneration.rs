@@ -27,6 +27,13 @@ pub struct DamageRegenerationExileFollowupShape {
 fn regeneration_subject<'a>(input: &mut LexStream<'a>) -> WResult<CantBeRegeneratedSubject> {
     alt((
         primitives::kw("it").value(CantBeRegeneratedSubject::It),
+        // "destroy enchanted creature. That creature can't be regenerated."
+        // (Parallax Dementia) names the one destroyed object, like "it".
+        alt((
+            primitives::phrase(&["that", "creature"]),
+            primitives::phrase(&["that", "permanent"]),
+        ))
+        .value(CantBeRegeneratedSubject::It),
         primitives::kw("they").value(CantBeRegeneratedSubject::They),
         primitives::phrase(&["those", "creatures"]).value(CantBeRegeneratedSubject::They),
         // "Artifacts destroyed this way can't be regenerated." (Corrosion)

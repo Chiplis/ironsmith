@@ -212,6 +212,26 @@ pub fn parse_you_choose_objects_clause_with_count_value(
         choose_filter.controller = Some(PlayerFilter::You);
     }
 
+    // "Choose each artifact creature you control" (the overloaded March of
+    // Progress): every matching object is chosen, not one of them.
+    if count_value.is_none()
+        && matches!(
+            clause_words.as_slice(),
+            ["choose", "each", ..] | ["you", "choose", "each", ..]
+        )
+    {
+        let mut all_filter = choose_filter.clone();
+        if all_filter.zone.is_none() {
+            all_filter.zone = Some(crate::zone::Zone::Battlefield);
+        }
+        return Ok(Some((
+            chooser,
+            choose_filter,
+            ChoiceCount::dynamic_x(),
+            Some(Value::Count(all_filter)),
+        )));
+    }
+
     Ok(Some((chooser, choose_filter, parsed.count, count_value)))
 }
 

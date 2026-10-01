@@ -598,6 +598,9 @@ pub enum Value {
     DistinctCounterTypesAmong(ObjectFilter),
     DistinctNames(ObjectFilter),
     DistinctManaValues(ObjectFilter),
+    /// The number of unlocked doors among matching Rooms (CR 709.5): two
+    /// for a fully unlocked Room, one for a Room with one unlocked door.
+    UnlockedDoorsAmong(ObjectFilter),
     DistinctPowers(ObjectFilter),
     TurnHistoryCount(TurnHistoryCount),
     CreaturesDiedThisTurn,
@@ -789,6 +792,11 @@ pub enum Value {
     KickCount,
     MagicGamesLostToOpponentsSinceLastWin,
     DraftNotedHighestNumber {
+        card_name: String,
+    },
+    /// "the number of cards you removed from the draft with cards named X"
+    /// (Cogwork Grinder), read from the game's recorded draft history.
+    DraftRemovedCardCount {
         card_name: String,
     },
     LastNotedLifeTotal,

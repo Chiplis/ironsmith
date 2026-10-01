@@ -52,7 +52,7 @@ fn setup(players: usize, lands: usize) -> GameState {
 fn cast(g: &mut GameState, def: &CardDefinition, dm: &mut Choices) -> Result<Value,String> {
     g.turn.priority_player=Some(PlayerId(0));
     let source=g.create_object_from_definition(def,PlayerId(0),Zone::Hand);
-    let action=compute_legal_actions(g,PlayerId(0)).into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source)).ok_or("intended cast unavailable")?;
+    let action=compute_legal_actions(g,PlayerId(0)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source)).ok_or("intended cast unavailable")?;
     let mana=g.player(PlayerId(0)).unwrap().mana_pool.total();
     let mut q=TriggerQueue::new();
     let mut state=PriorityLoopState::new(g.players_in_game());
@@ -111,7 +111,7 @@ fn run(defs: &HashMap<String,CardDefinition>, name: &str, attacking: u8, power: 
     if name=="Contested Game Ball" {
         let library=CardDefinitionBuilder::new(CardId::new(),"Game Ball draw witness").card_types(vec![CardType::Instant]).build();
         g.create_object_from_definition(&library,PlayerId(0),Zone::Library);
-        let action=compute_legal_actions(&g,PlayerId(0)).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:id,..}if *id==source)).ok_or("Game Ball activation unavailable")?;
+        let action=compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:id,..}if *id==source)).ok_or("Game Ball activation unavailable")?;
         let mana=g.player(PlayerId(0)).unwrap().mana_pool.total();
         let mut q=TriggerQueue::new();let mut state=PriorityLoopState::new(g.players_in_game());
         let mut progress=apply_priority_response_with_dm(&mut g,&mut q,&mut state,&PriorityResponse::PriorityAction(action),&mut dm).map_err(|e|e.to_string())?;

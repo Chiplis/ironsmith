@@ -56,7 +56,7 @@ impl DecisionMaker for TargetIt {
 
 fn activate(game: &mut GameState, source: ObjectId, target: Option<ObjectId>) {
     let alice = PlayerId::from_index(0);
-    let action = compute_legal_actions(game, alice)
+    let action = compute_legal_actions(game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::ActivateAbility { source: s, .. } if *s == source))
         .expect("ability is activatable");

@@ -579,7 +579,7 @@ impl TaggedConstraintSubject for LayeredSubject<'_> {
     }
 
     fn subject_mana_value(&self) -> i32 {
-        object_mana_value_for_filter(self.object)
+        calculated_mana_value_for_filter(self.object, self.chars)
     }
 
     fn subject_attached_to(&self) -> Option<ObjectId> {
@@ -645,9 +645,7 @@ impl TailMatchSubject for LayeredSubject<'_> {
     }
 
     fn tail_has_ability_marker(&self, marker: &str) -> bool {
-        object_has_ability_marker(self.object, marker)
-            || aura_attachment_has_ability_marker(self.chars.aura_attach_filter.as_ref(), marker)
-            || abilities_have_marker(&self.chars.abilities, marker)
+        calculated_object_has_ability_marker(self.object, self.chars, marker)
     }
 
     fn tail_has_tap_activated_ability(&self) -> bool {
@@ -1021,25 +1019,19 @@ pub(crate) fn object_current_mana_cost(
         })
 }
 
-fn object_current_mana_value_for_relation(object: &Object, game: &GameState) -> i32 {
-    let mana_cost = game
-        .current_characteristics(object.id)
-        .and_then(|characteristics| characteristics.mana_cost.clone())
-        .or_else(|| object.mana_cost.as_deref().cloned());
-    // A layer-1 copy effect replaces the mana cost; otherwise the linked face
-    // decides split and back-face mana values (CR 709.4, 712.8c).
-    if mana_cost.as_ref() == object.mana_cost.as_deref()
-        && let Some(mana_value) = object.linked_face_mana_value()
-    {
-        return mana_value as i32;
-    }
-    mana_cost.map_or(0, |mana_cost| {
-        if object.zone == Zone::Stack {
-            mana_cost.mana_value_with_x(object.x_value.unwrap_or(0)) as i32
-        } else {
-            mana_cost.mana_value() as i32
-        }
+pub(crate) fn calculated_mana_value_for_filter(object: &Object, chars: &CalculatedCharacteristics) -> i32 {
+    if let Some(value) = chars.linked_face_mana_value { return value as i32; }
+    chars.mana_cost.as_ref().map_or(0, |cost| {
+        if object.zone == Zone::Stack { cost.mana_value_with_x(object.x_value.unwrap_or(0)) as i32 }
+        else { cost.mana_value() as i32 }
     })
+}
+
+fn object_current_mana_value_for_relation(object: &Object, game: &GameState) -> i32 {
+    game.current_characteristics(object.id).map_or_else(
+        || object_mana_value_for_filter(object),
+        |chars| calculated_mana_value_for_filter(object, &chars),
+    )
 }
 
 fn subject_shares_characteristic_with_object(
@@ -1127,6 +1119,36 @@ fn subject_shares_creature_type_with_source(
         .any(|subtype| source_subtypes.contains(subtype))
 }
 
+/// The permanent an attachment source is attached to, when `tag` is that
+/// source's own "enchanted" (Aura) / "equipped" (Equipment) reference.
+fn source_attachment_host_for_tag(
+    source: Option<crate::ids::ObjectId>,
+    tag: &TagKey,
+    game: &GameState,
+) -> Option<crate::ids::ObjectId> {
+    let subtype = match tag.as_str() {
+        "enchanted" => Subtype::Aura,
+        "equipped" => Subtype::Equipment,
+        _ => return None,
+    };
+    let source = game.object(source?)?;
+    if source.zone != crate::zone::Zone::Battlefield || !source.subtypes.contains(&subtype) {
+        return None;
+    }
+    source.attached_to.as_ref()?.object_id()
+}
+
+/// Two different attacking creatures in the same attacking band (CR 702.22).
+fn objects_are_banded_together(game: &GameState, first: ObjectId, second: ObjectId) -> bool {
+    first != second
+        && game.combat.as_ref().is_some_and(|combat| {
+            combat
+                .attacking_bands
+                .iter()
+                .any(|band| band.contains(&first) && band.contains(&second))
+        })
+}
+
 fn intrinsic_attachment_tag_constraint_matches_subject(
     subject: &impl TaggedConstraintSubject,
     tag: &TagKey,
@@ -1147,6 +1169,15 @@ fn intrinsic_attachment_tag_constraint_matches_subject(
         TaggedOpbjectRelation::IsNotTaggedObject => Some(!matches_intrinsic),
         _ => None,
     }
+}
+
+/// A tagged snapshot captured on the battlefield whose permanent is no longer
+/// there (its id now names a graveyard/exile object, or nothing at all).
+fn tagged_host_left_battlefield(snapshot: &ObjectSnapshot, game: &GameState) -> bool {
+    snapshot.zone == Zone::Battlefield
+        && !game.object(snapshot.object_id).is_some_and(|object| {
+            object.zone == Zone::Battlefield && object.stable_id == snapshot.stable_id
+        })
 }
 
 fn tagged_constraint_matches_subject(
@@ -1247,14 +1278,26 @@ fn tagged_constraint_matches_subject(
         TaggedOpbjectRelation::ManaValueLtTagged => tagged_snapshots.iter().any(|snapshot| {
             subject.subject_mana_value() < snapshot_mana_value_for_filter(snapshot)
         }),
-        TaggedOpbjectRelation::AttachedToTaggedObject => tagged_snapshots
-            .iter()
-            .any(|snapshot| subject.subject_attached_to() == Some(snapshot.object_id)),
+        TaggedOpbjectRelation::AttachedToTaggedObject => tagged_snapshots.iter().any(|snapshot| {
+            subject.subject_attached_to() == Some(snapshot.object_id)
+                // CR 608.2h: once the tagged host has left the battlefield
+                // (e.g. "whenever an equipped creature dies, attach all
+                // Equipment attached to that creature to ..."), the state-based
+                // action that unattached its Equipment/Auras has already run,
+                // so "attached to that creature" uses the host's last-known
+                // information: the attachments recorded on its battlefield
+                // snapshot.
+                || (tagged_host_left_battlefield(snapshot, game)
+                    && snapshot.attachments.contains(&subject.subject_object_id()))
+        }),
         TaggedOpbjectRelation::WasAttachedToTaggedObject => tagged_snapshots
             .iter()
             .any(|snapshot| snapshot.attachments.contains(&subject.subject_object_id())),
         TaggedOpbjectRelation::SoulbondPartnerOfTagged => tagged_snapshots.iter().any(|snapshot| {
             game.soulbond_partner(snapshot.object_id) == Some(subject.subject_object_id())
+        }),
+        TaggedOpbjectRelation::BandedWithTagged => tagged_snapshots.iter().any(|snapshot| {
+            objects_are_banded_together(game, snapshot.object_id, subject.subject_object_id())
         }),
         TaggedOpbjectRelation::IsNotTaggedObject => tagged_snapshots
             .iter()
@@ -1262,6 +1305,34 @@ fn tagged_constraint_matches_subject(
         // The tagged stack object's chosen object targets. A spell names its
         // own object id; an ability names its source's id (or its reserved
         // stack id), so either identity selects the entry.
+        // CR 106.1b: compare the mana types each object's mana abilities
+        // could produce.
+        TaggedOpbjectRelation::SharesProducibleManaTypeWithTagged => {
+            let producible = |id: ObjectId, controller: PlayerId| -> Vec<crate::mana::ManaSymbol> {
+                let Some(object) = game.object(id) else {
+                    return Vec::new();
+                };
+                object
+                    .abilities
+                    .iter()
+                    .filter_map(|ability| match &ability.kind {
+                        AbilityKind::Activated(activated) => {
+                            Some(activated.inferred_mana_symbols(game, id, controller))
+                        }
+                        _ => None,
+                    })
+                    .flatten()
+                    .collect()
+            };
+            let subject_symbols =
+                producible(subject.subject_object_id(), subject.subject_controller());
+            !subject_symbols.is_empty()
+                && tagged_snapshots.iter().any(|snapshot| {
+                    producible(snapshot.object_id, snapshot.controller)
+                        .iter()
+                        .any(|symbol| subject_symbols.contains(symbol))
+                })
+        }
         TaggedOpbjectRelation::TargetedByTaggedObject => {
             let subject_id = subject.subject_object_id();
             tagged_snapshots.iter().any(|snapshot| {
@@ -1606,6 +1677,11 @@ impl ParityRequirementRuntimeExt for ParityRequirement {
                     None
                 }
             }
+            Self::NotChosen => match Self::Chosen.resolve(game, source)? {
+                Self::Odd => Some(Self::Even),
+                Self::Even => Some(Self::Odd),
+                _ => None,
+            },
         }
     }
 
@@ -1613,7 +1689,7 @@ impl ParityRequirementRuntimeExt for ParityRequirement {
         match self.resolve(game, ctx.source) {
             Some(Self::Odd) => value.rem_euclid(2) == 1,
             Some(Self::Even) => value.rem_euclid(2) == 0,
-            Some(Self::Chosen) | None => false,
+            Some(Self::Chosen | Self::NotChosen) | None => false,
         }
     }
 }
@@ -1977,6 +2053,13 @@ fn resolve_filter_comparison_rhs_value(
             }
             Some(seen.len() as i32)
         }
+        Value::UnlockedDoorsAmong(filter) => Some(
+            game.objects_in_deterministic_order()
+                .into_iter()
+                .filter(|object| filter.matches(object, ctx, game))
+                .map(|object| crate::effects::helpers::room_unlocked_door_count(game, object))
+                .sum(),
+        ),
         Value::DistinctManaValues(filter) => {
             let mut seen = std::collections::HashSet::new();
             for object in game.objects_in_deterministic_order() {
@@ -3139,12 +3222,41 @@ impl ObjectFilterExt for ObjectFilter {
                 // filter: the source object is always known from the filter
                 // context even when no resolution tag has been captured.
                 if constraint.tag.as_str() == crate::tag::SOURCE_OBJECT_TAG
+                    && constraint.relation == TaggedOpbjectRelation::BandedWithTagged
+                {
+                    let banded = ctx.source.is_some_and(|source| {
+                        objects_are_banded_together(game, source, subject.subject_object_id())
+                    });
+                    if !banded {
+                        return false;
+                    }
+                    continue;
+                }
+                if constraint.tag.as_str() == crate::tag::SOURCE_OBJECT_TAG
                     && constraint.relation == TaggedOpbjectRelation::SoulbondPartnerOfTagged
                 {
                     let paired = ctx.source.is_some_and(|source| {
                         game.soulbond_partner(source) == Some(subject.subject_object_id())
                     });
                     if !paired {
+                        return false;
+                    }
+                    continue;
+                }
+                // An Aura's or Equipment's own "enchanted/equipped creature"
+                // before the resolution tag is bound (e.g. while choosing
+                // targets for Kjeldoran Pride's "target creature other than
+                // enchanted creature") is the permanent the source is
+                // attached to, not any permanent with an Aura/Equipment.
+                if let Some(host) = source_attachment_host_for_tag(ctx.source, &constraint.tag, game)
+                    && matches!(
+                        constraint.relation,
+                        TaggedOpbjectRelation::IsTaggedObject
+                            | TaggedOpbjectRelation::IsNotTaggedObject
+                    )
+                {
+                    let is_host = subject.subject_object_id() == host;
+                    if is_host != (constraint.relation == TaggedOpbjectRelation::IsTaggedObject) {
                         return false;
                     }
                     continue;
@@ -4168,6 +4280,14 @@ impl ObjectFilterExt for ObjectFilter {
                 TaggedOpbjectRelation::SoulbondPartnerOfTagged => {
                     post_noun_qualifiers.push("paired with it".to_string());
                 }
+                TaggedOpbjectRelation::BandedWithTagged => {
+                    post_noun_qualifiers.push("banded with it".to_string());
+                }
+                TaggedOpbjectRelation::SharesProducibleManaTypeWithTagged => {
+                    post_noun_qualifiers.push(
+                        "that could produce any type of mana that land could produce".to_string(),
+                    );
+                }
                 TaggedOpbjectRelation::TargetedByTaggedObject => {
                     post_noun_qualifiers.push(
                         if constraint.tag.as_str() == "triggering" {
@@ -5066,6 +5186,9 @@ impl ObjectFilterExt for ObjectFilter {
                 ParityRequirement::Chosen => {
                     parts.push("with a number of counters on it of the chosen quality".to_string())
                 }
+                ParityRequirement::NotChosen => parts.push(
+                    "without a number of counters on it of the chosen quality".to_string(),
+                ),
             }
         }
         if let Some(kind) = self.alternative_cast {

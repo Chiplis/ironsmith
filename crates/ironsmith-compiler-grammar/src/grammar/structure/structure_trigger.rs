@@ -31,6 +31,78 @@ fn parse_trigger_roll_result_predicate(
     })
 }
 
+/// "... and a creature named Bruna, the Fading Light, exile them": a comma
+/// right after a `named X` predicate tail followed by a short, verbless
+/// fragment and another comma is inside the card name ("Bruna, the Fading
+/// Light"), not the predicate/effect boundary.
+fn comma_continues_named_card_name(
+    predicate_tokens: &[OwnedLexToken],
+    after_comma: &[OwnedLexToken],
+) -> bool {
+    let predicate_words = crate::lexer::token_word_refs(predicate_tokens);
+    let Some(named) = predicate_words.iter().rposition(|word| *word == "named") else {
+        return false;
+    };
+    let name_words = &predicate_words[named + 1..];
+    if name_words.is_empty()
+        || name_words.iter().any(|word| {
+            matches!(
+                *word,
+                "in" | "from" | "with" | "without" | "that" | "you" | "your" | "control"
+                    | "controls"
+            )
+        })
+    {
+        return false;
+    }
+    let Some(next_comma) = after_comma.iter().position(|token| token.is_comma()) else {
+        return false;
+    };
+    let fragment = crate::lexer::token_word_refs(&after_comma[..next_comma]);
+    if fragment.is_empty() || fragment.len() > 4 {
+        return false;
+    }
+    !fragment.iter().any(|word| {
+        matches!(
+            *word,
+            "exile"
+                | "return"
+                | "draw"
+                | "put"
+                | "create"
+                | "destroy"
+                | "sacrifice"
+                | "you"
+                | "then"
+                | "target"
+                | "each"
+                | "deal"
+                | "deals"
+                | "gain"
+                | "lose"
+                | "search"
+                | "counter"
+                | "tap"
+                | "untap"
+                | "meld"
+                | "transform"
+                | "shuffle"
+                | "add"
+                | "choose"
+                | "look"
+                | "reveal"
+                | "mill"
+                | "discard"
+                | "it"
+                | "they"
+                | "that"
+                | "this"
+                | "until"
+                | "for"
+        )
+    })
+}
+
 pub fn split_triggered_conditional_clause_lexed<'a>(
     tokens: &'a [OwnedLexToken],
     start_idx: usize,
@@ -52,6 +124,36 @@ pub fn split_triggered_conditional_clause_lexed<'a>(
     }
 
     let trigger_tokens = &leading_tokens[start_idx..];
+
+    // "if you both own and control this creature and a land named Argoth,
+    // Sanctum of Nature, exile them, then meld them into ...": the meld
+    // program is an exact effect boundary, and the comma-bearing card names
+    // in the predicate must not become candidate split points.
+    if let Some(effect_idx) = meld_effect_start(after_if)
+        // The meld program must directly follow the condition in the same
+        // sentence ("... you may pay {3}{B}{G}. If you do, exile them, then
+        // meld them" keeps its payment step, Vanille).
+        && !after_if[..effect_idx]
+            .iter()
+            .any(|token| token.kind == TokenKind::Period)
+    {
+        let predicate_tokens = trim_lexed_commas(&after_if[..effect_idx])
+            .iter()
+            .filter(|token| !token.is_comma())
+            .cloned()
+            .collect::<Vec<_>>();
+        let effects_tokens = trim_lexed_commas(&after_if[effect_idx..]);
+        if !predicate_tokens.is_empty()
+            && !effects_tokens.is_empty()
+            && let Some(predicate) = parse_modeled_predicate(&predicate_tokens)
+        {
+            return Some(TriggeredConditionalClauseSpec {
+                trigger_tokens,
+                predicate,
+                effects_tokens,
+            });
+        }
+    }
 
     let mut comma_indices = Vec::new();
     let mut inside_quotes = false;
@@ -115,6 +217,9 @@ pub fn split_triggered_conditional_clause_lexed<'a>(
         if predicate_candidate_contains_search_action(predicate_tokens) {
             continue;
         }
+        if comma_continues_named_card_name(predicate_tokens, &after_if[comma_idx + 1..]) {
+            continue;
+        }
         if predicate_candidate_contains_damage_action(predicate_tokens) {
             continue;
         }
@@ -175,6 +280,21 @@ pub fn split_triggered_conditional_clause_lexed<'a>(
     }
 
     None
+}
+
+/// Start of an "exile them, then meld them into ..." program, ignoring the
+/// separating commas.
+fn meld_effect_start(tokens: &[OwnedLexToken]) -> Option<usize> {
+    const MELD_PROGRAM: &[&str] = &["exile", "them", "then", "meld", "them", "into"];
+    (0..tokens.len()).find(|&start| {
+        let mut words = tokens[start..].iter().filter(|token| !token.is_comma());
+        structure_token_is(&tokens[start], MELD_PROGRAM[0])
+            && MELD_PROGRAM.iter().all(|expected| {
+                words
+                    .next()
+                    .is_some_and(|token| structure_token_is(token, expected))
+            })
+    })
 }
 
 pub fn split_state_triggered_clause_lexed<'a>(

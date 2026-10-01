@@ -172,6 +172,33 @@ pub fn parse_leading_may_shape(tokens: &[OwnedLexToken]) -> Option<LeadingMayCla
     })
 }
 
+/// "[Then] a player of your choice may ..." / "another player of your choice
+/// may ...": the ability's controller first chooses the player, then that
+/// player decides. Returns whether the chosen player must be someone other
+/// than the chooser ("another"), and the optional action's tokens.
+pub fn parse_chosen_player_may_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<(bool, &[OwnedLexToken])> {
+    let (another, rest) = primitives::parse_prefix(tokens, chosen_player_may_actor)?;
+    let rest = trim_lexed_commas(rest);
+    (!rest.is_empty()).then_some((another, rest))
+}
+
+fn chosen_player_may_actor<'a>(input: &mut LexStream<'a>) -> WResult<bool> {
+    repeat::<_, _, (), _, _>(
+        0..,
+        alt((primitives::kw("then"), primitives::kw("and"))).void(),
+    )
+    .parse_next(input)?;
+    let another = alt((
+        primitives::kw("another").value(true),
+        primitives::kw("a").value(false),
+    ))
+    .parse_next(input)?;
+    primitives::phrase(&["player", "of", "your", "choice", "may"]).parse_next(input)?;
+    Ok(another)
+}
+
 fn map_pump_duration(duration: leaf::LeafDurationPhrase) -> Option<Until> {
     match duration {
         leaf::LeafDurationPhrase::UntilEndOfTurn => Some(Until::EndOfTurn),

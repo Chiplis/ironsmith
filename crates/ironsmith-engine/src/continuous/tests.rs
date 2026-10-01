@@ -682,6 +682,7 @@ fn test_ability_granting_counters() {
     let mut chars = CalculatedCharacteristics {
         name: creature.name.clone(),
         mana_cost: creature.mana_cost_owned(),
+        linked_face_mana_value: creature.linked_face_mana_value(),
         compiled_card_text: creature.compiled_card_text.clone(),
         ability_labels: creature.ability_labels.clone(),
         power: creature.base_power.as_ref().map(|p| p.base_value()),
@@ -740,6 +741,7 @@ fn test_multiple_ability_counters() {
     let mut chars = CalculatedCharacteristics {
         name: creature.name.clone(),
         mana_cost: creature.mana_cost_owned(),
+        linked_face_mana_value: creature.linked_face_mana_value(),
         compiled_card_text: creature.compiled_card_text.clone(),
         ability_labels: creature.ability_labels.clone(),
         power: None,
@@ -811,6 +813,7 @@ fn test_no_duplicate_abilities_from_counters() {
     let mut chars = CalculatedCharacteristics {
         name: creature.name.clone(),
         mana_cost: creature.mana_cost_owned(),
+        linked_face_mana_value: creature.linked_face_mana_value(),
         compiled_card_text: creature.compiled_card_text.clone(),
         ability_labels: creature.ability_labels.clone(),
         power: None,
@@ -840,7 +843,7 @@ fn test_no_duplicate_abilities_from_counters() {
 }
 
 #[test]
-fn layer_six_preserves_distinct_static_ability_instances_and_dedups_the_same_instance() {
+fn layer_six_preserves_independent_grants_even_with_the_same_static_instance() {
     use crate::ability::{Ability, AbilityKind};
     use crate::static_abilities::StaticAbilityId;
 
@@ -887,11 +890,14 @@ fn layer_six_preserves_distinct_static_ability_instances_and_dedups_the_same_ins
 
     assert_eq!(
         flanking.len(),
-        2,
-        "printed and granted instances both remain"
+        3,
+        "printed ability and both independent continuous grants remain"
     );
     assert!(flanking.contains(&printed.instance_id()));
     assert!(flanking.contains(&granted.instance_id()));
+    let origins = (0..calculated.abilities.len()).filter_map(|index| calculated.abilities.origin(index))
+        .collect::<std::collections::HashSet<_>>();
+    assert_eq!(origins.len(), 3, "printed and independently registered grants have distinct origins");
 }
 
 #[test]
@@ -1023,7 +1029,7 @@ fn assert_delirium_characteristics(game: &GameState, source: ObjectId, active: b
 #[test]
 fn delirium_ability_ordering_preserves_graveyard_type_changes_and_zone_changes() {
     let (mut game, source, graveyard) = delirium_layer_fixture();
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().unwrap();
     assert_delirium_characteristics(&game, source, false);
 
     // A real layer-4 effect makes the land also an artifact. Printed types
@@ -1037,12 +1043,12 @@ fn delirium_ability_ordering_preserves_graveyard_type_changes_and_zone_changes()
             EffectTarget::Specific(graveyard[0]),
             Modification::AddCardTypes(vec![CardType::Artifact]),
         ));
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().unwrap();
     assert_delirium_characteristics(&game, source, true);
     game.effect_store
         .continuous_effects
         .remove_effect(type_effect);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().unwrap();
     assert_delirium_characteristics(&game, source, false);
 
     let artifact = CardBuilder::new(CardId::from_raw(91_010), "Fourth type")
@@ -1050,15 +1056,178 @@ fn delirium_ability_ordering_preserves_graveyard_type_changes_and_zone_changes()
         .build();
     let artifact =
         game.create_object_from_card(&artifact, PlayerId::from_index(0), Zone::Graveyard);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().unwrap();
     assert_delirium_characteristics(&game, source, true);
     game.turn.phase = crate::game_state::Phase::Combat;
     game.turn.step = Some(crate::game_state::Step::BeginCombat);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().unwrap();
     assert_delirium_characteristics(&game, source, true);
     game.move_object_by_effect(artifact, Zone::Exile).unwrap();
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().unwrap();
     assert_delirium_characteristics(&game, source, false);
+}
+
+#[test]
+fn prewarming_does_not_publish_an_enclosing_characteristic_snapshot() {
+    let (mut game, source, graveyard) = delirium_layer_fixture();
+    game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+        source, PlayerId::from_index(0), EffectTarget::Specific(graveyard[0]),
+        Modification::AddCardTypes(vec![CardType::Artifact])));
+    game.update_static_ability_effects().unwrap();
+    let initial = initial_characteristics(game.object(source).unwrap());
+    assert_eq!(initial.power, Some(1));
+    let guard = CharacteristicCalculationGuard::begin(&game, source, &initial);
+    game.prewarm_calculated_characteristics(&[source, graveyard[0]]);
+    assert_eq!(game.calculated_power(source), Some(1), "nested queries retain the current layer view");
+    drop(guard);
+    assert_eq!(game.calculated_power(source), Some(3));
+    let before = game.work_counters().characteristics_full_recomputes;
+    assert_eq!(game.calculated_power(source), Some(3));
+    assert_eq!(game.work_counters().characteristics_full_recomputes, before,
+        "final characteristics still use the ordinary cache");
+}
+
+#[test]
+fn derived_view_memos_retain_layer_context_without_publishing_intermediate_results() {
+    use crate::derived_view::DerivedGameView;
+    let mut observations = Vec::new();
+    for explicit_effects in [false, true] {
+        for initially_warm in [false, true] {
+            for prewarm in [false, true] {
+                let (mut game, source, graveyard) = delirium_layer_fixture();
+                let alice = PlayerId::from_index(0);
+                game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+                    source, alice, EffectTarget::Specific(graveyard[0]),
+                    Modification::AddCardTypes(vec![CardType::Artifact])));
+                game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+                    source, alice, EffectTarget::Specific(source), Modification::AddAbilityGeneric(
+                        Ability::activated(crate::cost::TotalCost::free(),
+                            vec![crate::effect::Effect::gain_life(1)]))));
+                game.update_static_ability_effects().unwrap();
+                let view = if explicit_effects {
+                    DerivedGameView::from_effects(&game, game.try_all_continuous_effects().unwrap())
+                } else { DerivedGameView::from_refreshed_state(&game) };
+                let read = || {
+                    let power = view.calculated_characteristics(source).unwrap().power;
+                    let flying = view.abilities_rc(source).unwrap().iter().any(|ability|
+                        matches!(&ability.kind, AbilityKind::Static(ability)
+                            if ability.id() == crate::static_abilities::StaticAbilityId::Flying));
+                    let static_flying = view.static_abilities_rc(source).unwrap().iter().any(|ability|
+                        ability.id() == crate::static_abilities::StaticAbilityId::Flying);
+                    let activated = view.ability_index_summary(source).unwrap()
+                        .activated_ability_indices().len();
+                    (power, flying, static_flying, activated)
+                };
+                if initially_warm { assert_eq!(read(), (Some(3), true, true, 1)); }
+                let complete = game.calculated_characteristics(source).unwrap();
+                let initial = initial_characteristics(game.object(source).unwrap());
+                let creature_filter = crate::filter::ObjectFilter::creature()
+                    .in_zone(crate::zone::Zone::Battlefield);
+                let controlled_filter = creature_filter.clone().you_control();
+                let filter_context = game.filter_context_for(alice, None);
+                let candidate_presence = || (
+                    view.candidate_ids_for_filter_with_context(&creature_filter, &filter_context)
+                        .contains(&source),
+                    view.candidate_ids_for_filter_with_context(&controlled_filter, &filter_context)
+                        .contains(&source));
+                if initially_warm { assert_eq!(candidate_presence(), (true, true)); }
+                let guard = CharacteristicCalculationGuard::begin(&game, source, &initial);
+                if prewarm { view.prewarm_characteristics_forced(&[source, graveyard[0]]); }
+                let during = read();
+                assert_eq!(candidate_presence(), (true, true));
+                guard.update(&complete);
+                assert_eq!(read(), (Some(3), true, true, 1),
+                    "updated completed layer: explicit={explicit_effects},warm={initially_warm},prewarm={prewarm}");
+                let mut changed = initial.clone();
+                changed.controller = PlayerId::from_index(1);
+                changed.card_types = vec![CardType::Artifact].into();
+                guard.update(&changed);
+                assert_eq!(read(), (Some(1), false, false, 0));
+                assert_eq!(candidate_presence(), (false, false),
+                    "updated artifact/controller: explicit={explicit_effects},warm={initially_warm},prewarm={prewarm}");
+                guard.update(&initial);
+                assert_eq!(read(), (Some(1), false, false, 0));
+                assert_eq!(candidate_presence(), (true, true));
+                drop(guard);
+                let after = read();
+                assert_eq!(candidate_presence(), (true, true));
+                observations.push((explicit_effects, initially_warm, prewarm, during, after));
+            }
+        }
+    }
+    assert!(observations.iter().all(|(_, _, _, during, after)|
+        *during == (Some(1), false, false, 0) && *after == (Some(3), true, true, 1)),
+        "{observations:?}");
+}
+
+#[test]
+fn recursive_characteristic_context_is_scoped_to_its_game_snapshot() {
+    use crate::derived_view::DerivedGameView;
+    let mut observations = Vec::new();
+    for explicit_effects in [false, true] {
+        for initially_warm in [false, true] {
+            let (mut game, source, graveyard) = delirium_layer_fixture();
+            let alice = PlayerId::from_index(0);
+            game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+                source, alice, EffectTarget::Specific(graveyard[0]),
+                Modification::AddCardTypes(vec![CardType::Artifact])));
+            game.refresh_continuous_state().unwrap();
+            let mut other = game.clone();
+            other.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+                source, alice, EffectTarget::Specific(source), Modification::ModifyPower(4)));
+            other.refresh_continuous_state().unwrap();
+            assert_eq!(game.calculated_characteristics(source).unwrap().power, Some(3));
+            let other_effects = other.try_all_continuous_effects().unwrap();
+            let view = if explicit_effects {
+                DerivedGameView::from_effects(&other, other_effects.clone())
+            } else { DerivedGameView::from_refreshed_state(&other) };
+            let read_other = || (
+                other.calculated_characteristics(source).unwrap().power,
+                other.calculated_characteristics_with_effects(source, &other_effects).unwrap().power,
+                view.calculated_characteristics(source).unwrap().power);
+            if initially_warm { assert_eq!(read_other(), (Some(7), Some(7), Some(7))); }
+            let initial = initial_characteristics(game.object(source).unwrap());
+            let guard = CharacteristicCalculationGuard::begin(&game, source, &initial);
+            assert_eq!(game.calculated_characteristics(source).unwrap().power, Some(1),
+                "recursive reads in the owning snapshot must retain its current layer");
+            let during = read_other();
+            drop(guard);
+            let after = read_other();
+            observations.push((explicit_effects, initially_warm, during, after));
+        }
+    }
+    assert!(observations.iter().all(|(_, _, during, after)|
+        *during == (Some(7), Some(7), Some(7)) && *after == (Some(7), Some(7), Some(7))),
+        "{observations:?}");
+}
+
+#[test]
+fn replacement_publication_preserves_complete_characteristic_cache() {
+    let mut observations = Vec::new();
+    for stage in ["pure", "static", "replacement", "cant", "full"] {
+        for warm_graveyard in [false, true] {
+            let (mut game, source, graveyard) = delirium_layer_fixture();
+            game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+                source, PlayerId::from_index(0), EffectTarget::Specific(graveyard[0]),
+                Modification::AddCardTypes(vec![CardType::Artifact])));
+            if stage == "full" { game.refresh_continuous_state().unwrap(); }
+            else if stage != "pure" {
+                game.update_static_ability_effects().unwrap();
+                if stage == "replacement" { game.update_replacement_effects().unwrap(); }
+                if stage == "cant" { game.update_cant_effects(); }
+            }
+            if warm_graveyard { let _types = game.calculated_card_types(graveyard[0]); }
+            let cached = game.calculated_characteristics(source).unwrap();
+            let effects = game.try_all_continuous_effects().unwrap();
+            let direct = game.calculated_characteristics_with_effects(source, &effects).unwrap();
+            let grave_types = game.calculated_card_types(graveyard[0]);
+            let direct_after_grave = game.calculated_characteristics_with_effects(source, &effects).unwrap();
+            assert!(grave_types.contains(&CardType::Artifact), "stage={stage},warm={warm_graveyard}");
+            observations.push((stage, warm_graveyard, cached.power, direct.power, direct_after_grave.power));
+        }
+    }
+    assert!(observations.iter().all(|(_, _, cached, direct, after)|
+        *cached == Some(3) && *direct == Some(3) && *after == Some(3)), "{observations:?}");
 }
 
 #[test]
@@ -1072,7 +1241,7 @@ fn delirium_ability_ordering_preserves_source_ability_removal() {
             EffectTarget::Specific(graveyard[0]),
             Modification::AddCardTypes(vec![CardType::Artifact]),
         ));
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().unwrap();
     assert_delirium_characteristics(&game, source, true);
     let removal = game
         .effect_store
@@ -1083,9 +1252,69 @@ fn delirium_ability_ordering_preserves_source_ability_removal() {
             EffectTarget::Specific(source),
             Modification::RemoveAllAbilities,
         ));
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().unwrap();
     assert_delirium_characteristics(&game, source, false);
     game.effect_store.continuous_effects.remove_effect(removal);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().unwrap();
     assert_delirium_characteristics(&game, source, true);
+}
+
+
+fn check_copy_cost_layer_filter(exact_cost: bool, fallback: bool) {
+    let mut game = dynamic_value_test_game();
+    let alice = PlayerId::from_index(0);
+    let original_cost = ManaCost::from_symbols(vec![ManaSymbol::Generic(5)]);
+    let copied_cost = ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]);
+    let original = CardBuilder::new(CardId::new(), "Original creature")
+        .card_types(vec![CardType::Creature]).mana_cost(original_cost)
+        .power_toughness(PowerToughness::fixed(1, 1)).build();
+    let copied = CardBuilder::new(CardId::new(), "Copied creature")
+        .card_types(vec![CardType::Creature]).mana_cost(copied_cost.clone())
+        .power_toughness(PowerToughness::fixed(4, 4)).build();
+    let original_id = game.create_object_from_card(&original, alice, Zone::Battlefield);
+    let copied_id = game.create_object_from_card(&copied, alice, Zone::Battlefield);
+    let values = crate::snapshot::CopiableValues::from_object(game.object(copied_id).unwrap());
+    game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+        original_id, alice, EffectTarget::Specific(original_id), Modification::CopyOf {
+            target_id: copied_id, copiable_values: Box::new(values),
+            preserve_source_abilities: false, name_override: None,
+            name_override_surface: None, add_supertypes: Vec::new(),
+        },
+    ).until(Until::EndOfTurn));
+    let mut filter = ObjectFilter::default();
+    filter.specific = Some(original_id);
+    if exact_cost { filter.exact_mana_cost = Some(copied_cost); }
+    else { filter.mana_value = Some(crate::filter::Comparison::Equal(2)); }
+    if fallback { filter.any_of = vec![ObjectFilter::default()]; }
+    game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+        original_id, alice, EffectTarget::Filter(filter),
+        Modification::ModifyPowerToughness { power: 3, toughness: 3 },
+    ));
+    game.refresh_continuous_state().unwrap();
+    assert_eq!(game.current_power(original_id), Some(7), "filter sees copied cost");
+    assert_eq!(crate::filter::object_current_mana_value(&game, original_id), 2);
+    game.effect_store.continuous_effects.cleanup_end_of_turn();
+    game.refresh_continuous_state().unwrap();
+    assert_eq!(game.current_power(original_id), Some(1), "filter no longer matches after copy expiry");
+    assert_eq!(crate::filter::object_current_mana_value(&game, original_id), 5);
+}
+
+#[test]
+fn temporary_copy_cost_selects_direct_mana_value_filter() {
+    check_copy_cost_layer_filter(false, false);
+}
+
+#[test]
+fn temporary_copy_cost_selects_fallback_mana_value_filter() {
+    check_copy_cost_layer_filter(false, true);
+}
+
+#[test]
+fn temporary_copy_cost_selects_direct_exact_cost_filter() {
+    check_copy_cost_layer_filter(true, false);
+}
+
+#[test]
+fn temporary_copy_cost_selects_fallback_exact_cost_filter() {
+    check_copy_cost_layer_filter(true, true);
 }

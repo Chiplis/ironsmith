@@ -480,7 +480,7 @@ pub(super) fn test_activated_mana_ability_emits_mana_added_event_for_triggers() 
         ));
     }
 
-    let activate_action = compute_legal_actions(&game, alice)
+    let activate_action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -3106,7 +3106,7 @@ pub(super) fn skeleton_crew_graveyard_activation_returns_it_tapped() {
         .iter()
         .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
         .expect("Skeleton Crew should have a graveyard activated ability");
-    let activate_action = crate::decision::compute_legal_actions(&game, alice)
+    let activate_action = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(

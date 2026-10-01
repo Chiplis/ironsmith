@@ -144,7 +144,11 @@ fn parse_counter_type_words_spec_word_slice(
                 ));
             }
         }
-    } else if previous == "another" || leaf::parse_number_complete(previous).is_ok() {
+    } else if matches!(previous, "another" | "more" | "or")
+        || leaf::parse_number_complete(previous).is_ok()
+    {
+        // "one or more counters" names no counter type; "more" is a
+        // quantifier word, never a counter kind.
         return Err(primitives::backtrack_err(
             "counter type",
             "nonnumeric counter descriptor",

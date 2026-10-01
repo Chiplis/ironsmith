@@ -402,9 +402,11 @@ fn link_source_move_to_damaged_death_card(lowered: &mut LoweredEffects, conditio
         return;
     }
 
+    // "put that card onto the battlefield" names every creature this
+    // creature damaged that died this turn (Krovikan Vampire rulings), not
+    // one chosen card; the shared tag links each of them to the follow-up.
     let mut replacement = move_to_zone.clone();
-    replacement.target =
-        ChooseSpec::Object(filter).with_count(crate::effect::ChoiceCount::exactly(1));
+    replacement.target = ChooseSpec::All(filter);
     *effect = Effect::new(tagged.with_effect(Effect::new(replacement)));
 }
 
@@ -1064,7 +1066,8 @@ fn default_trigger_last_object_prelude(
             tag.clone(),
             event_participant_filter(filter),
         )),
-        TriggerSpec::BlocksObjectWithLesserPower { blocked, .. } => Some(
+        TriggerSpec::BlocksObjectWithLesserPower { blocked, .. }
+        | TriggerSpec::BlocksObject { blocked, .. } => Some(
             EffectPreludeTag::TriggeringAttacker(tag.clone(), event_participant_filter(blocked)),
         ),
         TriggerSpec::KeywordAction {
@@ -4648,6 +4651,28 @@ fn direct_named_granting_source_spec(effect: &Effect) -> Option<ChooseSpec> {
 }
 
 fn preserve_named_granting_source_in_effect(effect: Effect) -> Effect {
+    // A sentence already scoped to the card's own name ("Shuriken deals 2
+    // damage ...", lowered with the named source as the damage source)
+    // names the granting attachment too.
+    if let Some(with_source) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
+        && matches!(with_source.source.base(), ChooseSpec::Source)
+        && matches!(
+            with_source.source.source_reference_surface(),
+            Some(SourceReferenceSurface::FullName(_) | SourceReferenceSurface::ShortName(_))
+        )
+    {
+        return Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+            granting_source_scope_spec(&with_source.source),
+            (*with_source.effect).clone(),
+        ));
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>()
+        && direct_named_granting_source_spec(&effect).is_none()
+    {
+        let mut tagged = tagged.clone();
+        tagged.effect = Box::new(preserve_named_granting_source_in_effect(*tagged.effect));
+        return Effect::new(tagged);
+    }
     // Keep source rebinding as narrow as the runtime composition permits.
     // A quoted ability may refer both to its granting Aura by proper name and
     // to `this creature`, meaning the object that received the ability. If a
@@ -4713,7 +4738,63 @@ fn preserve_named_granting_source_in_effect(effect: Effect) -> Effect {
     let Some(source) = direct_named_granting_source_spec(&effect) else {
         return effect;
     };
-    Effect::new(crate::effects::ExecuteWithSourceEffect::new(source, effect))
+    Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+        granting_source_scope_spec(&source),
+        effect,
+    ))
+}
+
+/// The source scope for a sentence naming the granting attachment: the
+/// object recorded under `GRANTING_SOURCE_TAG` when the granted ability is
+/// activated or triggers (the Equipment in `Equipped creature has "...
+/// Shuriken deals 2 damage ..."`), keeping the authored name's surface.
+fn granting_source_scope_spec(named: &ChooseSpec) -> ChooseSpec {
+    ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::GrantingSource.key())
+        .with_surface_hints(named.surface_hints().iter().cloned())
+}
+
+/// `{T}, Unattach Shuriken:` inside an ability an Equipment grants: the
+/// ability's source is the equipped permanent, which is never itself an
+/// attached object, so an unattach cost choosing "the source" names the
+/// granting attachment. Bind that choice to the granting object.
+fn bind_granting_source_unattach_costs(
+    cost: &crate::cost::TotalCost,
+) -> Option<crate::cost::TotalCost> {
+    let ironsmith_core::TotalCostKind::All(components) = cost.kind() else {
+        return None;
+    };
+    let mut changed = false;
+    let mut rebuilt = components.to_vec();
+    for idx in 0..components.len() {
+        let Some(choose) = components[idx]
+            .effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+        else {
+            continue;
+        };
+        if !choose.filter.source {
+            continue;
+        }
+        let Some(consumer) = components
+            .get(idx + 1)
+            .and_then(|component| component.effect_ref())
+            .and_then(|effect| effect.downcast_ref::<crate::effects::UnattachObjectsEffect>())
+        else {
+            continue;
+        };
+        if !matches!(consumer.objects.base(), ChooseSpec::Tagged(tag) if *tag == choose.tag) {
+            continue;
+        }
+        let mut choose = choose.clone();
+        let zone = choose.filter.zone;
+        let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::GrantingSource.key());
+        filter.zone = zone;
+        filter.source_surface = choose.filter.source_surface.clone();
+        choose.filter = filter;
+        rebuilt[idx] = crate::costs::Cost::validated_effect(Effect::new(choose));
+        changed = true;
+    }
+    changed.then(|| crate::cost::TotalCost::from_costs(rebuilt))
 }
 
 /// A proper-name reference inside a quoted attached-object ability names the
@@ -4728,6 +4809,11 @@ fn preserve_named_granting_source(mut ability: Ability) -> Ability {
         }
     }
 
+    if let AbilityKind::Activated(activated) = &mut ability.kind
+        && let Some(cost) = bind_granting_source_unattach_costs(&activated.mana_cost)
+    {
+        activated.mana_cost = cost;
+    }
     let program = match &mut ability.kind {
         AbilityKind::Triggered(triggered) => &mut triggered.effects,
         AbilityKind::Activated(activated) => &mut activated.effects,

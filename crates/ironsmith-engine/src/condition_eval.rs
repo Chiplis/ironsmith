@@ -108,6 +108,14 @@ fn source_was_cast_from_zone(
     triggering_event: Option<&TriggerEvent>,
     zone: Zone,
 ) -> bool {
+    // "When you cast this spell from ..." reads the cast event itself: the
+    // event names the origin zone even before turn history records it.
+    if let Some(cast) =
+        triggering_event.and_then(|event| event.downcast::<crate::events::spells::SpellCastEvent>())
+        && cast.spell == source
+    {
+        return cast.from_zone == zone;
+    }
     if !source_was_cast(game, source, triggering_event) {
         return false;
     }
@@ -1873,13 +1881,28 @@ fn evaluate_value_comparison(
     if !source_exiled.is_empty() {
         ctx.set_tagged_objects(crate::tag::SOURCE_EXILED_TAG, source_exiled);
     }
-    let Ok(left_value) = resolve_value(game, left, &ctx) else {
-        return false;
+    let compare = |exec: &ExecutionContext| -> Result<bool, ExecutionError> {
+        Ok(operator.evaluate(
+            resolve_value(game, left, exec)?,
+            resolve_value(game, right, exec)?,
+        ))
     };
-    let Ok(right_value) = resolve_value(game, right, &ctx) else {
-        return false;
-    };
-    operator.evaluate(left_value, right_value)
+    match compare(&ctx) {
+        Ok(result) => result,
+        // "as long as an opponent has 10 or less life": a quantified opponent
+        // in a static/trigger condition is satisfied by any opponent.
+        Err(ExecutionError::UnresolvableValue(message))
+            if message == crate::effects::helpers::AN_OPPONENT_CHOICE_REQUIRED =>
+        {
+            crate::effects::helpers::an_opponent_choice_candidates(game, &ctx)
+                .into_iter()
+                .any(|opponent| {
+                    let probe = an_opponent_probe_context(&ctx, opponent);
+                    matches!(compare(&probe), Ok(true))
+                })
+        }
+        Err(_) => false,
+    }
 }
 
 fn evaluate_value_is_prime(

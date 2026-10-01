@@ -10,7 +10,6 @@ use crate::decisions::specs::objects::ChooseObjectsSpec;
 use crate::effect::{EffectOutcome, OutcomeObjectMemory};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_objects_for_effect;
-use crate::effects::permanents::attach_battlefield_object_to_target;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
@@ -139,12 +138,24 @@ impl EffectExecutor for ReturnFromGraveyardToBattlefieldEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::with_objects(Vec::new())); }
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
         if matches!(self.target.base(), ChooseSpec::Source)
             && crate::effects::helpers::resolve_source_object_id(game, ctx).is_none()
         {
             return Ok(EffectOutcome::target_invalid());
         }
-        let target_ids = resolve_graveyard_return_targets(game, ctx, &self.target)?;
+        let target_ids = match resolve_graveyard_return_targets(game, ctx, &self.target) {
+            Ok(selected) => selected,
+            Err(ExecutionError::InvalidTarget)
+                if !self.target.is_target()
+                    && matches!(self.target.base(), ChooseSpec::Object(_))
+                    && ctx.targets.iter().any(|target| matches!(target, crate::effects::ResolvedTarget::Object(_))) =>
+                return Ok(EffectOutcome::target_invalid()),
+            Err(error) => return Err(error),
+        };
         if target_ids.is_empty() {
             return Ok(EffectOutcome::target_invalid());
         }
@@ -155,7 +166,13 @@ impl EffectExecutor for ReturnFromGraveyardToBattlefieldEffect {
                 .object(*target_id)
                 .ok_or(ExecutionError::ObjectNotFound(*target_id))?;
 
-            if obj.zone != Zone::Graveyard {
+            // An ability that functions while its source is exiled ("return
+            // Cosima to the battlefield", granted to the exiled card) returns
+            // the source from exile; the source identity already proves it is
+            // the same object (CR 400.7).
+            let source_in_exile = matches!(self.target.base(), ChooseSpec::Source)
+                && obj.zone == Zone::Exile;
+            if obj.zone != Zone::Graveyard && !source_in_exile {
                 return Ok(EffectOutcome::target_invalid());
             }
             memories.push(OutcomeObjectMemory::from_snapshot(
@@ -186,6 +203,7 @@ impl EffectExecutor for ReturnFromGraveyardToBattlefieldEffect {
                         *target_id,
                         BattlefieldEntryOptions::preserve(self.tapped)
                             .with_initial_counters(initial_counters)
+                            .with_entry_attachment(attachment_target.map(AttachmentTarget::Object))
                             .with_entry_modifications(
                                 self.as_aura
                                     .as_ref()
@@ -196,35 +214,27 @@ impl EffectExecutor for ReturnFromGraveyardToBattlefieldEffect {
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let outcomes = move_to_battlefield_batch_with_options(game, ctx, requests);
-
+        let receipts = move_to_battlefield_batch_with_options(game, ctx, requests)?;
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::with_objects(Vec::new())); }
+        if receipts.len() != target_ids.len() {
+            return Err(ExecutionError::InternalError("graveyard return lost a battlefield entry receipt".into()));
+        }
         let mut moved = Vec::new();
-        for outcome in outcomes {
-            match outcome {
-                BattlefieldEntryOutcome::Moved(new_id) => {
-                    if self.as_aura.is_some() {
-                        if let Some(attachment_target) = attachment_target
-                            && !attach_battlefield_object_to_target(
-                                game,
-                                new_id,
-                                AttachmentTarget::Object(attachment_target),
-                            )
-                        {
-                            game.move_object(new_id, Zone::Graveyard, ctx.cause.clone());
-                            continue;
-                        }
-                    }
-                    moved.push(new_id);
-                }
+        for receipt in &receipts {
+            match &receipt.outcome {
+                BattlefieldEntryOutcome::Moved(new_id) => moved.push(*new_id),
+                BattlefieldEntryOutcome::Redirected(change) => moved.extend(change.new_object_ids.iter().copied()),
                 BattlefieldEntryOutcome::Prevented => {}
             }
         }
-
-        if moved.is_empty() {
-            Ok(EffectOutcome::impossible())
-        } else {
-            Ok(EffectOutcome::with_objects(moved).with_affected_object_memory(memories))
-        }
+        let original = if moved.is_empty() { EffectOutcome::impossible() }
+            else { EffectOutcome::with_objects(moved).with_affected_object_memory(memories) };
+        super::battlefield_entry::finish_battlefield_entry_receipts(game, ctx, original, receipts)
+        })();
+        let pending = ctx.decision_maker.awaiting_choice();
+        if pending || instruction.is_err() { *game = checkpoint; context_checkpoint.restore(ctx); }
+        if pending { return instruction.map(|_| EffectOutcome::with_objects(Vec::new())); }
+        instruction
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

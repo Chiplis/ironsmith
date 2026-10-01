@@ -152,7 +152,7 @@ fn announce(
 ) -> Result<(TriggerQueue, Value), String> {
     g.turn.priority_player = Some(PlayerId(actor));
     let source = g.create_object_from_definition(def, PlayerId(actor), Zone::Hand);
-    let action = compute_legal_actions(g, PlayerId(actor))
+    let action = compute_legal_actions(g, PlayerId(actor)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source))
         .ok_or("intended cast unavailable")?;
@@ -281,7 +281,7 @@ fn action(
     mana: bool,
     dm: &mut Choices,
 ) -> Result<Value, String> {
-    let a = compute_legal_actions(g, PlayerId(0))
+    let a = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| match a {
             LegalAction::ActivateAbility {
@@ -355,7 +355,7 @@ fn next_main(g: &mut GameState) {
 fn play_land(g: &mut GameState, d: &CardDefinition, dm: &mut Choices) -> Result<ObjectId, String> {
     let hand = g.create_object_from_definition(d, g.turn.active_player, Zone::Hand);
     let stable=g.object(hand).unwrap().stable_id;
-    let a = compute_legal_actions(g, g.turn.active_player)
+    let a = compute_legal_actions(g, g.turn.active_player).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::PlayLand{land_id}if *land_id==hand))
         .ok_or("land play missing")?;
@@ -404,7 +404,7 @@ fn run(defs:&HashMap<String,CardDefinition>,name:&str,n:usize,state:&str)->Resul
  let mut runner=None;if name=="Angelic Favor"&&state!="outside_combat"{runner=Some(begin_combat(&mut g,&mut dm)?);if state=="normal"{for id in &mana_lands{producers.push(action(&mut g,*id,0,true,&mut dm)?);}}}
  dm.targets=if let Some(id)=host{vec![Target::Object(id)]}else if name=="Orim's Cure"{vec![Target::Player(PlayerId(0))]}else{vec![]};dm.names=vec![resource_name.into()];
  let source=g.create_object_from_definition(&defs[name],PlayerId(0),Zone::Hand);let stable=g.object(source).unwrap().stable_id;let method=if state=="normal"{ironsmith::alternative_cast::CastingMethod::Normal}else{ironsmith::alternative_cast::CastingMethod::Alternative(0)};
- let actions=compute_legal_actions(&g,PlayerId(0));let offered=actions.iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,casting_method,..}if *spell_id==source&&*casting_method==method)).cloned();let valid=state=="normal"||(n>=required&&!["tapped","wrong_type","no_plains","outside_combat"].contains(&state));
+ let actions=compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state");let offered=actions.iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,casting_method,..}if *spell_id==source&&*casting_method==method)).cloned();let valid=state=="normal"||(n>=required&&!["tapped","wrong_type","no_plains","outside_combat"].contains(&state));
  let before=json!({"actions":format!("{actions:?}"),"phase":format!("{:?}",g.turn.phase),"method":format!("{method:?}"),"resources":resources.iter().map(|id|json!({"id":id.0,"tapped":g.is_tapped(*id),"fresh":g.is_summoning_sick(*id)})).collect::<Vec<_>>()});
  if !valid||offered.is_none(){return Ok((json!({"intended_cast_available":valid}),json!({"intended_cast_available":offered.is_some()}),json!({"producers":producers,"before_cast":before,"cast_dispatched":false,"choice_trace":dm.trace})));}
  let payment=dispatch(&mut g,offered.unwrap(),&mut dm).unwrap_or_else(|e|json!({"error":e}));let object=g.objects_in_deterministic_order().into_iter().find(|o|o.stable_id==stable).cloned();let taps=if state=="normal"{0}else{required};let price=if state=="normal"{match name{"Lashknife"|"Orim's Cure"=>2,"Zahid, Djinn of the Lamp"=>6,"Sephara, Sky's Blade"=>7,"The Lady of Otaria"=>5,_=>4}}else{match name{"Zahid, Djinn of the Lamp"=>4,"Sephara, Sky's Blade"=>1,_=>0}};

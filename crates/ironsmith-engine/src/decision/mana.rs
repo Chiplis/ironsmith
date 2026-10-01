@@ -742,17 +742,37 @@ pub fn resolve_play_from_alternative_method(
     zone: Zone,
     idx: usize,
 ) -> Option<crate::alternative_cast::AlternativeCastingMethod> {
+    // Announcement owns the selected method after the spell moves to the
+    // stack. Paying costs may remove or consume its provider and change the
+    // current grant index space; those changes cannot rewrite this cast.
+    if spell.zone == Zone::Stack {
+        if let Some(method) = spell.cast_alternative_method_owned() {
+            return Some(method);
+        }
+    }
     if let Some(method) = spell.alternative_casts.get(idx) {
         return Some(method.clone());
     }
 
+    resolve_play_from_alternative_grant(game, player, spell, zone, idx).map(|entry| entry.method)
+}
+
+/// Resolve the exact indexed grant while the originating card and permissions
+/// still exist. Intrinsic alternatives deliberately have no grant payload.
+pub(crate) fn resolve_play_from_alternative_grant(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    zone: Zone,
+    idx: usize,
+) -> Option<crate::grant_registry::GrantedAlternativeCast> {
     let granted = game
         .effect_store
         .grant_registry
         .granted_alternative_casts_for_card(game, spell.id, zone, player);
     let granted_idx = idx.checked_sub(spell.alternative_casts.len())?;
     if let Some(entry) = granted.get(granted_idx) {
-        return Some(entry.method.clone());
+        return Some(entry.clone());
     }
 
     let adventure_idx = granted_idx.checked_sub(granted.len())?;
@@ -762,7 +782,7 @@ pub fn resolve_play_from_alternative_method(
         view.granted_alternative_casts_for_card_view(spell.id, &adventure_view, zone, player);
     adventure_granted
         .get(adventure_idx)
-        .map(|entry| entry.method.clone())
+        .cloned()
 }
 
 pub(crate) fn alternative_cast_method_matches_kind(
@@ -6727,8 +6747,8 @@ fn available_mana_sources_for_payment(
     view: &DerivedGameView<'_>,
 ) -> Rc<Vec<AvailableManaSource>> {
     use crate::ability::AbilityKind;
-    if let Some(cached) = view.available_payment_sources.borrow().get(&player) {
-        return Rc::clone(cached);
+    if let Some(cached) = view.cached_available_payment_sources(player) {
+        return cached;
     }
 
     let mut sources = Vec::new();
@@ -6782,9 +6802,7 @@ fn available_mana_sources_for_payment(
     }
 
     let sources = Rc::new(sources);
-    view.available_payment_sources
-        .borrow_mut()
-        .insert(player, Rc::clone(&sources));
+    view.cache_available_payment_sources(player, Rc::clone(&sources));
     sources
 }
 

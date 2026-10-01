@@ -24,6 +24,8 @@ pub enum SimultaneousTriggerKey {
     DamageBatch,
     /// All matching zone changes in one simultaneous action.
     ZoneChangeBatch,
+    /// Non-zone departures from one simultaneous game action.
+    ObjectLeavesGameBatch,
     /// All counters one instruction puts on one or more objects.
     CounterBatch,
     /// All dice one instruction rolls ("whenever you roll one or more dice").

@@ -157,7 +157,7 @@ fn announce(
 ) -> Result<(TriggerQueue, Value), String> {
     g.turn.priority_player = Some(PlayerId(actor));
     let source = g.create_object_from_definition(def, PlayerId(actor), Zone::Hand);
-    let action = compute_legal_actions(g, PlayerId(actor))
+    let action = compute_legal_actions(g, PlayerId(actor)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source))
         .ok_or("intended cast unavailable")?;
@@ -286,7 +286,7 @@ fn action(
     mana: bool,
     dm: &mut Choices,
 ) -> Result<Value, String> {
-    let a = compute_legal_actions(g, PlayerId(0))
+    let a = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| match a {
             LegalAction::ActivateAbility {
@@ -360,7 +360,7 @@ fn next_main(g: &mut GameState) {
 fn play_land(g: &mut GameState, d: &CardDefinition, dm: &mut Choices) -> Result<ObjectId, String> {
     let hand = g.create_object_from_definition(d, g.turn.active_player, Zone::Hand);
     let stable=g.object(hand).unwrap().stable_id;
-    let a = compute_legal_actions(g, g.turn.active_player)
+    let a = compute_legal_actions(g, g.turn.active_player).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::PlayLand{land_id}if *land_id==hand))
         .ok_or("land play missing")?;
@@ -398,7 +398,7 @@ fn run(defs:&HashMap<String,CardDefinition>,name:&str,n:usize,state:&str)->Resul
  if state=="tapped"{dm.targets=vec![Target::Object(resources[0])];producers.push(paid(&mut g,defs,"Twiddle",&mut dm,1)?);if !g.is_tapped(resources[0]){return Err("tap producer failed".into());}}
  if state=="odd_life"{next_main(&mut g);dm.targets=vec![Target::Player(PlayerId(1))];let e=cast(&mut g,&defs["Healing Salve"],1,&mut dm)?;producers.push(e);if g.player(PlayerId(1)).unwrap().life!=23{return Err("actual odd-life producer failed".into());}next_main(&mut g);}
  let selected=n>0&&["ready","odd_life"].contains(&state);dm.optional=selected;dm.route=name.into();dm.targets_pool=targets;dm.target_cursor=0;dm.names=vec![resource_name.into()];
- let source=g.create_object_from_definition(&defs[name],PlayerId(0),Zone::Hand);let stable=g.object(source).unwrap().stable_id;let actions=compute_legal_actions(&g,PlayerId(0));let a=actions.iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,casting_method:ironsmith::alternative_cast::CastingMethod::Normal,..}if *spell_id==source)).cloned().ok_or("normal source cast unavailable")?;
+ let source=g.create_object_from_definition(&defs[name],PlayerId(0),Zone::Hand);let stable=g.object(source).unwrap().stable_id;let actions=compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state");let a=actions.iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,casting_method:ironsmith::alternative_cast::CastingMethod::Normal,..}if *spell_id==source)).cloned().ok_or("normal source cast unavailable")?;
  let life_before=g.players.iter().map(|p|p.life).collect::<Vec<_>>();let before=json!({"actions":format!("{actions:?}"),"life":life_before,"resources":resources.iter().map(|id|json!({"id":id.0,"name":g.object(*id).unwrap().name.to_string(),"tapped":g.is_tapped(*id),"fresh":g.is_summoning_sick(*id)})).collect::<Vec<_>>()});
  let payment=dispatch(&mut g,a,&mut dm).unwrap_or_else(|e|json!({"error":e}));let source_zone=g.objects_in_deterministic_order().into_iter().find(|o|o.stable_id==stable).map(|o|format!("{:?}",o.zone));
  let mut actual=json!({"error":payment["error"],"mana_paid":payment["announcement"]["mana_paid"],"new_resource_taps":resources.iter().filter(|id|g.is_tapped(**id)).count()-usize::from(state=="tapped"),"source_zone":source_zone,"life":g.players.iter().map(|p|p.life).collect::<Vec<_>>(),"stack_length":g.stack.len()});

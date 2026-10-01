@@ -111,8 +111,8 @@ mod tests {
                 entrant,
                 Zone::Battlefield,
                 &mut crate::decision::SelectFirstDecisionMaker,
-            )
-            .expect("the creature should enter the battlefield");
+            ).expect("replacement operation must execute successfully in this scenario")
+            .assert_completed_without_additions().expect("the creature should enter the battlefield");
 
         assert!(game.is_prepared(result.new_id), "it should enter prepared");
         assert_eq!(exiled_names(&game), vec![PREPARE_SPELL_NAME.to_string()]);
@@ -132,8 +132,8 @@ mod tests {
                 entrant,
                 Zone::Battlefield,
                 &mut crate::decision::SelectFirstDecisionMaker,
-            )
-            .expect("the creature should enter the battlefield")
+            ).expect("replacement operation must execute successfully in this scenario")
+            .assert_completed_without_additions().expect("the creature should enter the battlefield")
             .new_id;
         assert_eq!(exiled_names(&game).len(), 1);
 
@@ -155,8 +155,8 @@ mod tests {
                 entrant,
                 Zone::Battlefield,
                 &mut crate::decision::SelectFirstDecisionMaker,
-            )
-            .expect("the creature should enter the battlefield")
+            ).expect("replacement operation must execute successfully in this scenario")
+            .assert_completed_without_additions().expect("the creature should enter the battlefield")
             .new_id;
         assert_eq!(exiled_names(&game).len(), 1);
 
@@ -186,8 +186,8 @@ mod tests {
             entrant,
             Zone::Battlefield,
             &mut crate::decision::SelectFirstDecisionMaker,
-        )
-        .expect("the creature should enter the battlefield");
+        ).expect("replacement operation must execute successfully in this scenario")
+        .assert_completed_without_additions().expect("the creature should enter the battlefield");
         let copy = *game
             .exile
             .first()
@@ -204,11 +204,11 @@ mod tests {
         };
 
         assert!(
-            casts_copy(&crate::decision::compute_legal_actions(&game, alice)),
+            casts_copy(&crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")),
             "the prepared permanent's controller may cast the copy from exile"
         );
         assert!(
-            !casts_copy(&crate::decision::compute_legal_actions(&game, bob)),
+            !casts_copy(&crate::decision::compute_legal_actions(&game, bob).expect("fixture has complete replacement state")),
             "only the controller of the prepared permanent may cast the copy"
         );
     }

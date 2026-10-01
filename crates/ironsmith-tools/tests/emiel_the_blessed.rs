@@ -80,7 +80,7 @@ fn enter(entering: Subtype, pay: bool) -> (u32, u32) {
         game.create_object_from_definition(&creature("Newcomer", entering), alice, Zone::Hand);
     let mut dm = Pay(pay);
     let entered: ObjectId = game
-        .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm)
+        .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .expect("enters")
         .new_id;
     let mut queue = TriggerQueue::new();
@@ -138,7 +138,7 @@ fn three_mana_blinks_another_creature_you_control() {
         .unwrap()
         .mana_pool
         .add(ManaSymbol::Colorless, 3);
-    let action = compute_legal_actions(&game, alice)
+    let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::ActivateAbility { source, .. } if *source == emiel))
         .expect("activatable");
@@ -173,4 +173,13 @@ fn three_mana_blinks_another_creature_you_control() {
         0,
         "counters are lost"
     );
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: ironsmith::game_state::EntryCommitResult)
+    -> Option<ironsmith::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

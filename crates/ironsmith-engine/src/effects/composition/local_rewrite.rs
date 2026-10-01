@@ -66,6 +66,42 @@ fn local_rewrite_fallback_target(effect: &Effect) -> Option<&crate::target::Choo
     effect.0.get_target_spec()
 }
 
+pub(super) fn prepare_local_replacements(
+    effect: &LocalRewriteEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<Vec<ReplacementEffect>, ExecutionError> {
+    let mut replacements = Vec::new();
+    let fallback_target = local_rewrite_fallback_target(&effect.effect).cloned();
+    for replacement in &effect.zone_replacements {
+        match resolve_zone_replacements(replacement, game, ctx) {
+            Ok(resolved) => {
+                replacements.extend(resolved.into_iter().map(|effect| {
+                    effect.with_priority_override(ReplacementPriority::SelfReplacement)
+                }))
+            }
+            Err(ExecutionError::InvalidTarget) => {
+                let Some(target_spec) = &fallback_target else {
+                    continue;
+                };
+                let mut rebound = replacement.clone();
+                rebound.target = target_spec.clone();
+                if let Ok(resolved) = resolve_zone_replacements(&rebound, game, ctx) {
+                    replacements.extend(resolved.into_iter().map(|effect| {
+                        effect.with_priority_override(ReplacementPriority::SelfReplacement)
+                    }));
+                }
+            }
+            Err(err) => return Err(err),
+        }
+        if ctx.decision_maker.awaiting_choice() {
+            break;
+        }
+    }
+
+    Ok(replacements)
+}
+
 impl EffectExecutor for LocalRewriteEffect {
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
         visitor(&self.effect);
@@ -80,27 +116,9 @@ impl EffectExecutor for LocalRewriteEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let mut replacements = Vec::new();
-        let fallback_target = local_rewrite_fallback_target(&self.effect).cloned();
-        for replacement in &self.zone_replacements {
-            match resolve_zone_replacements(replacement, game, ctx) {
-                Ok(resolved) => replacements.extend(resolved.into_iter().map(|effect| {
-                    effect.with_priority_override(ReplacementPriority::SelfReplacement)
-                })),
-                Err(ExecutionError::InvalidTarget) => {
-                    let Some(target_spec) = &fallback_target else {
-                        continue;
-                    };
-                    let mut rebound = replacement.clone();
-                    rebound.target = target_spec.clone();
-                    if let Ok(resolved) = resolve_zone_replacements(&rebound, game, ctx) {
-                        replacements.extend(resolved.into_iter().map(|effect| {
-                            effect.with_priority_override(ReplacementPriority::SelfReplacement)
-                        }));
-                    }
-                }
-                Err(err) => return Err(err),
-            }
+        let replacements = prepare_local_replacements(self, game, ctx)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
         }
 
         ctx.with_temp_additional_replacement_effects(replacements, |ctx| {

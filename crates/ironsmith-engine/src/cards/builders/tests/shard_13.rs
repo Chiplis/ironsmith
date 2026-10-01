@@ -186,7 +186,7 @@ pub(super) fn zack_fair_resolves_etb_sacrifice_counters_indestructible_and_equip
         crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let zack_in_hand = game.create_object_from_definition(&def, alice, Zone::Hand);
     let zack = game
-        .move_object_with_etb_processing(zack_in_hand, Zone::Battlefield)
+        .move_object_with_etb_processing(zack_in_hand, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
         .expect("Zack Fair should enter the battlefield")
         .new_id;
     assert_eq!(
@@ -588,7 +588,7 @@ pub(super) fn narset_parser_backed_attack_grants_only_noncreature_exiled_spells_
     game.turn.step = None;
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     for spell in [instant, artifact] {
         assert!(
             actions.iter().any(|action| matches!(
@@ -3354,7 +3354,7 @@ pub(super) fn aetheric_amplifier_modal_activation_is_sorcery_speed() {
 
     game.turn.phase = crate::game_state::Phase::FirstMain;
     assert!(
-        crate::decision::compute_legal_actions(&game, alice)
+        crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .into_iter()
             .any(|action| matches!(
                 action,
@@ -3366,7 +3366,7 @@ pub(super) fn aetheric_amplifier_modal_activation_is_sorcery_speed() {
 
     game.turn.phase = crate::game_state::Phase::Combat;
     assert!(
-        !crate::decision::compute_legal_actions(&game, alice)
+        !crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .into_iter()
             .any(|action| matches!(
                 action,

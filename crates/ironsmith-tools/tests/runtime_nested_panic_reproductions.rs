@@ -129,7 +129,7 @@ fn cast(
 ) -> Result<ObjectId, String> {
     let source = game.create_object_from_definition(def, PlayerId(0), Zone::Hand);
     emit("before_cast_discovery", json!({"source":source.0}));
-    let action = compute_legal_actions(game, PlayerId(0))
+    let action = compute_legal_actions(game, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..} if *spell_id==source))
         .ok_or("no legal cast")?;
@@ -235,7 +235,7 @@ fn scenario(
             .iter()
             .position(|a| matches!(&a.kind, ironsmith::ability::AbilityKind::Activated(_)))
             .ok_or("no craft ability")?;
-        let actions = compute_legal_actions(&game, PlayerId(0));
+        let actions = compute_legal_actions(&game, PlayerId(0)).expect("fixture has complete replacement state");
         emit(
             "craft_legal_actions",
             json!({"actions":format!("{actions:?}"),"ability":ability}),

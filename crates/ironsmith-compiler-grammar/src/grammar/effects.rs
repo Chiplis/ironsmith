@@ -1206,6 +1206,24 @@ pub fn parse_prevent_damage_sentence_lexed(
             return Ok(None);
         };
         let source_tokens = source_clause.tokens();
+        // "a creature of your choice would deal": one chosen matching source,
+        // not every object the filter describes.
+        let source_words = crate::lexer::token_word_refs(source_tokens);
+        if source_words.len() > 3
+            && source_words.ends_with(&["of", "your", "choice"])
+            && let Some(chosen_tokens) =
+                source_tokens.get(..source_tokens.len().saturating_sub(3))
+            && !chosen_tokens.iter().any(|token| token.is_word("source"))
+            && !is_prevent_damage_explicit_target_source(chosen_tokens)
+            && let Ok(source_filter) = parse_object_filter(chosen_tokens, false)
+        {
+            return Ok(Some(
+                EffectAst::subject_verb_prevent_all_combat_damage_from_chosen_source_filter(
+                    source_filter,
+                    crate::effect::Until::EndOfTurn,
+                ),
+            ));
+        }
         if !source_tokens
             .first()
             .and_then(OwnedLexToken::as_word)

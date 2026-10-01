@@ -78,7 +78,7 @@ fn legal_deploy_action(
     player: PlayerId,
     source: ironsmith::ObjectId,
 ) -> Option<LegalAction> {
-    compute_legal_actions(game, player).into_iter().find(
+    compute_legal_actions(game, player).expect("fixture has complete replacement state").into_iter().find(
         |action| matches!(action, LegalAction::ActivateAbility { source: id, .. } if *id == source),
     )
 }

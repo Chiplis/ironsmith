@@ -79,11 +79,11 @@ mod tests {
         game.create_object_from_card(&card, owner, zone)
     }
 
-    fn moved_id(outcome: BattlefieldEntryOutcome) -> ObjectId {
-        let BattlefieldEntryOutcome::Moved(id) = outcome else {
+    fn moved_id(receipt: &crate::effects::zones::BattlefieldEntryReceipt) -> ObjectId {
+        let BattlefieldEntryOutcome::Moved(id) = receipt.assert_without_additions() else {
             panic!("expected permanent to enter the battlefield");
         };
-        id
+        *id
     }
 
     #[test]
@@ -150,10 +150,10 @@ mod tests {
                 (nonmatching, BattlefieldEntryOptions::preserve(false)),
                 (second, BattlefieldEntryOptions::preserve(false)),
             ],
-        );
-        let first = moved_id(outcomes[0]);
-        let nonmatching = moved_id(outcomes[1]);
-        let second = moved_id(outcomes[2]);
+        ).expect("replacement operation must execute successfully in this scenario");
+        let first = moved_id(&outcomes[0]);
+        let nonmatching = moved_id(&outcomes[1]);
+        let second = moved_id(&outcomes[2]);
 
         assert_eq!(game.counter_count(first, CounterType::PlusOnePlusOne), 2);
         assert_eq!(game.counter_count(second, CounterType::PlusOnePlusOne), 2);
@@ -171,11 +171,11 @@ mod tests {
         );
 
         let later = moved_id(
-            move_to_battlefield_batch_with_options(
+            &move_to_battlefield_batch_with_options(
                 &mut game,
                 &mut ctx,
                 vec![(later, BattlefieldEntryOptions::preserve(false))],
-            )[0],
+            ).expect("replacement operation must execute successfully in this scenario")[0],
         );
         assert_eq!(
             game.counter_count(later, CounterType::PlusOnePlusOne),

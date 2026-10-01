@@ -819,6 +819,18 @@ pub fn parse_where_x_sentence_tokens(tokens: &[OwnedLexToken]) -> Option<WhereXS
             .map(|((), _)| ())
             .take(),
     )?;
+    // A "where X is ..." inside a quoted granted ability (Cosima's `it gains
+    // "..., where X is the number of voyage counters on it."`) defines the X
+    // of that quoted ability, not of the enclosing sentence.
+    if stripped_tokens
+        .iter()
+        .filter(|token| token.kind == TokenKind::Quote)
+        .count()
+        % 2
+        == 1
+    {
+        return None;
+    }
     let where_segments = primitives::split_lexed_slices_on_commas_or_semicolons(where_tokens);
     let comma_tail_has_effect_clause = where_segments
         .iter()

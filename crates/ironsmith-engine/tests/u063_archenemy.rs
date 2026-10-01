@@ -173,7 +173,7 @@ fn u063_motion_enables_only_face_up_abilities_and_emits_typed_source_event() {
             .all(|ability| ability.functional_zones == [Zone::Command])
     );
     assert!(
-        ironsmith::decision::compute_legal_actions(&game, alice)
+        ironsmith::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .iter()
             .any(|action| matches!(action, LegalAction::ActivateAbility { source: id, .. } if *id == source))
     );

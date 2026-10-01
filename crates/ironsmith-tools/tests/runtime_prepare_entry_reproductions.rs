@@ -229,7 +229,7 @@ fn cast_announce(
 ) -> Result<(), String> {
     g.turn.priority_player = Some(dm.actor);
     let id = g.create_object_from_definition(d, dm.actor, Zone::Hand);
-    let a = compute_legal_actions(g, dm.actor)
+    let a = compute_legal_actions(g, dm.actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or("fixture source cast absent")?;
@@ -331,7 +331,7 @@ fn paid_land(
 ) -> Result<ironsmith::ids::StableId, String> {
     let id = g.create_object_from_definition(d, alice(), Zone::Hand);
     let s = g.object(id).unwrap().stable_id;
-    let a = compute_legal_actions(g, alice())
+    let a = compute_legal_actions(g, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::PlayLand{land_id}if *land_id==id))
         .ok_or("source land play absent")?;
@@ -349,7 +349,7 @@ fn sacrifice(
 ) -> Result<(), String> {
     dm.chosen = vec![current(g, m)];
     dm.targets = vec![Target::Player(PlayerId(2))];
-    let a=compute_legal_actions(g,dm.actor).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index:0,..}if *source==current(g,altar))).ok_or("Altar producer absent")?;
+    let a=compute_legal_actions(g,dm.actor).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index:0,..}if *source==current(g,altar))).ok_or("Altar producer absent")?;
     announce(g, a, q, dm)?;
     finish(g, q, dm)?;
     dm.targets.clear();
@@ -403,7 +403,7 @@ fn run(
         .filter(|o| g.prepared_spell_source(o.id) == Some(sid))
         .map(|o| o.id)
         .collect::<Vec<_>>();
-    let actions = compute_legal_actions(&g, alice());
+    let actions = compute_legal_actions(&g, alice()).expect("fixture has complete replacement state");
     let a=actions.iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,from_zone:Zone::Exile,..}if copies.contains(spell_id))).cloned();
     dm.trace.push(json!({"stage":"natural_preparation","has_prepare_spell":g.has_prepare_spell(sid),"prepared":g.is_prepared(sid),"copies":copies.iter().map(|id|json!({"name":g.object(*id).unwrap().name.to_string(),"zone":format!("{:?}",g.object(*id).unwrap().zone)})).collect::<Vec<_>>(),"legal_actions":format!("{actions:?}")}));
     let pre = json!({"has_linked_spell":true,"prepared":true,"copy_count":1,"cast_available":true});

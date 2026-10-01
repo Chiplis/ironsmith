@@ -678,6 +678,7 @@ pub(in super::super) fn parse_object_filter_inner(
         &mut all_words,
         &mut segment_tokens,
     );
+    try_apply_milled_this_turn_clause(&mut filter, &mut all_words, &mut segment_tokens);
 
     // "legendary or Rat card" (Nashi, Moon's Legacy) is a supertype/subtype disjunction.
     // We parse it by collecting both selectors and then expanding into an `any_of` filter
@@ -1630,6 +1631,15 @@ pub(in super::super) fn parse_object_filter_inner(
     if !blocked_this_turn_word_indices.is_empty() {
         filter.blocked_this_turn = true;
     }
+    // "a creature that fought this turn" (Boxing Ring).
+    if parse_phrase_anywhere(
+        &non_article_parser_word_refs(&segment_tokens),
+        &["fought", "this", "turn"],
+    )
+    .is_some()
+    {
+        filter.fought_this_turn = true;
+    }
 
     for negated_phrase in [
         ["didn't", "attack", "this", "turn"],
@@ -1795,6 +1805,9 @@ pub(in super::super) fn parse_object_filter_inner(
             "historic" if !set_has(&negated_historic_indices, &idx) => filter.historic = true,
             "modified" if !is_negated_word => filter.modified = true,
             "suspected" if !is_negated_word => filter.suspected = true,
+            "stickered" if !is_negated_word => {
+                filter.sticker = Some(crate::events::KeywordActionKind::Sticker);
+            }
             "goaded" if !is_negated_word => filter.goaded = true,
             _ => {}
         }
@@ -2614,6 +2627,17 @@ pub(in super::super) fn parse_object_filter_inner(
         )));
     }
 
+    // "it's attacking a battle" (Rampaging Geoderm): the battle is the
+    // creature's attack target, not a card type of the attacking object.
+    if filter.attacking
+        && filter.card_types == [crate::types::CardType::Battle]
+        && (crate::word_primitives::sequence_occurs(&all_words, &["attacking", "battle"])
+            || crate::word_primitives::sequence_occurs(&all_words, &["attacking", "a", "battle"]))
+    {
+        filter.card_types.clear();
+        filter.attacking_battle = true;
+    }
+
     preserve_relative_characteristic_list_surface(&mut filter, tokens);
     preserve_branch_scoped_comparison_union(&mut filter, tokens);
     lift_shared_trailing_mana_value_from_type_union(&mut filter, tokens);
@@ -2631,6 +2655,9 @@ pub(in super::super) fn parse_object_filter_inner(
         base.zone = None;
 
         let mut disjunction = ObjectFilter::default();
+        // CR 400.11: outside the game is not a game zone. Ordinary
+        // card-domain selectors do not acquire an outside-game arm;
+        // explicitly authored bring-into-game selectors keep their own domain.
         disjunction.any_of = [
             Zone::Hand,
             Zone::Library,
@@ -2639,7 +2666,6 @@ pub(in super::super) fn parse_object_filter_inner(
             Zone::Command,
             Zone::Stack,
             Zone::Ante,
-            Zone::OutsideGame,
         ]
         .into_iter()
         .map(|zone| {

@@ -163,7 +163,7 @@ fn payment_is_atomic_moves_directly_to_hand_and_is_once_per_game() {
         .mana_pool
         .add(ManaSymbol::Red, 3);
     assert!(
-        compute_legal_actions(&game, alice).contains(&LegalAction::SpecialAction(action.clone()))
+        compute_legal_actions(&game, alice).expect("fixture has complete replacement state").contains(&LegalAction::SpecialAction(action.clone()))
     );
     perform(action, &mut game, alice, &mut dm).expect("pay {3} for companion");
 
@@ -176,7 +176,7 @@ fn payment_is_atomic_moves_directly_to_hand_and_is_once_per_game() {
         "the special action does not use the stack"
     );
     assert_eq!(game.turn.priority_player, Some(alice));
-    assert!(!compute_legal_actions(&game, alice).iter().any(|action| {
+    assert!(!compute_legal_actions(&game, alice).expect("fixture has complete replacement state").iter().any(|action| {
         matches!(
             action,
             LegalAction::SpecialAction(SpecialAction::Companion { .. })

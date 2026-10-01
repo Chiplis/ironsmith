@@ -301,6 +301,12 @@ pub(super) fn token_keywords(words: &[&str]) -> Vec<TokenKeywordShape> {
     {
         keywords.push(TokenKeywordShape::Firebending(amount));
     }
+    if let Some(amount) = crate::word_primitives::parse_sequence_start(words, &["devour"])
+        .and_then(|idx| words.get(idx + 1))
+        .and_then(|word| crate::util::decimal_count(word))
+    {
+        keywords.push(TokenKeywordShape::Devour(amount));
+    }
     keywords
 }
 

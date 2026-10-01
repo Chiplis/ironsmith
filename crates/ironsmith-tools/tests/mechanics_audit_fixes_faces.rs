@@ -112,13 +112,13 @@ fn f13_face_down_dfc_cannot_transform_or_convert_through_any_entry_point() {
         .execute(&mut g, &mut ExecutionContext::new_default(id, A))
         .unwrap();
     assert!(trans.events.is_empty() && conv.events.is_empty());
-    assert!(!g.transform_permanent(id));
+    assert!(!g.transform_permanent(id).expect("transform discovery must succeed in this scenario"));
     assert_eq!(g.transform_count(id), 0);
     assert_eq!(g.object(id).unwrap().name, snapshot);
     assert!(g.is_face_down(id));
-    assert!(g.set_face_up(id));
+    assert!(g.set_face_up(id).expect("fixture has complete replacement state"));
     assert_eq!(g.object(id).unwrap().name, "Audit front");
-    assert!(g.transform_permanent(id));
+    assert!(g.transform_permanent(id).expect("transform discovery must succeed in this scenario"));
     assert_eq!(g.object(id).unwrap().name, "Audit back");
 }
 
@@ -166,9 +166,9 @@ fn f26_phased_out_permanent_cannot_turn_face_up_by_any_special_action_method() {
         g.phase_out(id);
         assert!(!turn_up(&mut g, id, method));
         assert!(!g.can_turn_face_up_permanent(id));
-        assert!(!g.set_face_up(id));
+        assert!(!g.set_face_up(id).expect("fixture has complete replacement state"));
         assert!(g.is_face_down(id));
-        assert!(!compute_legal_actions(&g, A).iter().any(
+        assert!(!compute_legal_actions(&g, A).expect("fixture has complete replacement state").iter().any(
             |action| matches!(action,LegalAction::TurnFaceUp{creature_id,..} if *creature_id==id)
         ));
         g.phase_in(id);
@@ -284,7 +284,7 @@ fn reconfigure() -> CardDefinition {
     .unwrap()
 }
 fn activation_indices(g: &GameState, id: ObjectId) -> Vec<usize> {
-    compute_legal_actions(g, A)
+    compute_legal_actions(g, A).expect("fixture has complete replacement state")
         .into_iter()
         .filter_map(|action| match action {
             LegalAction::ActivateAbility {
@@ -412,7 +412,7 @@ fn activate(
     dm: &mut impl DecisionMaker,
 ) -> TriggerQueue {
     g.turn.priority_player = Some(A);
-    let action=compute_legal_actions(g,A).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index} if *source==id&&*ability_index==index)).unwrap();
+    let action=compute_legal_actions(g,A).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index} if *source==id&&*ability_index==index)).unwrap();
     let mut queue = TriggerQueue::new();
     let mut state = PriorityLoopState::new(g.players_in_game());
     let mut result = ironsmith::game_loop::apply_priority_response_with_dm(

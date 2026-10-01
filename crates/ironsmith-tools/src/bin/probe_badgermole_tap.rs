@@ -105,9 +105,28 @@ fn add_with_etb(
     player: PlayerId,
     queue: &mut TriggerQueue,
     dm: &mut SelectFirstDecisionMaker,
-) -> Option<ObjectId> {
+) -> Result<Option<ObjectId>, ironsmith::effects::ExecutionError> {
+    let checkpoint = game.clone();
+    let queue_checkpoint = queue.clone();
+    let result = add_with_etb_inner(game, definition, player, queue, dm);
+    if result.is_err() {
+        *game = checkpoint;
+        *queue = queue_checkpoint;
+    }
+    result
+}
+
+fn add_with_etb_inner(
+    game: &mut GameState,
+    definition: &CardDefinition,
+    player: PlayerId,
+    queue: &mut TriggerQueue,
+    dm: &mut SelectFirstDecisionMaker,
+) -> Result<Option<ObjectId>, ironsmith::effects::ExecutionError> {
     let temp = game.create_object_from_definition(definition, player, Zone::Command);
-    let result = game.move_object_with_etb_processing_with_dm(temp, Zone::Battlefield, dm)?;
+    let Some(result) = game.move_object_with_etb_processing_with_dm(temp, Zone::Battlefield, dm)? else {
+        return Ok(None);
+    };
     let entered = result.new_id;
     let provenance = game
         .provenance_graph_mut()
@@ -118,10 +137,10 @@ fn add_with_etb(
     );
     game.queue_trigger_event(provenance, event);
     ironsmith::game_loop::drain_pending_trigger_events(game, queue);
-    Some(entered)
+    Ok(Some(entered))
 }
 
-fn main() {
+fn main() -> Result<(), ironsmith::effects::ExecutionError> {
     let index = oracle_index();
     let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
     let alice = PlayerId::from_index(0);
@@ -138,7 +157,7 @@ fn main() {
     let mut queue = TriggerQueue::default();
     let mut dm = SelectFirstDecisionMaker;
     let cub = compile(&index, "Badgermole Cub");
-    let cub_id = add_with_etb(&mut game, &cub, alice, &mut queue, &mut dm).expect("cub entered");
+    let cub_id = add_with_etb(&mut game, &cub, alice, &mut queue, &mut dm).expect("entry execution succeeded").expect("cub entered");
     let _ = ironsmith::game_loop::put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut dm);
     let mut resolved = 0;
     while !game.stack.is_empty() && resolved < 8 {
@@ -165,12 +184,12 @@ fn main() {
         game.counter_count(swamp, ironsmith::object::CounterType::PlusOnePlusOne)
     );
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice)?;
     let Some(action) = actions.iter().find(|action| {
         matches!(action, LegalAction::ActivateManaAbility { source, .. } if *source == swamp)
     }) else {
         println!("no mana ability available on the swamp; actions={actions:?}");
-        return;
+        return Ok(());
     };
 
     let mut state = PriorityLoopState::new(game.players_in_game());
@@ -189,4 +208,5 @@ fn main() {
         pool.white, pool.blue, pool.black, pool.red, pool.green, pool.colorless
     );
     println!("expected: B=1 G=1");
+    Ok(())
 }

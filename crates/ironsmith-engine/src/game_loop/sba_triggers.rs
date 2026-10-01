@@ -30,6 +30,28 @@ pub fn check_and_apply_sbas_with(
     trigger_queue: &mut TriggerQueue,
     decision_maker: &mut dyn DecisionMaker,
 ) -> Result<(), GameLoopError> {
+    if decision_maker.awaiting_choice() { return Ok(()); }
+    let checkpoint = game.clone();
+    let queue_checkpoint = trigger_queue.clone();
+    let result = check_and_apply_sbas_with_inner(game, trigger_queue, decision_maker);
+    let pending = decision_maker.awaiting_choice();
+    // Sector answers are an uncommitted choice continuation, not sector state.
+    let pending_sectors = (pending && result.is_ok())
+        .then(|| game.take_pending_sector_designations()).flatten();
+    if result.is_err() || pending {
+        *game = checkpoint; *trigger_queue = queue_checkpoint;
+        if let Some(choices) = pending_sectors {
+            game.set_pending_sector_designations(choices);
+        }
+    }
+    result
+}
+
+fn check_and_apply_sbas_with_inner(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    decision_maker: &mut dyn DecisionMaker,
+) -> Result<(), GameLoopError> {
     use crate::decisions::make_decision;
     use crate::rules::state_based::{
         StateBasedAction, StateBasedActionContext, apply_sector_designation_choices_from_group,
@@ -180,13 +202,13 @@ pub fn check_and_apply_sbas_with(
             &legend_keeps,
             all_effects.as_slice(),
             decision_maker,
-        );
+        ).map_err(GameLoopError::ExecutionFailed)?;
         if decision_maker.awaiting_choice() {
             return Ok(());
         }
         game.clear_deathtouch_damage_since_sba();
         // SBA moves queue primitive ZoneChangeEvent via move_object; consume them now.
-        drain_pending_trigger_events_with_dm(game, trigger_queue, decision_maker);
+        drain_pending_trigger_events_with_dm(game, trigger_queue, decision_maker)?;
         if decision_maker.awaiting_choice() {
             return Ok(());
         }
@@ -287,7 +309,7 @@ pub fn put_triggers_on_stack_with_dm(
     >::new();
 
     loop {
-        drain_pending_trigger_events_with_dm(game, trigger_queue, decision_maker);
+        drain_pending_trigger_events_with_dm(game, trigger_queue, decision_maker)?;
         if decision_maker.awaiting_choice() {
             return Ok(());
         }
@@ -1195,7 +1217,7 @@ pub(super) fn resolve_triggered_mana_abilities_with_dm(
                         )
                     })
                     .collect::<Vec<_>>();
-                if let Some(controllers) = mandatory_loop.observe_resolution(resolved, queued) {
+                if let Some(controllers) = mandatory_loop.observe_resolution(resolved, queued)? {
                     game.mark_mandatory_loop_draw_for(controllers);
                     return Err(GameLoopError::MandatoryLoopDraw);
                 }
@@ -2491,7 +2513,7 @@ mod tests {
 
     impl DecisionMaker for PendingLegendChoiceDm {
         fn awaiting_choice(&self) -> bool {
-            true
+            self.object_prompts > 0
         }
 
         fn decide_objects(

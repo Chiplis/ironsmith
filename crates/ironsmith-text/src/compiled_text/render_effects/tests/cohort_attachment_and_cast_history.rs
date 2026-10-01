@@ -361,6 +361,8 @@ fn cohort_name_sticker_reflexive_targets_use_the_chosen_stickers_unique_vowels()
             target,
         };
         crate::game_loop::resolve_stack_entry_with(&mut game, &mut choices).unwrap();
+        assert!(game.stack.is_empty(), "reflexive targets are chosen when pending triggers are placed");
+        crate::game_loop::put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut choices).unwrap();
         assert_eq!(choices.target_max, (accept && available).then_some(3));
         if accept && available {
             let next = game.add_accessible_name_sticker(alice, "Iou");

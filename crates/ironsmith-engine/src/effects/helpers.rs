@@ -502,6 +502,23 @@ fn resolve_effect_metric(
     source: EffectMetricSource,
     metric: EffectMetric,
 ) -> Result<i32, ExecutionError> {
+    // "the other result" of a roll-and-choose die roll (Wild Endeavor) is
+    // recorded on the roll itself. When the bound producer is a later
+    // instruction, read the nearest earlier roll that recorded one.
+    if matches!(metric, EffectMetric::OtherNumber) {
+        let other_number = |id: crate::effect::EffectId| {
+            ctx.get_outcome(id).and_then(|outcome| {
+                outcome.execution_facts.iter().find_map(|fact| match fact {
+                    crate::effect::ExecutionFact::OtherNumber(value) => Some(*value as i32),
+                    _ => None,
+                })
+            })
+        };
+        let found = (0..=effect_id.0)
+            .rev()
+            .find_map(|id| other_number(crate::effect::EffectId(id)));
+        return Ok(found.unwrap_or(0));
+    }
     // A metric over an instruction that never ran counts nothing.
     let Some(outcome) = ctx.get_outcome(effect_id) else {
         return Ok(0);
@@ -676,6 +693,16 @@ fn resolve_prior_effect_metric(
         memory.retain(|object| selected_players.contains(&object.controller));
     }
     if let Some(filter) = query.filter.as_ref() {
+        // The producer's affected set already establishes "this way"; the
+        // captured memory keeps whatever zone the producer saw (library for
+        // a mill, graveyard for exile-from-graveyard), so an authored or
+        // defaulted zone on the counted noun ("creature card exiled this
+        // way" carries the battlefield default) must not reject it.
+        let mut filter = filter.clone();
+        filter.zone = None;
+        for branch in &mut filter.any_of {
+            branch.zone = None;
+        }
         memory
             .retain(|object| filter.matches_snapshot(&object.to_snapshot(game), &filter_ctx, game));
     }
@@ -858,6 +885,20 @@ fn greatest_shared_creature_type_count_for_filter(
             .collect::<Vec<_>>()
     };
     greatest_shared_creature_type_count(subtype_sets)
+}
+
+/// Unlocked doors on a Room (CR 709.5): none until a door unlocks, two once
+/// fully unlocked, otherwise one. Non-Rooms have no doors.
+pub(crate) fn room_unlocked_door_count(game: &GameState, object: &crate::object::Object) -> i32 {
+    if !object.subtypes.contains(&crate::types::Subtype::Room)
+        || game.room_has_no_unlocked_door(object.id)
+    {
+        0
+    } else if game.is_room_fully_unlocked(object.id) {
+        2
+    } else {
+        1
+    }
 }
 
 /// Resolve a Value to a concrete i32.
@@ -2568,18 +2609,28 @@ pub fn resolve_single_object_for_effect(
 /// Returns `None` only when neither a live object nor a tagged snapshot
 /// exists.
 pub(crate) fn resolve_effect_source_with_lki(
-    game: &mut GameState,
-    ctx: &mut ExecutionContext,
-    spec: &ChooseSpec,
+    game: &mut GameState, ctx: &mut ExecutionContext, spec: &ChooseSpec,
 ) -> Option<(ObjectId, Option<ObjectSnapshot>)> {
-    let tagged = match spec.base() {
-        ChooseSpec::Tagged(tag) => ctx.get_tagged(tag).cloned(),
-        _ => None,
-    };
-    let departed = tagged_lki_when_object_left(game, ctx, spec).cloned();
-    let live = resolve_single_object_for_effect(game, ctx, spec)
-        .ok()
+    let live = resolve_single_object_for_effect(game, ctx, spec).ok()
         .filter(|id| game.object(*id).is_some());
+    retain_effect_source_lki(game, ctx, spec, live)
+}
+
+/// Immutable source specifications refer to announced/locked objects. Share
+/// the same LKI precedence with the chooser-bearing live resolver.
+pub(crate) fn resolve_effect_source_from_spec_with_lki(
+    game: &GameState, ctx: &ExecutionContext, spec: &ChooseSpec,
+) -> Option<(ObjectId, Option<ObjectSnapshot>)> {
+    let live = resolve_single_object_from_spec(game, spec, ctx).ok()
+        .filter(|id| game.object(*id).is_some());
+    retain_effect_source_lki(game, ctx, spec, live)
+}
+
+fn retain_effect_source_lki(
+    game: &GameState, ctx: &ExecutionContext, spec: &ChooseSpec, live: Option<ObjectId>,
+) -> Option<(ObjectId, Option<ObjectSnapshot>)> {
+    let tagged = match spec.base() {ChooseSpec::Tagged(tag) => ctx.get_tagged(tag).cloned(), _ => None};
+    let departed = tagged_lki_when_object_left(game, ctx, spec).cloned();
     match (live, tagged) {
         // The tagged object left the zone it was tagged in before this
         // resolution: its new incarnation is a new object (CR 400.7), so the
@@ -2824,6 +2875,12 @@ pub fn apply_to_selected_objects_with_choice_description(
         ObjectId,
     ) -> Result<bool, ExecutionError>,
 ) -> Result<ObjectApplyResult, ExecutionError> {
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(ObjectApplyResult { selected_count: 0, applied_count: 0, outcome: EffectOutcome::count(0) });
+    }
+    let checkpoint = game.clone();
+    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+    let result = (|| -> Result<ObjectApplyResult, ExecutionError> {
     let objects =
         resolve_objects_for_effect_with_choice_description(game, ctx, spec, choice_description)?;
     if ctx.decision_maker.awaiting_choice() {
@@ -2837,9 +2894,13 @@ pub fn apply_to_selected_objects_with_choice_description(
     let mut applied_count = 0usize;
 
     for object_id in objects {
-        if apply(game, ctx, object_id)? {
-            applied_count += 1;
+        let applied = apply(game, ctx, object_id)?;
+        // A callback can suspend inside a replacement program. Do not invoke
+        // later object callbacks or report an uncommitted successful prefix.
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(ObjectApplyResult { selected_count: 0, applied_count: 0, outcome: EffectOutcome::count(0) });
         }
+        if applied { applied_count += 1; }
     }
 
     let outcome = match result_policy {
@@ -2858,6 +2919,12 @@ pub fn apply_to_selected_objects_with_choice_description(
         applied_count,
         outcome,
     })
+    })();
+    if result.is_err() || ctx.decision_maker.awaiting_choice() {
+        *game = checkpoint;
+        context_checkpoint.restore(ctx);
+    }
+    result
 }
 
 /// Apply a single-target object operation using `ctx.targets` semantics.
@@ -3043,7 +3110,8 @@ pub fn resolve_objects_from_spec(
                     .targets
                     .iter()
                     .filter_map(|t| {
-                        if let ResolvedTarget::Object(id) = t {
+                        if let ResolvedTarget::Object(id) = t
+                            && validate_target(game, t, spec, ctx) {
                             Some(*id)
                         } else {
                             None
@@ -5478,5 +5546,130 @@ mod tests {
 
         assert_eq!(resolve_value(&game, &value, &bob_ctx).unwrap(), 2);
         assert_eq!(resolve_value(&game, &value, &cara_ctx).unwrap(), 3);
+    }
+}
+
+
+#[cfg(test)]
+mod additional_callback_owner_contract_tests {
+    use super::*;
+    use crate::target::ObjectFilter;
+    use crate::effect::{Effect, Value};
+    use crate::ids::{CardId, PlayerId};
+    struct Answers { pending: bool, pause: bool, pause_selection: bool, selections: usize }
+    impl crate::decision::DecisionMaker for Answers {
+        fn decide_objects(&mut self, _: &GameState, context: &crate::decisions::context::SelectObjectsContext) -> Vec<ObjectId> {
+            self.selections += 1;
+            if self.pending || self.pause_selection { self.pending = true; Vec::new() }
+            else { context.candidates.iter().filter(|c| c.legal).map(|c| c.id).take(context.min.max(1)).collect() }
+        }
+        fn decide_boolean(&mut self, _: &GameState, _: &crate::decisions::context::BooleanContext) -> bool {
+            self.pending = self.pause;
+            !self.pause
+        }
+        fn awaiting_choice(&self) -> bool { self.pending }
+    }
+    fn run_callbacks(game: &mut GameState, ctx: &mut ExecutionContext, spec: &ChooseSpec, mode: u8, calls: &mut Vec<ObjectId>) -> Result<ObjectApplyResult, ExecutionError> {
+        apply_to_selected_objects(game, ctx, spec, ObjectApplyResultPolicy::CountApplied, |game, ctx, object| {
+            calls.push(object);
+            ctx.set_tagged_objects("callback", vec![crate::snapshot::ObjectSnapshot::from_object(game.object(object).unwrap(), game)]);
+            let outcome = crate::effects::execute_effect(game, &Effect::gain_life(2), ctx)?;
+            for event in outcome.events { game.queue_trigger_event(event.provenance(), event); }
+            if mode == 1 { crate::effects::execute_effect(game, &Effect::lose_life(Value::X), ctx)?; }
+            let outcome = crate::effects::execute_effect(game, &Effect::may(vec![Effect::gain_life(4)]), ctx)?;
+            for event in outcome.events { game.queue_trigger_event(event.provenance(), event); }
+            Ok(true)
+        })
+    }
+    fn check_callbacks(mode: u8) {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let creature = crate::card::CardBuilder::new(CardId::new(), "Callback object").card_types(vec![crate::types::CardType::Creature]).build();
+        for _ in 0..2 { game.create_object_from_card(&creature, alice, Zone::Battlefield); }
+        let card = crate::card::CardBuilder::new(CardId::new(), "Callback source").card_types(vec![crate::types::CardType::Artifact]).build();
+        let source = game.create_object_from_card(&card, bob, Zone::Battlefield);
+        let sentinel = crate::snapshot::ObjectSnapshot::from_object(game.object(source).unwrap(), &game);
+        game.take_pending_trigger_events();
+        let spec = if mode >= 3 { ChooseSpec::Object(ObjectFilter::creature().you_control()) }
+            else { ChooseSpec::all(ObjectFilter::creature().you_control()) };
+        let mut dm = Answers { pending: mode == 4, pause: mode == 2, pause_selection: mode == 3, selections: 0 };
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        ctx.set_tagged_objects("callback", vec![sentinel.clone()]);
+        let mut calls = Vec::new();
+        let result = run_callbacks(&mut game, &mut ctx, &spec, mode, &mut calls);
+        if mode == 1 { assert!(matches!(result, Err(ExecutionError::UnresolvableValue(_)))); }
+        else {
+            let receipt = result.unwrap();
+            if mode >= 2 {
+                assert!(ctx.decision_maker.awaiting_choice());
+                assert_eq!(calls.len(), if mode == 2 { 1 } else { 0 }, "a suspended callback/selection cannot execute later callbacks");
+                assert_eq!(receipt.applied_count, 0); assert_eq!(receipt.outcome.count_or_zero(), 0);
+            } else { assert_eq!(receipt.selected_count, 2); assert_eq!(receipt.applied_count, 2); assert_eq!(receipt.outcome.count_or_zero(), 2); }
+        }
+        if mode != 0 {
+            assert_eq!(game.player(alice).unwrap().life, 20, "callback/selection failures restore the entire original helper operation");
+            assert_eq!(ctx.get_tagged_all("callback").unwrap()[0].object_id, sentinel.object_id);
+            assert!(game.take_pending_trigger_events().is_empty());
+        } else {
+            assert_eq!(game.player(alice).unwrap().life, 32);
+            assert_eq!(game.take_pending_trigger_events().iter().filter_map(|e| e.downcast::<crate::events::LifeGainEvent>()).map(|e| e.amount).collect::<Vec<_>>(), vec![2,4,2,4]);
+        }
+        assert_eq!(ctx.source, source); assert_eq!(ctx.controller, alice); drop(ctx);
+        if mode == 4 { assert_eq!(dm.selections, 0, "an already pending parent cannot be asked another selection"); }
+        if mode == 3 { assert_eq!(dm.selections, 1); }
+        if mode == 2 {
+            let mut dm = Answers { pending: false, pause: false, pause_selection: false, selections: 0 };
+            let mut ctx = ExecutionContext::new(source, alice, &mut dm); let mut calls = Vec::new();
+            let receipt = run_callbacks(&mut game, &mut ctx, &spec, 0, &mut calls).unwrap();
+            assert_eq!(receipt.applied_count, 2); assert!(!ctx.decision_maker.awaiting_choice());
+            assert_eq!(game.player(alice).unwrap().life, 32); assert_eq!(calls.len(), 2);
+            assert_eq!(game.take_pending_trigger_events().iter().filter_map(|e| e.downcast::<crate::events::LifeGainEvent>()).map(|e| e.amount).collect::<Vec<_>>(), vec![2,4,2,4]);
+        }
+    }
+    #[test] fn callback_success_retains_original_count_and_observations() { check_callbacks(0); }
+    #[test] fn callback_error_restores_game_context_and_queued_prefix() { check_callbacks(1); }
+    #[test] fn callback_pending_stops_later_objects_and_replays_once() { check_callbacks(2); }
+    #[test] fn callback_pending_selection_does_not_execute_objects() { check_callbacks(3); }
+    #[test] fn callback_already_pending_parent_does_not_ask_again() { check_callbacks(4); }
+}
+
+#[cfg(test)]
+mod replacement_object_selection_contract_tests {
+    use super::*;
+    use crate::target::ObjectFilter;
+    fn setup() -> (GameState, ObjectId, ObjectId, ObjectId, PlayerId) {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let artifact = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Selection artifact")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let creature = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Selection creature")
+            .card_types(vec![crate::types::CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2)).build();
+        let first = game.create_object_from_card(&artifact, alice, Zone::Battlefield);
+        let second = game.create_object_from_card(&artifact, alice, Zone::Battlefield);
+        let selected = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+        (game, first, second, selected, alice)
+    }
+    #[test] fn non_target_specific_filter_intersects_supplied_objects() {
+        let (game, first, second, selected, alice) = setup();
+        let ctx = ExecutionContext::new_default(first, alice).with_targets(vec![first, second, selected]
+            .into_iter().map(ResolvedTarget::Object).collect());
+        assert_eq!(resolve_objects_from_spec(&game, &ChooseSpec::Object(ObjectFilter::specific(selected)), &ctx).unwrap(), vec![selected]);
+    }
+    #[test] fn non_target_type_filter_intersects_supplied_objects() {
+        let (game, first, second, selected, alice) = setup();
+        let ctx = ExecutionContext::new_default(first, alice).with_targets(vec![first, second, selected]
+            .into_iter().map(ResolvedTarget::Object).collect());
+        assert_eq!(resolve_objects_from_spec(&game, &ChooseSpec::Object(ObjectFilter::creature()), &ctx).unwrap(), vec![selected]);
+    }
+    #[test] fn regeneration_specific_filter_does_not_shield_other_supplied_objects() {
+        let (mut game, first, second, selected, alice) = setup();
+        let mut ctx = ExecutionContext::new_default(first, alice).with_targets(vec![first, second, selected]
+            .into_iter().map(ResolvedTarget::Object).collect());
+        crate::effects::execute_effect(&mut game, &crate::effect::Effect::regenerate(
+            ChooseSpec::Object(ObjectFilter::specific(selected)), crate::effect::Until::EndOfTurn), &mut ctx).unwrap();
+        assert_eq!(game.effect_store.replacement_effects.count_one_shot_effects_from_source(selected), 1);
+        assert_eq!(game.effect_store.replacement_effects.count_one_shot_effects_from_source(first), 0);
+        assert_eq!(game.effect_store.replacement_effects.count_one_shot_effects_from_source(second), 0);
     }
 }

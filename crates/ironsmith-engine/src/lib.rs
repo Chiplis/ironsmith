@@ -161,7 +161,7 @@ pub use events::processing::{
     ReplacementPriority,
     TraitEventResult,
     ZoneChangeResult,
-    process_damage_with_event,
+    process_damage_assignments_with_event,
     process_destroy_full,
     process_dies_with_event,
     process_draw_full,

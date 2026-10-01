@@ -67,7 +67,7 @@ impl EffectExecutor for AddManaOfAnyColorEffect {
             .into_iter()
             .map(ManaSymbol::from_color)
             .collect::<Vec<_>>();
-        let symbols = credit_mana_symbols_from_context(game, player_id, symbols, ctx);
+        let symbols = credit_mana_symbols_from_context(game, player_id, symbols, ctx)?;
 
         Ok(mana_added_count_outcome(
             ctx,

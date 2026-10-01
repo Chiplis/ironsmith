@@ -3640,10 +3640,10 @@ mod manabrew_tests {
         let _id_guard = crate::test_id_counter_guard();
         let mut game = game();
         game.pending_decision = Some(DecisionContext::Priority(
-            ironsmith::decisions::context::PriorityContext::new(
+            ironsmith::decisions::context::PriorityContext::new(&game.game,
                 PlayerId::from_index(0),
                 vec![LegalAction::PassPriority],
-            ),
+            ).expect("fixture has complete replacement state"),
         ));
         let first = game
             .ensure_manabrew_prompt()
@@ -3679,7 +3679,7 @@ mod manabrew_tests {
         let _id_guard = crate::test_id_counter_guard();
         let mut game = game();
         game.pending_decision = Some(DecisionContext::Priority(
-            ironsmith::decisions::context::PriorityContext::new(
+            ironsmith::decisions::context::PriorityContext::new(&game.game,
                 PlayerId::from_index(0),
                 vec![
                     LegalAction::PassPriority,
@@ -3687,7 +3687,7 @@ mod manabrew_tests {
                         land_id: ObjectId::from_raw(999),
                     },
                 ],
-            ),
+            ).expect("fixture has complete replacement state"),
         ));
         let prompt = game
             .ensure_manabrew_prompt()

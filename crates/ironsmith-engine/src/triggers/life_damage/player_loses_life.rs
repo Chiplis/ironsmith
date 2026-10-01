@@ -81,7 +81,9 @@ impl TriggerMatcher for PlayerLosesLifeTrigger {
             return false;
         }
         if let Some(during_turn) = &self.during_turn {
-            return current_turn_matches_player_filter(during_turn, ctx, None);
+            // `IteratedPlayer` names the life-losing player ("during each of
+            // their turns").
+            return current_turn_matches_player_filter(during_turn, ctx, Some(e.player));
         }
         true
     }
@@ -113,6 +115,7 @@ impl TriggerMatcher for PlayerLosesLifeTrigger {
                 PlayerFilter::You => " during your turn",
                 PlayerFilter::Opponent => " during an opponent's turn",
                 PlayerFilter::Specific(_) => " during that player's turn",
+                PlayerFilter::IteratedPlayer => " during their turn",
                 _ => "",
             };
             format!("{base}{suffix}")

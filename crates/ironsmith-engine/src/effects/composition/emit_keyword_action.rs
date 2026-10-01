@@ -11,7 +11,7 @@ use crate::effect::{EffectOutcome, OutcomeObjectMemory};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::{
-    TraitEventResult, process_trait_event_with_dm_and_applied_effects,
+    TraitEventResult, process_trait_event_with_execution_context,
 };
 use crate::events::{Event, KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
@@ -163,6 +163,9 @@ impl EffectExecutor for EmitKeywordActionEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = (|| -> Result<EffectOutcome, ExecutionError> {
         if self.action == KeywordActionKind::Forage {
             let mut outcomes = Vec::new();
             for _ in 0..self.amount {
@@ -265,45 +268,29 @@ impl EffectExecutor for EmitKeywordActionEffect {
                     ),
                     ctx.provenance,
                 );
-                let applied_effects = ctx.replacement.suppressed_replacement_effects.clone();
-                let applied_effect_keys =
-                    ctx.replacement.suppressed_replacement_effect_keys.clone();
-                if applied_effects.is_empty() && applied_effect_keys.is_empty() {
-                    game.update_replacement_effects();
-                }
-                match process_trait_event_with_dm_and_applied_effects(
-                    game,
-                    would_event,
-                    ctx.decision_maker,
-                    &applied_effects,
-                    &applied_effect_keys,
-                ) {
-                    TraitEventResult::Replaced {
-                        effects, effect_id, ..
-                    } => outcomes.push(execute_keyword_action_replacement_effects(
-                        game, ctx, effects, effect_id, None,
-                    )?),
-                    TraitEventResult::Prevented => {}
-                    TraitEventResult::NeedsChoice { .. }
-                    | TraitEventResult::NeedsInteraction { .. } => {
-                        return Ok(EffectOutcome::aggregate_summing_counts(outcomes));
+                let replacement_result = process_trait_event_with_execution_context(game, would_event, ctx)?;
+                let outcome = crate::effects::replacement::execute_event_expansion(game, ctx, replacement_result, |game, ctx, original| {
+                    match original {
+                        TraitEventResult::Replaced { effects, source, controller, context, .. } => {
+                            execute_keyword_action_replacement_effects(game, ctx, effects, source, controller, &context, None)
+                        }
+                        TraitEventResult::Prevented => Ok(EffectOutcome::prevented()),
+                        TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. } => {
+                            if ctx.decision_maker.awaiting_choice() { Ok(EffectOutcome::count(0)) }
+                            else { Err(ExecutionError::InternalError("planeswalk replacement suspended without a captured decision".into())) }
+                        }
+                        TraitEventResult::Proceed(event) | TraitEventResult::Modified(event) => {
+                            let action = crate::events::downcast_event::<KeywordActionEvent>(event.inner())
+                                .filter(|action| action.action == KeywordActionKind::Planeswalk)
+                                .ok_or_else(|| ExecutionError::Impossible("planeswalk replacement produced a non-planeswalk event".into()))?;
+                            let destination = game.planeswalk(action.player, action.source).map_err(ExecutionError::Impossible)?;
+                            Ok(EffectOutcome::count(1).with_affected_objects(vec![destination]))
+                        }
+                        TraitEventResult::Expanded { .. } => Err(ExecutionError::InternalError("planeswalk commit received an unflattened result".into())),
                     }
-                    TraitEventResult::Proceed(event) | TraitEventResult::Modified(event) => {
-                        let action =
-                            crate::events::downcast_event::<KeywordActionEvent>(event.inner())
-                                .ok_or_else(|| {
-                                    ExecutionError::Impossible(
-                                        "planeswalk replacement produced a non-planeswalk event"
-                                            .to_string(),
-                                    )
-                                })?;
-                        let destination = game
-                            .planeswalk(action.player, action.source)
-                            .map_err(ExecutionError::Impossible)?;
-                        outcomes
-                            .push(EffectOutcome::count(1).with_affected_objects(vec![destination]));
-                    }
-                }
+                })?;
+                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                outcomes.push(outcome);
             }
             return Ok(EffectOutcome::aggregate_summing_counts(outcomes));
         }
@@ -368,6 +355,14 @@ impl EffectExecutor for EmitKeywordActionEffect {
             ctx.provenance,
         );
         Ok(EffectOutcome::resolved().with_event(event))
+        })();
+        let pending = ctx.decision_maker.awaiting_choice();
+        if pending || result.is_err() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
+        }
+        if pending { return Ok(EffectOutcome::count(0)); }
+        result
     }
 
     fn cost_description(&self) -> Option<String> {

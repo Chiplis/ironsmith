@@ -128,7 +128,7 @@ fn run(
     }
     g.effect_store.pending_trigger_events.clear();
     let spell = g.create_object_from_definition(def, PlayerId(0), Zone::Hand);
-    let action = compute_legal_actions(&g, PlayerId(0))
+    let action = compute_legal_actions(&g, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==spell))
         .ok_or("normal paid cast unavailable")?;

@@ -219,6 +219,9 @@ impl EffectExecutor for ClashEffect {
         let Some(opponent) = choose_opponent(game, ctx, &opponents, self.opponent_mode) else {
             return Ok(EffectOutcome::count(0));
         };
+        // Later clauses ("Otherwise, that player ...") refer back to the
+        // opponent this clash was performed with.
+        ctx.set_tagged_players(ironsmith_core::CLASH_OPPONENT_TAG, vec![opponent]);
 
         let controller_card = top_card(game, ctx.controller);
         let opponent_card = top_card(game, opponent);

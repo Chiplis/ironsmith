@@ -398,6 +398,9 @@ pub fn recognize_coordination(tokens: &[OwnedLexToken]) -> ParseOutcome<Coordina
         // first would leave later consequence members outside the condition.
         return ParseOutcome::NoMatch;
     }
+    if sacrifices_object_union(tokens) {
+        return ParseOutcome::NoMatch;
+    }
     let candidates = top_level_boundaries(tokens);
     let mut members = Vec::new();
     let mut boundaries = Vec::new();
@@ -590,6 +593,23 @@ fn classify_boundary<'a>(
         // "Counter target spell or ability that targets a creature you
         // control" (Siren Stormtamer): the stack-object union is one target
         // even when its relative clause contains a finite verb.
+        return None;
+    }
+    if candidate.operator == CoordinationOperatorAst::Or
+        && before
+            .iter()
+            .any(|token| token.is_any_word(&["sacrifice", "sacrifices"]))
+        && after
+            .first()
+            .is_some_and(|token| token.is_any_word(&["a", "an", "another"]))
+        && !after.iter().any(|token| {
+            token.kind == TokenKind::Comma
+                || token.is_any_word(&["sacrifice", "sacrifices", "then", "and", "or"])
+        })
+    {
+        // "sacrifice another creature or an artifact" sacrifices one
+        // permanent that is either; the `or` joins two object phrases of the
+        // same sacrifice, not two alternative actions.
         return None;
     }
     if boundary_continues_shuffle_zone_list(candidate.operator, before, after) {
@@ -1327,4 +1347,64 @@ fn malformed_boundary<T>(span: Option<TextSpan>, expected: &'static str) -> Pars
         [ParseExpectation::new(expected)],
         "authored coordination boundary has no complete following clause",
     ))
+}
+
+/// "each player sacrifices a Plains or a white permanent" (Omen of Fire): one
+/// sacrificed object chosen from a union. The bare noun phrase after "or"
+/// has no verb of its own, so it never coordinates a second action.
+fn sacrifices_object_union(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::lexer::token_word_refs(tokens);
+    if !words
+        .iter()
+        .any(|word| matches!(*word, "sacrifice" | "sacrifices"))
+        || words
+            .iter()
+            .any(|word| matches!(*word, "and" | "and/or" | "then" | "unless" | "if"))
+        || tokens.iter().any(OwnedLexToken::is_comma)
+    {
+        return false;
+    }
+    let mut ors = tokens
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.is_word("or"))
+        .map(|(index, _)| index);
+    let (Some(or_index), None) = (ors.next(), ors.next()) else {
+        return false;
+    };
+    let right = &tokens[or_index + 1..];
+    right
+        .first()
+        .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+        && !crate::lexer::token_word_refs(right).iter().any(|word| {
+            matches!(
+                *word,
+                "sacrifice"
+                    | "sacrifices"
+                    | "discard"
+                    | "discards"
+                    | "exile"
+                    | "exiles"
+                    | "destroy"
+                    | "destroys"
+                    | "draw"
+                    | "draws"
+                    | "lose"
+                    | "loses"
+                    | "gain"
+                    | "gains"
+                    | "create"
+                    | "creates"
+                    | "return"
+                    | "returns"
+                    | "put"
+                    | "puts"
+                    | "deal"
+                    | "deals"
+                    | "pay"
+                    | "pays"
+                    | "mill"
+                    | "mills"
+            )
+        })
 }

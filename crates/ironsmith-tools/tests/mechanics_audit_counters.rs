@@ -79,7 +79,7 @@ fn put(game: &mut GameState, def: &CardDefinition, owner: PlayerId) -> ObjectId 
 /// (replacements, as-enters programs, ETB events).
 fn enter(game: &mut GameState, def: &CardDefinition, owner: PlayerId, dm: &mut dyn DecisionMaker) -> ObjectId {
     let hand = game.create_object_from_definition(def, owner, Zone::Hand);
-    game.move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, dm)
+    game.move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, dm).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .expect("enters")
         .new_id
 }
@@ -400,7 +400,7 @@ mod boast {
     use super::*;
 
     fn boast_actions(game: &GameState, arni: ObjectId) -> usize {
-        ironsmith::decision::compute_legal_actions(game, alice())
+        ironsmith::decision::compute_legal_actions(game, alice()).expect("fixture has complete replacement state")
             .into_iter()
             .filter(|action| {
                 matches!(action, ironsmith::decision::LegalAction::ActivateAbility { source, .. } if *source == arni)
@@ -1134,7 +1134,7 @@ mod saga {
         game.create_object_from_definition(&plains, alice(), Zone::Library);
         let saga = game.create_object_from_definition(&card("The Birth of Meletis"), alice(), Zone::Graveyard);
         let mut dm = Dm::yes().prefer(&["Plains"]);
-        let saga = game.move_object_with_etb_processing_with_dm(saga, Zone::Battlefield, &mut dm).unwrap().new_id;
+        let saga = game.move_object_with_etb_processing_with_dm(saga, Zone::Battlefield, &mut dm).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario").unwrap().new_id;
         assert_eq!(game.counter_count(saga, CounterType::Lore), 1);
         settle(&mut game, &mut dm);
         assert!(game.player(alice()).unwrap().hand.iter().any(|id| game.object(*id).unwrap().name.as_str() == "Plains"), "chapter I");
@@ -1155,7 +1155,7 @@ mod transform_leaves {
         let front = defs.iter().find(|d| d.card.name == "Delver of Secrets").unwrap();
         let delver = put(&mut game, front, alice());
         let delver_card = stable(&game, delver);
-        assert!(game.transform_permanent(delver));
+        assert!(game.transform_permanent(delver).expect("transform discovery must succeed in this scenario"));
         assert_eq!(game.object(delver).unwrap().name.as_str(), "Insectile Aberration");
         game.move_object_by_effect(delver, Zone::Graveyard);
         let object = game.object(game.find_object_by_stable_id(delver_card).unwrap()).unwrap();
@@ -1175,7 +1175,7 @@ mod rooms {
     }
 
     fn unlock_actions(game: &GameState, room: ObjectId) -> Vec<ironsmith::special_actions::RoomDoor> {
-        ironsmith::decision::compute_legal_actions(game, alice())
+        ironsmith::decision::compute_legal_actions(game, alice()).expect("fixture has complete replacement state")
             .into_iter()
             .filter_map(|action| match action {
                 ironsmith::decision::LegalAction::SpecialAction(
@@ -1194,7 +1194,7 @@ mod rooms {
         let pool = room_defs(&mut game);
         let room = game.create_object_from_definition(&pool, alice(), Zone::Graveyard);
         let mut dm = Dm::default();
-        let room = game.move_object_with_etb_processing_with_dm(room, Zone::Battlefield, &mut dm).unwrap().new_id;
+        let room = game.move_object_with_etb_processing_with_dm(room, Zone::Battlefield, &mut dm).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario").unwrap().new_id;
         game.player_mut(alice()).unwrap().mana_pool.add(ironsmith::mana::ManaSymbol::Blue, 6);
         game.refresh_continuous_state();
         let chars = game.current_characteristics(room).unwrap();
@@ -1283,4 +1283,13 @@ mod megamorph {
         assert!(!game.is_face_down(protector));
         assert_eq!(game.counter_count(protector, CounterType::PlusOnePlusOne), 2);
     }
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: ironsmith::game_state::EntryCommitResult)
+    -> Option<ironsmith::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

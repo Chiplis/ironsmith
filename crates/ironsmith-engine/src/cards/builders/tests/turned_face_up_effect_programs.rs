@@ -50,7 +50,7 @@ fn enter_normally(name: &str) -> (crate::GameState, PlayerId, ObjectId) {
     let card = game.create_object_from_definition(&definition, alice, Zone::Hand);
     let mut decisions = SelectFirstDecisionMaker;
     let entered = game
-        .move_object_with_etb_processing_with_dm(card, Zone::Battlefield, &mut decisions)
+        .move_object_with_etb_processing_with_dm(card, Zone::Battlefield, &mut decisions).expect("replacement operation must execute successfully in this scenario")
         .unwrap_or_else(|| panic!("{name} should enter the battlefield normally"));
     (game, alice, entered.new_id)
 }

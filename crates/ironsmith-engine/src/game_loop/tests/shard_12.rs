@@ -220,7 +220,7 @@ pub(super) fn test_dash_cost_reduction_applies_only_to_dash_casts() {
         .build();
     let dash_probe_id = game.create_object_from_definition(&dash_probe, alice, Zone::Hand);
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action,
@@ -299,7 +299,7 @@ pub(super) fn test_auriok_steelshaper_reduces_only_your_equip_costs() {
         .expect("Auriok Steelshaper should parse");
     game.create_object_from_definition(&steelshaper_def, alice, Zone::Battlefield);
 
-    let activate_with = compute_legal_actions(&game, alice)
+    let activate_with = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -454,7 +454,7 @@ pub(super) fn test_robe_of_the_archmagi_equip_branches_and_damage_trigger() {
         .mana_pool
         .add(ManaSymbol::Colorless, 1);
 
-    let one_mana_actions = crate::decision::compute_legal_actions(&game, alice);
+    let one_mana_actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         one_mana_actions.iter().any(|action| matches!(
             action,
@@ -468,7 +468,7 @@ pub(super) fn test_robe_of_the_archmagi_equip_branches_and_damage_trigger() {
     if let Some(wizard) = game.object_mut(wizard_id) {
         wizard.subtypes.clear();
     }
-    let no_wizard_actions = crate::decision::compute_legal_actions(&game, alice);
+    let no_wizard_actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !no_wizard_actions.iter().any(|action| matches!(
             action,
@@ -485,7 +485,7 @@ pub(super) fn test_robe_of_the_archmagi_equip_branches_and_damage_trigger() {
         .mana_pool
         .add(ManaSymbol::Colorless, 3);
 
-    let four_mana_actions = crate::decision::compute_legal_actions(&game, alice);
+    let four_mana_actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         four_mana_actions.iter().any(|action| matches!(
             action,
@@ -606,7 +606,7 @@ pub(super) fn test_gargoyle_sentinel_gains_flying_only_for_itself_until_end_of_t
         .iter()
         .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
         .expect("Gargoyle Sentinel should have an activated ability");
-    let activate_action = compute_legal_actions(&game, alice)
+    let activate_action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -738,7 +738,7 @@ pub(super) fn test_sacellum_godspeaker_reveals_hand_creatures_and_adds_green_man
         .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
         .expect("Sacellum Godspeaker should have an activated ability");
 
-    let activate_action = compute_legal_actions(&game, alice)
+    let activate_action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -818,7 +818,7 @@ pub(super) fn test_nested_mana_effect_without_mana_output_is_mana_ability_action
         .build();
     let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action,
@@ -1130,7 +1130,7 @@ fn check_warp_lifecycle(scenario: WarpScenario) {
         "warp should grant its owner play permission on a later turn"
     );
 
-    let legal_actions = crate::decision::compute_legal_actions(&game, alice);
+    let legal_actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         legal_actions.iter().any(|action| matches!(
             action,
@@ -1512,7 +1512,7 @@ pub(super) fn defiler_of_instinct_life_cost_makes_red_permanent_spell_legal_with
     let red_creature = one_red_creature_definition("Defiler of Instinct Legal Action Probe");
     let red_creature_id = game.create_object_from_definition(&red_creature, alice, Zone::Hand);
 
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action,
@@ -2225,7 +2225,7 @@ pub(super) fn test_face_down_cast_matches_panoptic_filter_and_enters_battlefield
         .expect("alice should exist")
         .mana_pool
         .add(ManaSymbol::Green, 1);
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action,
@@ -2293,7 +2293,7 @@ pub(super) fn aquamorph_entity_enters_with_chosen_power_toughness() {
         choices_seen: 0,
     };
     let result = game
-        .move_object_with_etb_processing_with_dm(hand_id, Zone::Battlefield, &mut dm)
+        .move_object_with_etb_processing_with_dm(hand_id, Zone::Battlefield, &mut dm).expect("replacement operation must execute successfully in this scenario")
         .expect("Aquamorph Entity should enter the battlefield");
     let object = game
         .object(result.new_id)
@@ -2342,7 +2342,7 @@ pub(super) fn aquamorph_entity_turns_face_up_with_chosen_power_toughness() {
         .expect("alice should exist")
         .mana_pool
         .add(ManaSymbol::Blue, 1);
-    let action = crate::decision::compute_legal_actions(&game, alice)
+    let action = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -2442,7 +2442,7 @@ pub(super) fn primal_plasma_enters_with_each_chosen_characteristic_set() {
             choices_seen: 0,
         };
         let result = game
-            .move_object_with_etb_processing_with_dm(hand_id, Zone::Battlefield, &mut dm)
+            .move_object_with_etb_processing_with_dm(hand_id, Zone::Battlefield, &mut dm).expect("replacement operation must execute successfully in this scenario")
             .expect("Primal Plasma should enter the battlefield");
         let object = game
             .object(result.new_id)
@@ -2495,7 +2495,7 @@ pub(super) fn test_bestow_cast_enters_as_aura_and_reverts_when_unattached() {
 
     let bestow_in_hand = game.create_object_from_definition(&bestow_def, alice, Zone::Hand);
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let can_cast_bestow = actions.iter().any(|action| {
         matches!(
             action,
@@ -2952,7 +2952,7 @@ pub(super) fn test_illegal_equipment_becomes_unattached_instead_of_dying() {
         .expect("equipped creature should exist")
         .card_types = vec![CardType::Land].into();
 
-    crate::rules::state_based::apply_state_based_actions(&mut game);
+    crate::rules::state_based::apply_state_based_actions(&mut game).expect("replacement operation must finish without execution error");
 
     assert_eq!(
         game.object(equipment).map(|object| object.zone),
@@ -3540,7 +3540,7 @@ pub(super) fn test_asinine_antics_flash_extra_cost_is_available_at_instant_timin
     let asinine_antics_id =
         game.create_object_from_definition(&asinine_antics_def, alice, Zone::Hand);
 
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action,
@@ -3740,7 +3740,7 @@ pub(super) fn test_disturb_cast_uses_back_face_characteristics_on_stack() {
 
     let disturb_id = game.create_object_from_definition(&disturb_def, alice, Zone::Graveyard);
 
-    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action,
@@ -3954,7 +3954,7 @@ fn graveyard_aura_cast_resolves_attached_to_opponents_card() {
         from_zone: Zone::Hand,
         casting_method: CastingMethod::Normal,
     };
-    assert!(crate::decision::compute_legal_actions(&game, alice).contains(&action));
+    assert!(crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state").contains(&action));
     let mut state = PriorityLoopState::new(game.players_in_game());
     let mut triggers = TriggerQueue::new();
     let progress = apply_priority_response(

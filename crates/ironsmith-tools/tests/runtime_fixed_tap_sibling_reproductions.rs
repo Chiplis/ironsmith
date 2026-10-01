@@ -152,7 +152,7 @@ fn announce(
 ) -> Result<(TriggerQueue, Value), String> {
     g.turn.priority_player = Some(PlayerId(actor));
     let source = g.create_object_from_definition(def, PlayerId(actor), Zone::Hand);
-    let action = compute_legal_actions(g, PlayerId(actor))
+    let action = compute_legal_actions(g, PlayerId(actor)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source))
         .ok_or("intended cast unavailable")?;
@@ -279,7 +279,7 @@ fn action(
     mana: bool,
     dm: &mut Choices,
 ) -> Result<Value, String> {
-    let a = compute_legal_actions(g, PlayerId(0))
+    let a = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| match a {
             LegalAction::ActivateAbility {
@@ -559,7 +559,7 @@ fn run(
         .filter(|(_, a)| matches!(&a.kind, ironsmith::ability::AbilityKind::Activated(_)))
         .last()
         .ok_or("no activated ability")?;
-    let actions = compute_legal_actions(&g, PlayerId(0));
+    let actions = compute_legal_actions(&g, PlayerId(0)).expect("fixture has complete replacement state");
     let offered=actions.iter().any(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index}if *s==source&&*ability_index==index));
     let before = json!({"resources":resources.iter().map(|id|json!({"id":id.0,"name":g.object(*id).unwrap().name.to_string(),"tapped":g.is_tapped(*id),"fresh":g.is_summoning_sick(*id),"characteristics":format!("{:?}",g.calculated_characteristics(*id))})).collect::<Vec<_>>(),"untapped_resources":resources.iter().filter(|id|!g.is_tapped(**id)).count(),"source_index":index,"available_actions":format!("{actions:?}"),"target":target.map(|id|json!({"id":id.0,"name":g.object(id).unwrap().name.to_string(),"tapped":g.is_tapped(id),"controller":g.controller_of_id(id).map(|p|p.index())}))});
     if extra < 0 || !offered {

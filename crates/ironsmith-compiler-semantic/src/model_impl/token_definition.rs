@@ -40,6 +40,8 @@ pub enum TokenKeywordShape {
     Flying,
     WardGeneric(u32),
     Firebending(u32),
+    /// "devour N" (CR 702.82a).
+    Devour(u32),
     Defender,
     Prowess,
     Vigilance,

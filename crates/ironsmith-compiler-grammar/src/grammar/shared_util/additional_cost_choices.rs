@@ -54,6 +54,8 @@ fn is_verbless_keyword_cost_option(tokens: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(tokens).word_refs();
     permission_shapes::prefix_words(&words, &["behold"])
         || permission_shapes::prefix_words(&words, &["blight"])
+        // "forage or pay {B}" (Feed the Cycle)
+        || permission_shapes::exact_words(&words, &["forage"])
 }
 
 fn is_and_or(token: &OwnedLexToken) -> bool {

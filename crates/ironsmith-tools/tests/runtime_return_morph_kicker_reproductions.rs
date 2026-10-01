@@ -152,7 +152,7 @@ fn announce(
 ) -> Result<(TriggerQueue, Value), String> {
     g.turn.priority_player = Some(PlayerId(actor));
     let source = g.create_object_from_definition(def, PlayerId(actor), Zone::Hand);
-    let action = compute_legal_actions(g, PlayerId(actor))
+    let action = compute_legal_actions(g, PlayerId(actor)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source))
         .ok_or("intended cast unavailable")?;
@@ -281,7 +281,7 @@ fn action(
     mana: bool,
     dm: &mut Choices,
 ) -> Result<Value, String> {
-    let a = compute_legal_actions(g, PlayerId(0))
+    let a = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| match a {
             LegalAction::ActivateAbility {
@@ -355,7 +355,7 @@ fn next_main(g: &mut GameState) {
 fn play_land(g: &mut GameState, d: &CardDefinition, dm: &mut Choices) -> Result<ObjectId, String> {
     let hand = g.create_object_from_definition(d, g.turn.active_player, Zone::Hand);
     let stable=g.object(hand).unwrap().stable_id;
-    let a = compute_legal_actions(g, g.turn.active_player)
+    let a = compute_legal_actions(g, g.turn.active_player).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::PlayLand{land_id}if *land_id==hand))
         .ok_or("land play missing")?;
@@ -394,7 +394,7 @@ fn run(defs:&HashMap<String,CardDefinition>,name:&str,n:usize,state:&str)->Resul
  dm.targets.clear();dm.names=vec![resource_name.into()];dm.x=if !morph&&state!="decline"{1}else{0};
  let source=g.create_object_from_definition(&defs[name],PlayerId(0),Zone::Hand);let stable=g.object(source).unwrap().stable_id;
  let method=if morph&&state!="normal"{ironsmith::alternative_cast::CastingMethod::FaceDown}else{ironsmith::alternative_cast::CastingMethod::Normal};
- let cast_action=compute_legal_actions(&g,PlayerId(0)).into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,casting_method,..}if *spell_id==source&&*casting_method==method)).ok_or("initial intended cast absent")?;
+ let cast_action=compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,casting_method,..}if *spell_id==source&&*casting_method==method)).ok_or("initial intended cast absent")?;
  let cast_evidence=dispatch(&mut g,cast_action,&mut dm)?;let source=g.objects_in_deterministic_order().into_iter().find(|o|o.stable_id==stable&&o.zone==Zone::Battlefield).map(|o|o.id).ok_or("initial paid source did not resolve to Battlefield")?;
  let initial_mana=if morph&&state!="normal"{3}else if name=="Raven Guild Initiate"{3}else{2};
  if !cast_evidence["error"].is_null()||cast_evidence["announcement"]["mana_paid"]!=initial_mana{return Err(format!("initial source cast error or price:{cast_evidence}"));}
@@ -402,7 +402,7 @@ fn run(defs:&HashMap<String,CardDefinition>,name:&str,n:usize,state:&str)->Resul
  let mut payment=Value::Null;
  if morph&&state!="normal"{
   if !g.is_face_down(source)||g.calculated_power(source)!=Some(2)||g.calculated_toughness(source)!=Some(2){return Err("actual face-down cast not2/2".into());}
-  let actions=compute_legal_actions(&g,PlayerId(0));let offered=actions.iter().find(|a|matches!(a,LegalAction::TurnFaceUp{creature_id,..}if *creature_id==source)).cloned();let valid=n>=required&&state!="wrong_type";
+  let actions=compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state");let offered=actions.iter().find(|a|matches!(a,LegalAction::TurnFaceUp{creature_id,..}if *creature_id==source)).cloned();let valid=n>=required&&state!="wrong_type";
   if !valid||offered.is_none(){return Ok((json!({"turn_face_up_available":valid}),json!({"turn_face_up_available":offered.is_some()}),json!({"producers":producers,"before":before,"action_dispatched":false,"actions":format!("{actions:?}"),"choice_trace":dm.trace})));}
   payment=dispatch(&mut g,offered.unwrap(),&mut dm).unwrap_or_else(|e|json!({"error":e}));
  }

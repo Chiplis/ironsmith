@@ -67,6 +67,87 @@ fn bind_owner_subject_same_sentence_tail(
 pub fn parse_search_library_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(effects) = parse_search_into_hand_or_graveyard_sentence(tokens)? {
+        return Ok(Some(effects));
+    }
+    parse_search_library_sentence_single_destination(tokens)
+}
+
+/// "Search your library for a creature card, reveal it, put it into your hand
+/// or graveyard, then shuffle." (Dina's Guidance): the searching player picks
+/// the destination. Each destination reads as the ordinary single-destination
+/// search, offered as a resolution-time choice.
+fn parse_search_into_hand_or_graveyard_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    const PHRASE: [&str; 5] = ["into", "your", "hand", "or", "graveyard"];
+    let words = token_word_refs(tokens);
+    if words.first() != Some(&"search") {
+        return Ok(None);
+    }
+    let Some(start) = words
+        .windows(PHRASE.len())
+        .position(|window| window == PHRASE)
+    else {
+        return Ok(None);
+    };
+    // Word index -> token index; `token_word_refs` keeps word tokens in order.
+    let word_token_indices: Vec<usize> = tokens
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.as_word().is_some())
+        .map(|(index, _)| index)
+        .collect();
+    let hand = word_token_indices[start + 2];
+    let or = word_token_indices[start + 3];
+    let graveyard = word_token_indices[start + 4];
+    let without = |drop: std::ops::RangeInclusive<usize>| -> Vec<OwnedLexToken> {
+        tokens
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| !drop.contains(index))
+            .map(|(_, token)| token.clone())
+            .collect()
+    };
+    let to_hand = without(or..=graveyard);
+    let to_graveyard = without(hand..=or);
+    let (Some(hand_effects), Some(graveyard_effects)) = (
+        parse_search_library_sentence_single_destination(&to_hand)?,
+        parse_search_library_sentence_single_destination(&to_graveyard)?,
+    ) else {
+        return Ok(None);
+    };
+    // Each mode is labeled with its complete single-destination sentence so
+    // the choice shows the whole search, not only where the card goes.
+    let describe = |mode_tokens: &[OwnedLexToken]| {
+        let rendered = super::super::lexer::render_token_slice(mode_tokens);
+        let rendered = rendered.trim().trim_end_matches('.');
+        let mut chars = rendered.chars();
+        match chars.next() {
+            Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
+            None => String::new(),
+        }
+    };
+    Ok(Some(vec![EffectAst::ObjectChoices(
+        crate::cards::builders::ObjectChoiceEffectAst::ChooseOneOf {
+            chooser: PlayerFilter::You,
+            modes: vec![
+                crate::cards::builders::ChooseOneModeAst {
+                    description: describe(&to_hand),
+                    effects: hand_effects,
+                },
+                crate::cards::builders::ChooseOneModeAst {
+                    description: describe(&to_graveyard),
+                    effects: graveyard_effects,
+                },
+            ],
+        },
+    )]))
+}
+
+fn parse_search_library_sentence_single_destination(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     fn carry_conjugated_search_player(leading: &[EffectAst], search: &mut [EffectAst]) {
         let Some(CarryContext::Player(player)) = leading
             .iter()

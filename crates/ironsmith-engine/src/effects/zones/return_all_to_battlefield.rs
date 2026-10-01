@@ -36,6 +36,10 @@ impl EffectExecutor for ReturnAllToBattlefieldEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
         let spec = ChooseSpec::all(self.filter.clone());
         let objects = resolve_objects_from_spec(game, &spec, ctx)?;
 
@@ -68,15 +72,23 @@ impl EffectExecutor for ReturnAllToBattlefieldEffect {
                 .iter()
                 .map(|(object, options, _)| (*object, options.clone()))
                 .collect(),
-        );
+        )?;
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        if outcomes.len() != entries.len() { return Err(ExecutionError::InternalError("battlefield batch lost an entry receipt".into())); }
+        let mut receipts = Vec::new();
         let mut returned_count = 0;
         let mut returned_ids = Vec::new();
         let mut affected_memory = Vec::new();
         for ((object_id, _, memory), outcome) in entries.into_iter().zip(outcomes) {
-            match outcome {
+            match &outcome.outcome {
                 BattlefieldEntryOutcome::Moved(new_id) => {
                     returned_count += 1;
-                    returned_ids.push(new_id);
+                    returned_ids.push(*new_id);
+                    affected_memory.push(memory);
+                }
+                BattlefieldEntryOutcome::Redirected(receipt) => {
+                    returned_count += i32::try_from(receipt.new_object_ids.len()).unwrap_or(i32::MAX);
+                    returned_ids.extend(receipt.new_object_ids.iter().copied());
                     affected_memory.push(memory);
                 }
                 BattlefieldEntryOutcome::Prevented => {
@@ -87,13 +99,21 @@ impl EffectExecutor for ReturnAllToBattlefieldEffect {
                     }
                 }
             }
+            let (original, receipt) = outcome.into_zone_receipt();
+            if original != object_id { return Err(ExecutionError::InternalError("battlefield receipt changed original identity".into())); }
+            receipts.push((original, receipt));
         }
 
         let mut outcome = EffectOutcome::count(returned_count).with_result_objects(returned_ids);
         if !affected_memory.is_empty() {
             outcome = outcome.with_affected_object_memory(affected_memory);
         }
-        Ok(outcome)
+        super::finish_zone_change_receipts(game, ctx, outcome, receipts)
+        })();
+        let pending = ctx.decision_maker.awaiting_choice();
+        if pending || instruction.is_err() { *game = checkpoint; context_checkpoint.restore(ctx); }
+        if pending { return instruction.map(|_| EffectOutcome::count(0)); }
+        instruction
     }
 }
 

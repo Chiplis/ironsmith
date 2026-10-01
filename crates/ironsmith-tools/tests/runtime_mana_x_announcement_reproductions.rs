@@ -175,7 +175,7 @@ fn cast(
 ) -> Result<ObjectId, String> {
     g.turn.priority_player = Some(alice());
     let id = g.create_object_from_definition(d, alice(), Zone::Hand);
-    let a = compute_legal_actions(g, alice())
+    let a = compute_legal_actions(g, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or("fixture cast action absent")?;
@@ -200,7 +200,7 @@ fn activate(
     dm: &mut Dm,
 ) -> Result<(), String> {
     g.turn.priority_player = Some(alice());
-    let actions = compute_legal_actions(g, alice());
+    let actions = compute_legal_actions(g, alice()).expect("fixture has complete replacement state");
     let a = actions
         .iter()
         .find(|a| match a {
@@ -241,7 +241,7 @@ fn run(
     let id;
     if d.card.card_types.contains(&CardType::Land) {
         id = g.create_object_from_definition(d, alice(), Zone::Hand);
-        let a = compute_legal_actions(&g, alice())
+        let a = compute_legal_actions(&g, alice()).expect("fixture has complete replacement state")
             .into_iter()
             .find(|a| matches!(a,LegalAction::PlayLand{land_id,..}if *land_id==id))
             .ok_or("fixture no land play")?;

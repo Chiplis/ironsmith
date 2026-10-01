@@ -605,8 +605,19 @@ fn stabilize_standalone_participant_choice_tag(
 }
 
 fn tagged_predicate(filter_tokens: Option<&[OwnedLexToken]>) -> Option<PredicateAst> {
-    let filter =
-        crate::grammar::primitives::probe_shape(parse_object_filter(filter_tokens?, false))?;
+    let filter_tokens = filter_tokens?;
+    let mut filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter(filter_tokens, false))?;
+    // "didn't discard a creature card this way" (Strongarm Tactics): the
+    // tagged object is a card, never a permanent, so the permanent-type noun's
+    // battlefield default would reject every discarded card.
+    if filter.zone == Some(crate::zone::Zone::Battlefield)
+        && filter_tokens
+            .iter()
+            .any(|token| token.is_word("card") || token.is_word("cards"))
+    {
+        filter.zone = None;
+    }
     Some(PredicateAst::Player(
         PlayerPredicateAst::PlayerTaggedObjectMatches {
             player: PlayerAst::That,

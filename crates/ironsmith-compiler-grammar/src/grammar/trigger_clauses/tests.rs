@@ -1049,6 +1049,7 @@ fn parses_trigger_subject_and_origin_surfaces_as_typed_facts() {
         Some(EntersOriginClause {
             zone: Zone::Graveyard,
             owner: Some(PlayerFilter::You),
+            excluded: false,
         })
     );
 

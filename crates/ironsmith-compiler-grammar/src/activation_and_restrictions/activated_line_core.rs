@@ -319,7 +319,12 @@ fn parse_activated_line_with_raw_remaining(
             trigger_spec: None,
         }));
     }
-    let direct_effect = if crate::lexer::split_lexed_sentences(effect_tokens).len() == 1 {
+    // "This creature deals X damage to any target, where X is ..." (a quoted
+    // grant such as Archery Training's): the direct readings below have no
+    // where-X binding, so leave such sentences to the general effect parser.
+    let direct_effect = if crate::lexer::split_lexed_sentences(effect_tokens).len() == 1
+        && !crate::grammar::activated_lowering::contains_where_x_definition(effect_tokens)
+    {
         if let Some(effect) = crate::effect_sentences::parse_anaphoric_object_deals_damage_clause(
             trimmed_effect_tokens,
         )? {

@@ -4427,8 +4427,8 @@ impl WasmGame {
         self.game
             .set_next_stack_ability_id_counter(checkpoint.id_counters.stack_ability);
         self.pending_decision = self.game.turn.priority_player.map(|player| {
-            DecisionContext::Priority(ironsmith::game_loop::priority_context(&self.game, player))
-        });
+            ironsmith::game_loop::priority_context(&self.game, player).map(DecisionContext::Priority)
+        }).transpose().map_err(|error| format!("priority action analysis failed: {error}"))?;
         Ok(())
     }
 
@@ -4594,11 +4594,11 @@ mod sync_checkpoint_tests {
         let _id_counter_guard = crate::test_id_counter_guard();
         let (mut wasm, id, definition) = hidden_foretell_fixture(false);
         let owner = PlayerId::from_index(0);
-        let priority = ironsmith::decisions::context::PriorityContext::new(owner, vec![LegalAction::PassPriority]);
+        let priority = ironsmith::decisions::context::PriorityContext::new(&wasm.game, owner, vec![LegalAction::PassPriority]).expect("fixture has complete replacement state");
         let action_ref = PriorityActionRef::SpecialAction { action: SpecialActionRef::Foretell { card_id: id.0 } };
-        assert!(resolve_priority_action(&wasm.game, &priority, None, Some(&action_ref)).is_some());
+        assert!(resolve_priority_action(&wasm.game, &priority, None, Some(&action_ref)).expect("fixture has complete replacement state").is_some());
         wasm.game.turn.active_player = PlayerId::from_index(1);
-        assert!(resolve_priority_action(&wasm.game, &priority, None, Some(&action_ref)).is_none());
+        assert!(resolve_priority_action(&wasm.game, &priority, None, Some(&action_ref)).expect("fixture has complete replacement state").is_none());
         wasm.game.turn.active_player = owner;
         let exiled = perform_hidden_foretell(&mut wasm, id);
         assert!(wasm.game.is_hidden_card_placeholder(exiled));
@@ -4620,13 +4620,13 @@ mod sync_checkpoint_tests {
         assert!(wasm.game.has_hidden_identity_obligation(exiled));
         assert!(!wasm.game.foretold_card_is_castable(exiled));
         wasm.game.turn.turn_number += 1;
-        assert!(ironsmith::decision::compute_legal_actions(&wasm.game, owner).iter().any(|action| matches!(action,
+        assert!(ironsmith::decision::compute_legal_actions(&wasm.game, owner).expect("fixture has complete replacement state").iter().any(|action| matches!(action,
             LegalAction::CastSpell { spell_id, from_zone: Zone::Exile, .. } if *spell_id == exiled)));
 
         let (mut known, id, _) = hidden_foretell_fixture(false);
         known.game.reveal_hidden_card_with_definition(id, &wrong).unwrap();
         let action_ref = PriorityActionRef::SpecialAction { action: SpecialActionRef::Foretell { card_id: id.0 } };
-        assert!(resolve_priority_action(&known.game, &priority, None, Some(&action_ref)).is_none(),
+        assert!(resolve_priority_action(&known.game, &priority, None, Some(&action_ref)).expect("fixture has complete replacement state").is_none(),
             "the placeholder path must never authorize a known non-foretell card");
     }
 
@@ -4647,9 +4647,9 @@ mod sync_checkpoint_tests {
             ));
             wasm.runner_awaiting_priority = true;
             wasm.priority_state.restore_priority_tracker_for_sync(0, 2);
-            let context = DecisionContext::Priority(ironsmith::decisions::context::PriorityContext::new(
-                owner, ironsmith::decision::compute_legal_actions(&wasm.game, owner),
-            ));
+            let context = DecisionContext::Priority(ironsmith::decisions::context::PriorityContext::new(&wasm.game,
+                owner, ironsmith::decision::compute_legal_actions(&wasm.game, owner).expect("fixture has complete replacement state"),
+            ).expect("fixture has complete replacement state"));
             wasm.dispatch_live_priority_response(context, UiCommand::PriorityAction {
                 action_index: None,
                 action_ref: Some(PriorityActionRef::SpecialAction {

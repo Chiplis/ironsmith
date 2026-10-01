@@ -153,7 +153,7 @@ fn perform(
         .ok_or("missing action source")?;
     let initial_stack_len = game.stack.len();
     game.turn.priority_player = Some(actor);
-    let action = compute_legal_actions(game, actor)
+    let action = compute_legal_actions(game, actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| match a {
             LegalAction::CastSpell { spell_id, .. } => ability.is_none() && *spell_id == source,
@@ -264,7 +264,7 @@ fn witness(name: &str, kind: CardType, cost: u8, with_x: bool) -> CardDefinition
 }
 
 fn activated(g: &GameState, id: ObjectId) -> Result<usize, String> {
-    compute_legal_actions(g, alice())
+    compute_legal_actions(g, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find_map(|a| match a {
             LegalAction::ActivateAbility {

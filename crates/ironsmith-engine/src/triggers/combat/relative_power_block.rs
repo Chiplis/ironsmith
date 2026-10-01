@@ -67,11 +67,26 @@ fn with_indefinite_article(description: String) -> String {
 pub struct BlocksObjectWithLesserPowerTrigger {
     pub blocker: ObjectFilter,
     pub blocked: ObjectFilter,
+    /// When false the pair matches whatever the creatures' powers are
+    /// ("Whenever equipped creature blocks a creature").
+    pub require_lesser_power: bool,
 }
 
 impl BlocksObjectWithLesserPowerTrigger {
     pub fn new(blocker: ObjectFilter, blocked: ObjectFilter) -> Self {
-        Self { blocker, blocked }
+        Self {
+            blocker,
+            blocked,
+            require_lesser_power: true,
+        }
+    }
+
+    pub fn any_power(blocker: ObjectFilter, blocked: ObjectFilter) -> Self {
+        Self {
+            blocker,
+            blocked,
+            require_lesser_power: false,
+        }
     }
 }
 
@@ -96,6 +111,9 @@ impl TriggerMatcher for BlocksObjectWithLesserPowerTrigger {
         ) {
             return false;
         }
+        if !self.require_lesser_power {
+            return true;
+        }
 
         event_power(event.attacker_snapshot.as_ref(), event.attacker, ctx)
             .zip(event_power(
@@ -111,6 +129,13 @@ impl TriggerMatcher for BlocksObjectWithLesserPowerTrigger {
     }
 
     fn display(&self) -> String {
+        if !self.require_lesser_power {
+            return format!(
+                "Whenever {} blocks {}",
+                with_indefinite_article(self.blocker.description()),
+                with_indefinite_article(self.blocked.description())
+            );
+        }
         format!(
             "Whenever {} blocks {} with lesser power",
             with_indefinite_article(self.blocker.description()),

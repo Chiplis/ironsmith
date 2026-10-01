@@ -275,7 +275,8 @@ fn targeted_graveyard_cast_keeps_dynamic_source_power_and_exact_spell_tag() {
             effect: target_effect,
             tag: target_tag,
         },
-        EffectAst::Permissions(PermissionEffectAst::May {
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
+            player: PlayerAst::You,
             effects: cast_effects,
         }),
         EffectAst::Conditionals(ConditionalEffectAst::IfResult {

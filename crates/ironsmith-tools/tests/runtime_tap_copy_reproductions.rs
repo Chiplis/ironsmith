@@ -99,7 +99,7 @@ fn cast(
     eprintln!("AUDIT_STAGE cast {}", def.name());
     g.turn.priority_player = Some(actor);
     let id = g.create_object_from_definition(def, actor, Zone::Hand);
-    let action = compute_legal_actions(g, actor)
+    let action = compute_legal_actions(g, actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or_else(|| format!("{} normal cast unavailable", def.name()))?;
@@ -283,7 +283,7 @@ fn activation(
     source: ObjectId,
 ) -> Result<Value, String> {
     g.turn.priority_player = Some(PlayerId(0));
-    let a = compute_legal_actions(g, PlayerId(0))
+    let a = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::ActivateAbility{source:s,..}|LegalAction::ActivateManaAbility{source:s,..}if *s==source));
     let before = g.player(PlayerId(0)).unwrap().mana_pool.total() as i64;
@@ -304,7 +304,7 @@ fn activation(
         json!({"offered":a.is_some(),"announcement_error":error,"resolution_error":resolution_error,"mana_paid":before-g.player(PlayerId(0)).unwrap().mana_pool.total() as i64,"remaining_stack":g.stack.len()}),
     )
 }
-fn offered(g:&GameState,source:ObjectId)->bool {compute_legal_actions(g,PlayerId(0)).iter().any(|a|matches!(a,LegalAction::ActivateAbility{source:s,..}if *s==source))}
+fn offered(g:&GameState,source:ObjectId)->bool {compute_legal_actions(g,PlayerId(0)).expect("fixture has complete replacement state").iter().any(|a|matches!(a,LegalAction::ActivateAbility{source:s,..}if *s==source))}
 fn funded_cast(g:&mut GameState,defs:&std::collections::HashMap<&str,CardDefinition>,q:&mut TriggerQueue,dm:&mut Choices,name:&str,actor:PlayerId,cost:u32,resolve:bool)->Result<ObjectId,String>{
  let paid=cast(g,&defs[name],actor,q,dm)?;if paid!=cost{return Err(format!("{name} actualcost{paid} expected{cost}"));}
  let id=g.stack.iter().find(|e|!e.is_ability&&g.object(e.object_id).is_some_and(|o|o.name==name)).ok_or("new spell not on stack")?.object_id;

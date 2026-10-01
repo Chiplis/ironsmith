@@ -26,7 +26,7 @@ fn setup() -> (GameState, PlayerId, ObjectId) {
     (game, alice, card)
 }
 fn mayhem(game: &GameState, player: PlayerId, card: ObjectId) -> bool {
-    compute_legal_actions(game,player).iter().any(|a| matches!(a,LegalAction::CastSpell {spell_id,from_zone:Zone::Graveyard,casting_method:CastingMethod::Alternative(0)} if *spell_id==card))
+    compute_legal_actions(game,player).expect("fixture has complete replacement state").iter().any(|a| matches!(a,LegalAction::CastSpell {spell_id,from_zone:Zone::Graveyard,casting_method:CastingMethod::Alternative(0)} if *spell_id==card))
 }
 fn discard(game: &mut GameState, player: PlayerId, card: ObjectId) -> ObjectId {
     let stable = game.object(card).unwrap().stable_id;
@@ -104,7 +104,7 @@ fn mayhem_pays_alternative_cost_and_resolves_as_a_creature() {
     let (mut game, alice, hand) = setup();
     let card = discard(&mut game, alice, hand);
     let stable = game.object(card).unwrap().stable_id;
-    let action=compute_legal_actions(&game,alice).into_iter().find(|a| matches!(a,LegalAction::CastSpell{spell_id,casting_method:CastingMethod::Alternative(0),..} if *spell_id==card)).unwrap();
+    let action=compute_legal_actions(&game,alice).expect("fixture has complete replacement state").into_iter().find(|a| matches!(a,LegalAction::CastSpell{spell_id,casting_method:CastingMethod::Alternative(0),..} if *spell_id==card)).unwrap();
     let mut queue = ironsmith::triggers::TriggerQueue::new();
     let mut state = PriorityLoopState::new(game.players_in_game());
     let mut dm = SelectFirstDecisionMaker;
@@ -156,7 +156,7 @@ fn canonical_menace_and_trample_combat() {
     use ironsmith::combat_state::{AttackTarget, CombatState, declare_attackers, declare_blockers};
     let (mut game, alice, hand) = setup();
     let source = game
-        .move_object_with_etb_processing(hand, Zone::Battlefield)
+        .move_object_with_etb_processing(hand, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     let bob = PlayerId::from_index(1);
@@ -201,7 +201,7 @@ fn canonical_menace_and_trample_combat() {
 #[test]
 fn mayhem_permission_is_card_specific_and_requires_red_payment() {
     let (mut game, alice, hand) = setup();
-    assert!(compute_legal_actions(&game,alice).iter().any(|a| matches!(a,LegalAction::CastSpell{spell_id,casting_method:CastingMethod::Normal,..} if *spell_id==hand)));
+    assert!(compute_legal_actions(&game,alice).expect("fixture has complete replacement state").iter().any(|a| matches!(a,LegalAction::CastSpell{spell_id,casting_method:CastingMethod::Normal,..} if *spell_id==hand)));
     let card = discard(&mut game, alice, hand);
     let payloads = ironsmith_tools::load_card_payloads_by_name(
         ironsmith_tools::default_cards_path().to_str().unwrap(),
@@ -236,4 +236,13 @@ fn mayhem_permission_is_card_specific_and_requires_red_payment() {
         .mana_pool
         .add(ironsmith::mana::ManaSymbol::Red, 1);
     assert!(mayhem(&game, alice, card), "exactly five red can pay 4R");
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: ironsmith::game_state::EntryCommitResult)
+    -> Option<ironsmith::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

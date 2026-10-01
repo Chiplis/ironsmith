@@ -737,6 +737,18 @@ impl TurnHistory {
         })
     }
 
+    /// Whether this object fought this turn (CR 701.14): a fight keyword
+    /// action names each fighter as its source.
+    pub fn object_fought_this_turn(&self, object_id: ObjectId, stable_id: StableId) -> bool {
+        self.projected_records()
+            .filter_map(|record| record.event.downcast::<KeywordActionEvent>())
+            .filter(|event| event.action == KeywordActionKind::Fight)
+            .any(|event| match event.snapshot.as_ref() {
+                Some(snapshot) => snapshot.stable_id == stable_id,
+                None => event.source == object_id,
+            })
+    }
+
     pub fn object_was_surveilled_this_turn(&self, stable_id: StableId) -> bool {
         self.projected_records()
             .filter_map(|record| record.event.downcast::<KeywordActionEvent>())

@@ -75,6 +75,9 @@ pub struct CostContext<'dm> {
     pub source: ObjectId,
     /// Last known characteristics of a departed source for resolution costs.
     pub source_snapshot: Option<ObjectSnapshot>,
+    /// Execution-local replacement history and entry reservations of the
+    /// instruction requesting this payment. Root costs start with no scope.
+    pub(crate) replacement: crate::effects::ReplacementExecutionContext,
     /// The player paying the cost.
     pub payer: PlayerId,
     /// X value for variable costs.
@@ -136,6 +139,7 @@ impl<'dm> CostContext<'dm> {
             source,
             payer,
             source_snapshot: None,
+            replacement: crate::effects::ReplacementExecutionContext::default(),
             x_value: None,
             reason: PaymentReason::Other,
             requesting_effect_cause: None,
@@ -242,6 +246,7 @@ impl CostCheckContext {
         CostContext {
             source: self.source,
             source_snapshot: None,
+            replacement: crate::effects::ReplacementExecutionContext::default(),
             payer: self.payer,
             x_value: self.x_value,
             reason: self.reason,

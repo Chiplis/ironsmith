@@ -226,7 +226,7 @@ fn cast_announce(
 ) -> Result<(), String> {
     g.turn.priority_player = Some(dm.actor);
     let id = g.create_object_from_definition(d, dm.actor, Zone::Hand);
-    let a = compute_legal_actions(g, dm.actor)
+    let a = compute_legal_actions(g, dm.actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or("fixture source cast absent")?;
@@ -328,7 +328,7 @@ fn paid_land(
 ) -> Result<ironsmith::ids::StableId, String> {
     let id = g.create_object_from_definition(d, alice(), Zone::Hand);
     let s = g.object(id).unwrap().stable_id;
-    let a = compute_legal_actions(g, alice())
+    let a = compute_legal_actions(g, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::PlayLand{land_id}if *land_id==id))
         .ok_or("source land play absent")?;
@@ -346,7 +346,7 @@ fn sacrifice(
 ) -> Result<(), String> {
     dm.chosen = vec![current(g, m)];
     dm.targets = vec![Target::Player(PlayerId(2))];
-    let a=compute_legal_actions(g,dm.actor).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index:0,..}if *source==current(g,altar))).ok_or("Altar producer absent")?;
+    let a=compute_legal_actions(g,dm.actor).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index:0,..}if *source==current(g,altar))).ok_or("Altar producer absent")?;
     announce(g, a, q, dm)?;
     finish(g, q, dm)?;
     dm.targets.clear();
@@ -376,7 +376,7 @@ fn prepared_cast(
         .filter(|o| g.prepared_spell_source(o.id) == Some(sid))
         .map(|o| o.id)
         .collect::<Vec<_>>();
-    let action=compute_legal_actions(g,alice()).into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,from_zone:Zone::Exile,..}if copies.contains(spell_id)));
+    let action=compute_legal_actions(g,alice()).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,from_zone:Zone::Exile,..}if copies.contains(spell_id)));
     let Some(a) = action else {
         return Ok(json!({"available":false,"prepared":g.is_prepared(sid)}));
     };
@@ -440,7 +440,7 @@ fn run(
     if !llu && !trio {
         let mat = paid_cast(&mut g, &linked_defs, "Ornithopter", 0, &mut q, dm)?;
         dm.chosen = vec![current(&g, mat)];
-        let a=compute_legal_actions(&g,alice()).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index:2,..}if *source==sid)).ok_or("Sawblades battlefield craft unavailable")?;
+        let a=compute_legal_actions(&g,alice()).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index:2,..}if *source==sid)).ok_or("Sawblades battlefield craft unavailable")?;
         dm.stage = "actual_paid_craft".into();
         let before = g.player(alice()).unwrap().mana_pool.total();
         announce(&mut g, a, &mut q, dm)?;
@@ -521,7 +521,7 @@ fn run(
                 sacrifice(&mut g, alt, m, &mut q, dm)?;
             }
             if mat == "Mind Stone" {
-                let a=compute_legal_actions(&g,actor).into_iter().find(|a|matches!(a,LegalAction::ActivateManaAbility{source,..}if *source==current(&g,m))).ok_or("Mind Stone tap producer unavailable")?;
+                let a=compute_legal_actions(&g,actor).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateManaAbility{source,..}if *source==current(&g,m))).ok_or("Mind Stone tap producer unavailable")?;
                 immediate(&mut g, a, &mut q, dm)?;
             }
             m
@@ -535,7 +535,7 @@ fn run(
     g.remove_summoning_sickness(sid);
     dm.chosen = resources.iter().map(|s| current(&g, *s)).collect();
     let index = c["ability_index"].as_u64().unwrap() as usize;
-    let actions = compute_legal_actions(&g, alice());
+    let actions = compute_legal_actions(&g, alice()).expect("fixture has complete replacement state");
     let a=actions.iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index,..}if *source==sid&&*ability_index==index)).cloned();
     dm.trace.push(json!({"stage":"linked_candidate","has_prepare_spell":g.has_prepare_spell(sid),"prepared":g.is_prepared(sid),"legal_actions":format!("{actions:?}"),"ability_index":index}));
     let valid = c["valid"].as_bool().unwrap();

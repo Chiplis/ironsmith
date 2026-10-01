@@ -65,7 +65,7 @@ fn free_castable(milled: i32, player: PlayerFilter) -> bool {
     )
     .unwrap();
     let _ = bob;
-    compute_legal_actions(&game, alice)
+    compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .any(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if spell_id == trap))
 }

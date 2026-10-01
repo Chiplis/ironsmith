@@ -2908,7 +2908,7 @@ pub(super) fn flycatcher_giraffid_enters_with_chosen_vigilance_counter() {
     let mut dm = ChooseCounter(0);
 
     let result = game
-        .move_object_with_etb_processing_with_dm(stack_id, Zone::Battlefield, &mut dm)
+        .move_object_with_etb_processing_with_dm(stack_id, Zone::Battlefield, &mut dm).expect("replacement operation must execute successfully in this scenario")
         .expect("Flycatcher Giraffid should enter the battlefield");
     let giraffid_id = result.new_id;
 
@@ -2970,7 +2970,7 @@ pub(super) fn flycatcher_giraffid_enters_with_chosen_reach_counter() {
     let mut dm = ChooseCounter(1);
 
     let result = game
-        .move_object_with_etb_processing_with_dm(stack_id, Zone::Battlefield, &mut dm)
+        .move_object_with_etb_processing_with_dm(stack_id, Zone::Battlefield, &mut dm).expect("replacement operation must execute successfully in this scenario")
         .expect("Flycatcher Giraffid should enter the battlefield");
     let giraffid_id = result.new_id;
 
@@ -3045,7 +3045,7 @@ pub(super) fn thunder_brute_etb_grants_haste_when_tribute_not_paid() {
     let stack_id = game.create_object_from_definition(&def, alice, Zone::Stack);
     let mut dm = DeclineTribute;
     let result = game
-        .move_object_with_etb_processing_with_dm(stack_id, Zone::Battlefield, &mut dm)
+        .move_object_with_etb_processing_with_dm(stack_id, Zone::Battlefield, &mut dm).expect("replacement operation must execute successfully in this scenario")
         .expect("Thunder Brute should enter the battlefield");
     let thunder_brute_id = result.new_id;
 
@@ -3120,7 +3120,7 @@ pub(super) fn thunder_brute_etb_does_not_trigger_when_tribute_paid() {
     let graveyard_id = game.create_object_from_definition(&def, alice, Zone::Graveyard);
     let mut dm = AcceptTribute;
     let result = game
-        .move_object_with_etb_processing_with_dm(graveyard_id, Zone::Battlefield, &mut dm)
+        .move_object_with_etb_processing_with_dm(graveyard_id, Zone::Battlefield, &mut dm).expect("replacement operation must execute successfully in this scenario")
         .expect("Thunder Brute should enter the battlefield");
     let thunder_brute_id = result.new_id;
 
@@ -3214,7 +3214,7 @@ pub(super) fn thunder_brute_tribute_uses_controller_chosen_opponent() {
     };
 
     let result = game
-        .move_object_with_etb_processing_with_dm(stack_id, Zone::Battlefield, &mut dm)
+        .move_object_with_etb_processing_with_dm(stack_id, Zone::Battlefield, &mut dm).expect("replacement operation must execute successfully in this scenario")
         .expect("Thunder Brute should enter the battlefield");
     let thunder_brute_id = result.new_id;
 

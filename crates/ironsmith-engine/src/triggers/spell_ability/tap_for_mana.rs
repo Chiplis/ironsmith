@@ -235,7 +235,7 @@ mod tests {
         .expect("earthbend should resolve");
         game.refresh_continuous_state();
 
-        let action = compute_legal_actions(&game, alice)
+        let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .into_iter()
             .find(|action| {
                 matches!(action, LegalAction::ActivateManaAbility { source, .. } if *source == swamp)

@@ -117,6 +117,7 @@ fn next_static_effect_group_id(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SourceStaticEffectsKey {
     generation_revision: u64,
+    continuous_context_revision: u64,
     continuous_effect_revision: u64,
     object_revision: u64,
     zone: Zone,
@@ -128,14 +129,38 @@ struct SourceStaticEffectsKey {
 #[derive(Debug, Clone)]
 struct SourceStaticEffects {
     key: SourceStaticEffectsKey,
-    abilities: Arc<Vec<crate::ability::Ability>>,
+    abilities: Arc<crate::continuous::CalculatedAbilities>,
     direct_effects: Arc<Vec<ContinuousEffect>>,
 }
 
+type StaticGroupRoots = FxMap<crate::continuous::AbilityOrigin, crate::continuous::AbilityOrigin>;
+
 struct SourceStaticEffectEntry {
     object_id: ObjectId,
-    abilities: Vec<crate::ability::Ability>,
+    abilities: crate::continuous::CalculatedAbilities,
     effects: Vec<ContinuousEffect>,
+    group_roots: StaticGroupRoots,
+}
+
+/// Keep source-line composition separate from each component's occurrence
+/// identity. Compiler lowering already emits a typed marker before the parts.
+fn static_group_roots(abilities: &crate::continuous::CalculatedAbilities) -> StaticGroupRoots {
+    let mut roots = StaticGroupRoots::default();
+    for (index, ability) in abilities.iter().enumerate() {
+        let AbilityKind::Static(marker) = &ability.kind else { continue; };
+        let Some(count) = marker.source_line_static_group_member_count() else { continue; };
+        if count < 2 || count > abilities.len().saturating_sub(index + 1) { continue; }
+        let Some(root) = abilities.origin(index) else { continue; };
+        let members = index + 1..index + 1 + count;
+        // Incomplete/stale marker metadata is not permission to join unrelated
+        // occurrences. Every adjacent component must retain a paired origin.
+        if members.clone().any(|slot| abilities.origin(slot).is_none()
+            || !matches!(&abilities[slot].kind, AbilityKind::Static(_))) { continue; }
+        for slot in members {
+            roots.insert(abilities.origin(slot).unwrap().clone(), root.clone());
+        }
+    }
+    roots
 }
 
 fn append_late_static_effects(
@@ -196,6 +221,7 @@ fn append_late_static_effects(
             let Some(chars) = recipient_chars.get(&source.object_id) else {
                 continue;
             };
+            source.group_roots.extend(static_group_roots(&chars.abilities));
             let late = generate_granted_late_static_effects(
                 game,
                 source.object_id,
@@ -221,6 +247,7 @@ fn append_late_static_effects(
         assign_inferred_static_effect_groups(
             &mut source.effects,
             source.object_id,
+            &source.group_roots,
             &mut next_group_ordinal,
         );
     }
@@ -229,10 +256,42 @@ fn append_late_static_effects(
 #[derive(Debug, Default, Clone)]
 pub(crate) struct StaticEffectsCache {
     per_source: crate::game_state::PersistentMap<ObjectId, SourceStaticEffects>,
+    checked_revision: Option<u64>,
+    refreshed_revision: Option<u64>,
+}
+impl StaticEffectsCache {
+    pub(crate) fn has_checked_snapshot(&self, revision: u64) -> bool {
+        self.checked_revision == Some(revision)
+    }
+    pub(crate) fn mark_checked_snapshot(&mut self, revision: u64) {
+        self.checked_revision = Some(revision);
+        self.refreshed_revision = None;
+    }
+    pub(crate) fn invalidate_checked_snapshot(&mut self) {
+        self.checked_revision = None;
+        self.refreshed_revision = None;
+    }
+    pub(crate) fn has_refreshed_snapshot(&self, revision: u64) -> bool {
+        self.refreshed_revision == Some(revision)
+    }
+    pub(crate) fn mark_refreshed_snapshot(&mut self, revision: u64) {
+        self.refreshed_revision = Some(revision);
+    }
 }
 
-fn static_effects_share_scope(a_effect: &ContinuousEffect, b_effect: &ContinuousEffect) -> bool {
-    a_effect.source == b_effect.source
+fn static_effects_share_scope(a_effect: &ContinuousEffect, b_effect: &ContinuousEffect,
+    group_roots: &StaticGroupRoots) -> bool {
+    // CR 613.6 carries later parts of one effect forward after its ability is
+    // removed. Sharing a recipient/filter does not make independent abilities
+    // parts of that effect. Sibling branches retain one generating occurrence.
+    let same_occurrence = match (&a_effect.originating_ability, &b_effect.originating_ability) {
+        (Some(a), Some(b)) => a.host == b.host
+            && group_roots.get(&a.ability).unwrap_or(&a.ability)
+                == group_roots.get(&b.ability).unwrap_or(&b.ability)
+            && a.printed_face == b.printed_face,
+        _ => false,
+    };
+    same_occurrence && a_effect.source == b_effect.source
         && a_effect.controller == b_effect.controller
         && a_effect.applies_to == b_effect.applies_to
         && a_effect.duration == b_effect.duration
@@ -277,6 +336,7 @@ fn should_infer_multilayer_static_group(effects: &[ContinuousEffect], indices: &
 fn assign_inferred_static_effect_groups(
     effects: &mut [ContinuousEffect],
     source: ObjectId,
+    group_roots: &StaticGroupRoots,
     next_group_ordinal: &mut u16,
 ) {
     let mut assigned = vec![false; effects.len()];
@@ -291,7 +351,7 @@ fn assign_inferred_static_effect_groups(
             if assigned[j] || effects[j].group.is_some() {
                 continue;
             }
-            if static_effects_share_scope(&effects[i], &effects[j]) {
+            if static_effects_share_scope(&effects[i], &effects[j], group_roots) {
                 group_indices.push(j);
             }
         }
@@ -313,52 +373,40 @@ fn source_abilities(
     object_id: ObjectId,
     registered_effects: &[ContinuousEffect],
     text_box_scope: &TextBoxQueryScope,
-    text_box_cache: &mut FxMap<ObjectId, TextBoxOverlay>,
-) -> Vec<crate::ability::Ability> {
-    let object = game
-        .object(object_id)
-        .expect("static-effect source should exist");
+    text_box_cache: &mut FxMap<ObjectId, crate::continuous::CalculatedAbilities>,
+) -> crate::continuous::CalculatedAbilities {
+    let object = game.object(object_id).expect("static-effect source should exist");
     let mut abilities = if object.zone == Zone::Battlefield && text_box_scope.includes(object_id) {
-        let overlay = text_box_cache.entry(object_id).or_insert_with(|| {
+        text_box_cache.entry(object_id).or_insert_with(|| {
             crate::continuous::text_box_characteristics_with_effects(
-                object_id,
-                game.objects_map(),
-                registered_effects,
-                &game.battlefield,
-                game.commander_objects(),
-                game,
-            )
-            .map(|chars| {
-                TextBoxOverlay::new(chars.compiled_card_text, chars.abilities)
-                    .with_ability_labels(chars.ability_labels)
-            })
-            .unwrap_or_else(|| {
-                TextBoxOverlay::new(object.compiled_card_text.clone(), object.abilities_vec())
-                    .with_ability_labels(object.ability_labels.clone())
-            })
-        });
-        overlay.abilities.clone()
-    } else {
-        object.abilities_vec()
-    };
-    abilities.extend(object.temporary_static_ability_grants.iter()
-        .filter(|grant| !grant.is_expired(game.turn.turn_number))
-        .filter_map(|grant| grant.materialize())
-        .map(crate::ability::Ability::static_ability));
+                object_id, game.objects_map(), registered_effects,
+                &game.battlefield, game.commander_objects(), game,
+            ).map(|chars| chars.abilities)
+                .unwrap_or_else(|| object.abilities.clone().into())
+        }).clone()
+    } else { object.abilities.clone().into() };
+    for (index, grant) in object.temporary_static_ability_grants.iter().enumerate() {
+        if grant.is_expired(game.turn.turn_number) { continue; }
+        let Some(ability) = grant.materialize() else { continue; };
+        let origin = object.temporary_static_ability_grants.origin(index)
+            .expect("temporary grant has a paired origin").clone();
+        abilities.push_with_origin(crate::ability::Ability::static_ability(ability),
+            crate::continuous::AbilityOrigin::Temporary(origin));
+    }
     abilities
 }
 
 fn generate_direct_static_effects(
     game: &GameState,
     object_id: ObjectId,
-    abilities: &[crate::ability::Ability],
+    abilities: &crate::continuous::CalculatedAbilities,
 ) -> Vec<ContinuousEffect> {
     let object = game
         .object(object_id)
         .expect("static-effect source should exist");
     let controller = game.controller_of(object);
     let mut effects = Vec::new();
-    for ability in abilities {
+    for (slot, ability) in abilities.iter().enumerate() {
         let AbilityKind::Static(static_ability) = &ability.kind else {
             continue;
         };
@@ -370,11 +418,17 @@ fn generate_direct_static_effects(
             .effect_store
             .continuous_effects
             .get_object_timestamp(object_id);
-        for effect in &mut ability_effects {
+        for (branch, effect) in ability_effects.iter_mut().enumerate() {
             if let Some(ts) = object_timestamp {
                 effect.timestamp = ts;
             }
             effect.originating_static_ability = Some(static_ability.clone());
+            let origin = abilities.origin(slot).expect("static source has paired origins").clone();
+            let face = matches!(&origin, crate::continuous::AbilityOrigin::Printed(_))
+                .then_some(object.card).flatten();
+            effect.originating_ability = Some(Box::new(crate::continuous::ContinuousAbilityOrigin {
+                host: object_id, ability: origin, printed_face: face, branch,
+            }));
             if effect_is_characteristic_defining(effect, object_id) {
                 effect.source_type = EffectSourceType::CharacteristicDefining;
             }
@@ -437,7 +491,7 @@ pub fn generate_continuous_effects_from_static_abilities(
     let registered_effects: Vec<ContinuousEffect> =
         game.effect_store.continuous_effects.effects().to_vec();
     let text_box_scope = text_box_query_scope(&registered_effects);
-    let mut text_box_cache: FxMap<ObjectId, TextBoxOverlay> = FxMap::default();
+    let mut text_box_cache: FxMap<ObjectId, crate::continuous::CalculatedAbilities> = FxMap::default();
     let mut sources = Vec::new();
 
     let object_ids = game.object_ids_in_deterministic_order();
@@ -459,6 +513,7 @@ pub fn generate_continuous_effects_from_static_abilities(
         let effects = generate_direct_static_effects(game, object_id, &abilities);
         sources.push(SourceStaticEffectEntry {
             object_id,
+            group_roots: static_group_roots(&abilities),
             abilities,
             effects,
         });
@@ -489,7 +544,7 @@ pub(crate) fn generate_continuous_effects_from_static_abilities_cached(
     let registered_effects: Vec<ContinuousEffect> =
         game.effect_store.continuous_effects.effects().to_vec();
     let text_box_scope = text_box_query_scope(&registered_effects);
-    let mut text_box_cache: FxMap<ObjectId, TextBoxOverlay> = FxMap::default();
+    let mut text_box_cache: FxMap<ObjectId, crate::continuous::CalculatedAbilities> = FxMap::default();
     let text_overlay_revision = game.effect_store.continuous_effects.revision();
     let continuous_effect_revision = game.effect_store.continuous_effects.revision();
     let generation_revision = game.mutation_revision();
@@ -510,6 +565,7 @@ pub(crate) fn generate_continuous_effects_from_static_abilities_cached(
         let controller = game.controller_of(object);
         let key = SourceStaticEffectsKey {
             generation_revision,
+            continuous_context_revision: game.continuous_context_revision(),
             continuous_effect_revision,
             object_revision: object.last_modified,
             zone,
@@ -528,6 +584,7 @@ pub(crate) fn generate_continuous_effects_from_static_abilities_cached(
         {
             sources.push(SourceStaticEffectEntry {
                 object_id,
+                group_roots: static_group_roots(cached.abilities.as_ref()),
                 abilities: cached.abilities.as_ref().clone(),
                 effects: cached.direct_effects.as_ref().clone(),
             });
@@ -544,6 +601,7 @@ pub(crate) fn generate_continuous_effects_from_static_abilities_cached(
         let direct_effects = generate_direct_static_effects(game, object_id, &abilities);
         sources.push(SourceStaticEffectEntry {
             object_id,
+            group_roots: static_group_roots(&abilities),
             abilities: abilities.clone(),
             effects: direct_effects.clone(),
         });
@@ -615,7 +673,7 @@ fn generate_granted_late_static_effects(
     object_id: ObjectId,
     registered: &[ContinuousEffect],
     chars: &crate::continuous::CalculatedCharacteristics,
-    text_abilities: &[crate::ability::Ability],
+    text_abilities: &crate::continuous::CalculatedAbilities,
 ) -> Vec<ContinuousEffect> {
     use crate::continuous::{Modification, PtSublayer};
     let Some(object) = game.object(object_id) else {
@@ -626,15 +684,14 @@ fn generate_granted_late_static_effects(
         let AbilityKind::Static(granted) = &ability.kind else {
             continue;
         };
-        if !ability.functions_in(&Zone::Battlefield) || text_abilities.iter().any(|original|
-            matches!(&original.kind, AbilityKind::Static(original) if original.instance_id() == granted.instance_id())) {
-            continue;
-        }
+        let Some(origin) = chars.abilities.origin(ability_index).cloned() else { continue; };
+        if !ability.functions_in(&Zone::Battlefield) || (0..text_abilities.len())
+            .any(|index| text_abilities.origin(index) == Some(&origin)) { continue; }
         let originating_source = chars
             .abilities
             .origin(ability_index)
             .and_then(crate::continuous::AbilityOrigin::effect_source);
-        for mut effect in granted.generate_effects(object_id, chars.controller, game) {
+        for (branch, mut effect) in granted.generate_effects(object_id, chars.controller, game).into_iter().enumerate() {
             if effect.modification.layer() < Layer::Ability {
                 continue;
             }
@@ -658,6 +715,11 @@ fn generate_granted_late_static_effects(
             }
             effect.source_type = EffectSourceType::StaticAbility;
             effect.originating_static_ability = Some(granted.clone());
+            let face = matches!(&origin, crate::continuous::AbilityOrigin::Printed(_))
+                .then_some(object.card).flatten();
+            effect.originating_ability = Some(Box::new(crate::continuous::ContinuousAbilityOrigin {
+                host: object_id, ability: origin.clone(), printed_face: face, branch,
+            }));
             effect.timestamp = registered.iter().filter(|candidate| match &candidate.modification {
                 Modification::AddAbility(ability) => ability.instance_id() == granted.instance_id(),
                 Modification::AddAbilityGeneric(ability) => matches!(&ability.kind, AbilityKind::Static(ability) if ability.instance_id() == granted.instance_id()),
@@ -682,6 +744,140 @@ fn generate_granted_late_static_effects(
         }
     }
     result
+}
+
+/// Work bounds for checked discovery. Reaching a bound is an error, never a
+/// successful partial snapshot. Callers may choose bounds for their host.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StaticEffectDiscoveryLimits {
+    pub max_rounds: usize,
+    pub max_generated_effects: usize,
+}
+
+impl Default for StaticEffectDiscoveryLimits {
+    fn default() -> Self {
+        Self { max_rounds: 128, max_generated_effects: 16_384 }
+    }
+}
+
+/// Failure to establish a complete static-effect snapshot. This describes an
+/// engine computation boundary, not a Magic dependency cycle or game result.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StaticEffectDiscoveryError {
+    RoundLimit { maximum: usize, generated_effects: usize },
+    EffectLimit { maximum: usize, completed_rounds: usize },
+    MissingGeneratingOrigin { host: ObjectId },
+    UnavailableCharacteristics { object: ObjectId },
+}
+
+impl std::fmt::Display for StaticEffectDiscoveryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::RoundLimit { maximum, generated_effects } => write!(f,
+                "static-effect discovery did not converge within {maximum} rounds ({generated_effects} generated effects)"),
+            Self::EffectLimit { maximum, completed_rounds } => write!(f,
+                "static-effect discovery exceeded {maximum} generated effects after {completed_rounds} rounds"),
+            Self::MissingGeneratingOrigin { host } => write!(f,
+                "static-effect discovery lost generating occurrence on {host:?}"),
+            Self::UnavailableCharacteristics { object } => write!(f,
+                "continuous characteristics unavailable for existing object {object:?}"),
+        }
+    }
+}
+impl std::error::Error for StaticEffectDiscoveryError {}
+
+/// Discover a complete snapshot without publishing static effects or a static snapshot.
+///
+/// This is the fallible migration boundary. The legacy Vec-returning query
+/// remains separate until its commit/resume owners can propagate this error.
+/// Independent equal definitions are keyed by full generating occurrence and
+/// branch, rather than trait-object PartialEq or semantic equality.
+pub fn try_generate_continuous_effects_from_static_abilities(
+    game: &GameState,
+    limits: StaticEffectDiscoveryLimits,
+) -> Result<Vec<ContinuousEffect>, StaticEffectDiscoveryError> {
+    let registered = game.effect_store.continuous_effects.effects().to_vec();
+    let scope = text_box_query_scope(&registered);
+    let mut text_cache = FxMap::default();
+    let mut sources = Vec::new();
+    for object_id in game.object_ids_in_deterministic_order() {
+        let Some(object) = game.object(object_id) else { continue; };
+        if object.zone == Zone::Battlefield && game.is_phased_out(object_id) { continue; }
+        let abilities = source_abilities(game, object_id, &registered, &scope, &mut text_cache);
+        sources.push(SourceStaticEffectEntry { object_id,
+            group_roots: static_group_roots(&abilities),
+            effects: generate_direct_static_effects(game, object_id, &abilities), abilities });
+    }
+    let mut available = registered;
+    available.extend(sources.iter().flat_map(|source| source.effects.iter().cloned()));
+    let mut emitted = std::collections::HashSet::new();
+    let mut generated = 0;
+    for source in &sources {
+        for effect in &source.effects {
+            let origin = effect.originating_ability.as_deref().ok_or(
+                StaticEffectDiscoveryError::MissingGeneratingOrigin { host: source.object_id })?;
+            emitted.insert(origin.clone());
+            generated += 1;
+            if generated > limits.max_generated_effects {
+                return Err(StaticEffectDiscoveryError::EffectLimit {
+                    maximum: limits.max_generated_effects, completed_rounds: 0 });
+            }
+        }
+    }
+    for round in 0..limits.max_rounds {
+        let before_pt = available.iter().filter(|effect|
+            effect.modification.layer() <= Layer::Ability).cloned().collect::<Vec<_>>();
+        let grant_may_emit = available.iter().any(registered_grant_may_emit_late_effects);
+        let recipients = sources.iter().filter(|source|
+            (grant_may_emit || abilities_grant_continuous_levels(&source.abilities))
+                && game.object(source.object_id).is_some_and(|object| object.zone == Zone::Battlefield))
+            .map(|source| source.object_id).collect::<Vec<_>>();
+        let chars = crate::continuous::calculate_characteristics_batch_with_effects(
+            &recipients, game.objects_map(), &before_pt, &game.battlefield,
+            game.commander_objects(), game);
+        let mut added = false;
+        for source in &mut sources {
+            let Some(chars) = chars.get(&source.object_id) else { continue; };
+            source.group_roots.extend(static_group_roots(&chars.abilities));
+            let late = generate_granted_late_static_effects(game, source.object_id,
+                &available, chars, &source.abilities);
+            for effect in late {
+                let origin = effect.originating_ability.as_deref().ok_or(
+                    StaticEffectDiscoveryError::MissingGeneratingOrigin { host: source.object_id })?;
+                if !emitted.insert(origin.clone()) { continue; }
+                if generated == limits.max_generated_effects {
+                    return Err(StaticEffectDiscoveryError::EffectLimit {
+                        maximum: limits.max_generated_effects, completed_rounds: round });
+                }
+                generated += 1;
+                available.push(effect.clone()); source.effects.push(effect); added = true;
+            }
+        }
+        if !added {
+            let mut effects = Vec::new();
+            for source in &mut sources {
+                let mut ordinal = 1;
+                assign_inferred_static_effect_groups(&mut source.effects, source.object_id,
+                    &source.group_roots, &mut ordinal);
+                effects.append(&mut source.effects);
+            }
+            return Ok(effects);
+        }
+    }
+    Err(StaticEffectDiscoveryError::RoundLimit {
+        maximum: limits.max_rounds, generated_effects: generated })
+}
+
+/// Include registered effects only after static discovery has completed.
+pub fn try_get_all_continuous_effects(
+    game: &GameState,
+    limits: StaticEffectDiscoveryLimits,
+) -> Result<Vec<ContinuousEffect>, StaticEffectDiscoveryError> {
+    let statics = try_generate_continuous_effects_from_static_abilities(game, limits)?;
+    let mut effects = game.effect_store.continuous_effects.effects_sorted()
+        .into_iter().cloned().collect::<Vec<_>>();
+    effects.extend(statics);
+    Ok(effects)
 }
 
 /// Get all continuous effects including both registered effects and static ability effects.
@@ -754,8 +950,9 @@ mod tests {
             );
             let mut sources = vec![SourceStaticEffectEntry {
                 object_id: source,
-                abilities: Vec::new(),
+                abilities: Vec::new().into(),
                 effects: Vec::new(),
+                group_roots: StaticGroupRoots::default(),
             }];
             let before = game.work_counters();
             append_late_static_effects(&game, &mut sources, registered.clone());
@@ -907,5 +1104,368 @@ mod tests {
             text_box_query_scope(&effects),
             TextBoxQueryScope::AllBattlefield
         );
+    }
+}
+
+#[cfg(test)]
+mod inferred_group_occurrence_gameplay_tests {
+    use super::*;
+    use crate::{ability::Ability, card::{CardBuilder, PowerToughness}, effect::Value,
+        ids::PlayerId, static_abilities::{StaticAbility, StaticAbilityKind, StaticAbilityId}, types::CardType};
+
+    #[derive(Debug, Clone)]
+    struct Emits(Vec<crate::continuous::Modification>);
+    impl StaticAbilityKind for Emits {
+        fn id(&self) -> StaticAbilityId { StaticAbilityId::Anthem }
+        fn display(&self) -> String { "Layer instruction fixture".into() }
+        fn generate_effects(&self, source: ObjectId, controller: PlayerId, _game: &GameState)
+            -> Vec<ContinuousEffect> {
+            self.0.iter().map(|modification| ContinuousEffect::new(source, controller,
+                EffectTarget::Source, modification.clone())).collect()
+        }
+    }
+
+    fn fixture() -> (GameState, ObjectId) {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id;
+        let card = CardBuilder::new(crate::ids::CardId::new(), "Static group recipient")
+            .card_types(vec![CardType::Artifact])
+            .power_toughness(PowerToughness::fixed(2, 2)).build();
+        let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        (game, source)
+    }
+
+    fn type_and_pt() -> (crate::continuous::Modification, crate::continuous::Modification) {
+        use crate::continuous::{Modification, PtSublayer};
+        (Modification::AddCardTypes(vec![CardType::Creature]),
+            Modification::SetPowerToughness { power: Value::Fixed(7), toughness: Value::Fixed(7),
+                sublayer: PtSublayer::Setting })
+    }
+
+    #[test]
+    fn independent_static_ability_does_not_inherit_started_multipart_group_after_loss() {
+        use crate::continuous::Modification;
+        for combined in [false, true] {
+            for remove in [false, true] {
+                let (mut game, source) = fixture();
+                let (typed, pt) = type_and_pt();
+                let payloads = if combined { vec![vec![typed, pt]] }
+                    else { vec![vec![typed], vec![pt]] };
+                for modifications in payloads {
+                    game.object_mut(source).unwrap().abilities_mut().push(
+                        Ability::static_ability(StaticAbility::new(Emits(modifications))));
+                }
+                if remove {
+                    game.object_mut(source).unwrap().abilities_mut().push(
+                        Ability::static_ability(StaticAbility::new(Emits(vec![Modification::RemoveAllAbilities]))));
+                }
+                let expected = if !combined && remove { 2 } else { 7 };
+                // Dirty/wholesale and refreshed/cached readers must agree.
+                for refreshed in [false, true] {
+                    if refreshed { game.refresh_continuous_state(); }
+                    let chars = game.current_characteristics(source).unwrap();
+                    assert_eq!(chars.power, Some(expected), "combined={combined},remove={remove},refreshed={refreshed}");
+                    assert_eq!(chars.toughness, Some(expected));
+                    assert!(chars.card_types.contains(&CardType::Creature));
+                    assert_eq!(chars.abilities.is_empty(), remove);
+                }
+                let checkpoint = game.clone();
+                let chars = checkpoint.current_characteristics(source).unwrap();
+                assert_eq!((chars.power, chars.toughness), (Some(expected), Some(expected)));
+            }
+        }
+    }
+
+    #[test]
+    fn cloned_multipart_static_occurrences_keep_separate_groups_through_refresh() {
+        let (mut game, source) = fixture();
+        let (typed, pt) = type_and_pt();
+        let parent = StaticAbility::new(Emits(vec![typed, pt]));
+        for _ in 0..2 {
+            game.object_mut(source).unwrap().abilities_mut().push(Ability::static_ability(parent.clone()));
+        }
+        let before = get_all_continuous_effects(&game);
+        let groups = before.iter().filter_map(|effect| effect.group).collect::<std::collections::HashSet<_>>();
+        assert_eq!(before.len(), 4);
+        assert_eq!(groups.len(), 2);
+        for group in &groups { assert_eq!(before.iter().filter(|effect| effect.group == Some(*group)).count(), 2); }
+        game.refresh_continuous_state();
+        let after = game.all_continuous_effects();
+        assert_eq!(after.iter().filter_map(|effect| effect.group).collect::<std::collections::HashSet<_>>(), groups);
+        let checkpoint = game.clone();
+        assert_eq!(checkpoint.all_continuous_effects().iter().filter_map(|effect| effect.group)
+            .collect::<std::collections::HashSet<_>>(), groups);
+    }
+
+    #[test]
+    fn marked_static_parts_survive_loss_without_preserving_an_independent_later_effect() {
+        use crate::continuous::{Modification, PtSublayer};
+        for compiled_marker in [false, true] {
+            let (mut game, source) = fixture();
+            let marker = if compiled_marker {
+                StaticAbility::from_model(crate::static_abilities::CompiledStaticAbility::source_line_static_group(2))
+            } else { StaticAbility::source_line_static_group(2) };
+            game.object_mut(source).unwrap().abilities_mut().push(Ability::static_ability(marker));
+            let (typed, pt) = type_and_pt();
+            for modification in [typed, pt,
+                Modification::SetPowerToughness { power: Value::Fixed(11), toughness: Value::Fixed(11),
+                    sublayer: PtSublayer::Setting }, Modification::RemoveAllAbilities] {
+                game.object_mut(source).unwrap().abilities_mut().push(
+                    Ability::static_ability(StaticAbility::new(Emits(vec![modification]))));
+            }
+            for refreshed in [false, true] {
+                if refreshed { game.refresh_continuous_state(); }
+                let chars = game.current_characteristics(source).unwrap();
+                assert_eq!((chars.power, chars.toughness), (Some(7), Some(7)),
+                    "compiled_marker={compiled_marker},refreshed={refreshed}");
+                assert!(chars.abilities.is_empty());
+            }
+            let effects = game.all_continuous_effects();
+            assert_eq!(effects.len(), 4);
+            assert!(effects[0].group.is_some());
+            assert_eq!(effects[0].group, effects[1].group);
+            assert_eq!(effects[2].group, None);
+            assert_eq!(effects[3].group, None);
+        }
+    }
+
+    #[test]
+    fn cloned_marked_static_lines_keep_distinct_group_roots_and_component_origins() {
+        let (mut game, source) = fixture();
+        let marker = StaticAbility::source_line_static_group(2);
+        let (typed, pt) = type_and_pt();
+        let parts = [StaticAbility::new(Emits(vec![typed])), StaticAbility::new(Emits(vec![pt]))];
+        for _ in 0..2 {
+            game.object_mut(source).unwrap().abilities_mut().push(Ability::static_ability(marker.clone()));
+            for part in &parts {
+                game.object_mut(source).unwrap().abilities_mut().push(Ability::static_ability(part.clone()));
+            }
+        }
+        let before = get_all_continuous_effects(&game);
+        let groups = before.iter().filter_map(|effect| effect.group).collect::<std::collections::HashSet<_>>();
+        let origins = before.iter().filter_map(|effect| effect.originating_ability.clone())
+            .collect::<std::collections::HashSet<_>>();
+        assert_eq!(before.len(), 4);
+        assert_eq!(groups.len(), 2);
+        assert_eq!(origins.len(), 4, "components keep their independent occurrence identities");
+        for group in &groups { assert_eq!(before.iter().filter(|effect| effect.group == Some(*group)).count(), 2); }
+        game.refresh_continuous_state();
+        let after = game.all_continuous_effects();
+        assert_eq!(after.iter().filter_map(|effect| effect.group).collect::<std::collections::HashSet<_>>(), groups);
+        assert_eq!(after.iter().filter_map(|effect| effect.originating_ability.clone())
+            .collect::<std::collections::HashSet<_>>(), origins);
+    }
+}
+
+#[cfg(test)]
+mod checked_discovery_tests {
+    use super::*;
+    use crate::{ability::{Ability, AbilityKind}, card::CardBuilder, ids::{CardId, PlayerId},
+        static_abilities::{StaticAbility, StaticAbilityId, StaticAbilityKind},
+        target::{ObjectFilter, PlayerFilter}, types::CardType};
+    use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+
+    fn game_with_parent(depth: usize) -> (GameState, ObjectId) {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id;
+        let card = CardBuilder::new(CardId::new(), "Finite static recipient")
+            .card_types(vec![CardType::Artifact]).build();
+        let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let mut model = ironsmith_core::StaticAbility::double_life_change_replacement(
+            PlayerFilter::You, false, "Double life gain");
+        for _ in 0..depth {
+            model = ironsmith_core::StaticAbility::grant_object_ability_for_filter(
+                ObjectFilter::source(), ironsmith_core::Ability::static_ability(model), "Source has ability");
+        }
+        let parent = StaticAbility::from_model(model);
+        for _ in 0..2 { game.object_mut(source).unwrap().abilities_mut()
+            .push(Ability::static_ability(parent.clone())); }
+        (game, source)
+    }
+
+    #[test]
+    fn checked_discovery_completes_finite_graphs_and_preserves_independent_leaf_origins() {
+        std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
+            for depth in [1, 8, 9, 10, 12] {
+                let (game, source) = game_with_parent(depth);
+                let revision = game.effect_store.continuous_effects.revision();
+                let limits = StaticEffectDiscoveryLimits::default();
+                let effects = try_get_all_continuous_effects(&game, limits).unwrap();
+                assert_eq!(effects.len(), depth * 2, "depth={depth}");
+                let origins = effects.iter().map(|effect| effect.originating_ability.clone().unwrap())
+                    .collect::<std::collections::HashSet<_>>();
+                assert_eq!(origins.len(), effects.len());
+                let chars = game.calculated_characteristics_with_effects(source, &effects).unwrap();
+                let leaf_origins = chars.abilities.iter().enumerate().filter_map(|(slot, ability)| {
+                    let AbilityKind::Static(ability) = &ability.kind else { return None; };
+                    (ability.id() == StaticAbilityId::DoubleLifeChangeReplacement)
+                        .then(|| chars.abilities.origin(slot).unwrap().clone())
+                }).collect::<std::collections::HashSet<_>>();
+                assert_eq!(leaf_origins.len(), 2, "depth={depth}");
+                let again = try_get_all_continuous_effects(&game, limits).unwrap();
+                assert_eq!(again.iter().map(|effect| effect.originating_ability.clone().unwrap())
+                    .collect::<std::collections::HashSet<_>>(), origins);
+                assert_eq!(game.effect_store.continuous_effects.revision(), revision);
+                assert!(game.effect_store.continuous_effects.static_ability_effects().is_empty());
+                assert_eq!(game.players[0].life, 20, "pure discovery cannot commit gameplay");
+                assert!(matches!(try_get_all_continuous_effects(&game,
+                    StaticEffectDiscoveryLimits { max_rounds: 128, max_generated_effects: 1 }),
+                    Err(StaticEffectDiscoveryError::EffectLimit { maximum: 1, completed_rounds: 0 })));
+            }
+        }).unwrap().join().unwrap();
+    }
+
+    #[derive(Debug, Clone)]
+    struct RegrantParent(Arc<AtomicUsize>);
+    impl StaticAbilityKind for RegrantParent {
+        fn id(&self) -> StaticAbilityId { StaticAbilityId::GrantObjectAbilityForFilter }
+        fn display(&self) -> String { "Regrant printed parent".into() }
+        fn generate_effects(&self, source: ObjectId, controller: PlayerId, game: &GameState)
+            -> Vec<ContinuousEffect> {
+            assert!(self.0.fetch_add(1, Ordering::SeqCst) < 32_768, "fixture work ceiling");
+            let AbilityKind::Static(parent) = &game.object(source).unwrap().abilities[0].kind
+                else { panic!("fixture parent missing") };
+            vec![ContinuousEffect::new(source, controller, EffectTarget::Source,
+                Modification::AddAbility(parent.clone()))]
+        }
+    }
+
+    #[test]
+    fn checked_discovery_returns_typed_failure_without_publishing_a_partial_graph() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id;
+        let card = CardBuilder::new(CardId::new(), "Dynamic grant recipient")
+            .card_types(vec![CardType::Artifact]).build();
+        let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let calls = Arc::new(AtomicUsize::new(0));
+        game.object_mut(source).unwrap().abilities_mut()
+            .push(Ability::static_ability(StaticAbility::new(RegrantParent(calls.clone()))));
+        let revision = game.effect_store.continuous_effects.revision();
+        let result = try_get_all_continuous_effects(&game,
+            StaticEffectDiscoveryLimits { max_rounds: 8, max_generated_effects: 128 });
+        assert!(matches!(result, Err(StaticEffectDiscoveryError::RoundLimit {
+            maximum: 8, generated_effects: 9 })), "{result:?}");
+        assert!(calls.load(Ordering::SeqCst) < 256);
+        assert_eq!(game.effect_store.continuous_effects.revision(), revision);
+        assert!(game.effect_store.continuous_effects.static_ability_effects().is_empty());
+        assert_eq!(game.players[0].life, 20);
+        let result = try_generate_continuous_effects_from_static_abilities(&game,
+            StaticEffectDiscoveryLimits { max_rounds: 16, max_generated_effects: 4 });
+        assert!(matches!(result, Err(StaticEffectDiscoveryError::EffectLimit {
+            maximum: 4, completed_rounds: 3 })), "{result:?}");
+        assert!(game.effect_store.continuous_effects.static_ability_effects().is_empty());
+    }
+
+    #[test]
+    fn checked_owner_finishes_deep_life_replacements_from_dirty_and_legacy_clean_states() {
+        use crate::effects::EffectExecutor;
+        std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
+            for depth in [1, 8, 9, 10, 12] {
+                for legacy_clean in [false, true] {
+                    for generic in [false, true] {
+                        let (mut game, source) = game_with_parent(depth);
+                        let alice = game.players[0].id;
+                        if legacy_clean { game.refresh_continuous_state().unwrap(); }
+                        let mut ctx = crate::effects::EffectContext::new_default(source, alice);
+                        let outcome = if generic {
+                            crate::effects::execute_effect(&mut game, &crate::effect::Effect::gain_life(1), &mut ctx)
+                        } else {
+                            crate::effects::GainLifeEffect::you(1).execute(&mut game, &mut ctx)
+                        }.unwrap();
+                        assert_eq!(game.player(alice).unwrap().life, 24,
+                            "depth={depth},legacy_clean={legacy_clean},generic={generic}");
+                        assert_eq!(outcome.count_or_zero(), 4); assert_eq!(outcome.events.len(), 1);
+                        let effects = crate::replacement_ability_processor::generate_replacement_effects_from_abilities(&game).unwrap();
+                        assert_eq!(effects.len(), 2);
+                        assert_eq!(effects.iter().map(|effect| effect.application_key())
+                            .collect::<std::collections::HashSet<_>>().len(), 2);
+                    }
+                }
+            }
+        }).unwrap().join().unwrap();
+    }
+
+    #[test]
+    fn failed_replacement_publication_and_full_refresh_preserve_the_previous_snapshot() {
+        std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
+            let (mut game, finite_source) = game_with_parent(1);
+            game.refresh_continuous_state().unwrap();
+            let alice = game.players[0].id;
+            let shield = game.effect_store.replacement_effects.add_one_shot_effect(
+                crate::replacement::ReplacementEffect::with_matcher(finite_source, alice,
+                    crate::events::life::matchers::WouldGainLifeMatcher::you(),
+                    crate::replacement::ReplacementAction::Modify(
+                        crate::replacement::EventModification::Add(1))));
+            let before_keys = game.effect_store.replacement_effects.effects().iter()
+                .map(|effect| effect.application_key()).collect::<Vec<_>>();
+            assert_eq!(before_keys.len(), 3);
+            let before_origins = game.effect_store.continuous_effects.static_ability_effects().iter()
+                .map(|effect| effect.originating_ability.clone()).collect::<Vec<_>>();
+            let card = CardBuilder::new(CardId::new(), "Unresolved publication recipient")
+                .card_types(vec![CardType::Artifact]).build();
+            let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+            let calls = Arc::new(AtomicUsize::new(0));
+            game.object_mut(source).unwrap().abilities_mut().push(Ability::static_ability(
+                StaticAbility::new(RegrantParent(calls.clone()))));
+            let revision = game.effect_store.continuous_effects.revision();
+            for full_refresh in [false, true] {
+                calls.store(0, Ordering::SeqCst);
+                let result = if full_refresh { game.refresh_continuous_state() }
+                    else { game.update_replacement_effects() };
+                assert!(matches!(result, Err(StaticEffectDiscoveryError::RoundLimit {
+                    maximum: 128, .. })), "{result:?}");
+                assert_eq!(game.effect_store.replacement_effects.effects().iter()
+                    .map(|effect| effect.application_key()).collect::<Vec<_>>(), before_keys);
+                assert_eq!(game.effect_store.continuous_effects.static_ability_effects().iter()
+                    .map(|effect| effect.originating_ability.clone()).collect::<Vec<_>>(), before_origins);
+                assert_eq!(game.effect_store.continuous_effects.revision(), revision);
+                assert!(!game.continuous_state_is_clean());
+                assert!(game.effect_store.replacement_effects.get_effect(shield).is_some());
+                assert!(game.effect_store.replacement_effects.is_one_shot(shield));
+                assert_eq!(game.player(alice).unwrap().life, 20);
+                assert!(game.stack.is_empty());
+                assert!(calls.load(Ordering::SeqCst) < 32_768);
+            }
+        }).unwrap().join().unwrap();
+    }
+
+    #[test]
+    fn discovery_failure_stops_direct_and_generic_execution_without_mutation_or_one_shot_use() {
+        use crate::effects::EffectExecutor;
+        std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
+            for generic in [false, true] {
+                let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+                let alice = game.players[0].id;
+                let card = CardBuilder::new(CardId::new(), "Unresolved discovery recipient")
+                    .card_types(vec![CardType::Artifact]).build();
+                let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+                let calls = Arc::new(AtomicUsize::new(0));
+                game.object_mut(source).unwrap().abilities_mut().push(Ability::static_ability(
+                    StaticAbility::new(RegrantParent(calls.clone()))));
+                let shield = game.effect_store.replacement_effects.add_one_shot_effect(
+                    crate::replacement::ReplacementEffect::with_matcher(source, alice,
+                        crate::events::life::matchers::WouldGainLifeMatcher::you(),
+                        crate::replacement::ReplacementAction::Modify(
+                            crate::replacement::EventModification::Add(1))));
+                let revision = game.effect_store.continuous_effects.revision();
+                let mut ctx = crate::effects::EffectContext::new_default(source, alice);
+                let result = if generic {
+                    crate::effects::execute_effect(&mut game, &crate::effect::Effect::gain_life(1), &mut ctx)
+                } else {
+                    crate::effects::GainLifeEffect::you(1).execute(&mut game, &mut ctx)
+                };
+                assert!(matches!(result, Err(crate::effects::ExecutionError::ContinuousDiscovery(
+                    StaticEffectDiscoveryError::RoundLimit { maximum: 128, generated_effects: 129 }))),
+                    "{result:?}");
+                assert_eq!(game.player(alice).unwrap().life, 20);
+                assert_eq!(game.effect_store.continuous_effects.revision(), revision);
+                assert!(game.effect_store.continuous_effects.static_ability_effects().is_empty());
+                assert!(game.effect_store.replacement_effects.get_effect(shield).is_some());
+                assert!(game.effect_store.replacement_effects.is_one_shot(shield));
+                assert!(game.stack.is_empty()); assert!(ctx.executing_effect.is_none());
+                assert!(!ctx.decision_maker.awaiting_choice());
+                assert!(calls.load(Ordering::SeqCst) < 32_768);
+            }
+        }).unwrap().join().unwrap();
     }
 }

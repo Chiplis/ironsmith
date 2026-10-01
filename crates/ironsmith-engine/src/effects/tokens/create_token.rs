@@ -1,7 +1,7 @@
 //! Create token effect implementation.
 
 use crate::cards::CardDefinition;
-use crate::combat_state::{AttackTarget, AttackerInfo};
+use crate::combat_state::AttackTarget;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
@@ -199,26 +199,15 @@ fn execute_token_instruction(
     materialize_named_creator_source_in_token(&mut resolved_token, ctx.source);
     let token_preview =
         game.object_from_token_definition(ObjectId::from_raw(0), &resolved_token, controller_id);
-    let replacement = crate::events::processing::process_token_creation_for_token_with_event(
+    crate::events::processing::execute_token_creation_with_event(
         game,
         controller_id,
         base_count,
         Some(token_preview.clone()),
         ctx.cause.clone(),
         ctx,
-    )?;
-    let replacement = match replacement {
-        crate::events::processing::TokenCreationReplacementResult::Proceed {
-            event,
-            provenance,
-        } => {
+        |game, ctx, replacement, provenance| {
             ctx.provenance = provenance;
-            event
-        }
-        crate::events::processing::TokenCreationReplacementResult::Finished(outcome) => {
-            return Ok(outcome);
-        }
-    };
     let controller_id = replacement.controller;
     let token_preview = replacement.token.clone().unwrap_or(token_preview);
     let count = (replacement.count as usize).min(remaining_token_slots(game, controller_id));
@@ -255,6 +244,7 @@ fn execute_token_instruction(
     };
     let mut created_ids = Vec::with_capacity(count);
     let mut events = Vec::with_capacity(count);
+    let mut entry_receipts = Vec::new();
     let pending_start = game.effect_store.pending_trigger_events.len();
     let cost_exiled = cost_exiled_objects(game, ctx);
     // CR 607.2a: a token whose ability returns "the exiled card" is linked
@@ -286,17 +276,18 @@ fn execute_token_instruction(
         let token_is_creature = token_obj.is_creature();
 
         game.add_object(token_obj);
-        let entry_result = game.move_object_with_etb_processing_with_entry_options(
+        let entry_result = game.move_object_with_etb_processing_with_cause_and_entry_options(
             id,
             Zone::Battlefield,
+            ctx.cause.clone(),
             &mut ctx.decision_maker,
             effect.enters_tapped,
             !effect.suppress_aura_attachment_choice,
-        );
+        )?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::with_objects(Vec::new()));
         }
-        let Some(entry_result) = entry_result else {
+        let Some(entry_result) = super::lifecycle::retain_token_entry_receipt(game, id, entry_result, &mut entry_receipts)? else {
             game.remove_object(id);
             continue;
         };
@@ -346,11 +337,7 @@ fn execute_token_instruction(
                     return Ok(EffectOutcome::with_objects(Vec::new()));
                 }
                 if let Some(chosen_target) = chosen_target {
-                    let combat = game.combat.get_or_insert_with(Default::default);
-                    combat.attackers.push(AttackerInfo {
-                        creature: entered_id,
-                        target: chosen_target,
-                    });
+                    game.add_entering_attacker(entered_id, chosen_target);
                 }
             }
 
@@ -390,6 +377,7 @@ fn execute_token_instruction(
         controller_id,
         &replacement.additional_tokens,
         &mut events,
+        &mut entry_receipts,
     )?;
     if ctx.decision_maker.awaiting_choice() {
         return Ok(EffectOutcome::with_objects(Vec::new()));
@@ -454,10 +442,13 @@ fn execute_token_instruction(
         );
     }
 
-    Ok(EffectOutcome::with_objects(created_ids.clone())
+    let original = EffectOutcome::with_objects(created_ids.clone())
         .with_result_objects(created_ids.clone())
         .with_events(events)
-        .with_affected_objects_from_game(game, created_ids))
+        .with_affected_objects_from_game(game, created_ids);
+            crate::effects::zones::finish_zone_change_receipts(game, ctx, original, entry_receipts)
+        },
+    )
 }
 
 impl EffectExecutor for CreateTokenEffect {
@@ -1350,9 +1341,17 @@ mod tests {
                 2,
                 "nested token is created exactly once without reapplying either replacement for path {case}"
             );
-            assert_eq!(outcome.result_objects().unwrap().len(), 1);
+            let observed_tokens = outcome.execution_facts.iter().find_map(|fact| match fact {
+                crate::effect::ExecutionFact::ResultObjects(ids) => Some(ids.as_slice()),
+                _ => None,
+            }).expect("complete observation retains the replacement-created token");
+            assert_eq!(observed_tokens.len(), 1);
+            assert!(outcome.result_objects().is_none_or(|ids| ids.is_empty()),
+                "the replaced original instruction creates no token");
+            assert!(!outcome.affected_object_memory().unwrap_or(&[]).iter()
+                .any(|memory| observed_tokens.contains(&memory.object_id)));
             assert_eq!(
-                game.object(outcome.result_objects().unwrap()[0])
+                game.object(observed_tokens[0])
                     .unwrap()
                     .zone,
                 Zone::Battlefield
@@ -1571,4 +1570,77 @@ mod tests {
         }
     }
 
+}
+
+#[cfg(test)]
+mod replacement_token_entry_owner_contract_tests {
+    use super::*;
+    use crate::decision::DecisionMaker;
+    use crate::effect::{Effect,Value};
+    use crate::ids::{CardId,PlayerId};
+    use crate::object::{CounterType,ObjectKind};
+    use crate::replacement::{ReplacementAction,ReplacementEffect};
+    use crate::snapshot::ObjectSnapshot;
+    use crate::target::{ObjectFilter,PlayerFilter};
+    use crate::types::CardType;
+    struct Answers {pause:bool,pending:bool,calls:usize,binding:bool,base:u32}
+    impl DecisionMaker for Answers {
+        fn decide_boolean(&mut self,game:&GameState,_:&crate::decisions::context::BooleanContext)->bool {
+            self.calls+=1;let tokens=game.battlefield.iter().copied().filter(|id|game.object(*id).unwrap().kind==ObjectKind::Token).collect::<Vec<_>>();assert_eq!(tokens.len(),1);
+            assert_eq!(game.current_controller(tokens[0]),Some(PlayerId::from_index(0)));
+            if self.binding {assert_eq!(game.counter_count(tokens[0],CounterType::PlusOnePlusOne),self.base+1);}
+            self.pending=self.pause;!self.pending
+        }
+        fn awaiting_choice(&self)->bool {self.pending}
+    }
+    fn check(kind:u8,mode:u8) {
+        let mut game=crate::tests::test_helpers::setup_two_player_game();let alice=PlayerId::from_index(0);let bob=PlayerId::from_index(1);
+        let definition=crate::CardDefinitionBuilder::new(CardId::new(),"Token owner fixture").card_types(vec![CardType::Creature]).power_toughness(crate::card::PowerToughness::fixed(2,2)).build();
+        let parent=game.create_object_from_definition(&definition,alice,Zone::Battlefield);let source=game.create_object_from_definition(&definition,bob,Zone::Battlefield);
+        let sentinel=ObjectSnapshot::from_object(game.object(parent).unwrap(),&game);
+        let actions=match mode {1=>vec![Effect::gain_life(3),Effect::lose_life(Value::X)],3=>vec![Effect::new(crate::effects::PutCountersEffect::new(CounterType::PlusOnePlusOne,1,ChooseSpec::tagged("it"))),Effect::may(vec![Effect::gain_life(0)])],_=>vec![Effect::gain_life(3),Effect::may(vec![Effect::gain_life(4)])]};
+        let shield=game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(source,bob,
+            crate::events::zones::matchers::WouldEnterBattlefieldMatcher::new(ObjectFilter::default()),ReplacementAction::Additionally(actions)));
+        game.take_pending_trigger_events();let ids=game.next_object_id_counter();let objects=game.objects_in_deterministic_order().len();
+        let mut dm=Answers {pause:mode==2,pending:false,calls:0,binding:mode==3,base:if kind==2 {2}else{0}};
+        let mut ctx=ExecutionContext::new(parent,alice,&mut dm);ctx.set_tagged_objects("it",vec![sentinel.clone()]);
+        let effect:Box<dyn EffectExecutor>=match kind {
+            1=>Box::new(crate::effects::CreateTokenCopyEffect::one(ChooseSpec::SpecificObject(parent))),
+            2=>Box::new(crate::effects::IncubateEffect::you(2,1)),
+            _=>Box::new(CreateTokenEffect::one(crate::CardDefinitionBuilder::new(CardId::new(),"Created fixture").token().card_types(vec![CardType::Creature]).power_toughness(crate::card::PowerToughness::fixed(2,2)).build())),
+        };
+        let result=effect.execute(&mut game,&mut ctx);
+        if mode==1 {assert!(matches!(result,Err(ExecutionError::UnresolvableValue(_))));}
+        else if mode==2 {assert!(ctx.decision_maker.awaiting_choice());assert!(result.unwrap().events.is_empty());}
+        else {
+            let outcome=result.unwrap();let arrived=outcome.explicit_objects().unwrap();assert_eq!(arrived.len(),1);assert!(game.battlefield.contains(&arrived[0]));
+            assert_eq!(game.player(alice).unwrap().life,20);assert_eq!(game.player(bob).unwrap().life,if mode==3 {20}else{27});
+            if mode==3 {assert_eq!(game.counter_count(arrived[0],CounterType::PlusOnePlusOne),if kind==2 {3}else{1});}
+            else {assert_eq!(outcome.events.iter().filter_map(|event|event.downcast::<crate::events::LifeGainEvent>()).map(|event|(event.player,event.amount)).collect::<Vec<_>>(),vec![(bob,3),(bob,4)]);}
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+        }
+        assert_eq!(ctx.source,parent);assert_eq!(ctx.controller,alice);assert_eq!(ctx.get_tagged_all("it").unwrap()[0].object_id,sentinel.object_id);assert_eq!(game.counter_count(parent,CounterType::PlusOnePlusOne),0);
+        if mode==1||mode==2 {
+            assert_eq!(game.next_object_id_counter(),ids);assert_eq!(game.objects_in_deterministic_order().len(),objects);assert_eq!(game.player(bob).unwrap().life,20);assert!(game.command_zone.is_empty());
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_some());assert!(game.take_pending_trigger_events().is_empty());
+        }
+        drop(ctx);if mode==0||mode==3 {assert_eq!(dm.calls,1);}
+        if mode==2 {
+            assert_eq!(dm.calls,1);dm.pause=false;dm.pending=false;let mut ctx=ExecutionContext::new(parent,alice,&mut dm);
+            let outcome=effect.execute(&mut game,&mut ctx).unwrap();assert_eq!(outcome.explicit_objects().unwrap().len(),1);assert_eq!(game.player(bob).unwrap().life,27);
+            assert!(!ctx.decision_maker.awaiting_choice());drop(ctx);assert_eq!(dm.calls,2);
+        }
+    }
+    #[test] fn ordinary_additions() {check(0,0);}
+    #[test] fn ordinary_error() {check(0,1);}
+    #[test] fn ordinary_pending_replay() {check(0,2);}
+    #[test] fn ordinary_binding() {check(0,3);}
+    #[test] fn copied_additions() {check(1,0);}
+    #[test] fn copied_error() {check(1,1);}
+    #[test] fn copied_pending_replay() {check(1,2);}
+    #[test] fn copied_binding() {check(1,3);}
+    #[test] fn incubated_additions() {check(2,0);}
+    #[test] fn incubated_error() {check(2,1);}
+    #[test] fn incubated_pending_replay() {check(2,2);}
+    #[test] fn incubated_binding() {check(2,3);}
 }

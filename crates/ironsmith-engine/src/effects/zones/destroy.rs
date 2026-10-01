@@ -82,6 +82,7 @@ impl DestroyEffect {
         ctx: &mut ExecutionContext,
         object_id: crate::ids::ObjectId,
         can_be_regenerated: bool,
+        receipts: &mut Vec<crate::events::processing::DestroyExecutionReceipt>,
     ) -> Result<Option<OutcomeStatus>, ExecutionError> {
         let pre_snapshot = game
             .object(object_id)
@@ -90,9 +91,9 @@ impl DestroyEffect {
             game,
             object_id,
             Some(ctx.source),
-            &mut *ctx.decision_maker,
+            ctx,
             can_be_regenerated,
-        );
+        )?;
         if let Some(snapshot) = pre_snapshot
             && !game
                 .object(object_id)
@@ -104,7 +105,10 @@ impl DestroyEffect {
             }
         }
 
-        match result {
+        let Some(receipt) = result else { return Ok(None); };
+        let original = receipt.result.clone();
+        receipts.push(receipt);
+        match original {
             EventOutcome::Proceed(_) => Ok(None), // Successfully destroyed
             EventOutcome::Prevented => Ok(Some(crate::effect::OutcomeStatus::Protected)),
             EventOutcome::Replaced => Ok(Some(crate::effect::OutcomeStatus::Replaced)),
@@ -119,29 +123,25 @@ impl DestroyEffect {
 /// they aren't used up by it: when the permanent survives (indestructible, a
 /// shield counter, "can't be destroyed"), its shields are still there.
 pub(crate) fn process_destroy_with_regeneration(
-    game: &mut GameState,
-    object_id: crate::ids::ObjectId,
-    source: Option<crate::ids::ObjectId>,
-    decision_maker: &mut dyn crate::decision::DecisionMaker,
-    can_be_regenerated: bool,
-) -> EventOutcome<Zone> {
+    game: &mut GameState, object_id: crate::ids::ObjectId, source: Option<crate::ids::ObjectId>,
+    ctx: &mut ExecutionContext, can_be_regenerated: bool,
+) -> Result<Option<crate::events::processing::DestroyExecutionReceipt>, ExecutionError> {
+    if ctx.decision_maker.awaiting_choice() { return Ok(None); }
+    game.clear_pending_decision_controllers();
     if can_be_regenerated {
-        return process_destroy(game, object_id, source, decision_maker);
+        return crate::events::processing::process_destroy_scoped(game, object_id, source, ctx, None);
     }
-    let suspended = game
-        .effect_store
-        .replacement_effects
-        .suspend_regeneration_shields_from_source(object_id);
+    let checkpoint = game.clone();
+    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+    let suspended = game.effect_store.replacement_effects.suspend_regeneration_shields_from_source(object_id);
     let shield_count = game.regeneration_shield_count(object_id);
     game.clear_regeneration_shields(object_id);
-    let result = process_destroy(game, object_id, source, decision_maker);
-    if game
-        .object(object_id)
-        .is_some_and(|object| object.zone == Zone::Battlefield)
-    {
-        game.effect_store
-            .replacement_effects
-            .restore_suspended_effects(suspended);
+    let result = crate::events::processing::process_destroy_scoped(game, object_id, source, ctx, None);
+    if result.is_err() || ctx.decision_maker.awaiting_choice() {
+        game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice()); context_checkpoint.restore(ctx); return result;
+    }
+    if game.object(object_id).is_some_and(|object| object.zone == Zone::Battlefield) {
+        game.effect_store.replacement_effects.restore_suspended_effects(suspended);
         game.add_regeneration_shield(object_id, shield_count);
     }
     result
@@ -158,19 +158,31 @@ pub(crate) fn execute_single_target_destroy(
     spec: &ChooseSpec,
     can_be_regenerated: bool,
 ) -> Result<EffectOutcome, ExecutionError> {
+    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+    game.clear_pending_decision_controllers();
+    let checkpoint = game.clone();
+    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+    let mut receipts = Vec::new();
+    let result = (|| -> Result<EffectOutcome, ExecutionError> {
     let mut destroyed_memory = None;
     let outcome = apply_single_target_object_from_spec(game, ctx, spec, |game, ctx, object_id| {
         let pre_memory = OutcomeObjectMemory::from_object_id(game, object_id);
-        let status = DestroyEffect::destroy_object(game, ctx, object_id, can_be_regenerated)?;
+        let status = DestroyEffect::destroy_object(game, ctx, object_id, can_be_regenerated, &mut receipts)?;
         if status.is_none() {
-            destroyed_memory = pre_memory;
+            destroyed_memory = receipts.last().and_then(|receipt| receipt.snapshot.as_ref()).map(OutcomeObjectMemory::from_snapshot).or(pre_memory);
         }
         Ok(status)
     })?;
-    Ok(match destroyed_memory {
+    let original = match destroyed_memory {
         Some(memory) => outcome.with_affected_object_memory(vec![memory]),
         None => outcome,
-    })
+    };
+    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+    crate::events::processing::finish_destroy_receipts(game, ctx, original, receipts)
+    })();
+    if result.is_err() || ctx.decision_maker.awaiting_choice() { game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice()); context_checkpoint.restore(ctx); }
+    if result.is_ok() && ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+    result
 }
 
 /// Destroy every selected permanent as one simultaneous event (CR 701.8a,
@@ -183,9 +195,16 @@ pub(crate) fn execute_simultaneous_destroy(
     spec: &ChooseSpec,
     can_be_regenerated: bool,
 ) -> Result<EffectOutcome, ExecutionError> {
+    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+    game.clear_pending_decision_controllers();
+    let checkpoint = game.clone();
+    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+    let result = (|| -> Result<EffectOutcome, ExecutionError> {
+    let mut receipts = Vec::new();
     let selected_objects = match resolve_objects_for_effect(game, ctx, spec) {
         Ok(objects) => objects,
-        Err(_) => return Ok(EffectOutcome::target_invalid()),
+        Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::target_invalid()),
+        Err(error) => return Err(error),
     };
     if ctx.decision_maker.awaiting_choice() {
         return Ok(EffectOutcome::count(0));
@@ -216,10 +235,11 @@ pub(crate) fn execute_simultaneous_destroy(
             &mut staged_game,
             object_id,
             Some(ctx.source),
-            &mut *ctx.decision_maker,
+            ctx,
             can_be_regenerated,
-        );
+        )?;
         if ctx.decision_maker.awaiting_choice() {
+            game.retain_pending_decision_controllers_from(&mut staged_game);
             return Ok(EffectOutcome::count(0));
         }
         if let Some(snapshot) = pre_snapshot.as_ref()
@@ -229,6 +249,11 @@ pub(crate) fn execute_simultaneous_destroy(
         {
             departed_snapshots.push(snapshot.clone());
         }
+        let Some(receipt) = result else { return Ok(EffectOutcome::count(0)); };
+        let result = receipt.result.clone();
+        let object_id = receipt.permanent;
+        let pre_snapshot = receipt.snapshot.clone().or(pre_snapshot);
+        receipts.push(receipt);
         if matches!(result, EventOutcome::Proceed(Zone::Graveyard)) {
             applied_count += 1;
             if let Some(snapshot) = pre_snapshot.as_ref() {
@@ -249,6 +274,12 @@ pub(crate) fn execute_simultaneous_destroy(
         Some(ctx.source),
         &destroyed_objects,
     ) {
+        if ctx.decision_maker.awaiting_choice() {
+            // This prompt is asked against the immutable pre-event view.
+            let mut pending_view = decision_view.clone();
+            pending_view.capture_pending_decision_controllers();
+            game.retain_pending_decision_controllers_from(&mut pending_view);
+        }
         return Ok(EffectOutcome::count(0));
     }
     staged_game.close_simultaneous_action(opened_batch);
@@ -325,7 +356,11 @@ pub(crate) fn execute_simultaneous_destroy(
         outcome = outcome.with_affected_object_memory(destroyed_memory);
     }
 
-    Ok(outcome)
+    crate::events::processing::finish_destroy_receipts(game, ctx, outcome, receipts)
+    })();
+    if result.is_err() || ctx.decision_maker.awaiting_choice() { game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice()); context_checkpoint.restore(ctx); }
+    if result.is_ok() && ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+    result
 }
 
 impl EffectExecutor for DestroyEffect {
@@ -469,7 +504,7 @@ mod tests {
 
         game.update_replacement_effects();
         let mut dm = SelectFirstDecisionMaker;
-        let outcome = process_destroy(&mut game, victim, Some(source), &mut dm);
+        let outcome = process_destroy(&mut game, victim, Some(source), &mut dm).expect("destruction succeeds").expect("destruction is not pending");
 
         assert!(
             matches!(outcome, EventOutcome::Replaced),
@@ -515,7 +550,7 @@ mod tests {
 
         game.update_replacement_effects();
         let mut dm = SelectFirstDecisionMaker;
-        let outcome = process_destroy(&mut game, victim, Some(source), &mut dm);
+        let outcome = process_destroy(&mut game, victim, Some(source), &mut dm).expect("destruction succeeds").expect("destruction is not pending");
 
         assert!(
             matches!(outcome, EventOutcome::Replaced),
@@ -550,7 +585,7 @@ mod tests {
 
         game.update_replacement_effects();
         let mut dm = SelectFirstDecisionMaker;
-        let outcome = process_destroy(&mut game, noncreature_victim, Some(source), &mut dm);
+        let outcome = process_destroy(&mut game, noncreature_victim, Some(source), &mut dm).expect("destruction succeeds").expect("destruction is not pending");
 
         assert!(
             !matches!(outcome, EventOutcome::Replaced),
@@ -940,4 +975,109 @@ mod tests {
         // resolution's (a later instruction is a separate event).
         assert!(raw.simultaneous_batch().is_some());
     }
+}
+
+
+#[cfg(test)]
+mod deferred_destroy_owner_contract_tests {
+    use super::*;
+    use crate::effect::{Effect, Value};
+    use crate::ids::{CardId, ObjectId, PlayerId};
+    use crate::replacement::{ReplacementAction, ReplacementEffect};
+    struct Answers { pending: bool, pause: bool, questions: usize, originals: Vec<ObjectId>, instead: bool }
+    impl crate::decision::DecisionMaker for Answers {
+        fn decide_boolean(&mut self, game: &GameState, _: &crate::decisions::context::BooleanContext) -> bool {
+            self.questions += 1;
+            if !self.instead { assert!(self.originals.iter().all(|id| game.object(*id).is_none()), "the original destruction batch completes before additions"); }
+            self.pending = self.pause; !self.pause
+        }
+        fn awaiting_choice(&self) -> bool { self.pending }
+    }
+    fn perform(root: bool, game: &mut GameState, ctx: &mut ExecutionContext, originals: &[ObjectId]) -> Result<EffectOutcome, ExecutionError> {
+        if root {
+            // The pre-fix root API is scalar and the proposed root is fallible;
+            // common gameplay assertions below verify neither can publish a
+            // partially committed replacement or lose its observations.
+            let _result = crate::events::processing::process_destroy(game, originals[0], Some(ctx.source), ctx.decision_maker);
+            Ok(EffectOutcome::resolved())
+        } else {
+            let filter = ObjectFilter { any_of: originals.iter().copied().map(ObjectFilter::specific).collect(), ..ObjectFilter::default() };
+            DestroyEffect::all(filter).execute(game, ctx)
+        }
+    }
+    fn check(kind: u8, mode: u8) {
+        let root = kind == 2; let instead = kind == 1;
+        let mut game = crate::tests::test_helpers::setup_two_player_game(); let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let card = crate::card::CardBuilder::new(CardId::new(), "Destroy original").card_types(vec![crate::types::CardType::Creature]).power_toughness(crate::card::PowerToughness::fixed(2,2)).build();
+        let originals = (0..if root { 1 } else { 2 }).map(|_| game.create_object_from_card(&card, alice, Zone::Battlefield)).collect::<Vec<_>>();
+        let tracked = game.object(originals[0]).unwrap().stable_id;
+        let parent_card = crate::card::CardBuilder::new(CardId::new(), "Destroy parent").card_types(vec![crate::types::CardType::Creature]).power_toughness(crate::card::PowerToughness::fixed(1,1)).build();
+        let parent = game.create_object_from_card(&parent_card, alice, Zone::Battlefield);
+        let replacement_card = crate::card::CardBuilder::new(CardId::new(), "Destroy replacement").card_types(vec![crate::types::CardType::Creature]).power_toughness(crate::card::PowerToughness::fixed(4,4)).build();
+        let replacement_source = game.create_object_from_card(&replacement_card, bob, Zone::Battlefield);
+        let effects = if mode == 3 { vec![Effect::new(crate::effects::PutCountersEffect::new(crate::object::CounterType::PlusOnePlusOne, 1, ChooseSpec::tagged("it")))] }
+            else if mode == 1 { vec![Effect::gain_life(3), Effect::lose_life(Value::X)] }
+            else { let mut effects = vec![Effect::gain_life(if instead { Value::SourcePower } else { Value::Fixed(3) }), Effect::may(vec![Effect::gain_life(4)])]; if mode == 2 { effects.push(Effect::gain_life(5)); } effects };
+        let action = if instead { ReplacementAction::Instead(effects) } else { ReplacementAction::Additionally(effects) };
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(replacement_source, bob,
+            crate::events::permanents::matchers::WouldBeDestroyedMatcher::new(ObjectFilter::specific(originals[0])), action));
+        game.take_pending_trigger_events(); let before_ids = game.next_object_id_counter();
+        let sentinel = ObjectSnapshot::from_object(game.object(parent).unwrap(), &game);
+        let mut dm = Answers { pending: false, pause: mode == 2, questions: 0, originals: originals.clone(), instead };
+        let mut ctx = ExecutionContext::new(parent, alice, &mut dm); ctx.set_tagged_objects("it", vec![sentinel.clone()]);
+        let result = perform(root, &mut game, &mut ctx, &originals);
+        if mode == 1 && !root { assert!(matches!(result, Err(ExecutionError::UnresolvableValue(_))), "destruction cannot suppress replacement errors"); }
+        else if mode == 2 { assert!(ctx.decision_maker.awaiting_choice()); }
+        else if mode != 1 {
+            let outcome = result.unwrap();
+            if !root { assert_eq!(outcome.count_or_zero(), if instead {1} else {2}); }
+            if mode == 3 {
+                let object = game.find_object_by_stable_id(tracked).unwrap();
+                assert_eq!(game.object(object).unwrap().counters.get(&crate::object::CounterType::PlusOnePlusOne), Some(&1));
+                assert!(!game.object(parent).unwrap().counters.contains_key(&crate::object::CounterType::PlusOnePlusOne));
+                if !root {
+                    // The counter payload's exact object/zone remains an observation.
+                    assert!(outcome.execution_facts.iter().any(|fact| matches!(fact,
+                        ExecutionFact::AffectedObjectMemory(memories) if memories.iter().any(|m|
+                            m.object_id == object && m.zone == if instead {Zone::Battlefield} else {Zone::Graveyard}))));
+                    // "Destroyed this way" reads only original destruction LKI.
+                    let destroyed = outcome.affected_object_memory().unwrap();
+                    assert_eq!(destroyed.len(), if instead { 1 } else { 2 });
+                    assert!(destroyed.iter().all(|memory| memory.zone == Zone::Battlefield
+                        && originals.contains(&memory.object_id)));
+                    assert_eq!(destroyed.iter().any(|memory| memory.object_id == originals[0]), !instead);
+                }
+            } else {
+                assert_eq!(game.player(bob).unwrap().life, if instead {28} else {27}, "replacement uses its own source/controller");
+                let events = if root { game.take_pending_trigger_events() } else { outcome.events };
+                assert_eq!(events.iter().filter_map(|e| e.downcast::<crate::events::LifeGainEvent>()).map(|e| (e.player,e.amount)).collect::<Vec<_>>(), vec![(bob,if instead {4} else {3}),(bob,4)]);
+            }
+        }
+        assert_eq!(ctx.source,parent); assert_eq!(ctx.controller,alice); assert_eq!(ctx.get_tagged_all("it").unwrap()[0].object_id,parent); drop(ctx);
+        if mode == 1 || mode == 2 {
+            assert!(originals.iter().all(|id| game.object(*id).is_some_and(|o| o.zone == Zone::Battlefield)));
+            assert!(game.player(alice).unwrap().graveyard.is_empty()); assert_eq!(game.player(bob).unwrap().life,20); assert_eq!(game.next_object_id_counter(),before_ids);
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_some()); assert!(game.take_pending_trigger_events().is_empty());
+        } else { assert!(game.effect_store.replacement_effects.get_effect(shield).is_none()); }
+        if mode == 2 {
+            assert_eq!(dm.questions,1); let mut dm = Answers { pending:false,pause:false,questions:0,originals:originals.clone(),instead };
+            let mut ctx = ExecutionContext::new(parent,alice,&mut dm); let outcome = perform(root,&mut game,&mut ctx,&originals).unwrap(); assert!(!ctx.decision_maker.awaiting_choice()); drop(ctx);
+            assert_eq!(dm.questions,1); if !root { assert_eq!(outcome.count_or_zero(),if instead {1} else {2}); }
+            assert_eq!(game.player(bob).unwrap().life,if instead {33} else {32}); assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+            let events = if root {game.take_pending_trigger_events()} else {outcome.events};
+            assert_eq!(events.iter().filter_map(|e| e.downcast::<crate::events::LifeGainEvent>()).map(|e| e.amount).collect::<Vec<_>>(),vec![if instead {4} else {3},4,5]);
+        }
+    }
+    #[test] fn additional_destroy_batch_success() { check(0,0); }
+    #[test] fn additional_destroy_batch_error() { check(0,1); }
+    #[test] fn additional_destroy_batch_pending_replay() { check(0,2); }
+    #[test] fn additional_destroy_batch_object_binding() { check(0,3); }
+    #[test] fn instead_destroy_batch_success() { check(1,0); }
+    #[test] fn instead_destroy_batch_error() { check(1,1); }
+    #[test] fn instead_destroy_batch_pending_replay() { check(1,2); }
+    #[test] fn instead_destroy_batch_object_binding() { check(1,3); }
+    #[test] fn additional_destroy_root_success() { check(2,0); }
+    #[test] fn additional_destroy_root_error() { check(2,1); }
+    #[test] fn additional_destroy_root_pending_replay() { check(2,2); }
+    #[test] fn additional_destroy_root_object_binding() { check(2,3); }
 }

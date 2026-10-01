@@ -111,7 +111,7 @@ mod tests {
     use crate::decision::SelectFirstDecisionMaker;
     use crate::effects::ResolvedTarget;
     use crate::events::cause::EventCause;
-    use crate::events::processing::process_damage_with_event;
+    use crate::events::processing::process_damage_summary_for_test;
     use crate::filter::ObjectFilter;
     use crate::{CardDefinitionBuilder, CardId, CardType, PowerToughness, Zone};
 
@@ -160,7 +160,7 @@ mod tests {
             .execute(&mut game, &mut ctx)
             .expect("register shield");
 
-        let (other_damage, other_replaced) = process_damage_with_event(
+        let (other_damage, other_replaced) = process_damage_summary_for_test(
             &mut game,
             source,
             DamageTarget::Object(other),
@@ -175,7 +175,7 @@ mod tests {
             Some(Zone::Battlefield)
         );
 
-        let (protected_damage, protected_replaced_or_prevented) = process_damage_with_event(
+        let (protected_damage, protected_replaced_or_prevented) = process_damage_summary_for_test(
             &mut game,
             source,
             DamageTarget::Object(protected),

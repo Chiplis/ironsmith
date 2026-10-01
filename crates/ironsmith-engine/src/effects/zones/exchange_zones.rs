@@ -1,5 +1,6 @@
 //! Exchange whole-zone contents effect implementation.
 
+use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
@@ -51,49 +52,58 @@ impl EffectExecutor for ExchangeZonesEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if self.zone1 == self.zone2 {
-            return Ok(EffectOutcome::resolved());
-        }
-        if !Self::supported_zone(self.zone1) || !Self::supported_zone(self.zone2) {
-            return Ok(EffectOutcome::impossible());
-        }
-
-        let player = match resolve_player_filter(game, &self.player, ctx) {
-            Ok(player) => player,
-            Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::target_invalid()),
-            Err(err) => return Err(err),
-        };
-
-        let from_zone1 = Self::zone_objects(game, player, self.zone1);
-        let from_zone2 = Self::zone_objects(game, player, self.zone2);
-        let mut moved = Vec::new();
-
-        // CR 614.1: each card still changes zones through the replacement
-        // pipeline (Rest in Peace, a commander's CR 903.9b choice), so one
-        // replaced card doesn't stop the rest of the exchange.
-        let moves = from_zone1
-            .into_iter()
-            .map(|object_id| (object_id, self.zone1, self.zone2))
-            .chain(
-                from_zone2
-                    .into_iter()
-                    .map(|object_id| (object_id, self.zone2, self.zone1)),
-            )
-            .collect::<Vec<_>>();
-        for (object_id, from, to) in moves {
-            if let crate::events::processing::EventOutcome::Proceed(result) = super::apply_zone_change(
-                game,
-                object_id,
-                from,
-                to,
-                ctx.cause.clone(),
-                &mut *ctx.decision_maker,
-            ) {
-                moved.extend(result.new_object_ids);
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::with_objects(Vec::new())); }
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
+            if self.zone1 == self.zone2 { return Ok(EffectOutcome::resolved()); }
+            if !Self::supported_zone(self.zone1) || !Self::supported_zone(self.zone2) {
+                return Ok(EffectOutcome::impossible());
             }
+            let player = match resolve_player_filter(game, &self.player, ctx) {
+                Ok(player) => player,
+                Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::target_invalid()),
+                Err(error) => return Err(error),
+            };
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::with_objects(Vec::new())); }
+            // Freeze both original memberships before moving any card. Neither
+            // arriving cards nor replacement-generated cards join this exchange.
+            let moves = Self::zone_objects(game, player, self.zone1).into_iter()
+                .map(|id| (id, self.zone1, self.zone2))
+                .chain(Self::zone_objects(game, player, self.zone2).into_iter()
+                    .map(|id| (id, self.zone2, self.zone1))).collect::<Vec<_>>();
+            let pinned = crate::effects::helpers::begin_simultaneous_zone_change_lookback(game);
+            let mut receipts = Vec::with_capacity(moves.len());
+            let original = (|| -> Result<EffectOutcome, ExecutionError> {
+                let mut moved = Vec::new();
+                for (id, from, to) in moves {
+                    let additional = ctx.additional_replacement_effects_snapshot();
+                    let receipt = apply_zone_change_with_context_and_additional_effects(
+                        game, id, from, to, ctx.cause.clone(), ctx, &additional)?;
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(EffectOutcome::with_objects(Vec::new()));
+                    }
+                    if let crate::events::processing::EventOutcome::Proceed(change) = &receipt.original {
+                        moved.extend(change.new_object_ids.iter().copied());
+                    }
+                    // A prevented or replaced original can still own additions.
+                    receipts.push((id, receipt));
+                }
+                Ok(EffectOutcome::with_objects(moved.clone())
+                    .with_affected_objects_from_game(game, moved))
+            })();
+            crate::effects::helpers::end_simultaneous_zone_change_lookback(game, pinned);
+            let original = original?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::with_objects(Vec::new())); }
+            // The exchange owns all original movements before additions run.
+            super::finish_zone_change_receipts(game, ctx, original, receipts)
+        })();
+        if instruction.is_err() || ctx.decision_maker.awaiting_choice() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
         }
-
-        Ok(EffectOutcome::with_objects(moved))
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::with_objects(Vec::new())); }
+        instruction
     }
 }
 

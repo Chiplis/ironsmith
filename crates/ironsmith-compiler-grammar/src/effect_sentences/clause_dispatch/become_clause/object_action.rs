@@ -453,6 +453,48 @@ pub fn parse_become_clause(
                 .collect::<Vec<_>>();
             let prefix = become_grammar::parse_become_leading_creature_prefix(&descriptor_words);
             let mut suffix_tokens = suffix_tokens;
+            // "becomes a 4/4 Spirit artifact creature that's no longer an
+            // Equipment" (Haunted Plate Mail): a trailing subtype removal.
+            let mut removed_subtypes = Vec::new();
+            {
+                let positions = crate::lexer::parser_token_word_positions(suffix_tokens);
+                let words = positions.iter().map(|(_, word)| *word).collect::<Vec<_>>();
+                let head_len = match words.as_slice() {
+                    ["that's" | "thats", "no", "longer", "a" | "an", ..] => Some(4),
+                    ["that", "s" | "is", "no", "longer", "a" | "an", ..] => Some(5),
+                    _ => None,
+                };
+                if let Some(head_len) = head_len
+                    && words.len() > head_len
+                    && let Some(subtypes) = words[head_len..]
+                        .iter()
+                        .filter(|word| !matches!(**word, "or" | "and" | "a" | "an"))
+                        .map(|word| crate::util::parse_subtype_flexible(word))
+                        .collect::<Option<Vec<_>>>()
+                    && !subtypes.is_empty()
+                {
+                    removed_subtypes = subtypes;
+                    suffix_tokens = &[];
+                }
+            }
+            let removal_target = target.clone();
+            let removal_duration = duration.clone();
+            let with_subtype_removal = |effect: EffectAst| -> EffectAst {
+                if removed_subtypes.is_empty() {
+                    effect
+                } else {
+                    EffectAst::Sequence {
+                        effects: vec![
+                            effect,
+                            EffectAst::subject_verb_remove_subtypes(
+                                removal_target.clone(),
+                                removed_subtypes.clone(),
+                                removal_duration.clone(),
+                            ),
+                        ],
+                    }
+                }
+            };
             let mut remove_all_abilities = false;
             if let Some(index) = suffix_tokens.windows(4).position(|window| {
                 window[0].is_word("and")
@@ -469,7 +511,16 @@ pub fn parse_become_clause(
                 .first()
                 .is_some_and(|token| token.is_word("named"))
             {
-                let name = crate::lexer::parser_token_word_refs(&suffix_tokens[1..]).join(" ");
+                // Keep the printed casing of the name ("named Fenric").
+                let name_tokens =
+                    crate::util::trim_edge_punctuation_tokens(&suffix_tokens[1..]);
+                let name = if crate::lexer::parser_token_word_refs(name_tokens).is_empty() {
+                    String::new()
+                } else {
+                    crate::lexer::render_literal_token_slice(name_tokens)
+                        .trim()
+                        .to_string()
+                };
                 if name.is_empty() {
                     return Err(CardTextError::ParseError(
                         "missing transformation name".into(),
@@ -583,7 +634,7 @@ pub fn parse_become_clause(
                 *supertypes = add_supertypes;
                 *remove = remove_all_abilities;
             }
-            return Ok(effect);
+            return Ok(with_subtype_removal(effect));
         }
         let (descriptor_words, preserve_other_types) =
             become_grammar::strip_become_addition_tail_words(&become_words[value_word_count..]);
@@ -612,7 +663,29 @@ pub fn parse_become_clause(
         }
     }
 
-    if let Some(pt) = become_grammar::parse_become_base_pt_words(become_words)
+    // "becomes a Kithkin Spirit Warrior Avatar with base power and toughness
+    // 8/8, flying, and first strike" (Figure of Destiny): keyword abilities
+    // listed after the base P/T are gained along with it.
+    let base_pt_with_abilities = become_grammar::parse_become_base_pt_words(become_words)
+        .map(|pt| (pt, Vec::new()))
+        .or_else(|| {
+            let positions = crate::lexer::parser_token_word_positions(become_body_tokens);
+            if positions.len() != become_words.len() {
+                return None;
+            }
+            (1..become_words.len()).rev().find_map(|split| {
+                let pt = become_grammar::parse_become_base_pt_words(&become_words[..split])?;
+                let ability_tokens = &become_body_tokens[positions[split].0..];
+                let actions = parse_ability_line(ability_tokens)?;
+                let action_count = actions.len();
+                let abilities = actions
+                    .into_iter()
+                    .filter_map(keyword_action_to_static_ability)
+                    .collect::<Vec<_>>();
+                (action_count > 0 && abilities.len() == action_count).then_some((pt, abilities))
+            })
+        });
+    if let Some((pt, trailing_abilities)) = base_pt_with_abilities
         && let (descriptor_words, preserve_other_types) =
             become_grammar::strip_become_addition_tail_words(pt.descriptor_words)
         && let Some(descriptor) =
@@ -622,15 +695,26 @@ pub fn parse_become_clause(
         // power and base toughness each equal to its mana value" (Zur,
         // Eternal Schemer) keeps the object's other types.
         let explicit_creature_noun = descriptor.subtypes.is_empty();
+        // "becomes a green Wurm with base power and toughness 6/4" names no
+        // card type: the creature type is implied, and the object's own card
+        // types are untouched. An empty list asks lowering for exactly that.
+        let authored_card_type = descriptor_words
+            .iter()
+            .any(|word| crate::util::parse_card_type(word).is_some());
+        let card_types = if authored_card_type || preserve_other_types {
+            descriptor.card_types
+        } else {
+            Vec::new()
+        };
         return Ok(EffectAst::subject_verb_become_base_pt_creature(
             pt.power,
             pt.toughness,
             target,
-            descriptor.card_types,
+            card_types,
             descriptor.subtypes,
             Vec::new(),
             descriptor.colors,
-            Vec::new(),
+            trailing_abilities,
             Vec::new(),
             preserve_other_types,
             preserve_other_types.then_some(if explicit_creature_noun {

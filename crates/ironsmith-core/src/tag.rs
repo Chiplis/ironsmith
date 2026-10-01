@@ -71,6 +71,11 @@ pub const SPELLS_CAST_THIS_TURN_TAG: &str = "__spells_cast_this_turn__";
 /// references without inventing a separate player-filter primitive.
 pub const SOURCE_OBJECT_TAG: &str = "__source_object__";
 
+/// Runtime player tag for the opponent a resolving clash was performed with
+/// (CR 701.30a). "Clash with an opponent. ... Otherwise, that player ..."
+/// refers back to this player.
+pub const CLASH_OPPONENT_TAG: &str = "__clash_opponent__";
+
 /// Runtime tag for the object whose effect granted the resolving ability to
 /// its source (CR 113.3, 613.1f): the Equipment or Aura in `Equipped creature
 /// has "... Return Trusty Boomerang to its owner's hand."`. Captured when an

@@ -36,6 +36,10 @@ pub struct DelayedNextCombatShape<'a> {
     /// "each combat this turn" rather than "the next combat this turn": the
     /// delayed trigger fires every combat until end of turn.
     pub each_combat: bool,
+    /// Whether the header is scoped to "this turn". "At the beginning of the
+    /// next combat, ..." (Legion's Initiative) waits for the next combat
+    /// whenever it happens.
+    pub this_turn: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -219,7 +223,7 @@ pub fn parse_delayed_next_combat_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DelayedNextCombatShape<'_>> {
     let tokens = trimmed(tokens);
-    let ((each_combat, _, _, _), after_header) = primitives::parse_prefix(
+    let ((each_combat, _, this_turn, _), after_header) = primitives::parse_prefix(
         tokens,
         (
             alt((
@@ -229,14 +233,21 @@ pub fn parse_delayed_next_combat_shape(
                     .value(true),
             )),
             opt(primitives::kw("phase")),
-            primitives::phrase(&["this", "turn"]),
+            opt(primitives::phrase(&["this", "turn"])),
             primitives::comma(),
         ),
     )?;
+    let this_turn = this_turn.is_some();
+    // "each combat" without a turn scope is a recurring trigger, not a
+    // delayed one.
+    if each_combat && !this_turn {
+        return None;
+    }
     let effect_tokens = trimmed(after_header);
     (!effect_tokens.is_empty()).then_some(DelayedNextCombatShape {
         effect_tokens,
         each_combat,
+        this_turn,
     })
 }
 

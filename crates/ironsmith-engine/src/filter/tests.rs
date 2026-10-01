@@ -1299,6 +1299,8 @@ fn filter_description_compacts_the_complete_owned_nonbattlefield_zone_union() {
         Zone::Graveyard,
         Zone::Exile,
         Zone::Command,
+        Zone::Stack,
+        Zone::Ante,
     ]
     .into_iter()
     .map(|zone| {
@@ -1309,6 +1311,7 @@ fn filter_description_compacts_the_complete_owned_nonbattlefield_zone_union() {
             ..Default::default()
         };
         branch.set_explicit_card_noun(true);
+        if zone == Zone::Stack { branch.stack_kind = Some(StackObjectKind::Spell); }
         branch
     })
     .collect();
@@ -1331,6 +1334,8 @@ fn owned_nonbattlefield_union_compaction_rejects_an_extra_controller_constraint(
         Zone::Graveyard,
         Zone::Exile,
         Zone::Command,
+        Zone::Stack,
+        Zone::Ante,
     ]
     .into_iter()
     .map(|zone| {
@@ -1341,6 +1346,7 @@ fn owned_nonbattlefield_union_compaction_rejects_an_extra_controller_constraint(
             ..Default::default()
         };
         branch.set_explicit_card_noun(true);
+        if zone == Zone::Stack { branch.stack_kind = Some(StackObjectKind::Spell); }
         branch
     })
     .collect::<Vec<_>>();
@@ -1373,6 +1379,8 @@ fn filter_description_compacts_controlled_and_owned_nonbattlefield_domains() {
             Zone::Graveyard,
             Zone::Exile,
             Zone::Command,
+        Zone::Stack,
+        Zone::Ante,
         ]
         .into_iter()
         .map(|zone| {
@@ -1383,6 +1391,7 @@ fn filter_description_compacts_controlled_and_owned_nonbattlefield_domains() {
                 ..Default::default()
             };
             branch.set_explicit_card_noun(true);
+        if zone == Zone::Stack { branch.stack_kind = Some(StackObjectKind::Spell); }
             branch.set_plural_object_noun_surface(true);
             branch
         }),
@@ -1397,6 +1406,23 @@ fn filter_description_compacts_controlled_and_owned_nonbattlefield_domains() {
         union.description(),
         "lands you control and land cards you own that aren't on the battlefield"
     );
+}
+
+#[test]
+fn partial_nonbattlefield_union_does_not_claim_all_owned_cards() {
+    let mut branches = [Zone::Hand, Zone::Library, Zone::Graveyard, Zone::Exile, Zone::Command]
+        .into_iter().map(|zone| {
+            let mut branch = ObjectFilter { zone: Some(zone), owner: Some(PlayerFilter::You), card_types: vec![CardType::Creature], ..Default::default() };
+            branch.set_explicit_card_noun(true); branch
+        }).collect::<Vec<_>>();
+    let partial = ObjectFilter { any_of: branches.clone(), ..Default::default() };
+    assert_ne!(partial.description(), "creature cards you own that aren't on the battlefield");
+    let mut battlefield = ObjectFilter::creature().controlled_by(PlayerFilter::You);
+    battlefield.set_plural_object_noun_surface(true);
+    branches.insert(0, battlefield);
+    let mut coordinated = ObjectFilter { any_of: branches, ..Default::default() };
+    coordinated.set_conjunctive_set_surface(true);
+    assert_ne!(coordinated.description(), "creatures you control and creature cards you own that aren't on the battlefield");
 }
 
 #[test]
@@ -3233,4 +3259,30 @@ fn explicit_other_than_source_does_not_change_with_announced_targets() {
             );
         }
     }
+}
+
+#[test]
+fn qualified_rider_candidate_owner_filter_binds_live_and_snapshot_subjects() {
+    let mut game = crate::game_state::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let alice = game.players[0].id;
+    let bob = game.players[1].id;
+    let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Candidate owner probe")
+        .card_types(vec![crate::types::CardType::Instant]).build();
+    let id = game.create_object_from_card(&card, alice, crate::zone::Zone::Stack);
+    game.set_current_controller(id, bob);
+    let ctx = game.filter_context_for(bob, Some(id));
+    let snapshot = crate::snapshot::ObjectSnapshot::from_object(game.object(id).unwrap(), &game);
+    let candidate_owner = crate::filter::PlayerFilter::OwnerOf(crate::filter::ObjectRef::FilterCandidate);
+    let filter = crate::filter::ObjectFilter::source().owned_by(candidate_owner.clone());
+    assert!(filter.matches(game.object(id).unwrap(), &ctx, &game), "live owner binding");
+    assert!(filter.matches_snapshot(&snapshot, &ctx, &game), "snapshot owner binding");
+    let wrong_controller = crate::filter::ObjectFilter::source().controlled_by(candidate_owner);
+    assert!(!wrong_controller.matches(game.object(id).unwrap(), &ctx, &game));
+    assert!(!wrong_controller.matches_snapshot(&snapshot, &ctx, &game));
+    let mut outer = ctx.clone();
+    outer.filter_candidate_players = Some((bob, bob));
+    assert!(!filter.matches(game.object(id).unwrap(), &outer, &game), "retain outer owner binding");
+    assert!(!filter.matches_snapshot(&snapshot, &outer, &game), "retain snapshot outer owner binding");
+    assert!(wrong_controller.matches(game.object(id).unwrap(), &outer, &game));
+    assert!(wrong_controller.matches_snapshot(&snapshot, &outer, &game));
 }

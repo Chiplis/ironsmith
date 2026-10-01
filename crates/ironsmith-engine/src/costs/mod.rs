@@ -869,3 +869,18 @@ pub(crate) fn legal_discard_cost_cards(
         })
         .collect()
 }
+
+
+/// Selected discard payment and affordability use the same eligible set.
+/// Entry replacements cannot choose any member of their simultaneous entry
+/// batch to change zones (CR 614.13a), even while it remains in hand.
+pub(crate) fn legal_discard_cost_cards_in_context(
+    game: &crate::game_state::GameState,
+    ctx: &crate::costs::CostContext<'_>,
+    filter: &crate::filter::ObjectFilter,
+) -> Vec<crate::ids::ObjectId> {
+    legal_discard_cost_cards(game, ctx.payer, ctx.source, filter)
+        .into_iter()
+        .filter(|id| !ctx.replacement.entry_reserved_objects.contains(id))
+        .collect()
+}

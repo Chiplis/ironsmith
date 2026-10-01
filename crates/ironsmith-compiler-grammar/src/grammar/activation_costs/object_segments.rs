@@ -82,6 +82,18 @@ pub fn parse_sacrifice_segment_tokens(
     contextual_source_reference: impl Fn(&[&str]) -> Option<crate::target::SourceReferenceSurface>,
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
     let words = primitives::TokenWordView::new(tokens);
+    // "Sacrifice <this Equipment's name>" inside the ability it grants: the
+    // granting attachment, chosen by identity and then sacrificed.
+    if words.len() > 1
+        && words.word_refs()[1..] == *crate::preprocess::GRANTING_SOURCE_SURFACE_WORDS
+    {
+        let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::GrantingSource.key());
+        filter.zone = Some(Zone::Battlefield);
+        return Ok(ActivationCostSegmentCst::SacrificeChosen {
+            count: ChoiceCount::exactly(1),
+            filter,
+        });
+    }
     if words.len() > 1
         && let Some(surface) = contextual_source_reference(&words.word_refs()[1..])
     {
@@ -258,6 +270,11 @@ pub fn parse_unattach_segment_tokens(
                     filter.card_types.push(CardType::Artifact);
                 }
                 filter.zone.get_or_insert(Zone::Battlefield);
+            }
+            // "Unattach an Equipment from <this>": only an object attached to
+            // the source can be chosen to pay the cost.
+            if filter.attached_to_object.is_none() {
+                filter.attached_to_object = Some(Box::new(ObjectFilter::source()));
             }
             Ok(ActivationCostSegmentCst::UnattachChosen {
                 count: shape.count,

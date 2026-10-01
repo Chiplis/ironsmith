@@ -58,7 +58,7 @@ fn echo_inspector_connives_only_itself_and_counts_nonland_discards() {
                 game.create_object_from_definition(&definition, alice, Zone::Battlefield);
             let hand = game.create_object_from_definition(&definition, alice, Zone::Hand);
             let source = game
-                .move_object_with_etb_processing(hand, Zone::Battlefield)
+                .move_object_with_etb_processing(hand, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
                 .unwrap()
                 .new_id;
             assert!(game.object_has_static_ability_id(
@@ -134,7 +134,7 @@ fn echo_inspector_connive_uses_current_or_last_controller() {
         }
         let hand = game.create_object_from_definition(&definition, alice, Zone::Hand);
         let source = game
-            .move_object_with_etb_processing(hand, Zone::Battlefield)
+            .move_object_with_etb_processing(hand, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
             .unwrap()
             .new_id;
         let mut queue = TriggerQueue::new();
@@ -178,7 +178,7 @@ fn echo_inspector_original_entry_does_not_connive_a_later_incarnation() {
     game.create_object_from_definition(&filler, alice, Zone::Library);
     let hand = game.create_object_from_definition(&definition, alice, Zone::Hand);
     let source = game
-        .move_object_with_etb_processing(hand, Zone::Battlefield)
+        .move_object_with_etb_processing(hand, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     let mut queue = TriggerQueue::new();
@@ -193,7 +193,7 @@ fn echo_inspector_original_entry_does_not_connive_a_later_incarnation() {
     assert_eq!(queue.entries.len(), 1);
     let exiled = game.move_object_by_effect(source, Zone::Exile).unwrap();
     let returned = game
-        .move_object_with_etb_processing(exiled, Zone::Battlefield)
+        .move_object_with_etb_processing(exiled, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     // Isolate the first entry's ability. The new entry has its own independent
@@ -221,4 +221,13 @@ fn echo_inspector_original_entry_does_not_connive_a_later_incarnation() {
         0,
         "the old entry's connive must not put a counter on a later incarnation"
     );
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: ironsmith::game_state::EntryCommitResult)
+    -> Option<ironsmith::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

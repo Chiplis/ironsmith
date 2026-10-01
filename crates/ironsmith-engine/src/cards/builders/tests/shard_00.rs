@@ -1600,7 +1600,7 @@ pub(super) fn consulate_surveillance_prevents_damage_from_chosen_source_only() {
         "prevention shield should be restricted to the chosen source"
     );
 
-    let (chosen_remaining, _) = crate::events::processing::process_damage_with_event(
+    let (chosen_remaining, _) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         chosen_source,
         crate::events::DamageTarget::Player(alice),
@@ -1613,7 +1613,7 @@ pub(super) fn consulate_surveillance_prevents_damage_from_chosen_source_only() {
         "chosen source damage should be prevented"
     );
 
-    let (chosen_to_bob_remaining, _) = crate::events::processing::process_damage_with_event(
+    let (chosen_to_bob_remaining, _) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         chosen_source,
         crate::events::DamageTarget::Player(bob),
@@ -1626,7 +1626,7 @@ pub(super) fn consulate_surveillance_prevents_damage_from_chosen_source_only() {
         "chosen source damage to another player should not be prevented"
     );
 
-    let (other_remaining, _) = crate::events::processing::process_damage_with_event(
+    let (other_remaining, _) = crate::events::processing::process_damage_summary_for_test(
         &mut game,
         other_source,
         crate::events::DamageTarget::Player(alice),

@@ -76,7 +76,7 @@ fn cast(
     eprintln!("AUDIT_STAGE cast {}", def.name());
     g.turn.priority_player = Some(actor);
     let id = g.create_object_from_definition(def, actor, Zone::Hand);
-    let action = compute_legal_actions(g, actor)
+    let action = compute_legal_actions(g, actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or_else(|| format!("{} normal cast unavailable", def.name()))?;
@@ -252,7 +252,7 @@ fn run(def: &CardDefinition, serra: &CardDefinition, mode: usize, _: usize) -> R
   if mode==2||mode==3 {attacks.push(AttackerDeclaration{creature:angel,target:AttackTarget::Player(PlayerId(1))});}
   ironsmith::game_loop::apply_attacker_declarations_with_dm(&mut g,&mut combat,&mut q,&attacks,&mut dm).map_err(|e|e.to_string())?;g.combat=Some(combat);resolve_all(&mut g,&mut q,&mut dm)?;mana(&mut g);
  }
- g.turn.priority_player=Some(PlayerId(0));let action=compute_legal_actions(&g,PlayerId(0)).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:s,..}if *s==source));let offered=action.is_some();let mut announcement_error=None;let mut resolution_error=None;let before=g.player(PlayerId(0)).unwrap().mana_pool.total();
+ g.turn.priority_player=Some(PlayerId(0));let action=compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:s,..}if *s==source));let offered=action.is_some();let mut announcement_error=None;let mut resolution_error=None;let before=g.player(PlayerId(0)).unwrap().mana_pool.total();
  let before_abilities=format!("{:?}",g.current_abilities(source));
  if let Some(a)=action{announcement_error=announce(&mut g,&mut q,&mut dm,a).err();if announcement_error.is_none(){resolution_error=resolve_all(&mut g,&mut q,&mut dm).err();}}
  let paid_pump=before-g.player(PlayerId(0)).unwrap().mana_pool.total();

@@ -105,7 +105,7 @@ fn cast(
     eprintln!("AUDIT_STAGE cast {}", def.name());
     g.turn.priority_player = Some(actor);
     let id = g.create_object_from_definition(def, actor, Zone::Hand);
-    let action = compute_legal_actions(g, actor)
+    let action = compute_legal_actions(g, actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or_else(|| format!("{} normal cast unavailable", def.name()))?;
@@ -291,7 +291,7 @@ fn activation(
     source: ObjectId,
 ) -> Result<Value, String> {
     g.turn.priority_player = Some(PlayerId(0));
-    let a = compute_legal_actions(g, PlayerId(0))
+    let a = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::ActivateAbility{source:s,..}|LegalAction::ActivateManaAbility{source:s,..}if *s==source) && dm.activation_hint.is_none_or(|hint| match a { LegalAction::ActivateAbility{ability_index,..}|LegalAction::ActivateManaAbility{ability_index,..} => g.current_abilities(source).is_some_and(|abilities|abilities.get(*ability_index).is_some_and(|a|format!("{a:?}").contains(hint))), _=>false }));
     let before = g.player(PlayerId(0)).unwrap().mana_pool.total() as i64;
@@ -334,7 +334,7 @@ fn run(def:&CardDefinition,defs:&std::collections::HashMap<&str,CardDefinition>,
  }
  // Opponents draw the canonical Elf from their actual draw steps; no discard
  // or exile event, stash counter, permission or target binding is injected.
- let mut off_action=false;for n in 0..count{advance_turn(&mut g,&mut q,&mut dm)?;if n==0{off_action=compute_legal_actions(&g,PlayerId(0)).iter().any(|a|matches!(a,LegalAction::ActivateAbility{source:s,..}if *s==source));}}
+ let mut off_action=false;for n in 0..count{advance_turn(&mut g,&mut q,&mut dm)?;if n==0{off_action=compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state").iter().any(|a|matches!(a,LegalAction::ActivateAbility{source:s,..}if *s==source));}}
  let hands:Vec<_>=(1..count).map(|n|g.player(PlayerId(n as u8)).unwrap().hand.iter().map(|id|g.object(*id).unwrap().name.to_string()).collect::<Vec<_>>()).collect();
  if mode>0&&hands.iter().enumerate().any(|(i,h)|h!=&vec![if mode==3&&i==1{"Elvish Mystic".to_string()}else{"Llanowar Elves".to_string()}]){return Err(format!("actual draw resource mismatch {hands:?}"));}
  // Empty-hand control spends each opposing neutral drawn artifact through its
@@ -346,7 +346,7 @@ fn run(def:&CardDefinition,defs:&std::collections::HashMap<&str,CardDefinition>,
  let after_hands:Vec<_>=(1..count).map(|n|g.player(PlayerId(n as u8)).unwrap().hand.len()).collect();
  let all_exiled:Vec<_>=g.exile.iter().copied().filter(|id|g.object(*id).is_some_and(|o|o.owner!=PlayerId(0))).collect();
  let exiled_names:Vec<_>=all_exiled.iter().map(|id|g.object(*id).unwrap().name.to_string()).collect();
- let permissions:Vec<_>=all_exiled.iter().map(|id|compute_legal_actions(&g,PlayerId(0)).iter().any(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if spell_id==id))).collect();
+ let permissions:Vec<_>=all_exiled.iter().map(|id|compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state").iter().any(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if spell_id==id))).collect();
  let expected=json!({"activation":expected_activation(4),"opponent_turn_activation_offered":false,"source_tapped":true,"each_opponent_discarded_one":true,"exiled_with_stash":count-1,"all_opponent_exiled":count-1,"stash_counters":vec![1;count-1],"each_exiled_cast_offered":vec![true;count-1]});
  let actual=json!({"activation":a,"opponent_turn_activation_offered":off_action,"source_tapped":g.is_tapped(source),"each_opponent_discarded_one":before_hands.iter().zip(after_hands.iter()).all(|(a,b)|*a==*b+1),"exiled_with_stash":stash.len(),"all_opponent_exiled":all_exiled.len(),"stash_counters":all_exiled.iter().map(|id|g.counter_count(*id,ironsmith::CounterType::Named("stash".into()))).collect::<Vec<_>>(),"each_exiled_cast_offered":permissions});
  Ok(json!({"expected":expected,"actual":actual,"state_evidence":{"source_paid":paid,"initial_opponent_hands":hands,"before_hands":before_hands,"after_hands":after_hands,"opponent_graveyards":(1..count).map(|n|g.player(PlayerId(n as u8)).unwrap().graveyard.iter().map(|id|g.object(*id).unwrap().name.to_string()).collect::<Vec<_>>()).collect::<Vec<_>>(),"exiled_names":exiled_names,"exiled_object_ids":all_exiled.iter().map(|id|format!("{id:?}")).collect::<Vec<_>>(),"ability_trace":format!("{:?}",g.current_abilities(source)),"play_permission_scope":"Only advertised own-turn plays checked here; actual as-though payment is separate."},"execution_trace":dm.trace}))

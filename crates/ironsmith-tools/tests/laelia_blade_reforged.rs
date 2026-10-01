@@ -147,7 +147,7 @@ fn attack_exiles_top_card_and_grants_normal_play_only_this_turn() {
                 .mana_pool
                 .add(ironsmith::mana::ManaSymbol::Colorless, 5);
             let has_play = |game: &GameState, player| {
-                compute_legal_actions(game, player).iter().any(|a| match a {
+                compute_legal_actions(game, player).expect("fixture has complete replacement state").iter().any(|a| match a {
                     LegalAction::PlayLand { land_id } => *land_id == exiled,
                     LegalAction::CastSpell { spell_id, .. } => *spell_id == exiled,
                     _ => false,

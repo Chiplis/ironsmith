@@ -268,7 +268,7 @@ mod tests {
     use crate::decision::SelectFirstDecisionMaker;
     use crate::effects::ResolvedTarget;
     use crate::events::DamageTarget;
-    use crate::events::processing::process_damage_with_event;
+    use crate::events::processing::process_damage_summary_for_test;
     use crate::events::traits::ReplacementMatcher;
     use crate::ids::{ObjectId, PlayerId};
     use crate::{CardDefinitionBuilder, CardId, CardType, PowerToughness, Zone};
@@ -292,7 +292,7 @@ mod tests {
         );
         effect.execute(&mut game, &mut ctx).unwrap();
 
-        let (final_damage, prevented) = process_damage_with_event(
+        let (final_damage, prevented) = process_damage_summary_for_test(
             &mut game,
             source,
             DamageTarget::Player(bob),
@@ -323,7 +323,7 @@ mod tests {
         effect.execute(&mut game, &mut ctx).unwrap();
 
         // Damage to Alice is prevented.
-        let (final_damage, prevented) = process_damage_with_event(
+        let (final_damage, prevented) = process_damage_summary_for_test(
             &mut game,
             source,
             DamageTarget::Player(alice),
@@ -335,7 +335,7 @@ mod tests {
         assert!(prevented);
 
         // Damage to Bob is not prevented (replacement is consumed or doesn't match target).
-        let (final_damage, prevented) = process_damage_with_event(
+        let (final_damage, prevented) = process_damage_summary_for_test(
             &mut game,
             source,
             DamageTarget::Player(bob),
@@ -418,7 +418,7 @@ mod tests {
         );
         effect.execute(&mut game, &mut ctx).unwrap();
 
-        let (damage_to_other_target, prevented_other_target) = process_damage_with_event(
+        let (damage_to_other_target, prevented_other_target) = process_damage_summary_for_test(
             &mut game,
             chosen_source,
             DamageTarget::Object(other_target),
@@ -429,7 +429,7 @@ mod tests {
         assert_eq!(damage_to_other_target, 3);
         assert!(!prevented_other_target);
 
-        let (damage_from_other_source, prevented_other_source) = process_damage_with_event(
+        let (damage_from_other_source, prevented_other_source) = process_damage_summary_for_test(
             &mut game,
             other_source,
             DamageTarget::Object(protected),
@@ -440,7 +440,7 @@ mod tests {
         assert_eq!(damage_from_other_source, 3);
         assert!(!prevented_other_source);
 
-        let (prevented_damage, prevented) = process_damage_with_event(
+        let (prevented_damage, prevented) = process_damage_summary_for_test(
             &mut game,
             chosen_source,
             DamageTarget::Object(protected),
@@ -451,7 +451,7 @@ mod tests {
         assert_eq!(prevented_damage, 0);
         assert!(prevented);
 
-        let (second_damage, second_prevented) = process_damage_with_event(
+        let (second_damage, second_prevented) = process_damage_summary_for_test(
             &mut game,
             chosen_source,
             DamageTarget::Object(protected),

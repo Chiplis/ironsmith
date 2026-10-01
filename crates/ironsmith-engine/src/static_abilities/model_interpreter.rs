@@ -226,6 +226,12 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::AttackingGroupAttackCondition::CreatureWithGreaterPowerAlsoAttacks => {
                 super::AttackingGroupAttackCondition::CreatureWithGreaterPowerAlsoAttacks
             }
+            ironsmith_core::AttackingGroupAttackCondition::AtLeastNOtherCreaturesBlock(count) => {
+                super::AttackingGroupAttackCondition::AtLeastNOtherCreaturesBlock(*count)
+            }
+            ironsmith_core::AttackingGroupAttackCondition::CreatureWithGreaterPowerAlsoBlocks => {
+                super::AttackingGroupAttackCondition::CreatureWithGreaterPowerAlsoBlocks
+            }
         }
     }
 

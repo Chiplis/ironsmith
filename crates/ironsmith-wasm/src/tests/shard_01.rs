@@ -25,7 +25,7 @@ pub(super) fn yawgmoth_activation_stays_cancelable_through_target_and_cost_promp
                 source: yawgmoth_id,
                 ability_index: 1,
             },
-        ),
+        ).expect("fixture has complete replacement state"),
         "Activate Yawgmoth, Thran Physician: Pay 1 life, Sacrifice another creature: Put a -1/-1 counter on up to one target creature and draw a card."
     );
     assert_eq!(
@@ -35,7 +35,7 @@ pub(super) fn yawgmoth_activation_stays_cancelable_through_target_and_cost_promp
                 source: yawgmoth_id,
                 ability_index: 2,
             },
-        ),
+        ).expect("fixture has complete replacement state"),
         "Activate Yawgmoth, Thran Physician: {B}{B}, Discard a card: Proliferate."
     );
     let target_id =
@@ -45,10 +45,10 @@ pub(super) fn yawgmoth_activation_stays_cancelable_through_target_and_cost_promp
         .create_object_from_definition(&ornithopter(), alice, Zone::Battlefield);
 
     wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
         alice,
-        compute_legal_actions(&wasm.game, alice),
-    )));
+        compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+    ).expect("fixture has complete replacement state")));
 
     let priority_ctx = match wasm.pending_decision.as_ref() {
         Some(DecisionContext::Priority(ctx)) => ctx,
@@ -267,10 +267,10 @@ pub(super) fn yawgmoth_proliferate_next_cost_choices_advance_in_replay_chain() {
             .expect("Yawgmoth should have proliferate ability");
 
         wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
             alice,
-            compute_legal_actions(&wasm.game, alice),
-        )));
+            compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+        ).expect("fixture has complete replacement state")));
 
         let priority_ctx = match wasm.pending_decision.as_ref() {
             Some(DecisionContext::Priority(ctx)) => ctx,
@@ -378,10 +378,10 @@ pub(super) fn stack_snapshot_includes_controller_and_targets() {
         .create_object_from_definition(&lightning_bolt(), alice, Zone::Hand);
 
     wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
         alice,
-        compute_legal_actions(&wasm.game, alice),
-    )));
+        compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+    ).expect("fixture has complete replacement state")));
 
     let priority_ctx = match wasm.pending_decision.as_ref() {
         Some(DecisionContext::Priority(ctx)) => ctx,
@@ -520,10 +520,10 @@ pub(super) fn wasm_stubborn_denial_can_target_and_counter_lightning_bolt() {
         .push_to_stack(StackEntry::new(bolt_id, bob).with_targets(vec![Target::Player(alice)]));
 
     wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
         alice,
-        compute_legal_actions(&wasm.game, alice),
-    )));
+        compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+    ).expect("fixture has complete replacement state")));
 
     dispatch_matching_priority_action(
         &mut wasm,
@@ -663,10 +663,10 @@ pub(super) fn wasm_dispatch_failed_counter_allows_protected_spell_to_resolve() {
     );
 
     wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
         alice,
-        compute_legal_actions(&wasm.game, alice),
-    )));
+        compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+    ).expect("fixture has complete replacement state")));
 
     dispatch_pass_priority(&mut wasm);
     dispatch_pass_priority(&mut wasm);
@@ -721,10 +721,10 @@ pub(super) fn duress_snapshot_keeps_revealed_hand_visible_during_discard_choice(
         .expect("should add Forest to hand");
 
     wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
         alice,
-        compute_legal_actions(&wasm.game, alice),
-    )));
+        compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+    ).expect("fixture has complete replacement state")));
 
     let priority_ctx = match wasm.pending_decision.as_ref() {
         Some(DecisionContext::Priority(ctx)) => ctx,
@@ -885,10 +885,10 @@ pub(super) fn gitaxian_probe_snapshot_keeps_looked_at_hand_visible_after_draw() 
         .add(ManaSymbol::Blue, 1);
 
     wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
         alice,
-        compute_legal_actions(&wasm.game, alice),
-    )));
+        compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+    ).expect("fixture has complete replacement state")));
 
     dispatch_matching_priority_action(
         &mut wasm,
@@ -1132,10 +1132,10 @@ pub(super) fn tayam_black_lotus_color_choice_keeps_paid_mana_state() {
     }
 
     wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
         alice,
-        compute_legal_actions(&wasm.game, alice),
-    )));
+        compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+    ).expect("fixture has complete replacement state")));
 
     let priority_ctx = match wasm.pending_decision.as_ref() {
         Some(DecisionContext::Priority(ctx)) => ctx,
@@ -1296,10 +1296,10 @@ pub(super) fn tayam_counter_choice_keeps_removed_counters_state() {
         .collect();
 
     wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
         alice,
-        compute_legal_actions(&wasm.game, alice),
-    )));
+        compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+    ).expect("fixture has complete replacement state")));
 
     let priority_ctx = match wasm.pending_decision.as_ref() {
         Some(DecisionContext::Priority(ctx)) => ctx,
@@ -1488,10 +1488,10 @@ pub(super) fn tayam_activation_can_resolve_and_choose_graveyard_return_target() 
     );
 
     wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
         alice,
-        compute_legal_actions(&wasm.game, alice),
-    )));
+        compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+    ).expect("fixture has complete replacement state")));
 
     let priority_ctx = match wasm.pending_decision.as_ref() {
         Some(DecisionContext::Priority(ctx)) => ctx,
@@ -1679,10 +1679,10 @@ pub(super) fn polluted_delta_resolution_choice_keeps_paid_costs_and_resolved_lan
         .create_object_from_definition(&basic_mountain(), alice, Zone::Library);
 
     wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
         alice,
-        compute_legal_actions(&wasm.game, alice),
-    )));
+        compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+    ).expect("fixture has complete replacement state")));
 
     let priority_ctx = match wasm.pending_decision.as_ref() {
         Some(DecisionContext::Priority(ctx)) => ctx,
@@ -2360,10 +2360,10 @@ pub(super) fn roaming_throne_blood_artist_culling_flow_reaches_two_trigger_order
     wasm.game.turn.priority_player = Some(alice);
     wasm.game.turn.phase = Phase::FirstMain;
     wasm.game.turn.step = None;
-    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
         alice,
-        compute_legal_actions(&wasm.game, alice),
-    )));
+        compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+    ).expect("fixture has complete replacement state")));
 
     wasm.add_card_to_zone(
         0,
@@ -2396,10 +2396,10 @@ pub(super) fn roaming_throne_blood_artist_culling_flow_reaches_two_trigger_order
         .add_card_to_zone(0, "Culling the Weak".to_string(), "hand".to_string(), false)
         .expect("should add Culling the Weak to hand");
 
-    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
         alice,
-        compute_legal_actions(&wasm.game, alice),
-    )));
+        compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+    ).expect("fixture has complete replacement state")));
     dispatch_matching_priority_action(
         &mut wasm,
         |action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == ObjectId::from_raw(culling_id)),
@@ -2645,10 +2645,10 @@ pub(super) fn backdraft_wasm_flow_offers_resolved_sorcery_history_choice() {
     );
 
     wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
         alice,
-        compute_legal_actions(&wasm.game, alice),
-    )));
+        compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+    ).expect("fixture has complete replacement state")));
 
     let cast_blasphemous_act_index = match wasm.pending_decision.as_ref() {
         Some(DecisionContext::Priority(ctx)) => ctx
@@ -3004,10 +3004,10 @@ pub(super) fn doubling_chant_same_name_search_prompts_are_ui_friendly_in_wasm_fl
     );
 
     wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
         alice,
-        compute_legal_actions(&wasm.game, alice),
-    )));
+        compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+    ).expect("fixture has complete replacement state")));
 
     dispatch_matching_priority_action(
         &mut wasm,

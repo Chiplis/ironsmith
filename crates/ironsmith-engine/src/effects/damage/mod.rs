@@ -15,6 +15,7 @@ mod replace_next_damage_to_target;
 
 pub use clear_damage::ClearDamageEffect;
 pub use deal_damage::DealDamageEffect;
+pub(crate) use deal_damage::finish_damage_replacement_programs;
 pub use deal_distributed_damage::{DamageDistributionMode, DealDistributedDamageEffect};
 pub use heal_damage::HealDamageEffect;
 pub use prevent_next_time_damage::{

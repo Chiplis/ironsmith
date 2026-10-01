@@ -51,6 +51,8 @@ pub enum ExecutionError {
     EffectNotFound(EffectId),
     /// Referenced tag not found in context (object not tagged by prior effect).
     TagNotFound(String),
+    /// Continuous-effect discovery could not establish a complete snapshot.
+    ContinuousDiscovery(crate::static_ability_processor::StaticEffectDiscoveryError),
     /// Internal error (should not happen).
     InternalError(String),
 }
@@ -73,6 +75,7 @@ impl std::fmt::Display for ExecutionError {
             ExecutionError::ObjectNotFound(id) => write!(f, "Object {:?} not found", id),
             ExecutionError::EffectNotFound(id) => write!(f, "Effect {:?} not found", id),
             ExecutionError::TagNotFound(tag) => write!(f, "Tag '{}' not found", tag),
+            ExecutionError::ContinuousDiscovery(error) => write!(f, "{error}"),
             ExecutionError::InternalError(msg) => write!(f, "Internal error: {}", msg),
         }
     }
@@ -238,6 +241,9 @@ pub struct ReplacementExecutionContext {
     pub entry_counter_source: Option<ObjectId>,
     /// Prospective characteristics, including earlier copy replacements.
     pub entry_event: Option<Box<crate::events::EnterBattlefieldEvent>>,
+    /// CR614.13: source objects reserved by simultaneous battlefield entry.
+    /// Inherited by nested replacement payloads; never removed from zone indexes.
+    pub entry_reserved_objects: HashSet<ObjectId>,
     pub additional_replacement_effects: Vec<ReplacementEffect>,
     pub suppressed_replacement_effects: HashSet<ReplacementEffectId>,
     pub suppressed_replacement_effect_keys: HashSet<ReplacementEffectKey>,
@@ -1347,7 +1353,7 @@ impl<'a> ExecutionContext<'a> {
 
     /// Build a filter context for evaluating filters.
     pub fn filter_context(&self, game: &GameState) -> FilterContext {
-        let target_players = if self.targets_are_cost_choices {
+        let mut target_players = if self.targets_are_cost_choices {
             Vec::new()
         } else {
             self.targets
@@ -1404,6 +1410,16 @@ impl<'a> ExecutionContext<'a> {
                 .or_default()
                 .push(snapshot);
             if let Some(entry) = game.stack.iter().find(|entry| entry.object_id == object_id) {
+                // "that spell targets only a single opponent ... for each
+                // other opponent": an ability with no player targets of its
+                // own reads the triggering spell's targeted player, just as it
+                // reads the spell's targeted objects below.
+                if target_players.is_empty() {
+                    target_players.extend(entry.targets.iter().filter_map(|target| match target {
+                        crate::game_state::Target::Player(player) => Some(*player),
+                        crate::game_state::Target::Object(_) => None,
+                    }));
+                }
                 target_objects.extend(entry.targets.iter().filter_map(|target| match target {
                     crate::game_state::Target::Object(target_id) => {
                         game.object(*target_id).map(|object| {

@@ -239,7 +239,7 @@ impl SliceReport {
 /// session under the browser's budget policy, and reports both.
 pub(crate) fn measure_slices(board: &ProbeBoard) -> SliceReport {
     let started = Instant::now();
-    let baseline = crate::game_loop::analyze_priority_context(&board.game, board.player);
+    let baseline = crate::game_loop::analyze_priority_context(&board.game, board.player).expect("fixture has complete replacement state");
     let one_shot_ms = started.elapsed().as_secs_f64() * 1000.0;
     assert!(baseline.analysis_complete);
     assert!(
@@ -256,7 +256,7 @@ pub(crate) fn measure_slices(board: &ProbeBoard) -> SliceReport {
     loop {
         let ((ctx, complete), elapsed) = budget.run(|units| {
             let outcome = session.run(units, || {
-                crate::game_loop::analyze_priority_context(&board.game, board.player)
+                crate::game_loop::analyze_priority_context(&board.game, board.player).expect("fixture has complete replacement state")
             });
             let spent = session.last_slice_nodes();
             (outcome, spent)
@@ -289,7 +289,7 @@ pub(crate) fn measure_slices(board: &ProbeBoard) -> SliceReport {
 #[ignore = "manual performance probe"]
 fn priority_analysis_fixed_cost_breakdown() {
     let board = probe_board(60, 12, 30, 300);
-    let _ = crate::game_loop::analyze_priority_context(&board.game, board.player);
+    let _ = crate::game_loop::analyze_priority_context(&board.game, board.player).expect("fixture has complete replacement state");
     let perf = crate::decision::last_compute_legal_actions_perf().expect("perf recorded");
     let mut rows = vec![
         ("derived_view", perf.derived_view_ms),
@@ -461,7 +461,7 @@ fn mono_color_board(
 /// design: mana is paid in the window opened after announcement, so the exact
 /// check happens in the payment flow, which is what this probe measures.
 fn ability_is_offered(game: &GameState, player: PlayerId, adept: ObjectId) -> bool {
-    crate::decision::compute_legal_actions(game, player)
+    crate::decision::compute_legal_actions(game, player).expect("fixture has complete replacement state")
         .iter()
         .any(|action| {
             matches!(

@@ -281,7 +281,7 @@ pub fn parse_destroy_then_no_regeneration_sequence(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words = crate::lexer::token_word_refs(sentences[sentence_idx + 1].lowered());
     if !crate::word_primitives::last_is(&words, "regenerated")
-        || !crate::word_primitives::first_is_any(&words, &["it", "they", "those"])
+        || !crate::word_primitives::first_is_any(&words, &["it", "they", "those", "that"])
         || !crate::slice_primitives::contains_any(&words, &["cant", "can't"])
     {
         return Ok(None);
@@ -322,7 +322,7 @@ pub fn parse_destroy_then_no_regeneration_sequence(
             ],
         )
     };
-    let singular_followup = crate::word_primitives::first_is(&words, "it");
+    let singular_followup = crate::word_primitives::first_is_any(&words, &["it", "that"]);
     match action {
         SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy {
             no_regeneration, ..

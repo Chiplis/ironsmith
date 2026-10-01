@@ -12,7 +12,7 @@ pub use plan::*;
 pub use planner::{
     ManaPaymentAnalysis, ManaPaymentPerfMetrics, ManaPaymentPlanner, check_mana_payment,
     execute_mana_payment_plan, last_mana_payment_perf, mana_payment_activation_inventory,
-    mana_payment_life_options, mana_payment_source_inventory, plan_first_mana_payment,
+    mana_payment_expanded_pips, mana_payment_life_options, mana_payment_source_inventory, mana_payment_transaction_id, plan_first_mana_payment,
     plan_mana_payment, unfunded_mana_payment_plan,
 };
 

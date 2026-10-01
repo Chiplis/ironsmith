@@ -101,7 +101,7 @@ fn cast(
     eprintln!("AUDIT_STAGE cast {}", def.name());
     g.turn.priority_player = Some(actor);
     let id = g.create_object_from_definition(def, actor, Zone::Hand);
-    let action = compute_legal_actions(g, actor)
+    let action = compute_legal_actions(g, actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or_else(|| format!("{} normal cast unavailable", def.name()))?;
@@ -285,7 +285,7 @@ fn activation(
     source: ObjectId,
 ) -> Result<Value, String> {
     g.turn.priority_player = Some(PlayerId(0));
-    let a = compute_legal_actions(g, PlayerId(0))
+    let a = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::ActivateAbility{source:s,..}if *s==source));
     let before = g.player(PlayerId(0)).unwrap().mana_pool.total() as i64;
@@ -431,7 +431,7 @@ fn run(
         if mode == 1 {
             dm.target = Some(Target::Object(witness));
             paid(&mut g, &mut q, &mut dm, source, 2)?;
-            let offered = compute_legal_actions(&g, PlayerId(0))
+            let offered = compute_legal_actions(&g, PlayerId(0)).expect("fixture has complete replacement state")
                 .iter()
                 .any(|a| matches!(a,LegalAction::ActivateAbility{source:s,..}if *s==source));
             evidence["tapped_source_offered_activation"] = json!(offered);

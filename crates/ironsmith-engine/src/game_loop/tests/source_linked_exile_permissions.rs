@@ -66,7 +66,7 @@ fn intrepid_paleontologist_only_casts_owned_linked_dinosaurs_and_adds_finality()
     let linked_nondinosaur = game.create_object_from_card(&linked_nondinosaur, alice, Zone::Exile);
     game.add_exiled_with_source_link(source_id, linked_nondinosaur);
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let can_cast_from_exile = |candidate| {
         actions.iter().any(|action| {
             matches!(
@@ -126,7 +126,7 @@ fn intrepid_paleontologist_only_casts_owned_linked_dinosaurs_and_adds_finality()
         "a Dinosaur cast through the permission should enter with finality"
     );
 
-    crate::events::processing::process_destroy(&mut game, entered, None, &mut dm);
+    crate::events::processing::process_destroy(&mut game, entered, None, &mut dm).expect("destruction succeeds").expect("destruction is not pending");
     assert!(game.exile.iter().any(|id| {
         game.object(*id)
             .is_some_and(|object| object.name == "Linked Alice Dinosaur")

@@ -104,7 +104,7 @@ fn waterbend_eight_preserves_every_mana_and_tap_payment_branch() {
             "Aang, Swift Savior",
             "paying does not itself resolve transformation"
         );
-        assert!(game.transform_permanent(source));
+        assert!(game.transform_permanent(source).expect("transform discovery must succeed in this scenario"));
         assert_eq!(
             game.object(source).unwrap().name,
             "Aang and La, Ocean's Fury"
@@ -137,7 +137,7 @@ fn waterbend_activation_uses_stack_and_transforms_only_its_source() {
             .unwrap()
             .mana_pool
             .add(ironsmith::mana::ManaSymbol::Colorless, 8);
-        let action = compute_legal_actions(&game, alice)
+        let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .into_iter()
             .find(|a| matches!(a, LegalAction::ActivateAbility { source: id, .. } if *id==source))
             .unwrap();
@@ -326,7 +326,7 @@ fn swift_airbend_can_decline_or_exile_a_creature_or_noncreature_spell() {
         }
         let hand = game.create_object_from_definition(front, alice, Zone::Hand);
         let source = game
-            .move_object_with_etb_processing(hand, Zone::Battlefield)
+            .move_object_with_etb_processing(hand, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
             .unwrap()
             .new_id;
         let mut queue = TriggerQueue::new();
@@ -400,7 +400,7 @@ fn swift_flash_and_face_combat_keywords_change_legal_actions() {
     for symbol in [ManaSymbol::White, ManaSymbol::Blue, ManaSymbol::Colorless] {
         game.player_mut(alice).unwrap().mana_pool.add(symbol, 1);
     }
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions
             .iter()
@@ -460,4 +460,13 @@ fn ocean_trample_deals_only_damage_beyond_lethal_to_defending_player() {
         assert_eq!(game.damage_on(source), 1);
         assert_eq!(game.player(bob).unwrap().life, 20 - (5 - toughness).max(0));
     }
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: ironsmith::game_state::EntryCommitResult)
+    -> Option<ironsmith::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

@@ -478,18 +478,50 @@ pub(crate) fn stable_card_is_top_of_library(
         .is_some_and(|object| object.stable_id == stable_id)
 }
 
+pub(crate) fn grant_usage_limit_allows(
+    game: &crate::game_state::GameState,
+    player: PlayerId,
+    identity: Option<&GrantPermissionIdentity>,
+    limit: Option<GrantUsageLimit>,
+) -> bool {
+    match limit {
+        Some(GrantUsageLimit::OnceEachTurn | GrantUsageLimit::OnceDuringEachOfYourTurns) =>
+            (limit != Some(GrantUsageLimit::OnceDuringEachOfYourTurns) || game.is_active_player(player))
+                && identity.is_some_and(|key| !game.turn_store.grant_cast_uses_this_turn.contains(&(player, key.clone()))),
+        Some(GrantUsageLimit::DuringYourTurns) => game.is_active_player(player),
+        None => true,
+    }
+}
+
+/// Identity of a permission independent of its position among available methods.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum GrantPermissionIdentity {
+    Static {
+        source: ObjectId,
+        origin: crate::continuous::AbilityOrigin,
+        printed_face: Option<crate::ids::CardId>,
+    },
+    LinkedFace { source: ObjectId, face: crate::ids::CardId, slot: usize },
+    Stored(u64),
+}
+
 /// A granted alternative casting method for a specific card.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GrantedAlternativeCast {
+    pub permission_identity: Option<GrantPermissionIdentity>,
     pub method: AlternativeCastingMethod,
     pub source_id: ObjectId,
     pub zone: Zone,
     pub usage_limit: Option<GrantUsageLimit>,
+    /// Riders belonging to this exact indexed permission, not every equal-cost method.
+    pub cast_this_way_grants: Vec<crate::static_abilities::StaticAbility>,
+    pub cast_this_way_filter: Option<ObjectFilter>,
 }
 
 /// A grant that allows playing cards from a zone as though from hand.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GrantedPlayFrom {
+    pub permission_identity: Option<GrantPermissionIdentity>,
     pub source_id: ObjectId,
     pub zone: Zone,
     pub usage_limit: Option<GrantUsageLimit>,
@@ -518,6 +550,7 @@ pub struct SharedGrantUsageId(u64);
 /// A unified grant that can represent either an ability or alternative casting method.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Grant {
+    pub permission_identity: Option<GrantPermissionIdentity>,
     /// The specific card that receives this grant (for targeted grants like Snapcaster).
     /// If None, uses the filter instead.
     pub target_id: Option<ObjectId>,
@@ -560,6 +593,7 @@ pub struct GrantRegistry {
     /// All grants (unified storage).
     pub grants: crate::incremental::TrackedValue<Vec<Grant>>,
     next_shared_usage_id: u64,
+    next_permission_identity: u64,
     shared_usage_remaining:
         crate::incremental::TrackedValue<std::collections::HashMap<SharedGrantUsageId, u32>>,
 }
@@ -579,7 +613,12 @@ impl GrantRegistry {
     }
 
     /// Add a grant to the registry.
-    pub fn add_grant(&mut self, grant: Grant) {
+    pub fn add_grant(&mut self, mut grant: Grant) {
+        if grant.permission_identity.is_none() {
+            let id = self.next_permission_identity;
+            self.next_permission_identity = id.checked_add(1).expect("grant permission identity exhausted");
+            grant.permission_identity = Some(GrantPermissionIdentity::Stored(id));
+        }
         self.grants.push(grant);
     }
 
@@ -602,7 +641,8 @@ impl GrantRegistry {
         source: GrantSource,
         shared_usage_id: SharedGrantUsageId,
     ) {
-        self.grants.push(Grant {
+        self.add_grant(Grant {
+            permission_identity: None,
             required_face_name: None,
             target_id: Some(target_id),
             target_stable_id,
@@ -728,7 +768,8 @@ impl GrantRegistry {
         grantable: Grantable,
         source: GrantSource,
     ) {
-        self.grants.push(Grant {
+        self.add_grant(Grant {
+            permission_identity: None,
             required_face_name: None,
             target_id: Some(target_id),
             target_stable_id: None,
@@ -757,7 +798,8 @@ impl GrantRegistry {
         available_starting_turn: u32,
         source: GrantSource,
     ) {
-        self.grants.push(Grant {
+        self.add_grant(Grant {
+            permission_identity: None,
             required_face_name: None,
             target_id: Some(target_id),
             target_stable_id: None,
@@ -786,7 +828,8 @@ impl GrantRegistry {
         grantable: Grantable,
         source: GrantSource,
     ) {
-        self.grants.push(Grant {
+        self.add_grant(Grant {
+            permission_identity: None,
             required_face_name: None,
             target_id: Some(target_id),
             target_stable_id: Some(target_stable_id),
@@ -816,7 +859,8 @@ impl GrantRegistry {
         constraints: PlayFromConstraints,
         source: GrantSource,
     ) {
-        self.grants.push(Grant {
+        self.add_grant(Grant {
+            permission_identity: None,
             required_face_name: None,
             target_id: Some(target_id),
             target_stable_id: Some(target_stable_id),
@@ -848,7 +892,8 @@ impl GrantRegistry {
         constraints: PlayFromConstraints,
         source: GrantSource,
     ) {
-        self.grants.push(Grant {
+        self.add_grant(Grant {
+            permission_identity: None,
             required_face_name: None,
             target_id: Some(target_id),
             target_stable_id: None,
@@ -877,7 +922,8 @@ impl GrantRegistry {
         source: GrantSource,
     ) {
         let filter = normalize_grant_filter(filter);
-        self.grants.push(Grant {
+        self.add_grant(Grant {
+            permission_identity: None,
             required_face_name: None,
             target_id: None,
             target_stable_id: None,
@@ -1199,6 +1245,7 @@ impl GrantRegistry {
             .into_iter()
             .filter_map(|grant| match grant.grantable {
                 Grantable::PlayFrom => Some(GrantedPlayFrom {
+                    permission_identity: grant.permission_identity,
                     source_id: grant.source.source_id(),
                     zone: grant.zone,
                     usage_limit: grant.usage_limit,
@@ -1207,6 +1254,22 @@ impl GrantRegistry {
                 _ => None,
             })
             .collect()
+    }
+
+    /// A source-only action uses its first available unlimited permission, or
+    /// its first available limited permission. Shared-budget selection already
+    /// gives an unlimited matching permission precedence. Capture this record
+    /// before movement, so constraints, riders and usage refer to the same grant.
+    pub(crate) fn selected_play_from_grant_for_card(
+        &self, game: &crate::game_state::GameState, card_id: ObjectId,
+        zone: Zone, player: PlayerId, source_id: ObjectId,
+    ) -> Option<Grant> {
+        let grants = self.get_grants_for_card(game, card_id, zone, player).into_iter()
+            .filter(|grant| grant.source.source_id() == source_id && matches!(grant.grantable, Grantable::PlayFrom))
+            .filter(|grant| grant_usage_limit_allows(game, player, grant.permission_identity.as_ref(), grant.usage_limit))
+            .collect::<Vec<_>>();
+        grants.iter().find(|grant| grant.shared_usage_id.is_none() && grant.usage_limit.is_none())
+            .cloned().or_else(|| grants.into_iter().next())
     }
 
     /// Extra rules for the precise play-from grant selected by a spell action.
@@ -1503,22 +1566,21 @@ impl GrantRegistry {
                     )
                 })
                 .flatten();
+            let Some(characteristics) = game.current_characteristics(source_id) else { return; };
             let linked_half_abilities = linked_half
                 .as_ref()
                 .map(|def| {
-                    def.abilities
-                        .iter()
-                        .map(|ability| (ability, Some(def.card.name.to_string())))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-
-            for (ability, half_name) in source
-                .abilities
-                .iter()
-                .map(|ability| (ability, None))
-                .chain(linked_half_abilities)
-            {
+                    def.abilities.iter().enumerate().map(|(slot, ability)| (
+                        ability, Some(def.card.name.to_string()),
+                        GrantPermissionIdentity::LinkedFace {source: source_id, face: def.card.id, slot},
+                    )).collect::<Vec<_>>()
+                }).unwrap_or_default();
+            let printed = characteristics.abilities.iter().enumerate().filter_map(|(slot, ability)| {
+                let origin = characteristics.abilities.origin(slot)?.clone();
+                let printed_face = matches!(&origin, crate::continuous::AbilityOrigin::Printed(_)).then_some(source.card).flatten();
+                Some((ability, None, GrantPermissionIdentity::Static { source: source_id, origin, printed_face }))
+            });
+            for (ability, half_name, permission_identity) in printed.chain(linked_half_abilities) {
                 let AbilityKind::Static(s) = &ability.kind else {
                     continue;
                 };
@@ -1552,6 +1614,7 @@ impl GrantRegistry {
                         )
                 }) {
                     grants.push(Grant {
+                        permission_identity: Some(permission_identity.clone()),
                         target_id: is_source_self_grant.then_some(source_id),
                         target_stable_id: None,
                         filter: (spec.filter != ObjectFilter::source())
@@ -1565,8 +1628,8 @@ impl GrantRegistry {
                             && source.linked_face_layout == crate::card::LinkedFaceLayout::Split)
                             .then(|| half_name.clone().unwrap_or_else(|| source.name.to_string())),
                         play_from_constraints: PlayFromConstraints::default(),
-                        cast_this_way_grants: Vec::new(),
-                        cast_this_way_filter: None,
+                        cast_this_way_grants: spec.cast_this_way_grants.clone(),
+                        cast_this_way_filter: spec.cast_this_way_filter.clone(),
                         shared_usage_id: None,
                         ends_on_next_matching_cast: false,
                         source: GrantSource::StaticAbility { source_id },
@@ -1614,10 +1677,13 @@ fn materialize_granted_alternative_cast(
     };
 
     Some(GrantedAlternativeCast {
+        permission_identity: grant.permission_identity,
         method,
         source_id: grant.source.source_id(),
         zone: grant.zone,
         usage_limit,
+        cast_this_way_grants: grant.cast_this_way_grants,
+        cast_this_way_filter: grant.cast_this_way_filter,
     })
 }
 
@@ -2129,5 +2195,59 @@ mod tests {
                 .is_empty(),
             "surveilled graveyard land should not get a spell life-cost alternative"
         );
+    }
+
+    #[test]
+    fn permission_identity_survives_refresh_control_and_other_ability_removal() {
+        use crate::continuous::{ContinuousEffect, EffectTarget, Modification};
+        use crate::effect::Until;
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let card = CardBuilder::new(crate::ids::CardId::new(), "Permission identity source")
+            .card_types(vec![CardType::Artifact]).build();
+        let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let spec = crate::grant::GrantSpec::new(Grantable::PlayFrom, ObjectFilter::default(), Zone::Graveyard);
+        let ability = Ability::static_ability(StaticAbility::grants(spec));
+        game.object_mut(source).unwrap().abilities_mut().extend([
+            Ability::static_ability(StaticAbility::haste()), ability.clone(), ability,
+        ]);
+        let identities = |game: &crate::game_state::GameState| game.effect_store.grant_registry.active_grants(game)
+            .into_iter().filter(|grant| grant.source.source_id() == source)
+            .map(|grant| grant.permission_identity.expect("static origin")).collect::<Vec<_>>();
+        let before = identities(&game);
+        assert_eq!(before.len(), 2);
+        assert_ne!(before[0], before[1], "cloned definitions are independent ability occurrences");
+        game.refresh_continuous_state();
+        assert_eq!(identities(&game), before);
+        game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(source, alice,
+            EffectTarget::Specific(source), Modification::RemoveStaticAbilityFamily(crate::static_abilities::StaticAbilityId::Haste))
+            .until(Until::Forever));
+        game.refresh_continuous_state();
+        assert_eq!(game.current_characteristics(source).unwrap().abilities.len(), 2);
+        assert_eq!(identities(&game), before, "removing another ability must not renumber permission origins");
+        game.set_current_controller(source, bob);
+        assert_eq!(identities(&game), before, "control changes preserve permission identity");
+        assert_eq!(identities(&game.clone()), before, "checkpoints retain permission identity");
+    }
+
+    #[test]
+    fn stored_permission_identity_survives_other_grant_expiry_and_checkpoint() {
+        let mut registry = GrantRegistry::new();
+        let source = ObjectId::from_raw(71);
+        let player = PlayerId::from_index(0);
+        for _ in 0..2 {
+            registry.grant_to_filter_until_end_of_turn(ObjectFilter::default(), Zone::Graveyard,
+                player, Grantable::PlayFrom, source, 1);
+        }
+        let before = registry.grants.iter().map(|grant| grant.permission_identity.clone().unwrap()).collect::<Vec<_>>();
+        assert_ne!(before[0], before[1]);
+        registry.grants.remove(0);
+        assert_eq!(registry.grants[0].permission_identity.as_ref(), Some(&before[1]));
+        assert_eq!(registry.clone().grants[0].permission_identity.as_ref(), Some(&before[1]));
+        registry.grant_to_filter_until_end_of_turn(ObjectFilter::default(), Zone::Graveyard,
+            player, Grantable::PlayFrom, source, 1);
+        assert_ne!(registry.grants[1].permission_identity.as_ref(), Some(&before[0]));
+        assert_ne!(registry.grants[1].permission_identity.as_ref(), Some(&before[1]));
     }
 }

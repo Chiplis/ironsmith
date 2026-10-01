@@ -149,7 +149,7 @@ fn perform(
         .ok_or("missing action source")?;
     let initial_stack_len = game.stack.len();
     game.turn.priority_player = Some(actor);
-    let action = compute_legal_actions(game, actor)
+    let action = compute_legal_actions(game, actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| match a {
             LegalAction::CastSpell { spell_id, .. } => ability.is_none() && *spell_id == source,
@@ -284,7 +284,7 @@ fn report_perspectives_timeout(){
   let mut dm=dm(0,true);let start=std::time::Instant::now();println!("stage: second/source cast {case}, hand={}",g.player(alice()).unwrap().hand.len());
   let(mut q,paid)=perform(&mut g,spell,None,&mut dm)?;let announced=start.elapsed().as_secs_f64();println!("stage: source on stack {case}");
   resolve(&mut g,&mut q,&mut dm)?;let resolved=start.elapsed().as_secs_f64();let hand_after=g.player(alice()).unwrap().hand.len();println!("stage: source resolved {case}, hand={hand_after}");
-  let ability=compute_legal_actions(&g,alice()).into_iter().find_map(|a|match a{LegalAction::ActivateAbility{source,ability_index}if source==cycling=>Some(ability_index),_=>None}).ok_or("fixture cycling action missing")?;
+  let ability=compute_legal_actions(&g,alice()).expect("fixture has complete replacement state").into_iter().find_map(|a|match a{LegalAction::ActivateAbility{source,ability_index}if source==cycling=>Some(ability_index),_=>None}).ok_or("fixture cycling action missing")?;
   let(mut q,cycle_paid)=perform(&mut g,cycling,Some(ability),&mut dm)?;resolve(&mut g,&mut q,&mut dm)?;println!("stage: cycling resolved {case}");
   let actual=json!({"sources_battlefield":count(&g,"New Perspectives",Zone::Battlefield),"source_cast_pool_paid":paid,"lands_tapped":islands.iter().filter(|id|g.is_tapped(**id)).count(),"hand_after_source":hand_after,"hand_after_cycle":g.player(alice()).unwrap().hand.len(),"cycling_mana_paid":cycle_paid,"flame_jet_graveyard":count(&g,"Flame Jet",Zone::Graveyard),"stack":g.stack.len()});
   Ok((actual,json!({"source_announcement_seconds":announced,"source_resolution_seconds":resolved,"entire_action_seconds":start.elapsed().as_secs_f64(),"choices":dm.trace,"initial_hand":hands,"copies":copies})))

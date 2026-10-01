@@ -42,6 +42,33 @@ pub(super) fn read_leading_may_additional_land_plays(
     // turn", "may" describes the granted game-rule permission. It is not
     // an optional resolution action and therefore must not become a
     // MayEffect decision at resolution time.
+    if let Some((another, effect_tokens)) = clause_grammar::parse_chosen_player_may_shape(tokens)
+    {
+        let mut effects = parse_effect_chain_with_subject_verb_primitives(effect_tokens)?;
+        for effect in &mut effects {
+            bind_implicit_player_context(effect, PlayerAst::That);
+        }
+        let filter = if another {
+            PlayerFilter::NotYou
+        } else {
+            PlayerFilter::Any
+        };
+        return Ok(Some(EffectAst::Sequence {
+            effects: vec![
+                EffectAst::subject_verb_choose_player(
+                    PlayerAst::You,
+                    filter,
+                    crate::tag::CompilerReferenceTag::It.bind(),
+                    false,
+                    0,
+                ),
+                EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
+                    player: PlayerAst::That,
+                    effects,
+                }),
+            ],
+        }));
+    }
     if let Some(shape) = clause_grammar::parse_leading_may_shape(tokens) {
         if let Some(mut permission) = parse_additional_land_plays_clause(shape.effect_tokens)? {
             if let clause_grammar::LeadingMayActorShape::Player(player) = shape.actor {

@@ -809,22 +809,19 @@ mod tests {
     }
 
     #[test]
-    fn test_choose_objects_requires_explicit_search_zone() {
+    fn test_typed_zone_less_choice_uses_battlefield_only() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
+        let permanent = create_creature(&mut game, "Battlefield choice", alice);
+        let graveyard_card = create_graveyard_creature(&mut game, "Graveyard exclusion", alice);
         let source = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(source, alice);
-
-        let effect =
-            ChooseObjectsEffect::new(ObjectFilter::default(), 1, PlayerFilter::You, "selected");
-        let err = effect
-            .execute(&mut game, &mut ctx)
-            .expect_err("zone-less choose effect should fail explicitly");
-
-        assert!(matches!(
-            err,
-            ExecutionError::UnresolvableValue(message)
-                if message.contains("explicit search zone")
-        ));
+        let effect = ChooseObjectsEffect::new(ObjectFilter::creature(), 1, PlayerFilter::You, "selected");
+        let outcome = effect.execute(&mut game, &mut ctx).expect("typed zone-less description chooses a permanent");
+        assert_eq!(outcome.objects().unwrap(), &[permanent]);
+        assert_eq!(game.object(graveyard_card).unwrap().zone, Zone::Graveyard);
+        assert_eq!(game.object(permanent).unwrap().zone, Zone::Battlefield);
     }
+
+
 }

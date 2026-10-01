@@ -305,8 +305,11 @@ pub fn audit(definition: &CardDefinition) -> Vec<ExecutionObservation> {
         let mut rows = Vec::new();
         let setup = guarded(&path, "discovery", || {
             let (game, source) = seed(definition, zone);
-            let actions: Vec<_> = compute_legal_actions(&game, PlayerId(0))
-                .into_iter()
+            let discovered = match compute_legal_actions(&game, PlayerId(0)) {
+                Ok(actions) => actions,
+                Err(error) => return observation(&path, "discovery", "action_discovery_failed", error.to_string()),
+            };
+            let actions: Vec<_> = discovered.into_iter()
                 .filter(|action| belongs_to(action, source))
                 .collect();
             for (index, action) in actions.iter().take(MAX_ACTIONS_PER_ZONE).enumerate() {

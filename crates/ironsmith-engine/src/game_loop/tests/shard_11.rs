@@ -132,7 +132,7 @@ pub(super) fn test_word_of_blasting_has_no_cast_action_without_a_wall_target() {
         .build();
     game.create_object_from_card(&non_wall, bob, Zone::Battlefield);
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let can_cast_word = actions.iter().any(|action| {
         matches!(
             action,
@@ -188,7 +188,7 @@ pub(super) fn test_brutal_suppression_adds_a_land_sacrifice_activation_cost() {
             crate::resolution::ResolutionProgram::from_effects(vec![Effect::draw(1)]),
         ));
 
-    let actions_without_land = crate::decision::compute_legal_actions(&game, alice);
+    let actions_without_land = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !actions_without_land.iter().any(|action| matches!(
             action,
@@ -203,7 +203,7 @@ pub(super) fn test_brutal_suppression_adds_a_land_sacrifice_activation_cost() {
     let land_id = game.create_object_from_card(&land, alice, Zone::Battlefield);
     let land_stable_id = game.object(land_id).expect("land exists").stable_id;
 
-    let actions_with_land = crate::decision::compute_legal_actions(&game, alice);
+    let actions_with_land = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions_with_land.iter().any(|action| matches!(
             action,
@@ -771,7 +771,7 @@ pub(super) fn test_yawgmoth_proliferate_activation_is_legal_with_black_lotus_and
         })
         .expect("Yawgmoth should have proliferate ability with discard cost");
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| {
             matches!(
@@ -1073,7 +1073,7 @@ pub(super) fn test_cleanup_discard_via_game_loop() {
     if let Some((player, spec)) = get_cleanup_discard_spec(&game) {
         let cards: Vec<ObjectId> = make_decision(&game, &mut dm, player, None, spec);
         let mut auto_dm = crate::decision::AutoPassDecisionMaker;
-        crate::turn::apply_cleanup_discard(&mut game, &cards, &mut auto_dm);
+        crate::turn::apply_cleanup_discard(&mut game, &cards, &mut auto_dm).expect("cleanup discard should execute");
     }
 
     // Verify the decision was made
@@ -1149,7 +1149,7 @@ pub(super) fn test_cleanup_discard_specific_card_choice() {
     if let Some((player, spec)) = get_cleanup_discard_spec(&game) {
         let cards: Vec<ObjectId> = make_decision(&game, &mut dm, player, None, spec);
         let mut auto_dm = crate::decision::AutoPassDecisionMaker;
-        crate::turn::apply_cleanup_discard(&mut game, &cards, &mut auto_dm);
+        crate::turn::apply_cleanup_discard(&mut game, &cards, &mut auto_dm).expect("cleanup discard should execute");
     }
 
     // Verify hand size is now 7
@@ -1264,7 +1264,7 @@ pub(super) fn test_marang_river_prowler_not_castable_from_graveyard_without_blac
         .expect("Marang River Prowler should parse");
     let prowler_id = game.create_object_from_definition(&prowler, alice, Zone::Graveyard);
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let graveyard_cast = actions.iter().find(|action| {
         matches!(
             action,
@@ -1406,7 +1406,7 @@ pub(super) fn test_squee_the_immortal_castable_from_graveyard() {
         ),
         "Squee should grant permission to cast itself from graveyard"
     );
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action,
@@ -1449,7 +1449,7 @@ pub(super) fn test_squee_the_immortal_castable_from_exile() {
         ),
         "Squee should grant permission to cast itself from exile"
     );
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action,
@@ -1491,7 +1491,7 @@ pub(super) fn test_squee_the_immortal_not_castable_from_unlisted_zone() {
         ),
         "Squee should not grant permission from library"
     );
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !actions.iter().any(|action| matches!(
             action,
@@ -1566,7 +1566,7 @@ pub(super) fn hundred_battle_veteran_graveyard_cast_enters_with_finality_counter
 
     let veteran = hundred_battle_veteran_definition();
     let graveyard_id = game.create_object_from_definition(&veteran, alice, Zone::Graveyard);
-    let cast_action = compute_legal_actions(&game, alice)
+    let cast_action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -1608,7 +1608,7 @@ pub(super) fn hundred_battle_veteran_graveyard_cast_enters_with_finality_counter
         "graveyard-cast Veteran should enter with one finality counter"
     );
 
-    crate::events::processing::process_destroy(&mut game, entered, None, &mut dm);
+    crate::events::processing::process_destroy(&mut game, entered, None, &mut dm).expect("destruction succeeds").expect("destruction is not pending");
     assert!(
         game.exile.iter().any(|id| {
             game.object(*id)
@@ -1640,7 +1640,7 @@ pub(super) fn hundred_battle_veteran_normal_cast_does_not_get_finality_counter()
 
     let veteran = hundred_battle_veteran_definition();
     let hand_id = game.create_object_from_definition(&veteran, alice, Zone::Hand);
-    let cast_action = compute_legal_actions(&game, alice)
+    let cast_action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -1718,7 +1718,7 @@ pub(super) fn test_eelectrocute_not_castable_from_graveyard_without_rolled_six()
     let eelectrocute = eelectrocute_definition();
     let eelectrocute_id = game.create_object_from_definition(&eelectrocute, alice, Zone::Graveyard);
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     let graveyard_cast = actions.iter().find(|action| {
         matches!(
             action,
@@ -1757,7 +1757,7 @@ pub(super) fn test_eelectrocute_cast_from_graveyard_after_rolled_six_exiles_afte
     let eelectrocute = eelectrocute_definition();
     let eelectrocute_id = game.create_object_from_definition(&eelectrocute, alice, Zone::Graveyard);
 
-    let cast_action = compute_legal_actions(&game, alice)
+    let cast_action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -1828,7 +1828,7 @@ pub(super) fn test_eelectrocute_normal_cast_goes_to_graveyard_not_exile() {
     let eelectrocute = eelectrocute_definition();
     let eelectrocute_id = game.create_object_from_definition(&eelectrocute, alice, Zone::Hand);
 
-    let cast_action = compute_legal_actions(&game, alice)
+    let cast_action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -1908,7 +1908,7 @@ pub(super) fn test_flashback_appears_in_legal_actions_from_graveyard() {
         game.create_object_from_definition(&think_twice_def, alice, Zone::Graveyard);
 
     // Compute legal actions
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     // Should find a CastSpell action for Think Twice with Alternative casting method
     let flashback_action = actions.iter().find(|a| {
@@ -1954,7 +1954,7 @@ pub(super) fn test_flashback_not_available_from_hand() {
     let think_twice_id = game.create_object_from_definition(&think_twice_def, alice, Zone::Hand);
 
     // Compute legal actions
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     // Should find a CastSpell action for Think Twice from hand with Normal casting
     let normal_cast = actions.iter().find(|a| {

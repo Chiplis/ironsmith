@@ -2561,8 +2561,8 @@ impl WasmGame {
                 }
                 actions.extend(self.available_mulligan_pregame_actions(player));
                 DecisionContext::Priority(ironsmith::decisions::context::PriorityContext::new(
-                    player, actions,
-                ))
+                    &self.game, player, actions,
+                ).map_err(|error| JsValue::from_str(&format!("pregame action preparation failed: {error}")))?)
             }
             PregameStage::BottomCards {
                 queue,
@@ -2644,8 +2644,8 @@ impl WasmGame {
                     }];
                     actions.extend(self.available_pregame_actions(player));
                     DecisionContext::Priority(ironsmith::decisions::context::PriorityContext::new(
-                        player, actions,
-                    ))
+                        &self.game, player, actions,
+                    ).map_err(|error| JsValue::from_str(&format!("pregame action preparation failed: {error}")))?)
                 }
             }
         };
@@ -2896,6 +2896,7 @@ impl WasmGame {
                 },
             ) => {
                 let action = resolve_priority_action(&self.game, priority, action_index, action_ref.as_ref())
+                    .map_err(|error| JsValue::from_str(&format!("priority action analysis failed: {error}")))?
                     .ok_or_else(|| {
                         if let Some(action_ref) = action_ref.as_ref() {
                             JsValue::from_str(&format!(
@@ -4983,11 +4984,15 @@ mod power_up_native_replay_tests {
             ironsmith_tools::default_cards_path().to_str().unwrap(),"Abomination, Terrifying Titan").unwrap();
         let definition = ironsmith_tools::compile_definition_from_payload(&payloads[0]).unwrap();
         let source = wasm.game.create_object_from_definition(&definition,alice,Zone::Hand);
-        let source = wasm.game.move_object_with_etb_processing(source,Zone::Battlefield).unwrap().new_id;
+        let receipt = wasm.game.move_object_with_etb_processing(source,Zone::Battlefield)
+            .expect("entry execution must succeed in this scenario");
+        assert!(!receipt.pending, "fixture expects a completed original entry");
+        assert!(receipt.programs.is_empty(), "fixture must not discard added replacement instructions");
+        let source = receipt.original.into_result().expect("fixture expects the original entry").new_id;
         for (symbol,amount) in [(ironsmith::mana::ManaSymbol::Colorless,10),(ironsmith::mana::ManaSymbol::Red,4),(ironsmith::mana::ManaSymbol::Green,4)] {
             wasm.game.player_mut(alice).unwrap().mana_pool.add(symbol,amount);
         }
-        let action = ironsmith::decision::compute_legal_actions(&wasm.game,alice).into_iter()
+        let action = ironsmith::decision::compute_legal_actions(&wasm.game,alice).expect("fixture has complete replacement state").into_iter()
             .find(|action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source)).unwrap();
         let root = ReplayRoot::Response(PriorityResponse::PriorityAction(action));
         let checkpoint = wasm.capture_replay_checkpoint();

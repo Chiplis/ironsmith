@@ -1078,7 +1078,7 @@ pub(super) fn test_goddric_celebration_inactive_without_two_nonland_entries() {
         "Goddric should not have flying before celebration is active"
     );
     assert!(
-        !crate::decision::compute_legal_actions(&game, alice)
+        !crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .iter()
             .any(|action| matches!(
                 action,
@@ -1135,7 +1135,7 @@ pub(super) fn test_goddric_celebration_grants_dragon_stats_flying_and_activation
         "Goddric should have flying once celebration is active"
     );
     assert!(
-        crate::decision::compute_legal_actions(&game, alice)
+        crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .iter()
             .any(|action| matches!(
                 action,
@@ -1189,7 +1189,7 @@ pub(super) fn test_celebration_nonland_count_uses_current_type_effects_for_curre
         Some(2),
         "Ashaya's characteristic-defining toughness should count lands after layer-4 effects"
     );
-    crate::rules::state_based::apply_state_based_actions(&mut game);
+    crate::rules::state_based::apply_state_based_actions(&mut game).expect("replacement operation must finish without execution error");
     assert!(
         game.object(ashaya_id)
             .is_some_and(|object| object.zone == Zone::Battlefield),
@@ -1239,7 +1239,7 @@ pub(super) fn test_goddric_celebration_granted_ability_buffs_only_dragons() {
         .mana_pool
         .add(crate::mana::ManaSymbol::Red, 1);
 
-    let activate_action = crate::decision::compute_legal_actions(&game, alice)
+    let activate_action = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -1348,7 +1348,7 @@ pub(super) fn kjeldoran_elite_guard_delayed_trigger_tracks_only_targeted_creatur
     let target_id = game.create_object_from_card(&target, bob, Zone::Battlefield);
     let decoy_id = game.create_object_from_card(&decoy, bob, Zone::Battlefield);
 
-    let activate_action = compute_legal_actions(&game, alice)
+    let activate_action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -1521,7 +1521,7 @@ pub(super) fn test_root_greevil_activation_reaches_stack_and_resolves_with_color
         .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
         .expect("Root Greevil should have an activated ability");
 
-    let activate_action = compute_legal_actions(&game, alice)
+    let activate_action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(
             |action| matches!(action, LegalAction::ActivateAbility { source, ability_index: idx } if *source == root_id && *idx == ability_index),
@@ -2030,6 +2030,7 @@ pub(super) fn test_enter_as_copy_applies_copied_enters_with_echo_counter() {
                     name_override: None,
                     added_colors: crate::color::ColorSet::new(),
                     added_card_types: Vec::new(),
+                    removes_other_card_types: false,
                     added_supertypes: Vec::new(),
                     removed_supertypes: Vec::new(),
                     added_subtypes: Vec::new(),
@@ -2047,9 +2048,7 @@ pub(super) fn test_enter_as_copy_applies_copied_enters_with_echo_counter() {
         .build();
     let clone_id = game.create_object_from_definition(&clone, alice, Zone::Hand);
 
-    let result = game
-        .move_object_with_etb_processing(clone_id, Zone::Battlefield)
-        .expect("clone should enter the battlefield");
+    let result = crate::tests::test_helpers::enter_fixture(&mut game, clone_id, "clone should enter the battlefield");
     let copied = game
         .object(result.new_id)
         .expect("copied permanent should exist");
@@ -2104,6 +2103,7 @@ pub(super) fn test_enter_as_copy_can_set_base_power_toughness_from_entering_obje
                     name_override: None,
                     added_colors: crate::color::ColorSet::new(),
                     added_card_types: Vec::new(),
+                    removes_other_card_types: false,
                     added_supertypes: Vec::new(),
                     removed_supertypes: Vec::new(),
                     added_subtypes: Vec::new(),
@@ -2121,9 +2121,7 @@ pub(super) fn test_enter_as_copy_can_set_base_power_toughness_from_entering_obje
         .build();
     let metamorph_id = game.create_object_from_definition(&metamorph, alice, Zone::Hand);
 
-    let result = game
-        .move_object_with_etb_processing(metamorph_id, Zone::Battlefield)
-        .expect("metamorph should enter the battlefield");
+    let result = crate::tests::test_helpers::enter_fixture(&mut game, metamorph_id, "metamorph should enter the battlefield");
     let copied = game
         .object(result.new_id)
         .expect("copied permanent should exist");
@@ -2164,6 +2162,7 @@ pub(super) fn test_enter_as_copy_can_set_base_power_toughness_from_entering_stac
                     name_override: None,
                     added_colors: crate::color::ColorSet::new(),
                     added_card_types: Vec::new(),
+                    removes_other_card_types: false,
                     added_supertypes: Vec::new(),
                     removed_supertypes: Vec::new(),
                     added_subtypes: Vec::new(),
@@ -2181,9 +2180,7 @@ pub(super) fn test_enter_as_copy_can_set_base_power_toughness_from_entering_stac
         .build();
     let metamorph_id = game.create_object_from_definition(&metamorph, alice, Zone::Stack);
 
-    let result = game
-        .move_object_with_etb_processing(metamorph_id, Zone::Battlefield)
-        .expect("metamorph should enter the battlefield");
+    let result = crate::tests::test_helpers::enter_fixture(&mut game, metamorph_id, "metamorph should enter the battlefield");
     let copied = game
         .object(result.new_id)
         .expect("copied permanent should exist");
@@ -2218,6 +2215,7 @@ pub(super) fn test_static_source_can_make_matching_creatures_enter_as_copy_of_it
                     name_override: None,
                     added_colors: crate::color::ColorSet::new(),
                     added_card_types: Vec::new(),
+                    removes_other_card_types: false,
                     added_supertypes: Vec::new(),
                     removed_supertypes: Vec::new(),
                     added_subtypes: Vec::new(),
@@ -2240,9 +2238,7 @@ pub(super) fn test_static_source_can_make_matching_creatures_enter_as_copy_of_it
         .build();
     let bear_id = game.create_object_from_definition(&bear, alice, Zone::Hand);
 
-    let result = game
-        .move_object_with_etb_processing(bear_id, Zone::Battlefield)
-        .expect("creature should enter the battlefield");
+    let result = crate::tests::test_helpers::enter_fixture(&mut game, bear_id, "creature should enter the battlefield");
     let copied = game
         .object(result.new_id)
         .expect("copied permanent should exist");
@@ -2286,6 +2282,7 @@ pub(super) fn test_enter_as_copy_can_remove_legendary_add_artifact_and_add_myria
                     name_override: None,
                     added_colors: crate::color::ColorSet::BLACK,
                     added_card_types: vec![CardType::Artifact],
+                    removes_other_card_types: false,
                     added_supertypes: Vec::new(),
                     removed_supertypes: vec![Supertype::Legendary],
                     added_subtypes: Vec::new(),
@@ -2323,9 +2320,7 @@ pub(super) fn test_enter_as_copy_can_remove_legendary_add_artifact_and_add_myria
         .build();
     let auton_like_id = game.create_object_from_definition(&auton_like, alice, Zone::Hand);
 
-    let result = game
-        .move_object_with_etb_processing(auton_like_id, Zone::Battlefield)
-        .expect("auton-like permanent should enter the battlefield");
+    let result = crate::tests::test_helpers::enter_fixture(&mut game, auton_like_id, "auton-like permanent should enter the battlefield");
     let copied = game
         .object(result.new_id)
         .expect("copied permanent should exist");
@@ -2380,6 +2375,7 @@ pub(super) fn test_enter_as_copy_with_no_candidates_keeps_original_characteristi
                     name_override: None,
                     added_colors: crate::color::ColorSet::new(),
                     added_card_types: vec![CardType::Artifact],
+                    removes_other_card_types: false,
                     added_supertypes: Vec::new(),
                     removed_supertypes: vec![Supertype::Legendary],
                     added_subtypes: Vec::new(),
@@ -2417,9 +2413,7 @@ pub(super) fn test_enter_as_copy_with_no_candidates_keeps_original_characteristi
         .build();
     let auton_like_id = game.create_object_from_definition(&auton_like, alice, Zone::Hand);
 
-    let result = game
-        .move_object_with_etb_processing(auton_like_id, Zone::Battlefield)
-        .expect("auton-like permanent should enter the battlefield");
+    let result = crate::tests::test_helpers::enter_fixture(&mut game, auton_like_id, "auton-like permanent should enter the battlefield");
     let entered = game
         .object(result.new_id)
         .expect("entered permanent should exist");
@@ -2618,9 +2612,7 @@ pub(super) fn sakashimas_student_declined_copy_enters_with_its_own_characteristi
     let student = sakashimas_student_test_definition();
     let student_id = game.create_object_from_definition(&student, alice, Zone::Hand);
     let mut dm = AutoPassDecisionMaker;
-    let result = game
-        .move_object_with_etb_processing_with_dm(student_id, Zone::Battlefield, &mut dm)
-        .expect("Sakashima's Student should enter when its optional copy is declined");
+    let result = crate::tests::test_helpers::enter_fixture_with_dm(&mut game, student_id, &mut dm, "Sakashima's Student should enter when its optional copy is declined");
 
     let entered = game
         .object(result.new_id)
@@ -2641,9 +2633,7 @@ pub(super) fn sakashimas_student_without_copy_candidate_enters_without_prompt() 
     let student = sakashimas_student_test_definition();
     let student_id = game.create_object_from_definition(&student, alice, Zone::Hand);
     let mut dm = PanicOnSakashimaCopyPrompt;
-    let result = game
-        .move_object_with_etb_processing_with_dm(student_id, Zone::Battlefield, &mut dm)
-        .expect("Sakashima's Student should enter without another creature to copy");
+    let result = crate::tests::test_helpers::enter_fixture_with_dm(&mut game, student_id, &mut dm, "Sakashima's Student should enter without another creature to copy");
 
     let entered = game
         .object(result.new_id)
@@ -2731,9 +2721,7 @@ pub(super) fn the_mimeoplasm_exiles_two_graveyard_creatures_copies_one_and_gets_
         copy_name: "Copy Bear",
         counter_id,
     };
-    let result = game
-        .move_object_with_etb_processing_with_dm(mimeoplasm_id, Zone::Battlefield, &mut dm)
-        .expect("The Mimeoplasm should enter");
+    let result = crate::tests::test_helpers::enter_fixture_with_dm(&mut game, mimeoplasm_id, &mut dm, "The Mimeoplasm should enter");
 
     let entered = game
         .object(result.new_id)
@@ -2789,9 +2777,7 @@ pub(super) fn the_mimeoplasm_declined_optional_exile_enters_as_itself_and_leaves
     let mimeoplasm = the_mimeoplasm_test_definition();
     let mimeoplasm_id = game.create_object_from_definition(&mimeoplasm, alice, Zone::Hand);
     let mut dm = AutoPassDecisionMaker;
-    let result = game
-        .move_object_with_etb_processing_with_dm(mimeoplasm_id, Zone::Battlefield, &mut dm)
-        .expect("The Mimeoplasm should enter even when declined");
+    let result = crate::tests::test_helpers::enter_fixture_with_dm(&mut game, mimeoplasm_id, &mut dm, "The Mimeoplasm should enter even when declined");
 
     let entered = game
         .object(result.new_id)
@@ -2823,9 +2809,7 @@ pub(super) fn the_mimeoplasm_needs_two_graveyard_creature_cards_to_apply_copy_re
     let mimeoplasm = the_mimeoplasm_test_definition();
     let mimeoplasm_id = game.create_object_from_definition(&mimeoplasm, alice, Zone::Hand);
     let mut dm = PanicOnMimeoplasmReplacementPrompt;
-    let result = game
-        .move_object_with_etb_processing_with_dm(mimeoplasm_id, Zone::Battlefield, &mut dm)
-        .expect("The Mimeoplasm should enter without enough graveyard creature cards");
+    let result = crate::tests::test_helpers::enter_fixture_with_dm(&mut game, mimeoplasm_id, &mut dm, "The Mimeoplasm should enter without enough graveyard creature cards");
 
     let entered = game
         .object(result.new_id)
@@ -2865,11 +2849,7 @@ pub(super) fn the_mimeoplasm_does_not_count_noncreature_or_token_graveyard_objec
     let mimeoplasm = the_mimeoplasm_test_definition();
     let mimeoplasm_id = game.create_object_from_definition(&mimeoplasm, alice, Zone::Hand);
     let mut dm = PanicOnMimeoplasmReplacementPrompt;
-    let result = game
-        .move_object_with_etb_processing_with_dm(mimeoplasm_id, Zone::Battlefield, &mut dm)
-        .expect(
-            "The Mimeoplasm should enter without counting noncreature or token graveyard objects",
-        );
+    let result = crate::tests::test_helpers::enter_fixture_with_dm(&mut game, mimeoplasm_id, &mut dm, "The Mimeoplasm should enter without counting noncreature or token graveyard objects");
 
     let entered = game
         .object(result.new_id)
@@ -3529,8 +3509,7 @@ pub(super) fn put_boss_s_chauffeur_onto_battlefield(
     controller: PlayerId,
 ) -> ObjectId {
     let object_id = game.create_object_from_definition(definition, controller, Zone::Hand);
-    game.move_object_with_etb_processing(object_id, Zone::Battlefield)
-        .expect("Boss's Chauffeur should move onto the battlefield")
+    crate::tests::test_helpers::enter_fixture(game, object_id, "Boss's Chauffeur should move onto the battlefield")
         .new_id
 }
 
@@ -3545,8 +3524,7 @@ pub(super) fn put_plain_creature_onto_battlefield(
         .power_toughness(PowerToughness::fixed(2, 2))
         .build();
     let object_id = game.create_object_from_card(&card, controller, Zone::Hand);
-    game.move_object_with_etb_processing(object_id, Zone::Battlefield)
-        .expect("test creature should move onto the battlefield")
+    crate::tests::test_helpers::enter_fixture(game, object_id, "test creature should move onto the battlefield")
         .new_id
 }
 

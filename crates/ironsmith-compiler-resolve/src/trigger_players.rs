@@ -206,6 +206,13 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_) => {
             Some(PlayerFilter::IteratedPlayer)
         }
+        // "Whenever an opponent attacks you and/or one or more planeswalkers
+        // you control, ... that player's library": the attacking player.
+        TriggerSpec::PlayerAttacksOneOrMore { attacker, .. } if *attacker != PlayerFilter::You => {
+            Some(PlayerFilter::AliasedControllerOf(ObjectRef::tagged(
+                crate::tag::CompilerReferenceTag::Triggering.bind(),
+            )))
+        }
         TriggerSpec::PlayerAttacksTargetWithOneOrMore { .. } => {
             // In "an opponent attacks a planeswalker ... with one or more
             // creatures, ... that player", the discourse antecedent is the
@@ -280,6 +287,9 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
         TriggerSpec::BeginningOfTheEndStep => Some(PlayerFilter::Active),
         TriggerSpec::BeginningOfMonarchEndStep => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::BecomesTargetedBySourceController {
+            source_controller, ..
+        }
+        | TriggerSpec::PlayerOrObjectBecomesTargetedBySourceController {
             source_controller, ..
         } => {
             if *source_controller == PlayerFilter::Any {

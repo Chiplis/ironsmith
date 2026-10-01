@@ -2,7 +2,7 @@ use crate::decisions::context::{OrderContext, ViewCardsContext};
 use crate::effect::{EffectOutcome, ExecutionFact, OutcomeObjectMemory};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use crate::ids::{ObjectId, PlayerId, StableId};
+use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::{SOURCE_EXILED_TAG, TagKey};
 use crate::triggers::TriggerEvent;
@@ -43,6 +43,8 @@ pub struct LibraryConsultResult {
     pub matched_snapshots: Vec<ObjectSnapshot>,
     pub exposed_object_ids: Vec<ObjectId>,
     pub reveal_events: Vec<TriggerEvent>,
+    /// Completed replacement observations retained by the owning consultation.
+    pub operation_outcomes: Vec<EffectOutcome>,
 }
 
 impl LibraryConsultResult {
@@ -70,7 +72,14 @@ impl LibraryConsultResult {
         if !matched_ids.is_empty() {
             outcome = outcome.with_execution_fact(ExecutionFact::ChosenObjects(matched_ids));
         }
-        outcome.with_chosen_object_memory(matched_memory)
+        let primary_status = outcome.status;
+        let primary_value = outcome.value.clone();
+        let mut outcomes = vec![outcome.with_chosen_object_memory(matched_memory)];
+        outcomes.extend(self.operation_outcomes);
+        let mut outcome = EffectOutcome::aggregate(outcomes);
+        outcome.status = primary_status;
+        outcome.value = primary_value;
+        outcome
     }
 }
 
@@ -84,6 +93,10 @@ pub fn execute_library_consult(
     match_tag: Option<&TagKey>,
     mut is_match: impl FnMut(&crate::object::Object, &GameState) -> bool,
 ) -> Result<LibraryConsultResult, ExecutionError> {
+    if ctx.decision_maker.awaiting_choice() { return Ok(LibraryConsultResult::default()); }
+    let checkpoint = game.clone();
+    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+    let instruction = (|| -> Result<LibraryConsultResult, ExecutionError> {
     if let Some(tag) = all_tag {
         ctx.clear_object_tag(tag.as_str());
     }
@@ -99,6 +112,9 @@ pub fn execute_library_consult(
 
     let mut result = LibraryConsultResult::default();
     let mut matched_mana_value = 0u32;
+    let mut receipts = Vec::new();
+    let additional = ctx.additional_replacement_effects_snapshot();
+    let mut stalled_attempts = HashSet::new();
 
     match mode {
         LibraryConsultMode::Reveal => {
@@ -154,47 +170,45 @@ pub fn execute_library_consult(
                 break;
             };
 
-            let Some((exiled_id, final_zone)) = game.move_object_with_commander_options(
-                top_card_id,
-                Zone::Exile,
-                ctx.cause.clone(),
-                &mut *ctx.decision_maker,
-            ) else {
-                break;
-            };
-            if final_zone != Zone::Exile {
-                continue;
+            // One-shot prevention may leave the top card in place for a later attempt.
+            // This temporary rejection boundary is deliberately not a claimed CR loop detector.
+            // General repeated-state/optional-choice classification remains an open gate.
+            let one_shots = game.effect_store.replacement_effects.one_shot_effects_snapshot();
+            if !stalled_attempts.insert((top_card_id, one_shots)) {
+                return Err(ExecutionError::InternalError("consultation made no progress; mandatory/optional loop classification required".into()));
             }
-
-            let Some(object) = game.object(exiled_id) else {
-                continue;
+            let receipt = crate::effects::zones::apply_zone_change_with_context_and_additional_effects(
+                game, top_card_id, Zone::Library, Zone::Exile, ctx.cause.clone(), ctx, &additional,
+            )?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(LibraryConsultResult::default()); }
+            let arrivals = match &receipt.original {
+                crate::events::processing::EventOutcome::Proceed(change) => change.new_object_ids.clone(),
+                crate::events::processing::EventOutcome::Replaced => {
+                    let ids = game.take_zone_change_results(top_card_id);
+                    if !ids.is_empty() { game.record_zone_change_results(top_card_id, ids.clone()); }
+                    ids
+                }
+                _ => Vec::new(),
             };
-            let snapshot = ObjectSnapshot::from_object(object, game);
-            let mana_value = object
-                .mana_cost
-                .as_ref()
-                .map_or(0, |cost| cost.mana_value());
-            let matched = is_match(object, game);
-
-            // Exile-mode consultation performs the zone change directly
-            // instead of through MoveToZoneEffect/ExileEffect. Preserve the
-            // same source-linked exile provenance those effects record so a
-            // later "cards exiled with this source" cleanup can consume the
-            // entire consulted collection, including nonmatching cards.
-            game.add_exiled_with_source_link(ctx.source, exiled_id);
-            ctx.tag_object(SOURCE_EXILED_TAG, snapshot.clone());
-
-            result.exposed_object_ids.push(exiled_id);
-            result.exposed_snapshots.push(snapshot.clone());
-            if matched {
-                result.matched_snapshots.push(snapshot);
-                matched_mana_value = matched_mana_value.saturating_add(mana_value);
-                if result.matched_snapshots.len() >= required_matches
-                    || matches!(stop_rule, LibraryConsultStopRule::TotalManaValue(threshold) if matched_mana_value >= threshold)
-                {
-                    break;
+            receipts.push((top_card_id, receipt));
+            let mut stop = false;
+            for exiled_id in arrivals {
+                let Some(object) = game.object(exiled_id).filter(|object| object.zone == Zone::Exile) else { continue; };
+                let snapshot = ObjectSnapshot::from_object(object, game);
+                let mana_value = object.mana_cost.as_ref().map_or(0, |cost| cost.mana_value());
+                let matched = is_match(object, game);
+                game.add_exiled_with_source_link(ctx.source, exiled_id);
+                ctx.tag_object(SOURCE_EXILED_TAG, snapshot.clone());
+                result.exposed_object_ids.push(exiled_id);
+                result.exposed_snapshots.push(snapshot.clone());
+                if matched {
+                    result.matched_snapshots.push(snapshot);
+                    matched_mana_value = matched_mana_value.saturating_add(mana_value);
+                    stop |= result.matched_snapshots.len() >= required_matches
+                        || matches!(stop_rule, LibraryConsultStopRule::TotalManaValue(threshold) if matched_mana_value >= threshold);
                 }
             }
+            if stop { break; }
             if max_exposed.is_some_and(|maximum| result.exposed_snapshots.len() >= maximum) {
                 break;
             }
@@ -212,7 +226,17 @@ pub fn execute_library_consult(
         ctx.set_tagged_objects(tag.clone(), result.matched_snapshots.clone());
     }
 
+    // All original consultation tags and source links precede additional programs.
+    let observations = crate::effects::zones::finish_zone_change_receipts(game, ctx, EffectOutcome::resolved(), receipts)?;
+    if ctx.decision_maker.awaiting_choice() { return Ok(LibraryConsultResult::default()); }
+    result.operation_outcomes.push(observations);
     Ok(result)
+    })();
+    if instruction.is_err() || ctx.decision_maker.awaiting_choice() {
+        *game = checkpoint;
+        context_checkpoint.restore(ctx);
+    }
+    instruction
 }
 
 pub fn move_tagged_remainder_to_library_bottom(
@@ -223,101 +247,82 @@ pub fn move_tagged_remainder_to_library_bottom(
     order: LibraryBottomOrder,
     chooser: PlayerId,
 ) -> Result<EffectOutcome, ExecutionError> {
-    let Some(tagged) = ctx.get_tagged_all(tag.as_str()).cloned() else {
-        return Ok(EffectOutcome::resolved());
-    };
-
-    let keep_stable_ids = keep_tagged
-        .and_then(|keep| ctx.get_tagged_all(keep.as_str()).cloned())
-        .unwrap_or_default()
-        .into_iter()
-        .map(|snapshot| snapshot.stable_id)
-        .collect::<HashSet<_>>();
-
-    let mut owner_order = Vec::new();
-    let mut by_owner: HashMap<PlayerId, Vec<BottomCandidate>> = HashMap::new();
-    for snapshot in tagged {
-        if keep_stable_ids.contains(&snapshot.stable_id) {
-            continue;
-        }
-
-        let Some(candidate) = BottomCandidate::from_snapshot(game, snapshot) else {
-            continue;
+    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+    let checkpoint = game.clone();
+    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+    let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
+        let Some(tagged) = ctx.get_tagged_all(tag.as_str()).cloned() else {
+            return Ok(EffectOutcome::resolved());
         };
-        if !by_owner.contains_key(&candidate.owner) {
-            owner_order.push(candidate.owner);
+        let keep_ids = keep_tagged.and_then(|keep| ctx.get_tagged_all(keep.as_str()).cloned())
+            .unwrap_or_default().into_iter().map(|snapshot| snapshot.object_id).collect::<HashSet<_>>();
+        let mut owner_order = Vec::new();
+        let mut by_owner: HashMap<PlayerId, Vec<BottomCandidate>> = HashMap::new();
+        let mut selected = HashSet::new();
+        for snapshot in tagged {
+            if keep_ids.contains(&snapshot.object_id) || !selected.insert(snapshot.object_id) { continue; }
+            let Some(candidate) = BottomCandidate::from_snapshot(game, snapshot) else { continue; };
+            if !by_owner.contains_key(&candidate.owner) { owner_order.push(candidate.owner); }
+            by_owner.entry(candidate.owner).or_default().push(candidate);
         }
-        by_owner.entry(candidate.owner).or_default().push(candidate);
-    }
-
-    let mut moved_ids = Vec::new();
-    for owner in owner_order {
-        let Some(candidates) = by_owner.remove(&owner) else {
-            continue;
-        };
-        if candidates.is_empty() {
-            continue;
+        // Resolve all ordering choices before any member of the original instruction moves.
+        let mut ordered_groups = Vec::new();
+        for owner in owner_order {
+            let candidates = by_owner.remove(&owner).unwrap_or_default();
+            let ordered = order_bottom_candidates(game, ctx, chooser, &candidates, order);
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            ordered_groups.push((owner, normalize_candidate_order(ordered, &candidates)));
         }
-
-        let ordered = order_bottom_candidates(game, ctx, chooser, &candidates, order);
-        let ordered = normalize_candidate_order(ordered, &candidates);
-
-        let mut stable_to_current = HashMap::<StableId, ObjectId>::new();
-        for candidate in &ordered {
-            if candidate.zone == Zone::Library {
-                stable_to_current.insert(candidate.stable_id, candidate.object_id);
+        let additional = ctx.additional_replacement_effects_snapshot();
+        let opened_batch = game.open_simultaneous_action();
+        let mut receipts = Vec::new();
+        let mut moved_ids = Vec::new();
+        for (owner, ordered) in ordered_groups {
+            let mut arrivals = HashMap::<ObjectId, Vec<ObjectId>>::new();
+            for candidate in &ordered {
+                if candidate.zone == Zone::Library {
+                    arrivals.insert(candidate.object_id, vec![candidate.object_id]);
+                    continue;
+                }
+                let receipt = crate::effects::zones::apply_zone_change_with_context_and_additional_effects(
+                    game, candidate.object_id, Zone::Exile, Zone::Library, ctx.cause.clone(), ctx, &additional,
+                )?;
+                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                let ids = match &receipt.original {
+                    crate::events::processing::EventOutcome::Proceed(change) => change.new_object_ids.clone(),
+                    crate::events::processing::EventOutcome::Replaced => {
+                        let ids = game.take_zone_change_results(candidate.object_id);
+                        if !ids.is_empty() { game.record_zone_change_results(candidate.object_id, ids.clone()); }
+                        ids
+                    }
+                    _ => Vec::new(),
+                };
+                arrivals.insert(candidate.object_id, ids);
+                receipts.push((candidate.object_id, receipt));
             }
-        }
-
-        for candidate in &ordered {
-            if candidate.zone != Zone::Exile {
-                continue;
+            let mut seen = HashSet::new();
+            let ordered_current_ids = ordered.iter().flat_map(|candidate|
+                arrivals.get(&candidate.object_id).into_iter().flatten().copied())
+                .filter(|id| game.object(*id).is_some_and(|object| object.zone == Zone::Library && object.owner == owner))
+                .filter(|id| seen.insert(*id)).collect::<Vec<_>>();
+            if ordered_current_ids.is_empty() { continue; }
+            let bottom_ids = ordered_current_ids.iter().copied().collect::<HashSet<_>>();
+            if let Some(player) = game.player(owner) {
+                let mut after_order = player.library.iter().copied().filter(|id| !bottom_ids.contains(id)).collect::<Vec<_>>();
+                after_order.splice(0..0, ordered_current_ids.clone());
+                game.set_player_library_order_with_audit(owner, after_order, "consult effect put cards on bottom");
             }
-
-            let Some((new_id, final_zone)) = game.move_object_with_commander_options(
-                candidate.object_id,
-                Zone::Library,
-                ctx.cause.clone(),
-                &mut *ctx.decision_maker,
-            ) else {
-                continue;
-            };
-            if final_zone == Zone::Library {
-                stable_to_current.insert(candidate.stable_id, new_id);
-            }
+            moved_ids.extend(ordered_current_ids);
         }
-
-        let ordered_current_ids = ordered
-            .iter()
-            .filter_map(|candidate| stable_to_current.get(&candidate.stable_id).copied())
-            .collect::<Vec<_>>();
-        if ordered_current_ids.is_empty() {
-            continue;
-        }
-
-        let bottom_ids = ordered_current_ids.iter().copied().collect::<HashSet<_>>();
-        if let Some(player) = game.player(owner) {
-            let mut after_order: Vec<ObjectId> = player
-                .library
-                .iter()
-                .copied()
-                .filter(|id| !bottom_ids.contains(id))
-                .collect();
-            after_order.splice(0..0, ordered_current_ids.clone());
-            game.set_player_library_order_with_audit(
-                owner,
-                after_order,
-                "consult effect put cards on bottom",
-            );
-        }
-        moved_ids.extend(ordered_current_ids);
-    }
-
-    if moved_ids.is_empty() {
-        Ok(EffectOutcome::resolved())
-    } else {
-        Ok(EffectOutcome::with_objects(moved_ids))
-    }
+        game.close_simultaneous_action(opened_batch);
+        let original = if moved_ids.is_empty() { EffectOutcome::resolved() }
+            else { EffectOutcome::with_objects(moved_ids) };
+        crate::effects::zones::finish_zone_change_receipts(game, ctx, original, receipts)
+    })();
+    let pending = ctx.decision_maker.awaiting_choice();
+    if pending || instruction.is_err() { *game = checkpoint; context_checkpoint.restore(ctx); }
+    if pending { return instruction.map(|_| EffectOutcome::count(0)); }
+    instruction
 }
 
 fn reveal_consulted_cards(
@@ -347,7 +352,6 @@ fn reveal_consulted_cards(
 
 #[derive(Debug, Clone)]
 struct BottomCandidate {
-    stable_id: StableId,
     object_id: ObjectId,
     owner: PlayerId,
     zone: Zone,
@@ -356,18 +360,14 @@ struct BottomCandidate {
 
 impl BottomCandidate {
     fn from_snapshot(game: &GameState, snapshot: ObjectSnapshot) -> Option<Self> {
-        let current_id = if game.object(snapshot.object_id).is_some() {
-            snapshot.object_id
-        } else {
-            game.find_object_by_stable_id(snapshot.stable_id)?
-        };
+        let current_id = snapshot.object_id;
+        // A tag names this incarnation, not a later object with the same stable ID.
         let object = game.object(current_id)?;
         if object.zone != Zone::Library && object.zone != Zone::Exile {
             return None;
         }
 
         Some(Self {
-            stable_id: snapshot.stable_id,
             object_id: current_id,
             owner: object.owner,
             zone: object.zone,
@@ -811,5 +811,82 @@ mod tests {
                 "Existing Top".to_string(),
             ])
         );
+    }
+}
+
+#[cfg(test)]
+mod replacement_bottom_owner_contract_tests {
+    use super::*;
+    use crate::card::CardBuilder;
+    use crate::decision::DecisionMaker;
+    use crate::effect::{Effect, Value};
+    use crate::ids::CardId;
+    use crate::replacement::{ReplacementAction, ReplacementEffect};
+    use crate::types::CardType;
+    struct Answers {pause: bool, pending: bool, order_calls: usize, addition_calls: usize, originals: Vec<ObjectId>}
+    impl DecisionMaker for Answers {
+        fn decide_order(&mut self,game: &GameState,context: &OrderContext)->Vec<ObjectId> {
+            self.order_calls+=1;
+            assert!(self.originals.iter().all(|id|game.object(*id).unwrap().zone==Zone::Exile));
+            context.items.iter().rev().map(|(id,_)|*id).collect()
+        }
+        fn decide_boolean(&mut self,game: &GameState,_: &crate::decisions::context::BooleanContext)->bool {
+            self.addition_calls+=1;
+            let names=game.player(PlayerId::from_index(0)).unwrap().library.iter().map(|id|game.object(*id).unwrap().name.to_string()).collect::<Vec<_>>();
+            assert_eq!(names,vec!["Second","First","Existing"]);
+            self.pending=self.pause; !self.pending
+        }
+        fn awaiting_choice(&self)->bool {self.pending}
+    }
+    fn card(game:&mut GameState,owner:PlayerId,name:&str,zone:Zone)->ObjectId {
+        game.create_object_from_card(&CardBuilder::new(CardId::new(),name).card_types(vec![CardType::Artifact]).build(),owner,zone)
+    }
+    fn check(mode:u8) {
+        let mut game=crate::tests::test_helpers::setup_two_player_game();let alice=PlayerId::from_index(0);let bob=PlayerId::from_index(1);
+        let parent=card(&mut game,alice,"Parent",Zone::Battlefield);let source=card(&mut game,bob,"Replacement",Zone::Battlefield);
+        let existing=card(&mut game,alice,"Existing",Zone::Library);let first=card(&mut game,alice,"First",Zone::Exile);let second=card(&mut game,alice,"Second",Zone::Exile);
+        let tags=[first,second].into_iter().map(|id|ObjectSnapshot::from_object(game.object(id).unwrap(),&game)).collect::<Vec<_>>();
+        let sentinel=ObjectSnapshot::from_object(game.object(parent).unwrap(),&game);
+        let actions=if mode==1 {vec![Effect::gain_life(3),Effect::lose_life(Value::X)]}
+            else {vec![Effect::gain_life(3),Effect::may(vec![Effect::gain_life(4)])]};
+        let shield=game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(source,bob,
+            crate::events::zones::matchers::WouldChangeZoneMatcher::new(crate::target::ObjectFilter::default(),Some(Zone::Exile),Some(Zone::Library)),ReplacementAction::Additionally(actions)));
+        game.take_pending_trigger_events();let ids=game.next_object_id_counter();let objects=game.objects_in_deterministic_order().len();
+        let mut dm=Answers {pause:mode==2,pending:false,order_calls:0,addition_calls:0,originals:vec![first,second]};
+        let mut ctx=ExecutionContext::new(parent,alice,&mut dm);ctx.set_tagged_objects("all",tags.clone());ctx.set_tagged_objects("it",vec![sentinel.clone()]);
+        let result=move_tagged_remainder_to_library_bottom(&mut game,&mut ctx,&TagKey::from("all"),None,LibraryBottomOrder::ChooserChooses,alice);
+        if mode==1 {assert!(matches!(result,Err(ExecutionError::UnresolvableValue(_))));}
+        else if mode==2 {assert!(ctx.decision_maker.awaiting_choice());assert!(result.unwrap().events.is_empty());}
+        else {
+            let outcome=result.unwrap();let arrived=outcome.explicit_objects().unwrap();assert_eq!(arrived.len(),2);assert!(arrived.iter().all(|id|game.object(*id).unwrap().zone==Zone::Library));
+            assert_eq!(game.player(alice).unwrap().life,20);assert_eq!(game.player(bob).unwrap().life,27);
+            assert_eq!(outcome.events.iter().filter_map(|event|event.downcast::<crate::events::LifeGainEvent>()).map(|event|(event.player,event.amount)).collect::<Vec<_>>(),vec![(bob,3),(bob,4)]);
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+        }
+        assert_eq!(ctx.get_tagged_all("all").unwrap().iter().map(|s|s.object_id).collect::<Vec<_>>(),vec![first,second]);assert_eq!(ctx.get_tagged_all("it").unwrap()[0].object_id,sentinel.object_id);
+        if mode==1||mode==2 {
+            assert_eq!(game.player(alice).unwrap().library,vec![existing]);assert_eq!(game.object(first).unwrap().zone,Zone::Exile);assert_eq!(game.object(second).unwrap().zone,Zone::Exile);
+            assert_eq!(game.next_object_id_counter(),ids);assert_eq!(game.objects_in_deterministic_order().len(),objects);assert_eq!(game.player(bob).unwrap().life,20);
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_some());assert!(game.take_pending_trigger_events().is_empty());
+        }
+        drop(ctx);assert_eq!(dm.order_calls,1);
+        if mode==0 {assert_eq!(dm.addition_calls,1);}
+        if mode==2 {
+            assert_eq!(dm.addition_calls,1);dm.pause=false;dm.pending=false;
+            let mut ctx=ExecutionContext::new(parent,alice,&mut dm);ctx.set_tagged_objects("all",tags);
+            let outcome=move_tagged_remainder_to_library_bottom(&mut game,&mut ctx,&TagKey::from("all"),None,LibraryBottomOrder::ChooserChooses,alice).unwrap();assert_eq!(outcome.explicit_objects().unwrap().len(),2);
+            assert_eq!(game.player(bob).unwrap().life,27);assert!(!ctx.decision_maker.awaiting_choice());drop(ctx);assert_eq!(dm.order_calls,2);assert_eq!(dm.addition_calls,2);
+        }
+    }
+    #[test] fn additions_observe_whole_ordered_original_batch() {check(0);}
+    #[test] fn error_restores_whole_ordered_batch() {check(1);}
+    #[test] fn pending_replays_whole_ordered_batch() {check(2);}
+    #[test] fn stale_tag_does_not_follow_a_later_incarnation() {
+        let mut game=crate::tests::test_helpers::setup_two_player_game();let alice=PlayerId::from_index(0);let source=card(&mut game,alice,"Parent",Zone::Battlefield);
+        let old=card(&mut game,alice,"Departed",Zone::Exile);let snapshot=ObjectSnapshot::from_object(game.object(old).unwrap(),&game);
+        let cause=ExecutionContext::new_default(source,alice).cause; let later=game.move_object(old,Zone::Hand,cause.clone()).unwrap();let later=game.move_object(later,Zone::Exile,cause).unwrap();game.take_pending_trigger_events();
+        let mut ctx=ExecutionContext::new_default(source,alice);ctx.set_tagged_objects("all",vec![snapshot]);
+        let outcome=move_tagged_remainder_to_library_bottom(&mut game,&mut ctx,&TagKey::from("all"),None,LibraryBottomOrder::Random,alice).unwrap();
+        assert!(game.object(later).is_some_and(|object| object.zone == Zone::Exile), "the later incarnation must remain untouched");assert!(outcome.explicit_objects().is_none());assert!(game.player(alice).unwrap().library.is_empty());
     }
 }

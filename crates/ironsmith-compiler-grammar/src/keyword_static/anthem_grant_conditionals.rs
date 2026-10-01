@@ -1329,14 +1329,69 @@ fn parse_triggered_granted_ability(
         return Ok(None);
     }
 
+    // "Whenever this creature attacks a player, if <condition>, A. B."
+    // (Agent of the Shadow Thieves): the `if` right after the trigger comma is
+    // an intervening-if over the whole ability (CR 603.4). Split it off before
+    // the body is parsed, so the condition can't be scoped to the first
+    // sentence only.
+    if let Some(trigger_comma) = trigger_tokens.iter().position(|token| token.is_comma())
+        && trigger_tokens
+            .get(trigger_comma + 1)
+            .is_some_and(|token| token.is_word("if"))
+        && let Some(after_if) = trigger_tokens.get(trigger_comma + 2..)
+        && let Some(predicate_comma) = after_if.iter().position(|token| token.is_comma())
+        && !after_if[..predicate_comma]
+            .iter()
+            .any(|token| token.kind == TokenKind::Period)
+        && predicate_comma + 1 < after_if.len()
+        && let Ok(predicate) =
+            crate::grammar::filters::parse_condition_predicate_lexed(&after_if[..predicate_comma])
+    {
+        let mut rebuilt = trigger_tokens[..=trigger_comma].to_vec();
+        rebuilt.extend(after_if[predicate_comma + 1..].iter().cloned());
+        if let Ok(LineAst::Triggered {
+            trigger,
+            effects,
+            max_triggers_per_turn,
+        }) = crate::clause_support::parse_triggered_line_lexed(&rebuilt)
+            && !effects.is_empty()
+        {
+            let max_condition = trigger_surface::parse_trigger_frequency_condition_tokens(
+                &trigger_tokens,
+                max_triggers_per_turn,
+            );
+            let intervening_if = Some(match max_condition {
+                Some(right) => PredicateAst::And(Box::new(predicate), Box::new(right)),
+                None => predicate,
+            });
+            let ability = parsed_triggered_ability(
+                trigger,
+                effects,
+                vec![Zone::Battlefield],
+                intervening_if,
+                None,
+                ReferenceImports::default(),
+            );
+            if !parsed_triggered_ability_is_empty(&ability) {
+                return Ok(Some(ability));
+            }
+        }
+    }
+
     let ability = match crate::clause_support::parse_triggered_line_lexed(&trigger_tokens)? {
         LineAst::Triggered {
             trigger,
             effects,
             max_triggers_per_turn,
         } => {
+            let body_leads_with_if = trigger_tokens
+                .iter()
+                .position(|token| token.is_comma())
+                .and_then(|comma| trigger_tokens.get(comma + 1))
+                .and_then(|token| token.as_word())
+                .is_some_and(|word| word.eq_ignore_ascii_case("if"));
             let (effects, trigger_condition) =
-                triggered_grant_effects_and_condition(&trigger, &effects)?;
+                triggered_grant_effects_and_condition(&trigger, &effects, body_leads_with_if)?;
             let max_condition = trigger_surface::parse_trigger_frequency_condition_tokens(
                 &trigger_tokens,
                 max_triggers_per_turn,

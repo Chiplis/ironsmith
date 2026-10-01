@@ -1046,6 +1046,15 @@ impl WasmGame {
         self.capture_replay_checkpoint_tagged("untagged")
     }
 
+    // Restore the complete session transaction while carrying only the
+    // actual suspended decision's controller view from the executed game.
+    fn restore_execution_replay_checkpoint(&mut self, checkpoint: &ReplayCheckpoint, pending: bool) {
+        let suspended = self.game.clone();
+        self.restore_replay_checkpoint(checkpoint);
+        let restored = std::mem::replace(&mut self.game, suspended);
+        self.game.restore_execution_checkpoint(restored, pending);
+    }
+
     fn restore_replay_checkpoint(&mut self, checkpoint: &ReplayCheckpoint) {
         restore_id_counters(checkpoint.id_counters);
         self.game = (*checkpoint.game).clone();
@@ -1159,6 +1168,10 @@ impl WasmGame {
                 advance_priority_with_dm(&mut self.game, &mut self.trigger_queue, &mut replay_dm)
                     .map_err(|e| format!("{e}"))
             }
+            ReplayRoot::ForceTurnFaceUp { player, object } => self
+                .force_turn_face_up_with_dm(*player, *object, &mut replay_dm)
+                .map(|()| GameProgress::Continue)
+                .map_err(|error| format!("forced face-up failed: {error:?}")),
             ReplayRoot::AddCardToZone {
                 player,
                 card_name,
@@ -1287,6 +1300,7 @@ impl WasmGame {
                 },
             ) => {
                 let action = resolve_priority_action(&self.game, priority, action_index, action_ref.as_ref())
+                    .map_err(|error| JsValue::from_str(&format!("priority action analysis failed: {error}")))?
                     .ok_or_else(|| {
                     if let Some(action_ref) = action_ref.as_ref() {
                         JsValue::from_str(&format!("invalid priority action ref: {action_ref:?}"))
@@ -1618,6 +1632,7 @@ impl WasmGame {
                 },
             ) => {
                 let action = resolve_priority_action(&self.game, priority, action_index, action_ref.as_ref())
+                    .map_err(|error| JsValue::from_str(&format!("priority action analysis failed: {error}")))?
                     .ok_or_else(|| {
                     if let Some(action_ref) = action_ref.as_ref() {
                         JsValue::from_str(&format!("invalid priority action ref: {action_ref:?}"))
@@ -2071,7 +2086,7 @@ mod live_action_rollback_tests {
         let spell = wasm
             .game
             .create_object_from_definition(&spell, alice, Zone::Hand);
-        let actions = compute_legal_actions(&wasm.game, alice);
+        let actions = compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state");
         let action_index = actions
             .iter()
             .position(|action| {
@@ -2080,7 +2095,7 @@ mod live_action_rollback_tests {
             })
             .unwrap();
         wasm.dispatch_live_priority_response(
-            DecisionContext::Priority(PriorityContext::new(alice, actions)),
+            DecisionContext::Priority(PriorityContext::new(&wasm.game, alice, actions).expect("fixture has complete replacement state")),
             UiCommand::PriorityAction {
                 action_index: Some(action_index),
                 action_ref: None,
@@ -2325,6 +2340,93 @@ mod live_action_rollback_tests {
     }
 
     #[test]
+    fn mana_inventory_cache_stays_with_diverged_runtime_branches() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut wasm, mountain) = manual_payment_fixture();
+        begin_manual_payment_spell(&mut wasm);
+        let original = serde_json::to_value(
+            &wasm.current_mana_payment_view().unwrap().editor.activation_options,
+        )
+        .unwrap();
+        let mut branch = RuntimeSavepoint::capture(&wasm);
+
+        // Both branches make one mutation, so their revision-based cache keys
+        // coincide even though their available mana abilities are different.
+        std::sync::Arc::make_mut(&mut wasm.game.object_mut(mountain).unwrap().abilities).push(
+            ironsmith::ability::Ability::mana(
+                ironsmith::cost::TotalCost::from_costs(vec![ironsmith::costs::Cost::tap()]),
+                vec![ManaSymbol::Green],
+            ),
+        );
+        let green = wasm.current_mana_payment_view().unwrap();
+        let green_options = serde_json::to_value(&green.editor.activation_options).unwrap();
+        assert_ne!(
+            green_options, original,
+            "an ability change must invalidate the memo"
+        );
+        let (green_key, green_ptr) = {
+            let cache = wasm.mana_activation_inventory_cache.borrow();
+            let (key, options) = cache.as_ref().unwrap();
+            (*key, options.as_ptr())
+        };
+        branch.exchange(&mut wasm);
+        std::sync::Arc::make_mut(&mut wasm.game.object_mut(mountain).unwrap().abilities).push(
+            ironsmith::ability::Ability::mana(
+                ironsmith::cost::TotalCost::from_costs(vec![ironsmith::costs::Cost::tap()]),
+                vec![ManaSymbol::Black],
+            ),
+        );
+        let black = wasm.current_mana_payment_view().unwrap();
+        let black_options = serde_json::to_value(&black.editor.activation_options).unwrap();
+        assert_ne!(green_options, black_options);
+        assert_eq!(
+            wasm.mana_activation_inventory_cache.borrow().as_ref().unwrap().0,
+            green_key
+        );
+
+        for _ in 0..3 {
+            branch.exchange(&mut wasm);
+            // Check before requesting a view: a switch must not discard work.
+            assert_eq!(wasm.mana_activation_inventory_cache.borrow().as_ref().unwrap().1.as_ptr(), green_ptr);
+            let payment = wasm.current_mana_payment_view().unwrap();
+            assert_eq!(serde_json::to_value(&payment.editor.activation_options).unwrap(), green_options);
+            assert_eq!(wasm.mana_activation_inventory_cache.borrow().as_ref().unwrap().1.as_ptr(), green_ptr);
+            branch.exchange(&mut wasm);
+            let payment = wasm.current_mana_payment_view().unwrap();
+            assert_eq!(serde_json::to_value(&payment.editor.activation_options).unwrap(), black_options);
+        }
+    }
+
+    #[test]
+    fn mana_inventory_cache_survives_copy_and_invalidates_after_payment() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut wasm, mountain) = manual_payment_fixture();
+        let spell = begin_manual_payment_spell(&mut wasm);
+        let before = wasm.current_mana_payment_view().unwrap();
+        assert!(!before.editor.activation_options.is_empty());
+        let branch = RuntimeSavepoint::capture(&wasm);
+        let copy = branch.clone();
+
+        activate_manual_source(&mut wasm, mountain, 0);
+        assert!(wasm.current_mana_payment_view().unwrap().editor.activation_options.is_empty());
+        copy.restore(&mut wasm);
+        let inventory_ptr = wasm.mana_activation_inventory_cache.borrow().as_ref().unwrap().1.as_ptr();
+        let restored = wasm.current_mana_payment_view().unwrap();
+        assert_eq!(serde_json::to_value(&restored.editor.activation_options).unwrap(),
+            serde_json::to_value(&before.editor.activation_options).unwrap());
+        assert_eq!(wasm.mana_activation_inventory_cache.borrow().as_ref().unwrap().1.as_ptr(), inventory_ptr);
+
+        // Restoring a cached view must also retain the live cast continuation.
+        activate_manual_source(&mut wasm, mountain, 0);
+        assert!(wasm.current_mana_payment_view().unwrap().editor.activation_options.is_empty());
+        confirm_pending_mana_payment(&mut wasm);
+        assert!(wasm.priority_state.pending_cast.is_none());
+        assert!(wasm.game.stack.iter().any(|entry| entry.object_id == spell));
+        assert!(wasm.current_mana_payment_view().is_none());
+        assert!(wasm.mana_activation_inventory_cache.borrow().is_none());
+    }
+
+    #[test]
     fn manual_mana_payment_excludes_abilities_that_do_not_cover_remaining_pips() {
         let _guard = crate::test_id_counter_guard();
         let (mut wasm, mountain) = manual_payment_fixture();
@@ -2382,6 +2484,98 @@ mod live_action_rollback_tests {
         assert!(wasm.current_mana_payment_view().unwrap().mana_abilities.is_empty());
         confirm_pending_mana_payment(&mut wasm);
         assert!(wasm.priority_state.pending_cast.is_none());
+    }
+
+    #[test]
+    fn payment_editor_exact_color_is_a_proposal_until_confirmation() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut wasm, mountain) = manual_payment_fixture();
+        let alice = PlayerId::from_index(0);
+        let prism = CardDefinitionBuilder::new(CardId::new(), "Editable Prism")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(ironsmith::ability::Ability::mana_with_effects(
+                ironsmith::cost::TotalCost::free(),
+                vec![ironsmith::effect::Effect::add_mana_of_any_color_restricted(
+                    1,
+                    vec![Color::Blue, Color::Black],
+                )],
+            ))
+            .build();
+        let prism = wasm
+            .game
+            .create_object_from_definition(&prism, alice, Zone::Battlefield);
+        begin_manual_payment_spell(&mut wasm);
+        let before = wasm.current_mana_payment_view().unwrap();
+        let option = before
+            .editor
+            .activation_options
+            .iter()
+            .find(|option| {
+                option.source_id == prism.0.to_string()
+                    && option.color_restriction == Some(vec!["black".to_string()])
+            })
+            .expect("the exact black output should be offered");
+        assert_eq!(option.expected_mana.black, 1);
+        dispatch_manual_payment_command(
+            &mut wasm,
+            UiCommand::ManaPayment {
+                response: ManaPaymentCommand::Replan {
+                    required_source_ids: vec![],
+                    required_activations: vec![ManaPaymentActivationCommand {
+                        source_id: prism.0.to_string(),
+                        ability_index: option.ability_index,
+                        color_restriction: Some(vec!["black".to_string()]),
+                    }],
+                    required_alternatives: vec![],
+                    excluded_source_ids: vec![mountain.0.to_string()],
+                    preserved_source_ids: vec![],
+                    prefer_life: false,
+                    required_life_pips: vec![],
+                },
+            },
+        );
+        let edited = wasm.current_mana_payment_view().unwrap();
+        assert_eq!(edited.editor.transaction_id, before.editor.transaction_id);
+        assert_ne!(edited.request_hash, before.request_hash);
+        assert_eq!(edited.planned_sources.len(), 1);
+        assert_eq!(edited.planned_sources[0].source_id, prism.0.to_string());
+        assert_eq!(edited.planned_sources[0].color_restriction, vec!["black"]);
+        assert!(
+            !wasm.game.is_tapped(prism),
+            "replanning must not activate a source"
+        );
+        assert_eq!(wasm.game.player(alice).unwrap().mana_pool.total(), 0);
+        confirm_pending_mana_payment(&mut wasm);
+        assert!(
+            wasm.priority_state.pending_cast.is_none(),
+            "the exact color must not prompt again"
+        );
+        assert!(wasm.game.is_tapped(prism));
+        assert!(!wasm.game.is_tapped(mountain));
+        assert_eq!(wasm.game.player(alice).unwrap().mana_pool.total(), 0);
+    }
+
+    #[test]
+    fn payment_editor_life_choices_exclude_already_announced_life_only_pips() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut wasm, _) = manual_payment_fixture();
+        let alice = PlayerId::from_index(0);
+        let cost = ManaCost::from_pips(vec![
+            vec![ManaSymbol::Life(2)],
+            vec![ManaSymbol::Black, ManaSymbol::Life(2)],
+        ]);
+        let source = wasm.game.new_object_id();
+        let request = ironsmith::mana_payment::ManaPaymentRequest::new(
+            alice,
+            source,
+            ironsmith::costs::PaymentReason::CastSpell,
+            cost,
+        );
+        let plan = ironsmith::mana_payment::plan_first_mana_payment(&wasm.game, &request).unwrap();
+        let pending = ironsmith::mana_payment::PendingManaPayment::new(request, plan);
+        let view = mana_payment_editor_view(&wasm.game, &pending, &[]);
+        assert_eq!(view.life_options.len(), 1);
+        assert_eq!(view.life_options[0].life, 2);
     }
 
     fn dispatch_pass_priority(wasm: &mut WasmGame) {
@@ -2449,10 +2643,10 @@ mod live_action_rollback_tests {
             )
             .expect("Black Lotus should load"),
         );
-        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
             alice,
-            compute_legal_actions(&wasm.game, alice),
-        )));
+            compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+        ).expect("fixture has complete replacement state")));
 
         dispatch_priority_action_matching(
             &mut wasm,
@@ -2525,10 +2719,10 @@ mod live_action_rollback_tests {
         wasm.priority_state.restore_priority_tracker_for_sync(1, 2);
         wasm.game
             .create_hidden_card_placeholder(alice, Zone::Hand, 7, "alice-slot-7".to_string());
-        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
             alice,
-            compute_legal_actions(&wasm.game, alice),
-        )));
+            compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+        ).expect("fixture has complete replacement state")));
 
         wasm.reveal_hidden_slot_input(RevealHiddenSlotInput {
             owner: 0,
@@ -2567,10 +2761,10 @@ mod live_action_rollback_tests {
         wasm.priority_state.restore_priority_tracker_for_sync(0, 2);
         wasm.game
             .create_hidden_card_placeholder(bob, Zone::Hand, 7, "bob-slot-7".to_string());
-        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
             alice,
-            compute_legal_actions(&wasm.game, alice),
-        )));
+            compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+        ).expect("fixture has complete replacement state")));
 
         wasm.reveal_hidden_slot_input(RevealHiddenSlotInput {
             owner: 1,
@@ -2625,10 +2819,10 @@ mod live_action_rollback_tests {
         );
         wasm.game
             .create_hidden_card_placeholder(bob, Zone::Library, 0, "bob-slot-0".to_string());
-        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
             alice,
-            compute_legal_actions(&wasm.game, alice),
-        )));
+            compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+        ).expect("fixture has complete replacement state")));
 
         dispatch_priority_action_matching(&mut wasm, |action| {
             matches!(
@@ -2708,10 +2902,10 @@ mod live_action_rollback_tests {
         ));
         wasm.runner_awaiting_priority = true;
         wasm.priority_state.restore_priority_tracker_for_sync(0, 2);
-        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
             alice,
-            compute_legal_actions(&wasm.game, alice),
-        )));
+            compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+        ).expect("fixture has complete replacement state")));
 
         wasm.ui_state()
             .expect("uiState should repair stale priority before snapshotting");
@@ -2859,10 +3053,10 @@ mod live_action_rollback_tests {
             .create_object_from_definition(&first, alice, Zone::Library);
 
         wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
             alice,
-            compute_legal_actions(&wasm.game, alice),
-        )));
+            compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+        ).expect("fixture has complete replacement state")));
 
         dispatch_priority_action_matching(
             &mut wasm,
@@ -2969,10 +3163,10 @@ mod live_action_rollback_tests {
         );
 
         wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
             alice,
-            compute_legal_actions(&wasm.game, alice),
-        )));
+            compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+        ).expect("fixture has complete replacement state")));
 
         dispatch_priority_action_matching(
             &mut wasm,
@@ -3135,10 +3329,10 @@ mod live_action_rollback_tests {
             .collect();
 
         wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
-        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
             alice,
-            compute_legal_actions(&wasm.game, alice),
-        )));
+            compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+        ).expect("fixture has complete replacement state")));
 
         dispatch_priority_action_matching(&mut wasm, |action| {
             matches!(
@@ -3218,10 +3412,10 @@ mod live_action_rollback_tests {
             .game
             .create_object_from_definition(&bolt_def, alice, Zone::Hand);
 
-        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
             alice,
-            compute_legal_actions(&wasm.game, alice),
-        )));
+            compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+        ).expect("fixture has complete replacement state")));
 
         // Put two regeneration shields on the skeleton via its {0} ability.
         for _ in 0..2 {
@@ -3308,10 +3502,10 @@ mod live_action_rollback_tests {
             wasm.add_card_to_zone(0, "Mountain".to_string(), "Battlefield".to_string(), true)
                 .expect("Mountain should load");
         }
-        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
             alice,
-            compute_legal_actions(&wasm.game, alice),
-        )));
+            compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+        ).expect("fixture has complete replacement state")));
         dispatch_priority_action_matching(&mut wasm, |action| {
             matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == discharge)
         });
@@ -3396,10 +3590,10 @@ mod live_action_rollback_tests {
             wasm.add_card_to_zone(0, "Swamp".to_string(), "Battlefield".to_string(), true)
                 .expect("Swamp should load");
         }
-        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
             alice,
-            compute_legal_actions(&wasm.game, alice),
-        )));
+            compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
+        ).expect("fixture has complete replacement state")));
         dispatch_priority_action_matching(&mut wasm, |action| {
             matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell)
         });

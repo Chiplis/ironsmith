@@ -253,7 +253,7 @@ fn cast_announce(
 ) -> Result<(), String> {
     g.turn.priority_player = Some(dm.actor);
     let id = g.create_object_from_definition(d, dm.actor, Zone::Hand);
-    let a = compute_legal_actions(g, dm.actor)
+    let a = compute_legal_actions(g, dm.actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or("fixture source cast absent")?;
@@ -465,7 +465,7 @@ fn run(
     };
     let id = current(&g, source);
     let bestow = n == "Detective's Phoenix" && v != "decline";
-    let action=compute_legal_actions(&g,payer).into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,casting_method,..}if *spell_id==id&&if bestow{matches!(casting_method,ironsmith::alternative_cast::CastingMethod::Alternative(0)|ironsmith::alternative_cast::CastingMethod::PlayFrom{use_alternative:Some(0),..})}else{matches!(casting_method,ironsmith::alternative_cast::CastingMethod::Normal)}));
+    let action=compute_legal_actions(&g,payer).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,casting_method,..}if *spell_id==id&&if bestow{matches!(casting_method,ironsmith::alternative_cast::CastingMethod::Alternative(0)|ironsmith::alternative_cast::CastingMethod::PlayFrom{use_alternative:Some(0),..})}else{matches!(casting_method,ironsmith::alternative_cast::CastingMethod::Normal)}));
     let wanted_action = !(bestow && v == "insufficient");
     dm.trace.push(json!({"stage":"before_cost_probe","resources":materials.iter().map(|s|json!({"name":g.object(current(&g,*s)).unwrap().name.to_string(),"zone":zone(&g,*s)})).collect::<Vec<_>>(),"source_zone":zone(&g,source),"action":format!("{action:?}"),"accept":accept}));
     if action.is_none() || !wanted_action {

@@ -29,7 +29,7 @@ use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
 
 mod ability_origins;
-pub use ability_origins::{AbilityEffectOrigin, AbilityOrigin, CalculatedAbilities};
+pub use ability_origins::{AbilityEffectOrigin, AbilityOrigin, CalculatedAbilities, ContinuousAbilityOrigin};
 mod layer_resolution;
 pub(crate) mod value_context;
 pub(crate) use layer_resolution::resolve_value_direct;
@@ -221,6 +221,10 @@ pub struct ContinuousEffect {
     /// Unique identifier for this effect
     pub id: ContinuousEffectId,
 
+    /// Identity assigned by registration, independent of layer timestamp.
+    /// Static regenerated descriptors have no registration identity.
+    pub registration_id: Option<ContinuousEffectId>,
+
     /// The source that created this effect
     pub source: ObjectId,
 
@@ -261,6 +265,9 @@ pub struct ContinuousEffect {
     /// This lets dependency resolution detect when another effect would cause
     /// the source to lose the specific static ability that created this effect.
     pub originating_static_ability: Option<StaticAbility>,
+
+    /// Stable generating occurrence; distinct equal abilities are independent.
+    pub originating_ability: Option<Box<ContinuousAbilityOrigin>>,
 }
 
 /// Unique identifier for a continuous effect.
@@ -883,9 +890,11 @@ impl ContinuousEffectManager {
     /// Add a new continuous effect.
     pub fn add_effect(&mut self, mut effect: ContinuousEffect) -> ContinuousEffectId {
         let id = ContinuousEffectId::new(self.next_id);
-        self.next_id += 1;
+        self.next_id = self.next_id.checked_add(1)
+            .expect("continuous effect registration identity exhausted");
 
         effect.id = id;
+        effect.registration_id = Some(id);
         if effect.timestamp == 0 {
             effect.timestamp = self.next_timestamp();
         }
@@ -1452,6 +1461,7 @@ impl ContinuousEffect {
     ) -> Self {
         Self {
             id: ContinuousEffectId(0), // Will be set when added to manager
+            registration_id: None,
             source,
             controller,
             applies_to,
@@ -1463,6 +1473,7 @@ impl ContinuousEffect {
             condition: None,
             source_type: EffectSourceType::default(),
             originating_static_ability: None,
+            originating_ability: None,
         }
     }
 
@@ -1599,6 +1610,9 @@ impl ContinuousEffect {
 pub struct CalculatedCharacteristics {
     pub name: SharedStr,
     pub mana_cost: Option<ManaCost>,
+    /// Noncopiable linked-face mana value of the current view. Copy and
+    /// face-down layers replace this even if both raw mana costs are absent.
+    pub linked_face_mana_value: Option<u32>,
     pub compiled_card_text: Arc<str>,
     /// The printed line each entry of `abilities` reads as (see `Object::ability_labels`).
     pub ability_labels: SharedVec<String>,
@@ -1729,65 +1743,99 @@ fn ability_is_mana_for_object(
     activated.is_runtime_mana_ability(game, object.id, game.controller_of(object))
 }
 
-thread_local! {
-    static IN_PROGRESS_CHARACTERISTIC_CALCULATIONS: RefCell<HashMap<ObjectId, Vec<CalculatedCharacteristics>>> =
-        RefCell::new(HashMap::new());
-}
-
-struct CharacteristicCalculationGuard {
+/// The same object id can occur in independent cloned/hypothetical games.
+/// A recursive layer snapshot belongs to the game currently being calculated.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct CharacteristicCalculationKey {
+    game: usize,
     object_id: ObjectId,
 }
 
-impl CharacteristicCalculationGuard {
-    fn begin(object_id: ObjectId, chars: &CalculatedCharacteristics) -> Self {
+impl CharacteristicCalculationKey {
+    fn new(game: &crate::game_state::GameState, object_id: ObjectId) -> Self {
+        Self { game: std::ptr::from_ref(game) as usize, object_id }
+    }
+}
+
+thread_local! {
+    static IN_PROGRESS_CHARACTERISTIC_CALCULATIONS: RefCell<HashMap<CharacteristicCalculationKey, Vec<CalculatedCharacteristics>>> =
+        RefCell::new(HashMap::new());
+    static CHARACTERISTIC_CONTEXT_REVISION: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+fn bump_characteristic_context_revision() {
+    CHARACTERISTIC_CONTEXT_REVISION.with(|revision| revision.set(revision.get().wrapping_add(1)));
+}
+
+/// Pass-local memo tables distinguish their game's intermediate layer context
+/// from its quiescent state. A different game's calculation does not turn a
+/// completed snapshot into an intermediate one. This transient address is
+/// never serialized and is kept alive by the guard's immutable game borrow.
+pub(crate) fn characteristic_memo_context(game: &crate::game_state::GameState) -> Option<u64> {
+    let game = std::ptr::from_ref(game) as usize;
+    IN_PROGRESS_CHARACTERISTIC_CALCULATIONS.with(|calculations| {
+        calculations.borrow().keys().any(|key| key.game == game)
+            .then(|| CHARACTERISTIC_CONTEXT_REVISION.with(std::cell::Cell::get))
+    })
+}
+
+struct CharacteristicCalculationGuard<'game> {
+    key: CharacteristicCalculationKey,
+    _game: &'game crate::game_state::GameState,
+}
+
+impl<'game> CharacteristicCalculationGuard<'game> {
+    fn begin(game: &'game crate::game_state::GameState, object_id: ObjectId,
+        chars: &CalculatedCharacteristics) -> Self {
+        let key = CharacteristicCalculationKey::new(game, object_id);
         IN_PROGRESS_CHARACTERISTIC_CALCULATIONS.with(|calculations| {
-            calculations
-                .borrow_mut()
-                .entry(object_id)
-                .or_default()
-                .push(chars.clone());
+            calculations.borrow_mut().entry(key).or_default().push(chars.clone());
         });
-        Self { object_id }
+        bump_characteristic_context_revision();
+        Self { key, _game: game }
     }
 
     fn update(&self, chars: &CalculatedCharacteristics) {
         IN_PROGRESS_CHARACTERISTIC_CALCULATIONS.with(|calculations| {
-            if let Some(entry) = calculations
-                .borrow_mut()
-                .get_mut(&self.object_id)
-                .and_then(|entries| entries.last_mut())
-            {
+            if let Some(entry) = calculations.borrow_mut().get_mut(&self.key)
+                .and_then(|entries| entries.last_mut()) {
                 *entry = chars.clone();
+                bump_characteristic_context_revision();
             }
         });
     }
 }
 
-impl Drop for CharacteristicCalculationGuard {
+impl Drop for CharacteristicCalculationGuard<'_> {
     fn drop(&mut self) {
         IN_PROGRESS_CHARACTERISTIC_CALCULATIONS.with(|calculations| {
             let mut calculations = calculations.borrow_mut();
-            let should_remove = if let Some(entries) = calculations.get_mut(&self.object_id) {
+            let should_remove = if let Some(entries) = calculations.get_mut(&self.key) {
                 entries.pop();
                 entries.is_empty()
-            } else {
-                false
-            };
-            if should_remove {
-                calculations.remove(&self.object_id);
-            }
+            } else { false };
+            if should_remove { calculations.remove(&self.key); }
         });
+        bump_characteristic_context_revision();
     }
 }
 
-pub(crate) fn in_progress_characteristics(
-    object_id: ObjectId,
-) -> Option<CalculatedCharacteristics> {
+/// Recursive snapshots may be returned to their own calculation, but cannot
+/// be published into its final cache or read by a different game snapshot.
+pub(crate) fn characteristics_calculation_in_progress(
+    game: &crate::game_state::GameState, object_id: ObjectId) -> bool {
+    let key = CharacteristicCalculationKey::new(game, object_id);
     IN_PROGRESS_CHARACTERISTIC_CALCULATIONS.with(|calculations| {
-        calculations
-            .borrow()
-            .get(&object_id)
-            .and_then(|entries| entries.last().cloned())
+        calculations.borrow().get(&key).is_some_and(|entries| !entries.is_empty())
+    })
+}
+
+pub(crate) fn in_progress_characteristics(
+    game: &crate::game_state::GameState, object_id: ObjectId,
+) -> Option<CalculatedCharacteristics> {
+    let key = CharacteristicCalculationKey::new(game, object_id);
+    IN_PROGRESS_CHARACTERISTIC_CALCULATIONS.with(|calculations| {
+        calculations.borrow().get(&key).and_then(|entries| entries.last().cloned())
     })
 }
 
@@ -1815,6 +1863,7 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
     let mut chars = CalculatedCharacteristics {
         name: object.name.clone(),
         mana_cost: object.mana_cost_owned(),
+        linked_face_mana_value: object.linked_face_mana_value(),
         compiled_card_text: object.compiled_card_text.clone(),
         ability_labels: object.ability_labels.clone(),
         power: object.base_power.as_ref().map(|p| p.base_value()),
@@ -1919,6 +1968,7 @@ fn copy_characteristics_from_copiable_values(
 
     chars.name = values.name.clone().into();
     chars.mana_cost = values.mana_cost.clone();
+    chars.linked_face_mana_value = None;
     chars.compiled_card_text = values.compiled_card_text.clone().into();
     chars.ability_labels = values.ability_labels.clone().into();
     chars.power = values.power;
@@ -1971,6 +2021,7 @@ fn apply_room_no_unlocked_door_layer(
     }
     chars.name = "".into();
     chars.mana_cost = None;
+    chars.linked_face_mana_value = None;
     chars.abilities.clear();
     chars.static_abilities = SharedVec::default();
     chars.ability_labels = SharedVec::default();
@@ -2098,7 +2149,7 @@ impl ContinuousEffectManager {
         battlefield: &[ObjectId],
         game: &crate::game_state::GameState,
     ) -> Option<CalculatedCharacteristics> {
-        if let Some(chars) = in_progress_characteristics(object_id) {
+        if let Some(chars) = in_progress_characteristics(game, object_id) {
             return Some(chars);
         }
         let object = objects.get(&object_id)?;
@@ -2127,7 +2178,7 @@ pub fn calculate_characteristics_with_effects(
     commanders: &HashSet<ObjectId>,
     game: &crate::game_state::GameState,
 ) -> Option<CalculatedCharacteristics> {
-    if let Some(chars) = in_progress_characteristics(object_id) {
+    if let Some(chars) = in_progress_characteristics(game, object_id) {
         return Some(chars);
     }
     let object = objects.get(&object_id)?;
@@ -2156,7 +2207,7 @@ pub(crate) fn calculate_characteristics_batch_with_effects(
         let mut calculated = HashMap::with_capacity(ids.len());
         let mut pending = Vec::with_capacity(ids.len());
         for &id in ids {
-            if let Some(chars) = in_progress_characteristics(id) {
+            if let Some(chars) = in_progress_characteristics(game, id) {
                 calculated.insert(id, chars);
                 continue;
             }
@@ -2222,7 +2273,7 @@ pub(crate) fn calculate_characteristics_batch_with_effects(
     let mut calculated = HashMap::with_capacity(ids.len());
 
     for &id in ids {
-        if let Some(chars) = in_progress_characteristics(id) {
+        if let Some(chars) = in_progress_characteristics(game, id) {
             calculated.insert(id, chars);
             continue;
         }
@@ -2289,7 +2340,7 @@ fn calculate_characteristics_layer_batch_with_effects(
                 .get_entry_timestamp(object.id)
                 .or(Some(0));
         }
-        guards.push(CharacteristicCalculationGuard::begin(id, &chars));
+        guards.push(CharacteristicCalculationGuard::begin(game, id, &chars));
         chars_by_id.insert(id, chars);
     }
 
@@ -2575,9 +2626,6 @@ fn calculate_characteristics_layer_batch_with_effects(
     let mut counters_applied_before_switch: std::collections::HashSet<ObjectId> =
         std::collections::HashSet::new();
     for (idx, &id) in order.iter().enumerate() {
-        if abilities_removed.contains(&id) {
-            continue;
-        }
         let Some(object) = objects.get(&id) else {
             continue;
         };
@@ -2586,7 +2634,7 @@ fn calculate_characteristics_layer_batch_with_effects(
         };
         // CR 711.2b: level P/T is a 7b effect with the leveler's timestamp;
         // it's applied in timestamp order with the other P/T effects below.
-        if let Some((lp, lt)) = get_level_ability_pt(object) {
+        if let Some((lp, lt)) = get_level_ability_pt(object, &chars.abilities) {
             let timestamp = game
                 .effect_store
                 .continuous_effects
@@ -2781,7 +2829,7 @@ pub(super) fn calculate_characteristics_with_effects_simple_internal(
     game: &crate::game_state::GameState,
     include_ability_counters: bool,
 ) -> Option<CalculatedCharacteristics> {
-    if let Some(chars) = in_progress_characteristics(object_id) {
+    if let Some(chars) = in_progress_characteristics(game, object_id) {
         return Some(chars);
     }
     let object = objects.get(&object_id)?;
@@ -2813,7 +2861,7 @@ pub(crate) fn copiable_values_with_effects(
 ) -> Option<CopiableValues> {
     let object = objects.get(&object_id)?;
     let mut chars = initial_text_box_characteristics(object);
-    let calc_guard = CharacteristicCalculationGuard::begin(object.id, &chars);
+    let calc_guard = CharacteristicCalculationGuard::begin(game, object.id, &chars);
     let layer_effects: Vec<_> = effects
         .iter()
         .filter(|effect| effect.modification.layer() == Layer::Copy)
@@ -2919,13 +2967,13 @@ pub fn text_box_characteristics_with_effects(
     commanders: &HashSet<ObjectId>,
     game: &crate::game_state::GameState,
 ) -> Option<CalculatedCharacteristics> {
-    if let Some(chars) = in_progress_characteristics(object_id) {
+    if let Some(chars) = in_progress_characteristics(game, object_id) {
         return Some(chars);
     }
     let object = objects.get(&object_id)?;
 
     let mut chars = initial_text_box_characteristics(object);
-    let calc_guard = CharacteristicCalculationGuard::begin(object.id, &chars);
+    let calc_guard = CharacteristicCalculationGuard::begin(game, object.id, &chars);
 
     let mut effects_by_layer: HashMap<Layer, Vec<&ContinuousEffect>> = HashMap::with_capacity(3);
     for effect in effects {
@@ -3108,7 +3156,7 @@ fn calculate_with_layers_direct_internal(
             .get_entry_timestamp(object.id)
             .or(Some(0));
     }
-    let calc_guard = CharacteristicCalculationGuard::begin(object.id, &chars);
+    let calc_guard = CharacteristicCalculationGuard::begin(game, object.id, &chars);
     let mut started_groups = HashSet::new();
 
     // Group effects by layer for dependency-aware sorting within each layer
@@ -3349,20 +3397,18 @@ fn calculate_with_layers_direct_internal(
     // they're interleaved with the other P/T effects by timestamp below.
     let mut pending_level_pt = None;
     let mut counters_applied = false;
-    if !abilities_removed {
-        if let Some((lp, lt)) = get_level_ability_pt(object) {
-            let timestamp = game
-                .effect_store
-                .continuous_effects
-                .get_object_timestamp(object.id)
-                .unwrap_or(0);
-            pending_level_pt = Some((lp, lt, timestamp));
-        }
-        // Add level-granted abilities to the characteristics
-        apply_level_granted_abilities(object, &mut chars);
-        prune_ability_gain_prohibitions(&mut chars);
-        calc_guard.update(&chars);
+    if let Some((lp, lt)) = get_level_ability_pt(object, &chars.abilities) {
+        let timestamp = game
+            .effect_store
+            .continuous_effects
+            .get_object_timestamp(object.id)
+            .unwrap_or(0);
+        pending_level_pt = Some((lp, lt, timestamp));
     }
+    // A new description can survive a prior remove-all instruction.
+    apply_level_granted_abilities(object, &mut chars);
+    prune_ability_gain_prohibitions(&mut chars);
+    calc_guard.update(&chars);
 
     // Now process Layer 7 effects from continuous effects
     if let Some(pt_effects) = effects_by_layer.get(&Layer::PowerToughness) {
@@ -4286,6 +4332,12 @@ pub(crate) fn filter_matches_with_characteristics_in_context(
             adjusted_object.subtypes = chars.subtypes.clone();
             adjusted_object.supertypes = chars.supertypes.clone();
             adjusted_object.color_override = Some(chars.colors);
+            adjusted_object.mana_cost = chars.mana_cost.clone().map(Into::into);
+            // Copy/face-down layers remove the original linked-face value.
+            // Retain baseline linked data only while it remains in this view.
+            if chars.linked_face_mana_value.is_none() {
+                adjusted_object.linked_face_mana_cost = None;
+            }
             // Ability-dependent filter fields must see layered abilities here
             // too, or this fallback diverges from the layered fast path.
             adjusted_object.abilities = chars.abilities.shared();
@@ -4604,15 +4656,13 @@ fn filter_matches_layered_fast(
         return Some(false);
     }
     if let Some(mana_value_cmp) = &filter.mana_value {
-        // CR 712.8e/g: a transformed back face or melded permanent uses its
-        // front face(s)' mana value.
-        let mana_value = crate::filter::object_mana_value_for_filter(object);
+        let mana_value = crate::filter::calculated_mana_value_for_filter(object, chars);
         if !mana_value_cmp.satisfies_with_context(mana_value, game, filter_ctx, None) {
             return Some(false);
         }
     }
     if let Some(required_cost) = &filter.exact_mana_cost
-        && object.mana_cost.as_deref() != Some(required_cost)
+        && chars.mana_cost.as_ref() != Some(required_cost)
     {
         return Some(false);
     }
@@ -4707,6 +4757,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.entered_graveyard_from_battlefield_this_turn
         || filter.entered_graveyard_from_library_this_turn
         || filter.surveilled_this_turn
+        || filter.fought_this_turn
         || filter.counters_put_on_this_turn.is_some()
         || filter.discarded_or_cycled_this_turn_by.is_some()
         || filter.was_dealt_damage_this_turn
@@ -4801,6 +4852,11 @@ fn bind_effect_controller_in_ability(ability: &Ability, effect_controller: Playe
     bound
 }
 
+fn push_granted_static_ability(chars: &mut CalculatedCharacteristics, ability: StaticAbility) {
+    chars.abilities.push(Ability::static_ability(ability.clone()));
+    chars.static_abilities.push(ability);
+}
+
 fn push_static_ability_once(chars: &mut CalculatedCharacteristics, ability: StaticAbility) {
     let instance_id = ability.instance_id();
     if !chars.abilities.iter().any(|runtime_ability| {
@@ -4869,9 +4925,11 @@ fn copy_static_ability_variants_into(
     battlefield: &[ObjectId],
     commanders: &HashSet<ObjectId>,
     game: &crate::game_state::GameState,
-    effect_controller: PlayerId,
-    effect_source: ObjectId,
+    effect: &ContinuousEffect,
 ) {
+    // Deduplicate variants inside this instruction only. Independent copy
+    // effects must each materialize their own borrowed ability occurrence.
+    let mut seen_variants = HashSet::new();
     let mut candidate_ids: Vec<_> = objects.keys().copied().collect();
     candidate_ids.sort();
 
@@ -4897,19 +4955,23 @@ fn copy_static_ability_variants_into(
             candidate,
             &candidate_chars,
             game,
-            effect_controller,
-            effect_source,
+            effect.controller,
+            effect.source,
         ) {
             continue;
         }
 
-        for ability in candidate_chars.static_abilities.iter().filter(|ability| {
-            selectors
-                .iter()
-                .copied()
-                .any(|selector| static_ability_matches_variant_selector(ability, selector))
-        }) {
-            push_static_ability_once(chars, ability.clone());
+        for (slot, runtime_ability) in candidate_chars.abilities.iter().enumerate() {
+            let AbilityKind::Static(ability) = &runtime_ability.kind else { continue; };
+            if !selectors.iter().copied().any(|selector|
+                static_ability_matches_variant_selector(ability, selector))
+                || !seen_variants.insert(ability.instance_id()) { continue; }
+            let origin = candidate_chars.abilities.origin(slot)
+                .expect("copied static variant retains its paired donor origin").clone();
+            chars.abilities.push_with_origin(Ability::static_ability(ability.clone()),
+                AbilityOrigin::Borrowed { effect: effect.into(), source: candidate.id,
+                    origin: Box::new(origin) });
+            chars.static_abilities.push(ability.clone());
         }
     }
 }
@@ -5129,12 +5191,12 @@ fn apply_modification_to_chars(
 
         // Layer 6: Ability changes
         Modification::AddAbility(ability) => {
-            push_static_ability_once(chars, ability.clone());
+            push_granted_static_ability(chars, ability.clone());
         }
         Modification::AddAbilityGeneric(ability) => {
             let bound_ability = bind_effect_controller_in_ability(ability, effect_controller);
             if let AbilityKind::Static(ref sa) = bound_ability.kind {
-                push_static_ability_once(chars, sa.clone());
+                push_granted_static_ability(chars, sa.clone());
             } else {
                 chars.abilities.push(bound_ability);
             }
@@ -5262,8 +5324,7 @@ fn apply_modification_to_chars(
                 battlefield,
                 commanders,
                 game,
-                effect_controller,
-                effect_source,
+                effect,
             );
         }
         Modification::CopyTriggeredAbilities {

@@ -80,7 +80,7 @@ fn can_play_from_exile(game: &crate::GameState, card: ObjectId, player: PlayerId
 }
 
 fn has_cast_action(game: &crate::GameState, card: ObjectId, player: PlayerId) -> bool {
-    crate::decision::compute_legal_actions(game, player)
+    crate::decision::compute_legal_actions(game, player).expect("fixture has complete replacement state")
         .iter()
         .any(|action| matches!(action, LegalAction::CastSpell { spell_id, from_zone: Zone::Exile, .. } if *spell_id == card))
 }

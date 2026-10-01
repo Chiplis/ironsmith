@@ -165,7 +165,7 @@ fn valakut(
     }
     if play_land {
         let land = game.create_object_from_definition(&definitions["Island"], alice(), Zone::Hand);
-        let action = compute_legal_actions(&game, alice())
+        let action = compute_legal_actions(&game, alice()).expect("fixture has complete replacement state")
             .into_iter()
             .find(|a| matches!(a,LegalAction::PlayLand{land_id}if *land_id==land))
             .ok_or("fixture land play not legal")?;

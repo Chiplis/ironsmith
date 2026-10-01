@@ -409,6 +409,34 @@ fn read_leading_result_prefix(
         let trailing_effects =
             if let Some(copy_effect) = parse_copy_spell_clause(prefix.trailing_tokens)? {
                 vec![copy_effect]
+            } else if let Some(effects) =
+                // "When you do, target creature gets +3/+0 and gains first
+                // strike and deathtouch until end of turn": one subject and
+                // one duration shared by the pump and every granted keyword
+                // (Campsite Cuisine). The generic chain splitter would hand
+                // the duration to the last keyword only.
+                (!prefix.trailing_tokens.iter().any(|token| token.is_comma())
+                    && !prefix.trailing_tokens.first().is_some_and(|token| token.is_word("the"))
+                    && prefix
+                        .trailing_tokens
+                        .iter()
+                        .filter(|token| token.is_word("and"))
+                        .count()
+                        >= 2)
+                    .then(|| {
+                        let mut body = prefix.trailing_tokens;
+                        while let Some((last, rest)) = body.split_last()
+                            && matches!(last.kind, crate::lexer::TokenKind::Period)
+                        {
+                            body = rest;
+                        }
+                        super::parse_target_gets_then_gains_subject_verb(body)
+                    })
+                    .transpose()?
+                    .flatten()
+                    .filter(|effects| !effects.is_empty())
+            {
+                effects
             } else if sentence_shapes::parse_where_x_sentence_tokens(prefix.trailing_tokens)
                 .is_some()
             {

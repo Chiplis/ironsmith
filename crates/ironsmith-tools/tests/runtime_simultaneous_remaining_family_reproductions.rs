@@ -75,7 +75,7 @@ fn cast(
 ) -> Result<u32, String> {
     g.turn.priority_player = Some(actor);
     let id = g.create_object_from_definition(def, actor, Zone::Hand);
-    let action = compute_legal_actions(g, actor)
+    let action = compute_legal_actions(g, actor).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or_else(|| format!("{} normal cast unavailable", def.name()))?;
@@ -160,7 +160,7 @@ fn count(g: &GameState, id: ObjectId, kind: CounterType) -> u32 {
         .unwrap_or(0)
 }
 fn activation(g: &GameState, source: ObjectId, index: usize) -> Option<LegalAction> {
-    compute_legal_actions(g, PlayerId(0)).into_iter().find(|a| matches!(a,LegalAction::ActivateAbility{source:s,ability_index:i} if *s==source && *i==index))
+    compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state").into_iter().find(|a| matches!(a,LegalAction::ActivateAbility{source:s,ability_index:i} if *s==source && *i==index))
 }
 fn announce(
     g: &mut GameState,
@@ -298,7 +298,7 @@ fn run(
     let error;
     if def.name() == "Fatal Grudge" {
         let hand = g.create_object_from_definition(def, PlayerId(0), Zone::Hand);
-        let actions = compute_legal_actions(&g, PlayerId(0));
+        let actions = compute_legal_actions(&g, PlayerId(0)).expect("fixture has complete replacement state");
         let offered = actions
             .iter()
             .any(|a| matches!(a,LegalAction::CastSpell{spell_id,..} if *spell_id==hand));
@@ -324,7 +324,7 @@ fn run(
         let source;
         if def.name() == "Field of Ruin" {
             let hand = g.create_object_from_definition(def, PlayerId(0), Zone::Hand);
-            let action = compute_legal_actions(&g, PlayerId(0))
+            let action = compute_legal_actions(&g, PlayerId(0)).expect("fixture has complete replacement state")
                 .into_iter()
                 .find(|a| matches!(a,LegalAction::PlayLand{land_id}if *land_id==hand))
                 .ok_or("Field legal land play unavailable")?;

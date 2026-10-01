@@ -1007,7 +1007,7 @@ pub(super) fn test_ragavan_trigger_exiles_top_card_of_damaged_players_library() 
         "ragavan should let its controller cast the exiled card until end of turn"
     );
 
-    let combat_actions = crate::decision::compute_legal_actions(&game, alice);
+    let combat_actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !combat_actions.iter().any(|action| matches!(
             action,
@@ -1028,7 +1028,7 @@ pub(super) fn test_ragavan_trigger_exiles_top_card_of_damaged_players_library() 
     game.turn.step = None;
     game.turn.priority_player = Some(alice);
 
-    let postcombat_actions = crate::decision::compute_legal_actions(&game, alice);
+    let postcombat_actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         postcombat_actions.iter().any(|action| matches!(
             action,
@@ -1848,7 +1848,7 @@ pub(super) fn test_fallen_shinobi_trigger_exiles_top_two_cards_and_grants_play_p
     game.turn.step = None;
     game.turn.priority_player = Some(alice);
 
-    let actions = compute_legal_actions(&game, alice);
+    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| matches!(
             action,
@@ -2679,7 +2679,7 @@ pub(super) fn riveteers_charm_mode_two_play_permission_lasts_through_next_end_st
         "Riveteers Charm should let you cast exiled spells during the window"
     );
 
-    let actions_now = compute_legal_actions(&game, alice);
+    let actions_now = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions_now.iter().any(|action| matches!(
             action,
@@ -3617,7 +3617,7 @@ pub(super) fn split_second_on_the_stack_locks_out_every_player() {
 
     game.refresh_continuous_state();
 
-    let alice_actions = compute_legal_actions(&game, alice);
+    let alice_actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         !alice_actions.iter().any(|action| matches!(
             action,
@@ -3634,7 +3634,7 @@ pub(super) fn split_second_on_the_stack_locks_out_every_player() {
     );
 
     game.turn.priority_player = Some(bob);
-    let bob_actions = compute_legal_actions(&game, bob);
+    let bob_actions = compute_legal_actions(&game, bob).expect("fixture has complete replacement state");
     assert!(
         !bob_actions.iter().any(|action| matches!(
             action,
@@ -3708,7 +3708,7 @@ pub(super) fn granted_split_second_locks_out_players_from_the_stack() {
     );
 
     game.turn.priority_player = Some(bob);
-    let bob_actions = crate::decision::compute_legal_actions(&game, bob);
+    let bob_actions = crate::decision::compute_legal_actions(&game, bob).expect("fixture has complete replacement state");
     assert!(
         !bob_actions.iter().any(|action| matches!(
             action,

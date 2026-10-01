@@ -157,7 +157,7 @@ fn lost_isle(definition: &CardDefinition, counters: u32) -> Result<Value, String
         .unwrap()
         .mana_pool
         .add(ManaSymbol::Blue, 6);
-    let action = compute_legal_actions(&game, player(0))
+    let action = compute_legal_actions(&game, player(0)).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::ActivateAbility { source: s, .. } if *s == source))
         .ok_or("fixture has no legal activation")?;
@@ -277,7 +277,7 @@ fn ramos(definition: &CardDefinition, colors: usize) -> Result<Value, String> {
         .unwrap()
         .mana_pool
         .add(ManaSymbol::Red, 2);
-    let action = compute_legal_actions(&game, player(0)).into_iter()
+    let action = compute_legal_actions(&game, player(0)).expect("fixture has complete replacement state").into_iter()
         .find(|action| matches!(action, LegalAction::CastSpell { spell_id: id, .. } if *id == spell_id))
         .ok_or("fixture has no legal spell cast")?;
     let mut queue = TriggerQueue::new();

@@ -27,7 +27,9 @@ impl SpecialAction {
             Self::Companion { card_id } => (card_id, TotalCost::mana(companion_action_cost()), PaymentReason::Other),
             Self::TurnFaceUp { permanent_id, method } => {
                 let object = game.object(permanent_id).ok_or(ActionError::ObjectNotFound)?;
-                let spec = turn_face_up_spec(game, object, method).ok_or(ActionError::NoSuchAbility)?;
+                let spec = turn_face_up_spec(game, object, method).map_err(|error| ActionError::ExecutionFailure {
+                    source: permanent_id, error: crate::effects::ExecutionError::ContinuousDiscovery(error) })?
+                    .ok_or(ActionError::NoSuchAbility)?;
                 (permanent_id, adjusted_turn_face_up_cost(game, player, permanent_id, &spec), PaymentReason::TurnFaceUp)
             }
             Self::UnlockRoomDoor { room_id, door } => (room_id, adjusted_room_unlock_cost(game, player, room_id, door)?, PaymentReason::UnlockDoor),
@@ -259,7 +261,7 @@ pub(super) fn pay_special_action_payment_with_x(
         &mut ctx,
     )
     .map(|_| ())
-    .map_err(cost_error_to_action_error)
+    .map_err(|error| cost_error_to_action_error(error, payment.source))
 }
 
 #[cfg(test)]
@@ -362,7 +364,7 @@ mod tests {
         for kind in 0..4 {
             let (mut game, player, card, action) = setup(kind);
             assert_eq!(game.player(player).unwrap().mana_pool.total(), 0);
-            let actions = crate::decision::compute_legal_actions(&game, player);
+            let actions = crate::decision::compute_legal_actions(&game, player).expect("fixture has complete replacement state");
             assert!(
                 actions.iter().any(
                     |a| matches!(a, crate::decision::LegalAction::SpecialAction(s) if s == &action)

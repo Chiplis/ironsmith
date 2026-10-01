@@ -126,6 +126,9 @@ impl DamageEvent {
     pub fn with_target(&self, target: DamageTarget) -> Self {
         Self {
             target,
+            // Recipient LKI belongs to one exact incarnation. Redirecting
+            // cannot transfer the former recipient's snapshot to the new one.
+            target_snapshot: if target == self.target { self.target_snapshot.clone() } else { None },
             ..self.clone()
         }
     }

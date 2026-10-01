@@ -28,7 +28,7 @@ fn entry_exchanges_source_with_a_nontarget_creature_and_preserves_other_characte
     let hand = game.create_object_from_definition(&definition(), alice, Zone::Hand);
     let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
     let entered = game
-        .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm)
+        .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     assert!(
@@ -66,7 +66,7 @@ fn exchange_is_optional_and_no_other_creature_is_required_for_entry() {
         let hand = game.create_object_from_definition(&definition(), alice, Zone::Hand);
         let mut dm = Decline;
         let entered = game
-            .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm)
+            .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
             .unwrap()
             .new_id;
         assert!(!game.object_has_static_ability_id(entered, StaticAbilityId::Flying));
@@ -90,7 +90,7 @@ fn acquired_entry_replacement_applies_during_the_same_entry() {
     let hand = game.create_object_from_definition(&definition(), alice, Zone::Hand);
     let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
     let entered = game
-        .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm)
+        .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     assert!(
@@ -114,7 +114,7 @@ fn acquired_entry_counter_replacement_applies_once() {
     let hand = game.create_object_from_definition(&definition(), alice, Zone::Hand);
     let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
     let entered = game
-        .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm)
+        .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     assert_eq!(
@@ -145,7 +145,7 @@ fn acquired_entry_choice_is_made_for_the_new_object() {
     let hand = game.create_object_from_definition(&definition(), alice, Zone::Hand);
     let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
     let entered = game
-        .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm)
+        .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     assert!(
@@ -181,7 +181,7 @@ fn exchanged_enter_trigger_fires_and_the_upkeep_drawback_moves_to_partner() {
     let hand = game.create_object_from_definition(&definition(), alice, Zone::Hand);
     let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
     let entered = game
-        .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm)
+        .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     let mut queue = ironsmith::triggers::TriggerQueue::new();
@@ -234,7 +234,7 @@ fn acquired_entry_program_executes_once() {
     game.create_object_from_definition(&partner, alice, Zone::Battlefield);
     let hand = game.create_object_from_definition(&definition(), alice, Zone::Hand);
     let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
-    game.move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm)
+    game.move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap();
     assert_eq!(
         game.player(alice).unwrap().life,
@@ -259,7 +259,7 @@ fn swapped_sacrifice_ability_pays_its_cost_and_draws_for_each_other_player() {
     }
     let hand = game.create_object_from_definition(&definition(), alice, Zone::Hand);
     let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
-    game.move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm)
+    game.move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap();
     game.turn.active_player = bob;
     game.turn.priority_player = Some(bob);
@@ -271,7 +271,7 @@ fn swapped_sacrifice_ability_pays_its_cost_and_draws_for_each_other_player() {
     let is_activation = |action: &LegalAction| matches!(action, LegalAction::ActivateAbility { source, .. } if *source == partner);
     // Actions open a mana-ability window before checking exact payment.
     assert!(
-        ironsmith::decision::compute_legal_actions(&game, bob)
+        ironsmith::decision::compute_legal_actions(&game, bob).expect("fixture has complete replacement state")
             .iter()
             .any(is_activation)
     );
@@ -279,7 +279,7 @@ fn swapped_sacrifice_ability_pays_its_cost_and_draws_for_each_other_player() {
         .unwrap()
         .mana_pool
         .add(ironsmith::mana::ManaSymbol::Colorless, 1);
-    let action = ironsmith::decision::compute_legal_actions(&game, bob)
+    let action = ironsmith::decision::compute_legal_actions(&game, bob).expect("fixture has complete replacement state")
         .into_iter()
         .find(is_activation)
         .unwrap();
@@ -336,7 +336,7 @@ fn entry_without_candidates_succeeds_and_multiple_candidates_choose_one() {
         let hand = game.create_object_from_definition(&definition(), alice, Zone::Hand);
         let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
         let entered = game
-            .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm)
+            .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
             .unwrap()
             .new_id;
         assert_eq!(
@@ -410,7 +410,7 @@ fn acquired_copy_replacement_changes_the_pending_entry() {
     let hand = game.create_object_from_definition(&definition(), alice, Zone::Hand);
     let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
     let entered = game
-        .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm)
+        .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     let chars = game.calculated_characteristics(entered).unwrap();
@@ -449,7 +449,7 @@ fn text_exchange_is_not_copied_and_ends_for_each_object_on_leaving() {
     let hand = game.create_object_from_definition(&definition(), alice, Zone::Hand);
     let mut accept = ironsmith::decision::SelectFirstDecisionMaker;
     let entered = game
-        .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut accept)
+        .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut accept).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     for (original, expected_flying) in [(partner, true), (entered, false)] {
@@ -483,7 +483,7 @@ fn text_exchange_is_not_copied_and_ends_for_each_object_on_leaving() {
     assert!(game.object_has_static_ability_id(entered, StaticAbilityId::Flying));
     let mut decline = Decline;
     let returned_partner = game
-        .move_object_with_etb_processing_with_dm(buried_partner, Zone::Battlefield, &mut decline)
+        .move_object_with_etb_processing_with_dm(buried_partner, Zone::Battlefield, &mut decline).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     assert!(game.object_has_static_ability_id(returned_partner, StaticAbilityId::Flying));
@@ -491,7 +491,7 @@ fn text_exchange_is_not_copied_and_ends_for_each_object_on_leaving() {
         .move_object_by_effect(entered, Zone::Graveyard)
         .unwrap();
     let returned_source = game
-        .move_object_with_etb_processing_with_dm(buried_source, Zone::Battlefield, &mut decline)
+        .move_object_with_etb_processing_with_dm(buried_source, Zone::Battlefield, &mut decline).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     assert!(!game.object_has_static_ability_id(returned_source, StaticAbilityId::Flying));
@@ -585,7 +585,7 @@ fn controller_can_order_text_exchange_before_an_external_entry_replacement() {
             offered: false,
         };
         let entered = game
-            .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm)
+            .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
             .unwrap()
             .new_id;
         assert!(
@@ -648,7 +648,7 @@ fn copying_deadpool_before_entry_exchanges_the_copied_text_box() {
     let hand = game.create_object_from_definition(&clone, alice, Zone::Hand);
     let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
     let entered = game
-        .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm)
+        .move_object_with_etb_processing_with_dm(hand, Zone::Battlefield, &mut dm).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
         .unwrap()
         .new_id;
     assert!(game.object_has_static_ability_id(entered, StaticAbilityId::Flying));
@@ -672,4 +672,13 @@ fn copying_deadpool_before_entry_exchanges_the_copied_text_box() {
             .iter()
             .any(|ability| matches!(ability.kind, ironsmith::ability::AbilityKind::Activated(_)))
     );
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: ironsmith::game_state::EntryCommitResult)
+    -> Option<ironsmith::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

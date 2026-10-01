@@ -1,14 +1,42 @@
 // A local transaction retains live continuations, unlike a wire checkpoint.
-// Registries and pure memo/analysis caches are not transactional game state.
+// Registries remain shared; reusable analysis follows its owning branch.
+#[derive(Default)]
+struct RuntimeBranchAnalysis {
+    // Revision keys only identify a state within one branch. Move this memo
+    // with its game so equal revisions on diverged branches cannot alias.
+    mana_inventory: Option<(u64, Vec<ManaActivationOptionView>)>,
+    priority: Option<Box<PriorityAnalysisJob>>,
+    payment: Option<Box<PaymentAnalysisJob>>,
+    inspector: Option<Box<InspectorAnalysisJob>>,
+    last_slice_nodes: usize,
+    object_views: Box<SnapshotObjectViewCache>,
+    #[cfg(target_arch = "wasm32")]
+    js_encoding: SnapshotJsEncodingCache,
+}
+
 macro_rules! runtime_savepoint {
     ($($field:ident: $kind:ty),* $(,)?) => {
         pub(super) struct RuntimeSavepoint {
             $($field: $kind,)*
             id_counters: ironsmith::ids::IdCountersSnapshot,
+            analysis: RuntimeBranchAnalysis,
+        }
+        impl Clone for RuntimeSavepoint {
+            fn clone(&self) -> Self {
+                Self { $($field: self.$field.clone(),)* id_counters: self.id_counters,
+                    analysis: RuntimeBranchAnalysis {
+                        mana_inventory: self.analysis.mana_inventory.clone(),
+                        ..Default::default()
+                    } }
+            }
         }
         impl RuntimeSavepoint {
             fn capture(game: &WasmGame) -> Self {
-                Self { $($field: game.$field.clone(),)* id_counters: snapshot_id_counters() }
+                Self { $($field: game.$field.clone(),)* id_counters: snapshot_id_counters(),
+                    analysis: RuntimeBranchAnalysis {
+                        mana_inventory: game.mana_activation_inventory_cache.borrow().clone(),
+                        ..Default::default()
+                    } }
             }
             fn restore(self, game: &mut WasmGame) {
                 $(game.$field = self.$field;)*
@@ -18,12 +46,29 @@ macro_rules! runtime_savepoint {
                 let mut ids = self.id_counters;
                 ids.card = ids.card.max(snapshot_id_counters().card);
                 restore_id_counters(ids);
+                *game.mana_activation_inventory_cache.get_mut() = self.analysis.mana_inventory;
                 game.priority_analysis_job = None;
                 game.payment_analysis_job = None;
                 game.inspector_analysis_job = None;
                 game.snapshot_object_view_cache = Box::default();
                 #[cfg(target_arch = "wasm32")]
                 { game.snapshot_js_encoding_cache = SnapshotJsEncodingCache::default(); }
+            }
+            fn exchange(&mut self, game: &mut WasmGame) {
+                $(std::mem::swap(&mut self.$field, &mut game.$field);)*
+                std::mem::swap(&mut self.analysis.mana_inventory, game.mana_activation_inventory_cache.get_mut());
+                let current = snapshot_id_counters();
+                let mut incoming = self.id_counters;
+                incoming.card = incoming.card.max(current.card);
+                restore_id_counters(incoming);
+                self.id_counters = current;
+                std::mem::swap(&mut self.analysis.priority, &mut game.priority_analysis_job);
+                std::mem::swap(&mut self.analysis.payment, &mut game.payment_analysis_job);
+                std::mem::swap(&mut self.analysis.inspector, &mut game.inspector_analysis_job);
+                std::mem::swap(&mut self.analysis.last_slice_nodes, &mut game.last_analysis_slice_nodes);
+                std::mem::swap(&mut self.analysis.object_views, &mut game.snapshot_object_view_cache);
+                #[cfg(target_arch = "wasm32")]
+                { std::mem::swap(&mut self.analysis.js_encoding, &mut game.snapshot_js_encoding_cache); }
             }
         }
     };
@@ -68,6 +113,26 @@ runtime_savepoint! {
 
 #[wasm_bindgen]
 impl WasmGame {
+    /// Copy a retained branch into the visible runtime, preserving the branch.
+    #[wasm_bindgen(js_name = copyRuntimeSavepoint)]
+    pub fn copy_runtime_savepoint(&mut self, handle: u32) -> Result<JsValue, JsValue> {
+        let point = self.runtime_savepoints.get(&handle)
+            .ok_or_else(|| JsValue::from_str("runtime branch has expired"))?.clone();
+        point.restore(self);
+        self.snapshot()
+    }
+
+    /// Switch between two lossless runtime branches without copying the game.
+    /// The handle retains the previously active branch and remains reusable.
+    #[wasm_bindgen(js_name = exchangeRuntimeSavepoint)]
+    pub fn exchange_runtime_savepoint(&mut self, handle: u32) -> Result<(), JsValue> {
+        let mut point = self.runtime_savepoints.remove(&handle)
+            .ok_or_else(|| JsValue::from_str("runtime branch has expired"))?;
+        point.exchange(self);
+        self.runtime_savepoints.insert(handle, point);
+        Ok(())
+    }
+
     #[wasm_bindgen(js_name = createRuntimeSavepoint)]
     pub fn create_runtime_savepoint(&mut self) -> Result<u32, JsValue> {
         if self.runtime_savepoints.len() >= 16 {

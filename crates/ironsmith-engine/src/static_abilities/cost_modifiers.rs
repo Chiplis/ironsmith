@@ -925,6 +925,13 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
                 filter.description()
             )),
         ),
+        Value::UnlockedDoorsAmong(filter) => (
+            "{X}".to_string(),
+            Some(format!(
+                "where X is the number of unlocked doors among {}",
+                filter.description()
+            )),
+        ),
         Value::DistinctManaValues(filter) => (
             "{X}".to_string(),
             Some(format!(

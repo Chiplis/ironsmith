@@ -365,7 +365,7 @@ fn run_tireless_provisioner_mode(mode: &'static str) {
         alice,
         Zone::Hand,
     );
-    game.move_object_with_etb_processing(nonland, Zone::Battlefield)
+    game.move_object_with_etb_processing(nonland, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
         .expect("the controlled nonland should enter");
     let mut queue = crate::triggers::TriggerQueue::new();
     crate::game_loop::drain_pending_trigger_events(&mut game, &mut queue);
@@ -379,7 +379,7 @@ fn run_tireless_provisioner_mode(mode: &'static str) {
         bob,
         Zone::Hand,
     );
-    game.move_object_with_etb_processing(opponent_land, Zone::Battlefield)
+    game.move_object_with_etb_processing(opponent_land, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
         .expect("the opponent land should enter");
     let mut queue = crate::triggers::TriggerQueue::new();
     crate::game_loop::drain_pending_trigger_events(&mut game, &mut queue);
@@ -393,7 +393,7 @@ fn run_tireless_provisioner_mode(mode: &'static str) {
         alice,
         Zone::Hand,
     );
-    game.move_object_with_etb_processing(controlled_land, Zone::Battlefield)
+    game.move_object_with_etb_processing(controlled_land, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
         .expect("the controlled land should enter");
     let mut queue = crate::triggers::TriggerQueue::new();
     crate::game_loop::drain_pending_trigger_events(&mut game, &mut queue);
@@ -470,7 +470,7 @@ fn run_tireless_provisioner_mode(mode: &'static str) {
             .add(ManaSymbol::Colorless, 2);
     }
     let token_id = tokens[0];
-    let action = crate::decision::compute_legal_actions(&game, alice)
+    let action = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| match action {
             crate::decision::LegalAction::ActivateAbility { source, .. }
@@ -595,7 +595,7 @@ fn unassuming_sage_case(accept_optional: bool, available_mana: u32) {
         .add(ManaSymbol::Colorless, available_mana);
     let in_hand = game.create_object_from_definition(&definition, alice, Zone::Hand);
     let entered = game
-        .move_object_with_etb_processing(in_hand, Zone::Battlefield)
+        .move_object_with_etb_processing(in_hand, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
         .expect("Unassuming Sage should enter")
         .new_id;
     let mut queue = crate::triggers::TriggerQueue::new();
@@ -730,7 +730,7 @@ fn wall_of_corpses_can_target_only_the_attacker_it_blocks_and_resolves_from_lki(
         .iter()
         .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
         .expect("Wall should have an activated ability");
-    let action = crate::decision::compute_legal_actions(&game, alice)
+    let action = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -824,7 +824,7 @@ fn activate_tezzeret(
     ability_index: usize,
     target: Option<ObjectId>,
 ) -> Vec<Target> {
-    let action = crate::decision::compute_legal_actions(game, controller)
+    let action = crate::decision::compute_legal_actions(game, controller).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(
@@ -891,7 +891,7 @@ fn tezzeret_plus_one_creates_an_executable_etherium_cell_mana_token() {
     assert_eq!(game.controller_of(cell_object), alice);
     assert!(cell_object.card_types.contains(&CardType::Artifact));
 
-    let action = crate::decision::compute_legal_actions(&game, alice)
+    let action = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| {
             matches!(

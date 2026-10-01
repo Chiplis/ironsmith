@@ -188,7 +188,7 @@ fn cast_announce(
 ) -> Result<(), String> {
     g.turn.priority_player = Some(alice());
     let id = g.create_object_from_definition(d, alice(), Zone::Hand);
-    let a = compute_legal_actions(g, alice())
+    let a = compute_legal_actions(g, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or("fixture source cast absent")?;
@@ -264,7 +264,7 @@ fn run(
         g.turn.priority_player = Some(alice());
         g.remove_summoning_sickness(source);
         dm.stage = "actual_activation_announcement".into();
-        let a=compute_legal_actions(&g,alice()).into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:id,ability_index:1}if *id==source)).ok_or("fixture intended damage activation absent")?;
+        let a=compute_legal_actions(&g,alice()).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:id,ability_index:1}if *id==source)).ok_or("fixture intended damage activation absent")?;
         let before = g.player(alice()).unwrap().mana_pool.total();
         announce(&mut g, a, &mut q, dm)?;
         mana_paid = before - g.player(alice()).unwrap().mana_pool.total();

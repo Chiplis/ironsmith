@@ -115,6 +115,35 @@ fn parses_controlled_creature_and_owned_graveyard_card_as_domain_union() {
 }
 
 #[test]
+fn ordinary_nonbattlefield_card_domain_excludes_outside_game_but_explicit_selector_remains() {
+    let tokens = lex_line("creature cards you own that aren't on the battlefield", 0).unwrap();
+    let filter = parse_object_filter(&tokens, false).unwrap();
+    assert_eq!(filter.any_of.len(), 7, "ordinary cards must remain in actual game zones: {filter:#?}");
+    assert!(!filter.any_of.iter().any(|branch| branch.zone == Some(Zone::OutsideGame)));
+    for branch in &filter.any_of {
+        assert_eq!(branch.owner, Some(PlayerFilter::You));
+        assert_eq!(branch.card_types, vec![CardType::Creature]);
+        assert_ne!(branch.zone, Some(Zone::Battlefield));
+        if branch.zone == Some(Zone::Stack) {
+            assert_eq!(branch.stack_kind, Some(crate::filter::StackObjectKind::Spell));
+        }
+    }
+    // The enclosing wish grammar owns the explicit selection domain; its
+    // component object filter is normalized before the choice is lowered.
+    let explicit = lex_line("You may reveal a creature card you own from outside the game and put it into your hand.", 0).unwrap();
+    let explicit = crate::clause_support::parse_effect_sentences_lexed(&explicit).unwrap();
+    use crate::cards::builders::{EffectAst, ObjectChoiceEffectAst, PermissionEffectAst};
+    let [EffectAst::Permissions(PermissionEffectAst::May {effects})] = explicit.as_slice()
+        else {panic!("expected actual optional outside-game wish: {explicit:#?}")};
+    let Some(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {filter, zones, ..})) = effects.first()
+        else {panic!("expected actual outside-game selector: {effects:#?}")};
+    assert_eq!(zones, &vec![Zone::OutsideGame]);
+    assert_eq!(filter.zone, Some(Zone::OutsideGame));
+    assert_eq!(filter.owner, Some(PlayerFilter::You));
+    assert_eq!(filter.card_types, vec![CardType::Creature]);
+}
+
+#[test]
 fn flattens_owned_nonbattlefield_zone_set_beside_a_controlled_battlefield_set() {
     let tokens = lex_line(
         "lands you control and land cards you own that aren't on the battlefield",
@@ -124,13 +153,14 @@ fn flattens_owned_nonbattlefield_zone_set_beside_a_controlled_battlefield_set() 
     let filter = parse_branch_scoped_object_filter_union_lexed(&tokens, false)
         .expect("the two authored domains should remain independently scoped");
 
-    assert_eq!(filter.any_of.len(), 9, "{filter:#?}");
+    assert_eq!(filter.any_of.len(), 8, "{filter:#?}");
     assert!(filter.any_of.iter().any(|branch| {
         branch.zone == Some(Zone::Battlefield)
             && branch.controller == Some(PlayerFilter::You)
             && branch.owner.is_none()
             && branch.card_types == [CardType::Land]
     }));
+    assert!(!filter.any_of.iter().any(|branch| branch.zone == Some(Zone::OutsideGame)));
     for zone in [
         Zone::Hand,
         Zone::Library,
@@ -139,7 +169,6 @@ fn flattens_owned_nonbattlefield_zone_set_beside_a_controlled_battlefield_set() 
         Zone::Command,
         Zone::Stack,
         Zone::Ante,
-        Zone::OutsideGame,
     ] {
         assert!(filter.any_of.iter().any(|branch| {
             branch.zone == Some(zone)
@@ -718,4 +747,18 @@ fn coordinated_object_domains_share_leading_colors_but_keep_independent_colors()
             "{filter:#?}"
         );
     }
+}
+
+#[test]
+fn explicit_outside_selection_keeps_exile_followup_and_unrelated_may_scope() {
+    use crate::cards::builders::{EffectAst, PermissionEffectAst};
+    let tokens = lex_line("You may reveal a creature or land card you own from outside the game and put it into your hand. Exile this spell.", 0).unwrap();
+    let effects = crate::clause_support::parse_effect_sentences_lexed(&tokens).unwrap();
+    assert_eq!(effects.len(), 2, "the exile must remain outside the optional selection: {effects:#?}");
+    assert!(matches!(&effects[0], EffectAst::Permissions(PermissionEffectAst::May { .. })));
+    assert!(!matches!(&effects[1], EffectAst::Permissions(_)), "declining the wish must not decline its exile: {effects:#?}");
+    let tokens = lex_line("You may draw a card.", 0).unwrap();
+    let effects = crate::clause_support::parse_effect_sentences_lexed(&tokens).unwrap();
+    assert_eq!(effects.len(), 1);
+    assert!(matches!(&effects[0], EffectAst::Permissions(PermissionEffectAst::May { .. }) | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. })), "unrelated player choice lost its scope: {effects:#?}");
 }

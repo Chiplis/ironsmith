@@ -54,7 +54,7 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
             && let Some(object) = self.calculation.game.object(self.calculation.current_object)
         {
             let mut snapshot = ObjectSnapshot::from_object(object, self.calculation.game);
-            if let Some(chars) = in_progress_characteristics(object.id) {
+            if let Some(chars) = in_progress_characteristics(self.calculation.game, object.id) {
                 snapshot.subtypes = chars.subtypes.to_vec();
                 snapshot.card_types = chars.card_types.to_vec();
             }
@@ -368,7 +368,7 @@ impl LayerValueContext<'_, '_> {
                 .and_then(|object| property.raw(object))
                 .unwrap_or(0);
         }
-        in_progress_characteristics(id)
+        in_progress_characteristics(ctx.game, id)
             .and_then(|chars| property.characteristics(&chars))
             .or_else(|| {
                 ctx.effects

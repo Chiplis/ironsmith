@@ -723,7 +723,9 @@ impl OrTrigger {
 
         if graveyard.this_object
             && exile.this_object
-            && graveyard.object_filter == ObjectFilter::creature()
+            && (graveyard.object_filter == ObjectFilter::creature()
+                || (graveyard.object_filter == ObjectFilter::default()
+                    && graveyard.graveyard_surface == Some(ironsmith_core::GraveyardTriggerSurface::Dies)))
             && exile.object_filter == ObjectFilter::default()
             && graveyard.player == exile.player
             && graveyard.cause_filter == exile.cause_filter
@@ -733,7 +735,7 @@ impl OrTrigger {
             && graveyard.count_mode == CountMode::Each
             && exile.count_mode == CountMode::Each
             && graveyard.this_object_surface == exile.this_object_surface
-            && graveyard.graveyard_surface.is_none()
+            && matches!(graveyard.graveyard_surface, None | Some(ironsmith_core::GraveyardTriggerSurface::Dies))
             && exile.graveyard_surface.is_none()
         {
             return Some(format!(
@@ -1890,6 +1892,30 @@ mod tests {
             trigger.display(),
             "Whenever God-Eternal Rhonas dies or is put into exile from the battlefield"
         );
+    }
+
+    #[test]
+    fn authored_dies_surface_compacts_for_noncreature_source_in_either_order() {
+        let surface = crate::target::SourceReferenceSurface::ThisPermanentType("this artifact".to_string());
+        let dies = Trigger::new(ZoneChangeTrigger::this_dies().this_surface(surface.clone()));
+        let exiled = Trigger::new(ZoneChangeTrigger::new().from(Zone::Battlefield)
+            .to(Zone::Exile).this().this_surface(surface));
+        for branches in [vec![dies.clone(), exiled.clone()], vec![exiled, dies]] {
+            assert_eq!(OrTrigger::new(branches).display(),
+                "Whenever this artifact dies or is put into exile from the battlefield");
+        }
+    }
+
+    #[test]
+    fn authored_put_into_graveyard_surface_is_not_rewritten_as_dies() {
+        let surface = crate::target::SourceReferenceSurface::ThisPermanentType("this creature".to_string());
+        let graveyard = Trigger::new(ZoneChangeTrigger::new().from(Zone::Battlefield)
+            .to(Zone::Graveyard).filter(ObjectFilter::creature()).this()
+            .this_surface(surface.clone())
+            .graveyard_surface(ironsmith_core::GraveyardTriggerSurface::PutIntoGraveyard));
+        let exile = Trigger::new(ZoneChangeTrigger::new().from(Zone::Battlefield)
+            .to(Zone::Exile).this().this_surface(surface));
+        assert!(!OrTrigger::two(graveyard, exile).display().contains(" dies "));
     }
 
     #[test]

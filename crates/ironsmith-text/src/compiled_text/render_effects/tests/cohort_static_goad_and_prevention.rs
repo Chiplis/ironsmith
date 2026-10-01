@@ -126,14 +126,16 @@ fn cohort_prevention_captures_the_original_object_or_player_for_repeatable_payme
         } else {
             crate::events::DamageTarget::Object(target)
         };
-        let (remaining, _) = crate::events::processing::process_damage_with_event(
+        let processed = crate::events::processing::process_damage_assignments_with_event(
             &mut game,
             damage_source,
             damage_target,
             5,
             false,
             crate::events::cause::EventCause::effect(),
-        );
+        ).expect("damage test proposal must process successfully");
+    assert!(processed.programs.is_empty());
+    let remaining: u32 = processed.assignments.iter().filter(|assignment| assignment.target == damage_target).map(|assignment| assignment.amount).sum();
         assert_eq!(remaining, 1);
         game.turn.turn_number += 1;
         assert!(crate::special_actions::can_perform_check(&action, &game, alice).is_err());

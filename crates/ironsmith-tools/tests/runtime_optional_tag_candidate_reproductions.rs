@@ -182,7 +182,7 @@ fn cast(
 ) -> Result<TriggerQueue, String> {
     game.turn.priority_player = Some(alice());
     let id = game.create_object_from_definition(def, alice(), Zone::Hand);
-    let action = compute_legal_actions(game, alice())
+    let action = compute_legal_actions(game, alice()).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or_else(|| format!("no legal cast of {}", def.name()))?;
@@ -431,7 +431,7 @@ fn cast_for(
 ) -> Result<(), String> {
     g.turn.priority_player = Some(player);
     let id = g.create_object_from_definition(d, player, Zone::Hand);
-    let action = compute_legal_actions(g, player)
+    let action = compute_legal_actions(g, player).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
         .ok_or("witnesscastmissing")?;
@@ -507,7 +507,7 @@ fn generate_report() {
             |dm| {
                 let mut g = game();
                 let sourcehand = g.create_object_from_definition(d, alice(), Zone::Hand);
-                let action = compute_legal_actions(&g, alice())
+                let action = compute_legal_actions(&g, alice()).expect("fixture has complete replacement state")
                     .into_iter()
                     .find(|a| matches!(a,LegalAction::PlayLand{land_id}if *land_id==sourcehand))
                     .ok_or("Passage landplaymissing")?;
@@ -546,7 +546,7 @@ fn generate_report() {
                         },
                     );
                 }
-                let action = compute_legal_actions(&g, alice())
+                let action = compute_legal_actions(&g, alice()).expect("fixture has complete replacement state")
                     .into_iter()
                     .find(|a| matches!(a,LegalAction::ActivateAbility{source:id,..}if *id==source))
                     .ok_or("Passageactivationmissing")?;

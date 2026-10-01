@@ -1016,7 +1016,8 @@ impl Auditor {
             | "Blocks"
             | "BlocksOneOrMore"
             | "BlocksOrBecomesBlockedByObject"
-            | "BlocksObjectWithLesserPower" => {
+            | "BlocksObjectWithLesserPower"
+            | "BlocksObject" => {
                 scope.player = Binding::Unknown;
                 scope.amount = Binding::Unknown;
             }

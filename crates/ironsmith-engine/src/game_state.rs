@@ -85,7 +85,7 @@ pub use subgames::{SubgameCompletion, SubgameTransferKind};
 pub use team_game::{SharedTeamTurnsState, TeamState};
 pub use team_vs_team::TeamVsTeamState;
 pub use two_headed_giant::TwoHeadedGiantState;
-pub(crate) use zones_and_characteristics::PreparedEtbChoices;
+pub(crate) use zones_and_characteristics::{PreparedEntryComponent, PreparedEtbChoices, PreparedEtbEntry};
 
 /// The two kinds of nontraditional cards allowed in a planar deck.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -230,6 +230,25 @@ pub struct EntersResult {
     pub new_id: ObjectId,
     /// Whether the permanent entered tapped
     pub enters_tapped: bool,
+}
+
+/// Completed original entry operation and instructions added by replacements.
+/// An enclosing effect finishes its authored work/batch before executing the
+/// programs. A pending receipt contains no committed work and must be replayed
+/// from the owning instruction's preselection checkpoint.
+#[derive(Debug, Clone)]
+#[must_use = "finish the original entry and every deferred replacement instruction"]
+pub struct EntryCommitResult {
+    pub original: crate::events::processing::EventOutcome<EntersResult>,
+    pub programs: Vec<crate::events::processing::PreparedReplacementProgram>,
+    pub pending: bool,
+}
+
+impl EntryCommitResult {
+    fn pending() -> Self {
+        Self { original: crate::events::processing::EventOutcome::Prevented,
+            programs: Vec::new(), pending: true }
+    }
 }
 
 /// Linked exile group metadata for "exile ... until ..." effects.
@@ -603,6 +622,9 @@ struct AuxiliaryTrackingState {
     player_control_effects: Vec<PlayerControlEffect>,
     /// Player-control effects active only while a resolving instruction is in scope.
     scoped_player_control_effects: Vec<ScopedPlayerControlEffect>,
+    /// Decision routing captured at an actual suspension. This is a view of
+    /// the pending decision, not an active control effect or a scope token.
+    pending_decision_controllers: Option<Vec<(PlayerId, PlayerId)>>,
     /// Timestamp counter for player-control effects.
     player_control_timestamp: u64,
     /// Temporary effects that redirect attacker/blocker choices this turn.
@@ -898,8 +920,8 @@ pub struct TurnStore {
     /// Last-known snapshots for objects that entered the battlefield during the immediately
     /// previous turn.
     pub entered_battlefield_last_turn: Vec<ObjectSnapshot>,
-    /// Static or temporary grant sources whose once-per-turn cast permission was used.
-    pub grant_cast_uses_this_turn: HashSet<(PlayerId, ObjectId)>,
+    /// Exact permission instances whose once-per-turn casting use was consumed.
+    pub grant_cast_uses_this_turn: HashSet<(PlayerId, crate::grant_registry::GrantPermissionIdentity)>,
     /// Last known information of each spell cast this turn, as it was put on
     /// the stack: its object and stack entry. Self-copy cast triggers (storm,
     /// casualty, replicate, conspire, demonstrate) still copy a spell that
@@ -1119,6 +1141,7 @@ struct EnterAsCopySourceCache {
 #[derive(Debug)]
 struct RuntimeCacheState {
     observed_players: RefCell<Option<crate::incremental::ChangeCursor>>,
+    observed_stack: RefCell<Option<crate::incremental::ChangeCursor>>,
     random_state: Cell<u64>,
     irreversible_random_count: Cell<u64>,
     forced_die_rolls: RefCell<VecDeque<u32>>,
@@ -1162,6 +1185,7 @@ impl Clone for RuntimeCacheState {
     fn clone(&self) -> Self {
         Self {
             observed_players: RefCell::new(self.observed_players.borrow().clone()),
+            observed_stack: RefCell::new(self.observed_stack.borrow().clone()),
             random_state: Cell::new(self.random_state.get()),
             irreversible_random_count: Cell::new(self.irreversible_random_count.get()),
             forced_die_rolls: RefCell::new(self.forced_die_rolls.borrow().clone()),
@@ -1204,6 +1228,7 @@ impl RuntimeCacheState {
     fn new(active_player: PlayerId) -> Self {
         Self {
             observed_players: RefCell::new(None),
+            observed_stack: RefCell::new(None),
             random_state: Cell::new(GameState::normalize_random_seed(0)),
             irreversible_random_count: Cell::new(0),
             forced_die_rolls: RefCell::new(VecDeque::new()),
@@ -3621,7 +3646,7 @@ pub struct GameState {
     pub object_store: ObjectStore,
 
     // The stack
-    pub stack: Vec<StackEntry>,
+    pub stack: crate::incremental::TrackedValue<Vec<StackEntry>>,
 
     // Turn tracking
     pub turn: TurnState,
@@ -4094,7 +4119,7 @@ impl GameState {
         Self {
             players: players.into(),
             object_store: ObjectStore::default(),
-            stack: Vec::new(),
+            stack: Vec::new().into(),
             turn: TurnState::new(active_player),
             turn_store: TurnStore {
                 turn_order,
@@ -4239,6 +4264,18 @@ impl GameState {
         self.bump_mutation_revision();
         self.mark_continuous_state_dirty();
         true
+    }
+
+    /// How many cards `player` removed from the draft with cards of this name.
+    pub fn draft_removed_card_count(&self, player: PlayerId, with_cards_named: impl AsRef<str>) -> usize {
+        let key = (
+            player,
+            normalize_draft_note_card_name(with_cards_named.as_ref()),
+        );
+        self.auxiliary_tracking
+            .draft_removed_cards
+            .get(&key)
+            .map_or(0, |cards| cards.len())
     }
 
     pub(crate) fn removed_from_draft_card_matches(
@@ -4553,7 +4590,17 @@ impl GameState {
 
     pub(crate) fn continuous_context_revision(&self) -> u64 {
         self.observe_player_mutations();
+        self.observe_stack_mutations();
         self.runtime_cache.continuous_context_revision.get()
+    }
+
+    fn observe_stack_mutations(&self) {
+        let cursor = self.stack.cursor();
+        let changed = self.runtime_cache.observed_stack.borrow().as_ref() != Some(&cursor);
+        if changed {
+            *self.runtime_cache.observed_stack.borrow_mut() = Some(cursor);
+            self.mark_continuous_state_dirty();
+        }
     }
 
     fn observe_player_mutations(&self) {
@@ -4775,6 +4822,7 @@ impl GameState {
 
     pub(crate) fn continuous_state_is_clean(&self) -> bool {
         self.observe_player_mutations();
+        self.observe_stack_mutations();
         !self.runtime_cache.continuous_state_dirty.get()
             && self.runtime_cache.continuous_state_revision.get()
                 == self.effect_store.continuous_effects.revision()
@@ -4957,6 +5005,7 @@ impl GameState {
             | crate::effect::Value::ColorsAmong(filter)
             | crate::effect::Value::DistinctNames(filter)
             | crate::effect::Value::DistinctManaValues(filter)
+            | crate::effect::Value::UnlockedDoorsAmong(filter)
             | crate::effect::Value::DistinctPowers(filter)
             | crate::effect::Value::StaticAbilitiesAmong { filter, .. } => {
                 Self::object_filter_is_turn_context_sensitive(filter)
@@ -5050,6 +5099,7 @@ impl GameState {
             || filter.entered_graveyard_from_battlefield_this_turn
             || filter.entered_graveyard_from_library_this_turn
             || filter.surveilled_this_turn
+            || filter.fought_this_turn
             || filter.counters_put_on_this_turn.is_some()
             || filter.was_dealt_damage_this_turn
             || filter.dealt_damage_this_turn
@@ -5971,13 +6021,9 @@ impl GameState {
         let Some(object) = self.object_mut(object_id) else {
             return;
         };
-        if object.temporary_static_ability_grants.iter().any(|grant| {
-            grant.ability == ability
-                && grant.ability_payload == ability_payload
-                && grant.expires_end_of_turn >= expires_end_of_turn
-        }) {
-            return;
-        }
+        // Each call creates an independent ability grant. Equal payloads and
+        // durations do not make two grants the same instance; callers retaining
+        // an existing grant must do so before requesting a new one.
         object
             .temporary_static_ability_grants
             .push(crate::object::TemporaryStaticAbilityGrant {
@@ -7652,5 +7698,16 @@ impl FromIterator<PlayerId> for PendingTurnSkips {
             schedule.insert(player);
         }
         schedule
+    }
+}
+
+// Tests expecting a plain completed entry must prove that no continuation or
+// added program is being lost. This helper is absent from production APIs.
+#[cfg(test)]
+impl EntryCommitResult {
+    pub(crate) fn assert_completed_without_additions(self) -> Option<EntersResult> {
+        assert!(!self.pending, "fixture expected a completed entry, not a continuation");
+        assert!(self.programs.is_empty(), "fixture must finish its added replacement programs");
+        self.original.into_result()
     }
 }

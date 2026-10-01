@@ -882,7 +882,7 @@ impl GameState {
                     resolving_object,
                     Zone::Battlefield,
                     decision_maker,
-                );
+                )?;
             } else {
                 let _ = self.move_object_by_effect(resolving_object, Zone::Graveyard);
             }

@@ -132,7 +132,7 @@ fn absorb_identity_returns_to_owner_and_copies_all_or_none_from_battlefield() {
                     accept,
                     prompts: 0,
                 };
-                let action = compute_legal_actions(&game, alice)
+                let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
                     .into_iter()
                     .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..} if *spell_id==spell))
                     .unwrap();
@@ -162,7 +162,7 @@ fn absorb_identity_returns_to_owner_and_copies_all_or_none_from_battlefield() {
                 if invalid {
                     let exiled = game.move_object_by_effect(target, Zone::Exile).unwrap();
                     if change == 2 {
-                        game.move_object_with_etb_processing(exiled, Zone::Battlefield)
+                        game.move_object_with_etb_processing(exiled, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
                             .unwrap();
                     }
                 }
@@ -313,4 +313,13 @@ fn absorb_identity_preserves_targeting_and_collective_copy_structure() {
         ironsmith_tools::ParseStatus::StrictCompiled
     );
     assert!(!snapshot.parse_lossy && !snapshot.has_unimplemented);
+}
+
+// These fixtures expect a plain completed entry. Reject a continuation or
+// retained added instructions rather than silently projecting them away.
+fn require_plain_entry_for_test(receipt: ironsmith::game_state::EntryCommitResult)
+    -> Option<ironsmith::game_state::EntersResult> {
+    assert!(!receipt.pending, "fixture requires completed entry");
+    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    receipt.original.into_result()
 }

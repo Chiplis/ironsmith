@@ -94,7 +94,7 @@ fn cast_overload(kick: bool, mana_value: u32) -> (bool, u32) {
     let target = game.create_object_from_definition(&artifact(mana_value), bob, Zone::Battlefield);
     let target_stable = game.object(target).unwrap().stable_id;
 
-    let action = compute_legal_actions(&game, alice)
+    let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))
         .expect("Overload is castable");

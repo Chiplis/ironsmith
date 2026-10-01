@@ -150,6 +150,9 @@ pub enum CostPaymentError {
     /// Not enough cards in hand to reveal.
     InsufficientCardsToReveal,
 
+    /// A replacement/program failed while paying an otherwise legal cost.
+    ExecutionFailed(crate::effects::ExecutionError),
+
     /// Generic/other failure while validating or paying a cost.
     Other(String),
 }
@@ -190,12 +193,20 @@ impl std::fmt::Display for CostPaymentError {
             CostPaymentError::InsufficientCardsToReveal => {
                 f.write_str("Not enough cards in hand to reveal")
             }
+            CostPaymentError::ExecutionFailed(error) => write!(f, "Replacement during payment failed: {error}"),
             CostPaymentError::Other(message) => f.write_str(message),
         }
     }
 }
 
-impl std::error::Error for CostPaymentError {}
+impl std::error::Error for CostPaymentError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::ExecutionFailed(error) => Some(error),
+            _ => None,
+        }
+    }
+}
 
 /// Check if a player can pay an activated ability's or spell's cost.
 ///

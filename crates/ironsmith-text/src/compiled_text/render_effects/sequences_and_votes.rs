@@ -4768,12 +4768,19 @@ fn describe_may_causative_continuous_change(may: &crate::effects::MayEffect) -> 
     let apply = unwrap_basic_tag_wrappers(effect)
         .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
     let rendered = describe_apply_continuous_effect(apply)?;
-    let causative = may_causative_clause(&rendered)?;
     let decider = may.decider.as_ref().unwrap_or(&PlayerFilter::You);
-    Some(format!(
-        "{} may {causative}",
-        capitalize_first(&describe_player_filter(decider))
-    ))
+    let who = describe_player_filter(decider);
+    // "That player may gain control of ...": when the deciding player is the
+    // action's own subject there is no causative ("may have that player
+    // gain"); the plain may-clause renders it.
+    if rendered
+        .to_ascii_lowercase()
+        .starts_with(&format!("{} ", who.to_ascii_lowercase()))
+    {
+        return None;
+    }
+    let causative = may_causative_clause(&rendered)?;
+    Some(format!("{} may {causative}", capitalize_first(&who)))
 }
 
 /// Render optional causatives from the typed chooser/actor relationship. A
