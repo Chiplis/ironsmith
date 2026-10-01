@@ -2248,6 +2248,47 @@
   clip-path: polygon(13% 0, 87% 0, 100% 38%, 100% 100%, 0 100%, 0 38%);
 }
 
+.battlefield-pt-badge--aura {
+  border-color: rgba(211, 171, 255, 0.66);
+  color: #f2ddff;
+  background:
+    linear-gradient(180deg, rgba(73, 42, 108, 0.96), rgba(28, 16, 51, 0.98)),
+    linear-gradient(90deg, rgba(226, 194, 255, 0.2), rgba(143, 87, 218, 0.16));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 2px 8px rgba(142, 80, 220, 0.34);
+}
+
+.battlefield-summoning-sickness {
+  position: absolute;
+  top: clamp(22px, calc(var(--bf-card-height, 96px) * 0.25), 30px);
+  left: clamp(5px, calc(var(--bf-card-width, 124px) * 0.045), 8px);
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(15px, calc(var(--bf-card-width, 124px) * 0.14), 20px);
+  height: clamp(15px, calc(var(--bf-card-width, 124px) * 0.14), 20px);
+  border: 1px solid rgba(207, 181, 255, 0.5);
+  border-radius: 50%;
+  color: #e4d4ff;
+  background: rgba(25, 19, 44, 0.86);
+  box-shadow:
+    0 0 6px rgba(144, 95, 211, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  pointer-events: none;
+}
+
+.battlefield-summoning-sickness svg {
+  width: 78%;
+  height: 78%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .game-card.field-card .game-card-surface::before,
 .game-card.field-card::before,
 .game-card.field-card::after {

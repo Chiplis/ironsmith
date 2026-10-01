@@ -882,6 +882,8 @@ export const ui = {
   "Hand": "Mano",
   "Hand (": "Mano (",
   "Haste": "Prisa",
+  "Summoning sickness": "Mareo de invocación",
+  "Power/Toughness modified by an active aura": "Poder/resistencia modificados por un aura activa",
   "Health {0}": "Salud: {0}",
   "Hexproof": "Antimaleficio",
   "Hidden": "Oculto",

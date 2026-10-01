@@ -708,6 +708,8 @@ export default function GameCard({
   const useTokenBattlefield = variant === "battlefield" && (battlefieldVisualMode === "mobile-token" || useArenaBattlefield);
   const count = Number(card.count);
   const groupSize = Number.isFinite(count) && count > 1 ? count : 1;
+  const summoningSick = variant === "battlefield" && card?.summoning_sick === true;
+  const hasActiveAura = variant === "battlefield" && card?.has_active_aura === true;
   const battlefieldStackDepth = variant === "battlefield"
     ? Math.max(0, Math.min(groupSize, 4) - 1)
     : 0;
@@ -1682,6 +1684,21 @@ export default function GameCard({
           </div>
         ) : null}
 
+        {summoningSick && !useTokenBattlefield && (
+          <span
+            className="battlefield-summoning-sickness"
+            role="img"
+            aria-label={ui("Summoning sickness")}
+            title={ui("Summoning sickness")}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M6.2 8.4a6.2 6.2 0 1 1 .5 6.7" />
+              <path d="M6.2 4.8v3.7h3.7" />
+              <path d="M17.8 15.4v-3.7h-3.7" />
+            </svg>
+          </span>
+        )}
+
         {variant === "battlefield" && centerOverlay && (
           <div className="pointer-events-none absolute inset-0 z-[4] flex items-center justify-center">
             <div className="pointer-events-auto">
@@ -1692,7 +1709,13 @@ export default function GameCard({
 
         {variant === "battlefield" && !useTokenBattlefield && card.power_toughness && (
           <div className="battlefield-footer">
-            <span className="battlefield-pt-badge">
+            <span
+              className={cn(
+                "battlefield-pt-badge",
+                hasActiveAura && "battlefield-pt-badge--aura",
+              )}
+              title={hasActiveAura ? ui("Power/Toughness modified by an active aura") : undefined}
+            >
               {card.power_toughness}
             </span>
           </div>
