@@ -2088,7 +2088,7 @@ mod tests {
         assert!(execute_draw_step_with(&mut game, &mut dm).is_empty());
         assert!(game.player(alice).expect("Alice exists").hand.is_empty());
 
-        game.set_current_controller(source, bob);
+        game.set_current_controller(source, bob).expect("finite controller fixture must refresh successfully");
         assert!(!game.player_skips_draw_step(alice));
         assert!(game.player_skips_draw_step(bob));
         assert_eq!(execute_draw_step_with(&mut game, &mut dm).len(), 1);

@@ -302,7 +302,7 @@ fn abomination_power_up_cannot_be_reactivated_on_the_same_object() {
     );
     game.next_turn();
     let bob = PlayerId::from_index(1);
-    game.set_current_controller(source, bob);
+    game.set_current_controller(source, bob).expect("finite controller fixture must refresh successfully");
     game.turn.priority_player = Some(bob);
     game.player_mut(bob)
         .unwrap()
@@ -524,7 +524,7 @@ fn abomination_fight_uses_countered_power_and_rechecks_target_identity() {
             1 => {
                 branch.move_object_by_effect(target, Zone::Exile).unwrap();
             }
-            2 => branch.set_current_controller(target, alice),
+            2 => branch.set_current_controller(target, alice).expect("finite controller fixture must refresh successfully"),
             3 => {
                 branch.move_object_by_effect(source, Zone::Exile).unwrap();
             }

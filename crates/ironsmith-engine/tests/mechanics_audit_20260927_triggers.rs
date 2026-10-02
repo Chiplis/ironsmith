@@ -209,8 +209,8 @@ fn tc4_echo_tracks_extra_upkeeps_and_control_acquired_between_them() {
         g.stack.is_empty(),
         "no repeated echo without a control acquisition"
     );
-    g.set_current_controller(id, BOB);
-    g.set_current_controller(id, A);
+    g.set_current_controller(id, BOB).expect("finite controller fixture must refresh successfully");
+    g.set_current_controller(id, A).expect("finite controller fixture must refresh successfully");
     upkeep(&mut g);
     assert_eq!(g.stack.len(), 1, "reacquisition between upkeeps counts");
     resolve_stack_entry_with(&mut g, &mut SelectFirstDecisionMaker).unwrap();

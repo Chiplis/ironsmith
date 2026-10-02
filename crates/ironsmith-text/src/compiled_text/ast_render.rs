@@ -3957,7 +3957,7 @@ mod noncombat_source_anthem_tests {
                     game.turn.step = if in_combat {Some(crate::game_state::Step::DeclareAttackers)} else {None};
                     let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
                     let controller = if active_controller {alice} else {bob};
-                    game.set_current_controller(source, controller);
+                    game.set_current_controller(source, controller).expect("finite controller fixture must refresh successfully");
                     if tapped {game.tap(source);}
                     game.refresh_continuous_state();
                     assert_eq!(game.current_characteristics(source).unwrap().power, Some(4), "warm just-entered nonattacking view");
@@ -5683,7 +5683,7 @@ mod all_subtypes_scope_ladder_tests {
                         let mut game = crate::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
                         let grant_id = game.create_object_from_definition(&grant, alice, Zone::Battlefield);
                         let id = game.create_object_from_definition(&subject, owner, zone);
-                        game.set_current_controller(id, controller);
+                        game.set_current_controller(id, controller).expect("finite controller fixture must refresh successfully");
                         if zone == Zone::Stack {
                             game.push_to_stack(crate::game_state::StackEntry::new(id, controller));
                         }
@@ -41486,7 +41486,7 @@ mod self_replacement_rendering_tests {
                     .power_toughness(crate::card::PowerToughness::fixed(2, 2))
                     .parse_text(if has_unearth { "Unearth {1}{B}" } else { "Vigilance" }).unwrap();
                 let target = game.create_object_from_definition(&subject, owner, Zone::Battlefield);
-                game.set_current_controller(target, alice);
+                game.set_current_controller(target, alice).expect("finite controller fixture must refresh successfully");
                 game.refresh_continuous_state();
                 assert_eq!(game.current_controller(target), Some(alice));
                 let stable = game.object(target).unwrap().stable_id;

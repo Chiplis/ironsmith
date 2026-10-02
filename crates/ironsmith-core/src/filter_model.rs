@@ -1752,19 +1752,33 @@ impl PlayerFilter {
             } => {
                 let mut counted = filter.as_ref().clone();
                 let zone = counted.zone.take();
-                let zone_tail = match zone {
-                    Some(Zone::Graveyard) => " in their graveyard",
-                    Some(Zone::Hand) => " in their hand",
-                    Some(Zone::Library) => " in their library",
-                    Some(Zone::Exile) => " in exile",
-                    _ => "",
+                let mut noun = counted.description();
+                // Objects counted outside the battlefield are cards
+                // ("fewer creature cards in it").
+                if zone.is_some_and(|zone| zone != Zone::Battlefield)
+                    && !noun.ends_with(" card")
+                    && noun != "card"
+                {
+                    noun.push_str(" card");
+                }
+                let noun = pluralize_count_terminal_word(&noun);
+                let zone_noun = match zone {
+                    Some(Zone::Graveyard) => Some("graveyard"),
+                    Some(Zone::Hand) => Some("hand"),
+                    Some(Zone::Library) => Some("library"),
+                    _ => None,
                 };
-                format!(
-                    "an opponent of {} who has fewer {}{} than they do",
-                    player.description(),
-                    pluralize_count_terminal_word(&counted.description()),
-                    zone_tail
-                )
+                match zone_noun {
+                    Some(zone_noun) => format!(
+                        "an opponent of {} whose {zone_noun} has fewer {noun} in it than their {zone_noun} does",
+                        player.description(),
+                    ),
+                    None => format!(
+                        "an opponent of {} who has fewer {noun}{} than they do",
+                        player.description(),
+                        if zone == Some(Zone::Exile) { " in exile" } else { "" },
+                    ),
+                }
             }
             Self::OpponentWithMoreControlledObjectsThan { player, filter, .. } => format!(
                 "an opponent of {} who controls more {} than they do",
@@ -2117,6 +2131,10 @@ pub struct ObjectFilter {
     pub modified: bool,
     /// Requires a permanent currently designated as suspected.
     pub suspected: bool,
+    /// Requires a transformed permanent: a transforming double-faced
+    /// permanent with its back face up (CR 712, "transformed permanent").
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub transformed: bool,
     /// Requires a permanent currently designated as goaded.
     #[cfg_attr(feature = "serde", serde(default))]
     pub goaded: bool,
@@ -3977,6 +3995,9 @@ impl ObjectFilter {
         }
         if self.suspected {
             parts.push("suspected".to_string());
+        }
+        if self.transformed {
+            parts.push("transformed".to_string());
         }
         if self.goaded {
             parts.push("goaded".to_string());
@@ -7404,6 +7425,14 @@ fn describe_comparison(cmp: &Comparison) -> String {
                     && matches!(value.unhinted(), Value::ManaValueOf(_))
                 {
                     return "the revealed card's mana value".to_string();
+                }
+                if hints.contains(&crate::ValueSurfaceHint::PriorEffectResult)
+                    && matches!(
+                        value.unhinted(),
+                        Value::EventValue(EventValueSpec::Amount)
+                    )
+                {
+                    return "the result".to_string();
                 }
                 if hints.contains(&crate::ValueSurfaceHint::CountersAmong)
                     && let Value::CountersOn(spec, counter_type) = value.unhinted()

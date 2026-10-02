@@ -1018,7 +1018,7 @@ mod tests {
             "Gwen Stacy permission should apply while you control the source"
         );
 
-        game.set_current_controller(source_id, bob);
+        game.set_current_controller(source_id, bob).expect("finite controller fixture must refresh successfully");
         assert!(
             !game.effect_store.grant_registry.card_can_play_from_zone(
                 &game,

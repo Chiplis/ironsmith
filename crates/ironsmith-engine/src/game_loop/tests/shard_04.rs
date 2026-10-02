@@ -3177,7 +3177,7 @@ pub(super) fn test_mortuary_triggers_for_owned_creatures_even_if_control_changed
     }
 
     let alice_owned_creature = create_creature(&mut game, "Alice Creature", alice, 2, 2);
-    game.set_current_controller(alice_owned_creature, bob);
+    game.set_current_controller(alice_owned_creature, bob).expect("finite controller fixture must refresh successfully");
 
     let moved = game.move_object_by_effect(alice_owned_creature, Zone::Graveyard);
     assert!(moved.is_some(), "owned creature should move to graveyard");
@@ -3204,7 +3204,7 @@ pub(super) fn test_mortuary_triggers_for_owned_creatures_even_if_control_changed
     );
 
     let bob_owned_creature = create_creature(&mut game, "Bob Creature", bob, 2, 2);
-    game.set_current_controller(bob_owned_creature, alice);
+    game.set_current_controller(bob_owned_creature, alice).expect("finite controller fixture must refresh successfully");
 
     let moved = game.move_object_by_effect(bob_owned_creature, Zone::Graveyard);
     assert!(moved.is_some(), "bob creature should move to graveyard");
@@ -3332,7 +3332,7 @@ pub(super) fn test_parsed_mortuary_moves_owned_creature_from_graveyard_to_librar
 
     let alice_owned_creature =
         create_creature(&mut game, "Borrowed Mortuary Creature", alice, 2, 2);
-    game.set_current_controller(alice_owned_creature, bob);
+    game.set_current_controller(alice_owned_creature, bob).expect("finite controller fixture must refresh successfully");
 
     let moved = game.move_object_by_effect(alice_owned_creature, Zone::Graveyard);
     assert!(moved.is_some(), "owned creature should move to graveyard");

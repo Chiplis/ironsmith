@@ -2771,7 +2771,7 @@ mod departure_lki_batch_contract_tests {
             .card_types(vec![CardType::Creature])
             .with_ability(Ability::triggered(Trigger::this_leaves_battlefield(),vec![Effect::gain_life(2)])).build();
         let object=game.create_object_from_definition(&card,alice,Zone::Battlefield);
-        game.set_current_controller(object,bob);game.take_pending_trigger_events();
+        game.set_current_controller(object,bob).expect("finite controller fixture must refresh successfully");game.take_pending_trigger_events();
         assert!(game.leave_game(alice));assert!(game.object(object).is_none());
         let mut queue=TriggerQueue::new();
         crate::game_loop::put_triggers_on_stack(&mut game,&mut queue).unwrap();

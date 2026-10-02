@@ -176,6 +176,7 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
             decode_as::<T, ironsmith_core::CreateTokenEffect<wire::WireCardDefinition>>(effect)
         }
         "CrewCostEffect" => decode_as::<T, ironsmith_core::CrewCostEffect>(effect),
+        "SaddleCostEffect" => decode_as::<T, ironsmith_core::SaddleCostEffect>(effect),
         "CumulativeUpkeepEffect" => {
             decode_as::<T, ironsmith_core::CumulativeUpkeepEffect<wire::WireEffect>>(effect)
         }

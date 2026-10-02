@@ -161,7 +161,7 @@ fn cohort_level_bands_gate_mana_and_grant_only_to_current_controllers_elves() {
         assert_eq!(mana_abilities(&game, enemy), 0);
         if level >= 5 {
             assert_eq!(mana_abilities(&game, elf), 1);
-            game.set_current_controller(source, bob);
+            game.set_current_controller(source, bob).expect("finite controller fixture must refresh successfully");
             assert_eq!(mana_abilities(&game, elf), 0);
             assert_eq!(mana_abilities(&game, enemy), 1);
         }

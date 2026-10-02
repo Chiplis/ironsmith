@@ -62,7 +62,7 @@ fn hand_remainder_shuffle_preserves_chosen_cards_and_empties_mana() {
             }
             if index < 2 {
                 let permanent = game.create_object_from_card(&card, player, Zone::Battlefield);
-                game.set_current_controller(permanent, players[1]);
+                game.set_current_controller(permanent, players[1]).expect("finite controller fixture must refresh successfully");
             }
             game.player_mut(player)
                 .unwrap()

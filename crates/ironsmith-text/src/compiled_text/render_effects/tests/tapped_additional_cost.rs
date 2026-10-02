@@ -60,7 +60,7 @@ fn swallow_whole_cast_preserves_paid_creature() {
                 .unwrap()
         } else {
             if scenario == 3 {
-                game.set_current_controller(payer, bob);
+                game.set_current_controller(payer, bob).expect("finite controller fixture must refresh successfully");
                 game.untap(payer);
             }
             payer

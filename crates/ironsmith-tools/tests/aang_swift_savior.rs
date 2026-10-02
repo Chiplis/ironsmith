@@ -208,7 +208,7 @@ fn ocean_attack_counts_tapped_creatures_at_resolution_for_trigger_controller() {
         let untaps = game.create_object_from_definition(&fixture, alice, Zone::Battlefield);
         let taps = game.create_object_from_definition(&fixture, alice, Zone::Battlefield);
         let stolen = game.create_object_from_definition(&fixture, bob, Zone::Battlefield);
-        game.set_current_controller(stolen, alice);
+        game.set_current_controller(stolen, alice).expect("finite controller fixture must refresh successfully");
         let opponent = game.create_object_from_definition(&fixture, bob, Zone::Battlefield);
         let artifact = CardDefinitionBuilder::new(CardId::new(), "Ocean artifact fixture")
             .card_types(vec![CardType::Artifact])
@@ -239,7 +239,7 @@ fn ocean_attack_counts_tapped_creatures_at_resolution_for_trigger_controller() {
         if depart {
             game.move_object_by_effect(source, Zone::Graveyard).unwrap();
         } else {
-            game.set_current_controller(source, bob);
+            game.set_current_controller(source, bob).expect("finite controller fixture must refresh successfully");
         }
         ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
         for (id, expected) in [

@@ -25,7 +25,7 @@ fn named_self_exile_transform_returns_to_owner_and_gates_token() {
         let bob = game.players[1].id;
         game.create_object_from_definition(&back, alice, Zone::Exile);
         let source = game.create_object_from_definition(&front, alice, Zone::Battlefield);
-        game.set_current_controller(source, bob);
+        game.set_current_controller(source, bob).expect("finite controller fixture must refresh successfully");
         let dying = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Dying creature")
             .card_types(vec![CardType::Creature])
             .power_toughness(crate::card::PowerToughness::fixed(1, 1))

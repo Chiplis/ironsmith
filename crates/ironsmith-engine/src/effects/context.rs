@@ -22,6 +22,17 @@ use crate::tag::{SOURCE_EXILED_TAG, TagKey};
 use crate::target::{ChooseSpec, FilterContext};
 use crate::types::Subtype;
 
+/// An optional public reveal whose legality depends on a private identity.
+/// The enclosing conditional installs this only for the first reveal offer;
+/// MayEffect consumes it before executing any children.
+#[derive(Debug, Clone)]
+pub(crate) struct OptionalIdentityGuard {
+    pub object: ObjectId,
+    pub filter: crate::target::ObjectFilter,
+    pub filter_ctx: FilterContext,
+    pub can_accept: bool,
+}
+
 // ============================================================================
 // Error Types
 // ============================================================================
@@ -327,6 +338,7 @@ pub struct ExecutionContext<'a> {
     /// Players who may continue to inspect specific hidden cards if they become
     /// exiled face down later in the same resolution.
     pub face_down_exile_viewers: HashMap<ObjectId, HashSet<PlayerId>>,
+    pub(crate) optional_identity_guard: Option<OptionalIdentityGuard>,
     /// The event that triggered this ability (for triggered abilities).
     /// Contains information about what caused the trigger (e.g., which object entered the battlefield).
     pub triggering_event: Option<crate::triggers::TriggerEvent>,
@@ -443,6 +455,7 @@ execution_context_checkpoint! {
     tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
     tagged_players: HashMap<TagKey, Vec<PlayerId>>,
     face_down_exile_viewers: HashMap<ObjectId, HashSet<PlayerId>>,
+    optional_identity_guard: Option<OptionalIdentityGuard>,
     triggering_event: Option<crate::triggers::TriggerEvent>,
     event_value_amount: Option<i32>,
     last_prevention_shield: Option<crate::prevention::PreventionShieldId>,
@@ -547,6 +560,7 @@ impl<'a> ExecutionContext<'a> {
             tagged_objects: HashMap::new(),
             tagged_players: HashMap::new(),
             face_down_exile_viewers: HashMap::new(),
+            optional_identity_guard: None,
             triggering_event: None,
             event_value_amount: None,
             last_prevention_shield: None,
@@ -608,6 +622,7 @@ impl<'a> ExecutionContext<'a> {
             tagged_objects: HashMap::new(),
             tagged_players: HashMap::new(),
             face_down_exile_viewers: HashMap::new(),
+            optional_identity_guard: None,
             triggering_event: None,
             event_value_amount: None,
             last_prevention_shield: None,
@@ -659,6 +674,7 @@ impl<'a> ExecutionContext<'a> {
             tagged_objects: self.tagged_objects,
             tagged_players: self.tagged_players,
             face_down_exile_viewers: self.face_down_exile_viewers,
+            optional_identity_guard: self.optional_identity_guard,
             triggering_event: self.triggering_event,
             event_value_amount: self.event_value_amount,
             last_prevention_shield: self.last_prevention_shield,

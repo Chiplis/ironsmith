@@ -366,6 +366,12 @@ pub(super) fn matches_subject(
     {
         return false;
     }
+    if filter.transformed
+        && (subject.zone() != Zone::Battlefield
+            || !game.is_transformed_permanent(subject.object_id()))
+    {
+        return false;
+    }
     if filter.goaded && (subject.zone() != Zone::Battlefield || !subject.goaded(game)) {
         return false;
     }

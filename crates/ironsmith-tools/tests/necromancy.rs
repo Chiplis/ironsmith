@@ -179,7 +179,7 @@ fn leaving_the_battlefield_makes_the_creatures_controller_sacrifice_it() {
     let mut resolved = cast_and_resolve(false, PlayerId::from_index(1));
     let game = &mut resolved.game;
     let creature = find(game, resolved.creature);
-    game.set_current_controller(creature, PlayerId::from_index(1));
+    game.set_current_controller(creature, PlayerId::from_index(1)).expect("finite controller fixture must refresh successfully");
     let necro = find(game, resolved.necro);
     game.move_object_by_effect(necro, Zone::Graveyard).unwrap();
     ironsmith::game_loop::put_triggers_on_stack(game, &mut resolved.queue).unwrap();

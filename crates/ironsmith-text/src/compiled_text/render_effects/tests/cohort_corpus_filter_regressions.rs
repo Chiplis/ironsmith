@@ -23,7 +23,7 @@ fn cohort_corpus_all_creatures_go_below_existing_library_cards_for_their_owners(
     for owner in [alice, alice, bob] {
         let id = game.create_object_from_definition(&creature, owner, Zone::Battlefield);
         creatures.push((owner, game.object(id).unwrap().stable_id));
-        game.set_current_controller(id, bob);
+        game.set_current_controller(id, bob).expect("finite controller fixture must refresh successfully");
     }
     let artifact = game.create_object_from_definition(
         &body("Artifact", CardType::Artifact),
@@ -215,7 +215,7 @@ fn cohort_corpus_graveyard_entry_checks_creatures_owner_and_source_enchantment_c
                 if enemy_owner { bob } else { alice },
                 Zone::Battlefield,
             );
-            game.set_current_controller(victim, if enemy_owner { alice } else { bob });
+            game.set_current_controller(victim, if enemy_owner { alice } else { bob }).expect("finite controller fixture must refresh successfully");
             game.take_pending_trigger_events();
             game.move_object_by_effect(victim, Zone::Graveyard).unwrap();
             let events = game.take_pending_trigger_events();

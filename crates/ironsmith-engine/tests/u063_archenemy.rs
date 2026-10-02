@@ -187,7 +187,7 @@ fn u063_motion_enables_only_face_up_abilities_and_emits_typed_source_event() {
         game.move_object_by_effect(source, Zone::Graveyard),
         Some(source)
     );
-    game.set_current_controller(source, bob);
+    game.set_current_controller(source, bob).expect("finite controller fixture must refresh successfully");
     assert_eq!(game.controller_of_id(source), Some(alice));
 
     let events = game.take_pending_trigger_events();

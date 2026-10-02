@@ -1029,6 +1029,10 @@ pub enum EnterAsCopyFollowup {
     /// "If you do, it gains haste until end of turn": part of the
     /// replacement, applied as the copy enters.
     GainsHasteUntilEndOfTurn,
+    /// "When you do, tap the copied creature and it doesn't untap during its
+    /// controller's untap step for as long as you control this creature"
+    /// (Wall of Stolen Identity): a reflexive triggered ability (CR 603.12).
+    TapCopiedObjectFrozenWhileYouControlSource,
 }
 
 /// One conditional counter batch for an enter-as-copy replacement.

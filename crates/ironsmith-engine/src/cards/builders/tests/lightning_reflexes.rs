@@ -114,7 +114,7 @@ fn lightning_reflexes_uses_cast_timing_and_the_next_cleanup_step() {
     );
     assert!(crate::triggers::check_delayed_triggers(&mut off_time_game, &end_step).is_empty());
 
-    off_time_game.set_current_controller(off_time, bob);
+    off_time_game.set_current_controller(off_time, bob).expect("finite controller fixture must refresh successfully");
     fire_cleanup(&mut off_time_game, alice);
     let current = off_time_game
         .find_object_by_stable_id(stable_id)

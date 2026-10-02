@@ -13026,7 +13026,212 @@ fn describe_complementary_subtype_returns(effects: &[Effect]) -> Option<String> 
     Some(format!("{}. {pair}", prefix.trim_end_matches('.')))
 }
 
+/// "Up to N target cards from a player's graveyard": the lowering adds a
+/// zero-target fallback that chooses the graveyard's player so "that player"
+/// still resolves. It replays no printed words, so rendering drops it.
+pub(crate) fn is_target_graveyard_player_prelude(effect: &Effect) -> bool {
+    let Some(conditional) = structural_unwrap_render_wrappers(effect)
+        .downcast_ref::<crate::effects::ConditionalEffect>()
+    else {
+        return false;
+    };
+    let [choose] = conditional.if_true.as_slice() else {
+        return false;
+    };
+    conditional.if_false.is_empty()
+        && matches!(
+            &conditional.condition,
+            crate::effect::Condition::Not(inner)
+                if matches!(inner.as_ref(), crate::effect::Condition::TargetMatches(_))
+        )
+        && structural_unwrap_render_wrappers(choose)
+            .downcast_ref::<crate::effects::ChoosePlayerEffect>()
+            .is_some_and(|choose| choose.tag.as_str() == crate::tag::TARGET_GRAVEYARD_PLAYER_TAG)
+}
+
+/// "Exile <source> or up to one target creature": a declared optional target,
+/// a resolution choice of exactly one between the source and that target,
+/// then exile of the chosen object.
+fn describe_exile_source_or_optional_target(effects: &[Effect]) -> Option<String> {
+    let [target_effect, choose_effect, exile_effect] = effects else {
+        return None;
+    };
+    let tagged_target = target_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let target_only = tagged_target
+        .effect
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    if !target_only.explicit_declaration
+        || target_only.chooser.is_some()
+        || !target_only.target.is_target()
+    {
+        return None;
+    }
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if choose.is_search
+        || choose.chooser != PlayerFilter::You
+        || choose.count != crate::effect::ChoiceCount::exactly(1)
+        || choose.count_value.is_some()
+    {
+        return None;
+    }
+    let [first, second] = choose.filter.any_of.as_slice() else {
+        return None;
+    };
+    let is_source_only = |filter: &ObjectFilter| {
+        filter.source && filter.card_types.is_empty() && !filter.is_target_object
+    };
+    let is_target_object = |filter: &ObjectFilter| {
+        filter.is_target_object && !filter.source && filter.card_types.is_empty()
+    };
+    if !((is_source_only(first) && is_target_object(second))
+        || (is_target_object(first) && is_source_only(second)))
+    {
+        return None;
+    }
+    let tagged_exile = exile_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let exile = tagged_exile
+        .effect
+        .downcast_ref::<crate::effects::ExileEffect>()?;
+    if exile.face_down
+        || !matches!(exile.spec.unhinted(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+    {
+        return None;
+    }
+    Some(format!(
+        "Exile this source or {}",
+        describe_choose_spec(&target_only.target)
+    ))
+}
+
+/// "Return <source> to the battlefield with X counters on it and draw X
+/// cards, where X is ...": a source return carrying one X-valued entry
+/// counter spec, then a draw of the same X. The source return also covers an
+/// ability granted to an exiled card, so no origin zone is named.
+fn describe_return_source_with_x_counters_and_draw(effects: &[Effect]) -> Option<String> {
+    let effects = if let [effect] = effects
+        && let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
+    {
+        sequence.effects.as_slice()
+    } else {
+        effects
+    };
+    let [return_effect, draw_effect] = effects else {
+        return None;
+    };
+    let returned = return_effect
+        .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()?;
+    let draw = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    let [entry] = returned.enters_with_counters.as_slice() else {
+        return None;
+    };
+    if !matches!(returned.target.base(), ChooseSpec::Source)
+        || returned.tapped
+        || returned.as_aura.is_some()
+        || entry.condition.is_some()
+        || !entry
+            .amount
+            .has_surface_hint(ironsmith_core::ValueSurfaceHint::WhereXIs)
+        || draw.player != PlayerFilter::You
+        || !draw
+            .count
+            .has_surface_hint(ironsmith_core::ValueSurfaceHint::WhereXIs)
+        || draw.count.unhinted() != entry.amount.unhinted()
+        || !matches!(entry.amount.unhinted(), Value::CountersOnSource(_))
+    {
+        return None;
+    }
+    let where_x = describe_where_x_basis(&entry.amount)?;
+    let where_x = where_x
+        .strip_suffix(" on this creature")
+        .or_else(|| where_x.strip_suffix(" on this permanent"))
+        .or_else(|| where_x.strip_suffix(" on this source"))
+        .or_else(|| where_x.strip_suffix(" on this card"))
+        .map(|head| format!("{head} on it"))
+        .unwrap_or_else(|| where_x.clone());
+    Some(format!(
+        "Return this card to the battlefield with X {} counters on it and draw X cards, where X is {where_x}",
+        describe_counter_type(entry.counter_type)
+    ))
+}
+
+/// "You may cast a creature spell from among cards you own in exile with
+/// hatching counters on them without paying its mana cost": an optional
+/// single choice among your exiled cards, then a free cast of that choice.
+fn describe_may_cast_from_owned_exile_pool(effects: &[Effect]) -> Option<String> {
+    let [may_effect] = effects else {
+        return None;
+    };
+    let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+    if !matches!(may.decider, None | Some(PlayerFilter::You)) {
+        return None;
+    }
+    let [choose_effect, cast_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    if choose.is_search
+        || choose.chooser != PlayerFilter::You
+        || choose.count != crate::effect::ChoiceCount::exactly(1)
+        || choose.count_value.is_some()
+        || cast.tag != choose.tag
+        || cast.player != PlayerFilter::You
+        || !cast.without_paying_mana_cost
+        || cast.as_copy
+        || cast.allow_land
+        || cast.additional_mana_cost.is_some()
+        || cast.cost_reduction.is_some()
+        || cast.alternative_payment.is_some()
+    {
+        return None;
+    }
+    let mut base = choose.filter.clone();
+    let card_types = std::mem::take(&mut base.card_types);
+    let counter = base.with_counter.take();
+    if base
+        != ObjectFilter::default()
+            .owned_by(PlayerFilter::You)
+            .in_zone(Zone::Exile)
+    {
+        return None;
+    }
+    let spell = match card_types.as_slice() {
+        [] => "spell".to_string(),
+        [card_type] => format!("{} spell", card_type.name()),
+        _ => return None,
+    };
+    let counter_tail = match counter {
+        None => String::new(),
+        Some(crate::filter::CounterConstraint::Typed(counter_type)) => format!(
+            " with {} counters on them",
+            describe_counter_type(counter_type)
+        ),
+        Some(_) => return None,
+    };
+    Some(format!(
+        "You may cast {} from among cards you own in exile{counter_tail} without paying its mana cost",
+        with_indefinite_article(&spell)
+    ))
+}
+
 pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
+    if let Some(text) = describe_exile_source_or_optional_target(effects) {
+        return text;
+    }
+    if let Some(text) = describe_return_source_with_x_counters_and_draw(effects) {
+        return text;
+    }
+    if let Some(text) = describe_may_cast_from_owned_exile_pool(effects) {
+        return text;
+    }
+    if effects.iter().any(is_target_graveyard_player_prelude) {
+        let kept = effects
+            .iter()
+            .filter(|effect| !is_target_graveyard_player_prelude(effect))
+            .cloned()
+            .collect::<Vec<_>>();
+        return describe_effect_list(&kept);
+    }
     if let Some(text) = describe_cross_zone_target_swap_bundle(&effects.iter().collect::<Vec<_>>())
     {
         return text;

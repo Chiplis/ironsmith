@@ -285,7 +285,7 @@ fn cohort_chosen_creature_identity_persists_across_entry_static_and_leave_abilit
                 crate::static_abilities::StaticAbilityId::Flying
             ));
             if case == 2 {
-                game.set_current_controller(chosen, bob);
+                game.set_current_controller(chosen, bob).expect("finite controller fixture must refresh successfully");
                 assert_eq!(
                     game.current_power(chosen),
                     Some(5),

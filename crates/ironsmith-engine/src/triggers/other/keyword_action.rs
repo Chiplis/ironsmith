@@ -297,6 +297,9 @@ impl TriggerMatcher for KeywordActionTrigger {
         if self.source_must_match && self.action == KeywordActionKind::Train {
             return "Whenever this creature trains".to_string();
         }
+        if self.source_must_match && self.action == KeywordActionKind::BecomeSaddled {
+            return "Whenever this creature becomes saddled".to_string();
+        }
         if self.action == KeywordActionKind::Cycle
             && let Some(source_filter) = &self.source_filter
             && is_plain_other_card_filter(source_filter)

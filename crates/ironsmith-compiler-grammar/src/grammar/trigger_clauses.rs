@@ -153,6 +153,9 @@ pub struct SourceTriggerSubjectShape {
 pub struct YouOrControlledObjectSubject {
     pub player: PlayerFilter,
     pub filter: ObjectFilter,
+    /// "You and/or at least one permanent you control": one event per spell
+    /// or ability, not one per matching target.
+    pub once_per_stack_object: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -197,13 +200,14 @@ pub fn parse_you_or_controlled_object_subject_words(
         .copied()
         .filter(|word| leaf::parse_leaf_article_complete(word).is_err())
         .collect::<Vec<_>>();
-    let filter = primitives::parse_full_word_slice(
+    let (filter, once_per_stack_object) = primitives::parse_full_word_slice(
         &normalized,
         parse_you_or_controlled_object_subject_word_slice,
     )?;
     Some(YouOrControlledObjectSubject {
         player: PlayerFilter::You,
         filter: filter.you_control(),
+        once_per_stack_object,
     })
 }
 
@@ -369,28 +373,29 @@ fn parse_source_trigger_subject_facts(
 
 fn parse_you_or_controlled_object_subject_word_slice(
     input: &mut primitives::WordSliceInput<'_>,
-) -> WResult<ObjectFilter> {
-    (
+) -> WResult<(ObjectFilter, bool)> {
+    let (_, and_or) = (
         primitives::word_slice_exact("you"),
         alt((
-            primitives::word_slice_exact("or").void(),
+            primitives::word_slice_exact("or").value(false),
             // "Whenever you and/or at least one permanent you control
             // becomes the target ..." (Leyline of Combustion).
-            primitives::word_slice_exact("and/or").void(),
+            primitives::word_slice_exact("and/or").value(true),
             (
                 primitives::word_slice_exact("and"),
                 primitives::word_slice_exact("or"),
             )
-                .void(),
+                .value(true),
         )),
     )
         .parse_next(input)?;
-    let _ = winnow::combinator::opt((
+    let at_least_one = winnow::combinator::opt((
         primitives::word_slice_exact("at"),
         primitives::word_slice_exact("least"),
         primitives::word_slice_exact("one"),
     ))
-    .parse_next(input)?;
+    .parse_next(input)?
+    .is_some();
     let filter = alt((
         alt((
             primitives::word_slice_exact("permanent"),
@@ -429,7 +434,8 @@ fn parse_you_or_controlled_object_subject_word_slice(
         primitives::word_slice_exact("control"),
     )
         .parse_next(input)?;
-    Ok(filter)
+    // "and/or at least one" names a single event per spell or ability.
+    Ok((filter, and_or || at_least_one))
 }
 
 fn parse_opponents_each_lose_exact_life_word_slice(

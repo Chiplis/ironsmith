@@ -1002,10 +1002,10 @@ impl DecisionMaker for SelectFirstDecisionMaker {
     fn decide_boolean(
         &mut self,
         _game: &GameState,
-        _ctx: &crate::decisions::context::BooleanContext,
+        ctx: &crate::decisions::context::BooleanContext,
     ) -> bool {
-        // Select first: accept optional actions
-        true
+        // Accept optional actions only when the known view permits them.
+        ctx.can_accept
     }
 
     fn decide_number(

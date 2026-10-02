@@ -144,6 +144,18 @@ pub fn apply_keyword_action(
                 .into_iter()
                 .collect(),
         ),
+        KeywordAction::Saddle {
+            amount,
+            timing,
+            once_per_turn,
+        } => builder.saddle(
+            amount,
+            timing,
+            once_per_turn
+                .then(|| "Activate only once each turn.".to_string())
+                .into_iter()
+                .collect(),
+        ),
         KeywordAction::Undaunted => builder.undaunted(),
         KeywordAction::Extort => builder.extort(),
         KeywordAction::Partner => builder.partner(),

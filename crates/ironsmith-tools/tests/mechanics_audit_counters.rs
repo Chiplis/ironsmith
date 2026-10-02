@@ -488,7 +488,7 @@ mod echo {
     fn stolen_echo_permanent_triggers_for_its_new_controller() {
         let mut game = new_game();
         let patrol = put(&mut game, &card("Goblin Patrol"), bob());
-        game.set_current_controller(patrol, alice());
+        game.set_current_controller(patrol, alice()).expect("finite controller fixture must refresh successfully");
         game.refresh_continuous_state();
         game.set_summoning_sick(patrol);
         assert_eq!(echo_triggers(&mut game, patrol), 1);
@@ -738,7 +738,7 @@ mod sacrifice_control {
         let giant = giant[0];
         let _ = pending(&mut game);
         if steal {
-            game.set_current_controller(giant, bob());
+            game.set_current_controller(giant, bob()).expect("finite controller fixture must refresh successfully");
             game.refresh_continuous_state();
         }
         step_triggers(&mut game, Step::End, &mut dm);
@@ -861,7 +861,7 @@ mod ring_bearer {
         game.refresh_continuous_state();
         assert!(!legendary(&game, copy), "copy isn't legendary");
         assert!(on_battlefield(&game, bearer) && on_battlefield(&game, copy), "no legend rule");
-        game.set_current_controller(bearer, bob());
+        game.set_current_controller(bearer, bob()).expect("finite controller fixture must refresh successfully");
         game.refresh_continuous_state();
         assert!(!legendary(&game, bearer), "no longer Alice's Ring-bearer");
     }

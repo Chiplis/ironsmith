@@ -51,7 +51,7 @@ fn s1_monarch_uses_live_controller_or_departure_lki_not_a_new_incarnation() {
             A,
             "The monarch still controls the inherent trigger"
         );
-        g.set_current_controller(attacker, C);
+        g.set_current_controller(attacker, C).expect("finite controller fixture must refresh successfully");
         g.refresh_continuous_state();
         if depart {
             let stable = g.object(attacker).unwrap().stable_id;
@@ -59,7 +59,7 @@ fn s1_monarch_uses_live_controller_or_departure_lki_not_a_new_incarnation() {
             let grave = g.find_object_by_stable_id(stable).unwrap();
             g.move_object_by_effect(grave, Zone::Battlefield).unwrap();
             let returned = g.find_object_by_stable_id(stable).unwrap();
-            g.set_current_controller(returned, BOB);
+            g.set_current_controller(returned, BOB).expect("finite controller fixture must refresh successfully");
         }
         ironsmith::resolve_stack_entry(&mut g).unwrap();
         assert_eq!(g.monarch, Some(C));

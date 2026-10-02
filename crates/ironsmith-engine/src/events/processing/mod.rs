@@ -2885,30 +2885,23 @@ fn merged_card_only_change_destinations(
     game: &GameState,
     event: &crate::events::ZoneChangeEvent,
     additional_effects: &[ReplacementEffect],
-) -> std::collections::HashSet<Zone> {
-    game.effect_store
-        .replacement_effects
-        .effects()
-        .iter()
+) -> Result<std::collections::HashSet<Zone>, crate::effects::ExecutionError> {
+    let mut destinations = std::collections::HashSet::new();
+    for effect in game.effect_store.replacement_effects.effects().iter()
         .chain(additional_effects.iter())
-        .filter_map(|effect| {
-            let matcher = effect.matcher.as_ref()?;
-            let ctx = crate::events::context::EventContext::for_replacement_effect(
-                effect.controller,
-                effect.source,
-                game,
-            );
-            if !matcher.matches_merged_card_component_only(event, &ctx) {
-                return None;
-            }
-            match &effect.replacement {
-                crate::replacement::ReplacementAction::ChangeDestination(destination) => {
-                    Some(*destination)
-                }
-                _ => None,
-            }
-        })
-        .collect()
+    {
+        let Some(matcher) = effect.matcher.as_ref() else { continue; };
+        let ctx = crate::events::context::EventContext::for_replacement_effect(
+            effect.controller, effect.source, game,
+        );
+        if !matcher.matches_merged_card_component_only(event, &ctx)
+            .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?
+        { continue; }
+        if let crate::replacement::ReplacementAction::ChangeDestination(destination) = &effect.replacement {
+            destinations.insert(*destination);
+        }
+    }
+    Ok(destinations)
 }
 
 /// Resolve interactive "you may put it into [zone] instead" destination
@@ -3258,7 +3251,7 @@ fn prepare_zone_change_with_context_inner(
     // Match merged-component policies against the original proposal, before
     // one-shots disappear or replacement destinations change its matchers.
     let merged_destinations =
-        merged_card_only_change_destinations(game, &zone, additional_effects);
+        merged_card_only_change_destinations(game, &zone, additional_effects)?;
     let mut effects = additional_effects.to_vec();
     if from == Zone::Battlefield && requested_to == Zone::Graveyard {
         effects.extend(finality_counter_replacements(game, object));

@@ -203,7 +203,7 @@ fn actual_card_copies_permanents_with_conditional_flash_and_flashback() {
                 "a spell with its only target gone cannot create a copy"
             );
             // This condition grants timing, not a continuing target restriction.
-            cast.set_current_controller(own, bob);
+            cast.set_current_controller(own, bob).expect("finite controller fixture must refresh successfully");
             ironsmith::game_loop::resolve_stack_entry(&mut cast).unwrap();
             let copies: Vec<_> = cast
                 .battlefield

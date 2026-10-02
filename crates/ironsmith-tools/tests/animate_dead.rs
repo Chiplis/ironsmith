@@ -115,7 +115,7 @@ fn returns_attaches_and_sacrifices_under_changed_controller() {
     assert!(game.was_put_onto_battlefield_with_source(aura, returned));
     ironsmith::game_loop::check_and_apply_sbas(&mut game, &mut queue).unwrap();
     assert_eq!(game.object(aura).unwrap().zone, Zone::Battlefield);
-    game.set_current_controller(returned, PlayerId::from_index(1));
+    game.set_current_controller(returned, PlayerId::from_index(1)).expect("finite controller fixture must refresh successfully");
     game.move_object_by_effect(aura, Zone::Graveyard).unwrap();
     ironsmith::game_loop::put_triggers_on_stack(&mut game, &mut queue).unwrap();
     assert_eq!(game.stack.len(), 1, "exactly one delayed sacrifice trigger");

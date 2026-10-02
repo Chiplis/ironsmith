@@ -30,6 +30,10 @@ pub enum SimultaneousTriggerKey {
     CounterBatch,
     /// All dice one instruction rolls ("whenever you roll one or more dice").
     DieRollBatch,
+    /// Every object and player one spell or ability targets as it's put on
+    /// the stack ("whenever you and/or at least one permanent you control
+    /// becomes the target of a spell or ability": once per spell or ability).
+    TargetingBatch,
     /// Damage assignments are grouped independently for each source.
     DamageSource(ObjectId),
     /// Damage assignments are grouped independently for each recipient.

@@ -3144,7 +3144,7 @@ impl DecisionView {
                     OptionView {
                         index: 1,
                         description: "Yes".to_string(),
-                        legal: true,
+                        legal: boolean.can_accept,
                         repeatable: false,
                         max_count: Some(1),
                         object_id: None,

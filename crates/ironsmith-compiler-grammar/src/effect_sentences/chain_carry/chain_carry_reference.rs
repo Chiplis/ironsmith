@@ -1220,6 +1220,22 @@ pub fn bind_implicit_player_context(effect: &mut EffectAst, player: PlayerAst) {
                 *chooser = player;
             }
         }
+        // "Target opponent may sacrifice any number of creatures": the
+        // implicit sacrificer of the chosen set is the same actor that chose
+        // it (CR 701.21a), not the ability's controller.
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject,
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter }),
+        }) if !filter.tagged_constraints.is_empty() => {
+            if matches!(subject.player, PlayerAst::Implicit) {
+                // An announced target actor is referenced, not re-targeted:
+                // the enclosing offer owns the one target declaration.
+                subject.player = match player {
+                    PlayerAst::Target | PlayerAst::TargetOpponent => PlayerAst::That,
+                    other => other,
+                };
+            }
+        }
         EffectAst::SubjectVerb(_) => {
             if let Some(effect_player) = subject_verb_player_action_player_mut(effect)
                 && matches!(*effect_player, PlayerAst::Implicit)

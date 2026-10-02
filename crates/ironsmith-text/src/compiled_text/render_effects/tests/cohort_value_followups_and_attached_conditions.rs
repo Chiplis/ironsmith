@@ -186,7 +186,7 @@ fn cohort_set_base_pt_locks_recipients_until_controllers_next_turn() {
         }
         let entrant =
             game.create_object_from_definition(&creature, target_player, Zone::Battlefield);
-        game.set_current_controller(second, other_player);
+        game.set_current_controller(second, other_player).expect("finite controller fixture must refresh successfully");
         let check = |game: &GameState, active| {
             for (id, power, toughness) in [
                 (

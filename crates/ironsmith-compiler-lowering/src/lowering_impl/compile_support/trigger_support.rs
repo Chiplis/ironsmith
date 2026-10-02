@@ -535,11 +535,13 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             object,
             source_controller,
             source_kind,
-        } => Trigger::player_or_object_becomes_targeted_by_source_controller(
+            once_per_stack_object,
+        } => Trigger::player_or_object_becomes_targeted_by_source_controller_batched(
             player,
             object,
             source_controller,
             source_kind,
+            once_per_stack_object,
         ),
         TriggerSpec::ThisDealsDamage => Trigger::this_deals_damage(),
         TriggerSpec::ThisDealsDamageToPlayer { player, amount } => {

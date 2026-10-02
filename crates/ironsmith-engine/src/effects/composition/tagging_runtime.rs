@@ -758,15 +758,15 @@ mod tests {
         let bob = PlayerId::from_index(1);
         let first = create_creature(&mut game, alice);
         let second = create_creature(&mut game, bob);
-        game.set_current_controller(first, bob);
-        game.set_current_controller(second, alice);
+        game.set_current_controller(first, bob).expect("finite controller fixture must refresh successfully");
+        game.set_current_controller(second, alice).expect("finite controller fixture must refresh successfully");
         let source = game.new_object_id();
         let first_snapshot = ObjectSnapshot::from_object(game.object(first).unwrap(), &game);
         let second_snapshot = ObjectSnapshot::from_object(game.object(second).unwrap(), &game);
         let first_memory = crate::effect::OutcomeObjectMemory::from_snapshot(&first_snapshot);
         let second_memory = crate::effect::OutcomeObjectMemory::from_snapshot(&second_snapshot);
-        game.set_current_controller(first, alice);
-        game.set_current_controller(second, bob);
+        game.set_current_controller(first, alice).expect("finite controller fixture must refresh successfully");
+        game.set_current_controller(second, bob).expect("finite controller fixture must refresh successfully");
         let outcome = EffectOutcome::aggregate_summing_counts([
             EffectOutcome::count(1).with_affected_object_memory(vec![first_memory]),
             EffectOutcome::count(1).with_affected_object_memory(vec![second_memory]),
@@ -835,7 +835,7 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
         let creature = create_creature(&mut game, alice);
-        game.set_current_controller(creature, bob);
+        game.set_current_controller(creature, bob).expect("finite controller fixture must refresh successfully");
         let equipment = crate::card::CardBuilder::new(crate::ids::CardId::new(), "LKI Equipment")
             .card_types(vec![crate::types::CardType::Artifact])
             .subtypes(vec![crate::types::Subtype::Equipment])

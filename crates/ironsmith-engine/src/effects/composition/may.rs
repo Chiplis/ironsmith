@@ -220,6 +220,7 @@ impl EffectExecutor for MayEffect {
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let result = (|| -> Result<EffectOutcome, ExecutionError> {
+            let identity_guard = ctx.optional_identity_guard.take();
             // "Do this only once each turn" governs the ability's first optional
             // instruction. Once it has been performed the limit's number of times
             // this turn, it is no longer offered; declining doesn't count.
@@ -260,12 +261,13 @@ impl EffectExecutor for MayEffect {
                 ctx.iteration.iterated_player.unwrap_or(ctx.controller)
             };
 
-            let should_do = ask_may_choice(
+            let should_do = crate::decisions::make_decision_with_fallback(
                 game,
                 &mut ctx.decision_maker,
                 deciding_player,
-                ctx.source,
-                description,
+                Some(ctx.source),
+                crate::decisions::MaySpec::new(ctx.source, description)
+                    .with_can_accept(identity_guard.as_ref().is_none_or(|guard| guard.can_accept)),
                 self.fallback,
             );
 
@@ -273,6 +275,19 @@ impl EffectExecutor for MayEffect {
                 return Ok(EffectOutcome::count(0));
             }
             if should_do {
+                if let Some(guard) = identity_guard {
+                    if !guard.can_accept {
+                        return Err(ExecutionError::InvalidTarget);
+                    }
+                    // This is a positive claim only. Declining a reveal makes
+                    // no assertion about a private card's characteristics.
+                    game.record_hidden_identity_obligations(
+                        &[guard.object],
+                        &guard.filter,
+                        &guard.filter_ctx,
+                        "accepted conditional reveal",
+                    );
+                }
                 if let Some(limit) = do_this_limit
                     && !ctx.decision_maker.awaiting_choice()
                 {

@@ -367,7 +367,7 @@ fn u064_hidden_agenda_is_secret_owner_controlled_and_revealed_by_priority_action
         game.move_object_by_effect(hidden_id, Zone::Graveyard),
         Some(hidden_id)
     );
-    game.set_current_controller(hidden_id, bob);
+    game.set_current_controller(hidden_id, bob).expect("finite controller fixture must refresh successfully");
     assert_eq!(game.controller_of_id(hidden_id), Some(alice));
     assert!(!ironsmith::decision::can_cast_spell(
         &game,

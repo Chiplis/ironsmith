@@ -909,7 +909,7 @@ pub(super) fn test_suspend_creature_gains_haste_until_control_changes() {
         });
     assert!(has_haste, "suspended creature should gain haste");
 
-    game.set_current_controller(creature_id, bob);
+    game.set_current_controller(creature_id, bob).expect("finite controller fixture must refresh successfully");
 
     let has_haste_after_control_change = game
         .current_abilities(creature_id)

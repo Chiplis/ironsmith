@@ -403,8 +403,18 @@ pub trait ReplacementMatcher: Debug + Send + Sync + ReplacementMatcherClone {
     /// replacement between card and token components.
     fn matches_merged_card_component_only(
         &self,
+        event: &crate::events::zones::ZoneChangeEvent,
+        ctx: &EventContext,
+    ) -> Result<bool, crate::static_ability_processor::StaticEffectDiscoveryError> {
+        ctx.with_complete_query(event, |complete|
+            self.matches_prepared_merged_card_component_only(event, complete))
+    }
+
+    /// Component partitioning uses the same checked context as ordinary matching.
+    fn matches_prepared_merged_card_component_only(
+        &self,
         _event: &crate::events::zones::ZoneChangeEvent,
-        _ctx: &EventContext,
+        _ctx: &crate::events::context::PreparedEventContext,
     ) -> bool {
         false
     }

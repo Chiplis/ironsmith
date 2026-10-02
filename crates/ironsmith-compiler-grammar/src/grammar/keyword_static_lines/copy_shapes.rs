@@ -147,6 +147,35 @@ fn enter_as_copy_followup_sentence<'a>(
             primitives::sentence_end(),
         )
             .value(ironsmith_core::EnterAsCopyFollowup::GainsHasteUntilEndOfTurn),
+        (
+            primitives::phrase(&["when", "you", "do"]),
+            opt(primitives::comma()),
+            primitives::phrase(&["tap", "the", "copied", "creature", "and", "it"]),
+            alt((
+                primitives::kw("doesn't").void(),
+                primitives::kw("doesnt").void(),
+                primitives::phrase(&["doesn", "t"]).void(),
+                primitives::phrase(&["does", "not"]).void(),
+            )),
+            primitives::phrase(&["untap", "during", "its"]),
+            alt((
+                primitives::kw("controller's").void(),
+                primitives::kw("controllers").void(),
+                primitives::phrase(&["controller", "s"]).void(),
+            )),
+            primitives::phrase(&[
+                "untap", "step", "for", "as", "long", "as", "you", "control", "this",
+            ]),
+            alt((
+                primitives::kw("creature"),
+                primitives::kw("permanent"),
+                primitives::kw("wall"),
+            )),
+            primitives::sentence_end(),
+        )
+            .value(
+                ironsmith_core::EnterAsCopyFollowup::TapCopiedObjectFrozenWhileYouControlSource,
+            ),
     ))
     .parse_next(input)
 }

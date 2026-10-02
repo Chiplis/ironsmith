@@ -252,7 +252,7 @@ fn cohort_destroyed_creature_life_loss_counts_last_controller_and_only_actual_de
             for i in 0..owned {
                 let id = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
                 if i == 0 {
-                    game.set_current_controller(id, bob);
+                    game.set_current_controller(id, bob).expect("finite controller fixture must refresh successfully");
                 }
             }
             for _ in 0..enemy {
@@ -311,7 +311,7 @@ fn cohort_damage_prevention_followup_matches_combat_source_and_returns_only_reci
                     let target =
                         game.create_object_from_definition(&body, alice, Zone::Battlefield);
                     let stable = game.object(target).unwrap().stable_id;
-                    game.set_current_controller(target, bob);
+                    game.set_current_controller(target, bob).expect("finite controller fixture must refresh successfully");
                     let other = game.create_object_from_definition(&body, bob, Zone::Battlefield);
                     let damage_source = if own_source { source } else { other };
                     let result=crate::events::processing::process_damage_assignments_with_event_with_source_snapshot_opts(&mut game,damage_source,crate::events::DamageTarget::Object(target),2,combat,unpreventable,crate::events::cause::EventCause::effect(),None).expect("damage test proposal must process successfully");

@@ -403,7 +403,7 @@ fn cohort_bounced_permanents_controller_sacrifices_own_land_before_copying() {
         let (alice, bob, charlie) = (game.players[0].id, game.players[1].id, game.players[2].id);
         let bounced =
             game.create_object_from_definition(&body("Bounced"), charlie, Zone::Battlefield);
-        game.set_current_controller(bounced, bob);
+        game.set_current_controller(bounced, bob).expect("finite controller fixture must refresh successfully");
         let target =
             game.create_object_from_definition(&body("Copy target"), alice, Zone::Battlefield);
         let land = crate::CardDefinitionBuilder::new(CardId::new(), "Land")

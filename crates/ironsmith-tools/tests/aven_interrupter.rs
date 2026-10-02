@@ -205,7 +205,7 @@ fn enters_exiles_uncounterable_spell_and_plots_it_for_its_owner() {
         .build();
     let spell = game.create_object_from_definition(&spell_definition, bob, Zone::Stack);
     let stable = game.object(spell).unwrap().stable_id;
-    game.set_current_controller(spell, alice);
+    game.set_current_controller(spell, alice).expect("finite controller fixture must refresh successfully");
     game.push_to_stack(ironsmith::game_state::StackEntry::new(spell, alice));
     let aven = game.create_object_from_definition(&definition(), alice, Zone::Hand);
     let aven = game.move_object_by_effect(aven, Zone::Battlefield).unwrap();

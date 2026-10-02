@@ -124,9 +124,9 @@ fn cohort_conditional_attack_requirement_is_a_live_static_ability_and_excludes_s
     assert!(!required(&game));
     game.move_object_by_effect(other, Zone::Graveyard).unwrap();
     assert!(required(&game));
-    game.set_current_controller(source, bob);
+    game.set_current_controller(source, bob).expect("finite controller fixture must refresh successfully");
     assert!(!required(&game));
-    game.set_current_controller(opponents_ally, alice);
+    game.set_current_controller(opponents_ally, alice).expect("finite controller fixture must refresh successfully");
     assert!(required(&game));
     let mut control_ctx = crate::effects::EffectContext::new_default(source, alice);
     crate::effects::execute_effect(

@@ -299,6 +299,9 @@ pub enum TriggerSpec {
         object: ObjectFilter,
         source_controller: PlayerFilter,
         source_kind: ironsmith_core::filter_model::StackObjectKind,
+        /// "You and/or at least one permanent you control": once per spell or
+        /// ability rather than once per matching target.
+        once_per_stack_object: bool,
     },
     ThisDealsDamage,
     ThisDealsDamageToPlayer {

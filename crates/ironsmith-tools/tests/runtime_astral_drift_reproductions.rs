@@ -334,7 +334,7 @@ fn report_astral_drift_case() {
             b = b.shroud();
         }
         let id = game.create_object_from_definition(&b.build(), bob(), Zone::Battlefield);
-        game.set_current_controller(id, alice());
+        game.set_current_controller(id, alice()).expect("finite controller fixture must refresh successfully");
         Some(id)
     };
     let target_stable = target.map(|id| game.object(id).unwrap().stable_id);

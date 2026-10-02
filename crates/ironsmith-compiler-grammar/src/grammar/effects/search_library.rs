@@ -1752,6 +1752,13 @@ pub fn parse_search_library_object_filter_lexed(
                 clause_display
             ))
         })?;
+        // "a creature, instant, or sorcery card with mana value less than or
+        // equal to ..." (Bring to Light): the trailing comparison qualifies
+        // every type arm, not only the last one.
+        crate::grammar::filters::reference_tag_stage::lift_shared_trailing_mana_value_from_type_union(
+            &mut filter,
+            &filter_tokens,
+        );
         if comparison_or
             && filter.all_card_types.is_empty()
             && filter.card_types.len() >= 2

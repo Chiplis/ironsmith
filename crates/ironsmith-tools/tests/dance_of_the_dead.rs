@@ -196,7 +196,7 @@ fn aura_leaving_makes_the_creatures_controller_sacrifice_it() {
     let returned = board.game.find_object_by_stable_id(board.creature).unwrap();
     board
         .game
-        .set_current_controller(returned, PlayerId::from_index(1));
+        .set_current_controller(returned, PlayerId::from_index(1)).expect("finite controller fixture must refresh successfully");
     board
         .game
         .move_object_by_effect(board.aura, Zone::Graveyard)

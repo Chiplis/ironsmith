@@ -48,7 +48,7 @@ fn cohort_delayed_death_return_chooses_only_from_the_watched_creatures_owners_gr
         let stable = game.object(returned).unwrap().stable_id;
         game.create_object_from_definition(&body, controller, Zone::Graveyard);
         let watched = game.create_object_from_definition(&body, owner, Zone::Battlefield);
-        game.set_current_controller(watched, controller);
+        game.set_current_controller(watched, controller).expect("finite controller fixture must refresh successfully");
         let mut ctx = crate::effects::EffectContext::new_default(source, alice)
             .with_targets(vec![crate::effects::ResolvedTarget::Object(watched)]);
         for effect in spell
@@ -102,7 +102,7 @@ fn cohort_turn_condition_tracks_the_current_controller_of_the_permanent() {
     let bob = game.players[1].id;
     let source = game.create_object_from_definition(&card, alice, Zone::Battlefield);
     for controller in [alice, bob] {
-        game.set_current_controller(source, controller);
+        game.set_current_controller(source, controller).expect("finite controller fixture must refresh successfully");
         for active in [alice, bob] {
             game.turn.active_player = active;
             assert_eq!(

@@ -464,7 +464,7 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
         let source = source_with_age_counters(&mut game, alice, 1);
-        game.set_current_controller(source, bob);
+        game.set_current_controller(source, bob).expect("finite controller fixture must refresh successfully");
         let mut dm = BooleanDecisionMaker { response: false };
         let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
 

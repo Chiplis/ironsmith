@@ -1723,7 +1723,7 @@ pub(super) fn legend_rule_uses_current_controller_after_control_change() {
         "separate controllers should not violate the legend rule"
     );
 
-    game.set_current_controller(bob_legend, alice);
+    game.set_current_controller(bob_legend, alice).expect("finite controller fixture must refresh successfully");
 
     let specs = get_legend_rule_specs(&game);
     assert_eq!(
@@ -2544,7 +2544,7 @@ pub(super) fn test_once_per_turn_restriction_survives_control_change() {
     game.remove_summoning_sickness(creature_id);
 
     game.record_ability_activation(creature_id, 0);
-    game.set_current_controller(creature_id, bob);
+    game.set_current_controller(creature_id, bob).expect("finite controller fixture must refresh successfully");
 
     game.turn.priority_player = Some(bob);
 

@@ -2442,6 +2442,11 @@ pub(crate) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
     {
         return Some(crew);
     }
+    if let AbilityKind::Activated(activated) = &ability.kind
+        && let Some(saddle) = describe_structural_saddle_keyword(activated)
+    {
+        return Some(saddle);
+    }
     if let AbilityKind::Triggered(triggered) = &ability.kind
         && let Some(exploit) = describe_structural_exploit_keyword(triggered)
     {
@@ -3512,6 +3517,31 @@ pub(crate) fn describe_structural_crew_keyword(
         return None;
     }
     Some(format!("Crew {crew_power}"))
+}
+
+/// Saddle N (CR 702.171a): the keyword's own activated ability renders as
+/// the keyword.
+pub(crate) fn describe_structural_saddle_keyword(
+    activated: &crate::ability::ActivatedAbility,
+) -> Option<String> {
+    if !matches!(activated.timing, ActivationTiming::SorcerySpeed)
+        || !activated.choices.is_empty()
+        || activated.activation_condition.is_some()
+    {
+        return None;
+    }
+    let [cost] = activated.mana_cost.costs() else {
+        return None;
+    };
+    let saddle_power = cost
+        .effect_ref()
+        .and_then(|effect| effect.downcast_ref::<crate::effects::SaddleCostEffect>())
+        .map(|saddle| saddle.required_power)?;
+    let [effect] = activated.effects.flattened_default_effects() else {
+        return None;
+    };
+    effect.downcast_ref::<crate::effects::BecomeSaddledUntilEotEffect>()?;
+    Some(format!("Saddle {saddle_power}"))
 }
 
 pub(super) fn describe_structural_exploit_keyword(

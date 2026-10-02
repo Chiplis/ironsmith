@@ -198,7 +198,7 @@ fn encore_cleanup_keeps_identity_and_controller() {
     let (mut game, declarations) = resolve();
     let stolen = declarations[0].creature;
     let bob = game.players[1].id;
-    game.set_current_controller(stolen, bob);
+    game.set_current_controller(stolen, bob).expect("finite controller fixture must refresh successfully");
     let event = ironsmith::triggers::TriggerEvent::new_with_provenance(
         ironsmith::events::BeginningOfEndStepEvent::new(bob),
         Default::default(),

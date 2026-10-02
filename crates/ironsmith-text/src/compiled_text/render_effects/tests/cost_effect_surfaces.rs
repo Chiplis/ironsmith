@@ -306,7 +306,7 @@ fn assert_permission_cast_with_sources(oracle: &str, spell_type: CardType, expec
             }
             if change_controller {
                 let bob = game.players[1].id;
-                game.set_current_controller(stack_id, bob);
+                game.set_current_controller(stack_id, bob).expect("finite controller fixture must refresh successfully");
                 assert_eq!(game.current_controller(stack_id), Some(bob));
             }
             if remove_source {game.move_object_by_effect(source,Zone::Graveyard).unwrap();}

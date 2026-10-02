@@ -542,7 +542,18 @@ fn describe_discard_draw_pair(first: &Effect, second: &Effect) -> Option<String>
             return None;
         }
         let subject = discard_sequence_subject(&discard_hand.player);
-        let draw_count = describe_card_count(&draw.count);
+        // "then draw a card for each creature you control": a counted draw
+        // keeps its per-object surface instead of "the number of ... cards".
+        let draw_count = if draw
+            .count
+            .has_surface_hint(ValueSurfaceHint::ForEach)
+            && matches!(draw.count.unhinted(), Value::Count(_))
+        {
+            describe_draw_count_for_each_phrase(&draw.count)
+                .unwrap_or_else(|| describe_card_count(&draw.count))
+        } else {
+            describe_card_count(&draw.count)
+        };
         return Some(if discard_hand.player == PlayerFilter::You {
             format!("Discard your hand, then draw {draw_count}")
         } else {

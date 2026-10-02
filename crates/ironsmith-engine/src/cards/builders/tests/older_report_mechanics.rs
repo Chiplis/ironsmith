@@ -459,7 +459,7 @@ fn watcher_reduces_only_flying_creature_spells_cast_by_its_current_controller() 
         "an opponent's flying creature spell must not receive Alice's reduction"
     );
 
-    game.set_current_controller(watcher, bob);
+    game.set_current_controller(watcher, bob).expect("finite controller fixture must refresh successfully");
     game.refresh_continuous_state();
     assert_eq!(effective_cost(&game, alice, alice_flyer), "{3}");
     assert_eq!(

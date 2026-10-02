@@ -26,6 +26,7 @@ pub struct MaySpec {
     pub source: ObjectId,
     /// Hidden cards that should be visible while the decision is active.
     pub hidden_card_views: Vec<DecisionHiddenCardView>,
+    pub can_accept: bool,
 }
 
 impl MaySpec {
@@ -35,7 +36,13 @@ impl MaySpec {
             description: description.into(),
             source,
             hidden_card_views: Vec::new(),
+            can_accept: true,
         }
+    }
+
+    pub fn with_can_accept(mut self, can_accept: bool) -> Self {
+        self.can_accept = can_accept;
+        self
     }
 
     pub fn with_hidden_card_view(
@@ -67,7 +74,7 @@ impl DecisionSpec for MaySpec {
     }
 
     fn default_response(&self, strategy: FallbackStrategy) -> bool {
-        matches!(strategy, FallbackStrategy::Accept)
+        self.can_accept && matches!(strategy, FallbackStrategy::Accept)
     }
 
     fn build_context(
@@ -77,6 +84,7 @@ impl DecisionSpec for MaySpec {
         _game: &GameState,
     ) -> DecisionContext {
         let mut ctx = BooleanContext::new(player, Some(self.source), self.description.clone());
+        ctx.can_accept = self.can_accept;
         for view in &self.hidden_card_views {
             ctx = ctx.with_hidden_card_view(
                 view.object_ids.clone(),

@@ -267,7 +267,7 @@ fn cohort_modified_keyword_checks_counters_equipment_and_aura_controller() {
         game.attach_object_to_target(attached, crate::object::AttachmentTarget::Object(source));
         assert_eq!(flying(&game), mode != 3, "mode={mode}");
         if mode == 3 {
-            game.set_current_controller(attached, alice);
+            game.set_current_controller(attached, alice).expect("finite controller fixture must refresh successfully");
             game.attach_object_to_target(attached, crate::object::AttachmentTarget::Object(source));
             assert!(
                 flying(&game),

@@ -49,7 +49,7 @@ fn cohort_static_goad_tracks_power_controller_and_source_lifetime() {
         .unwrap()
         .add_counters(crate::object::CounterType::PlusOnePlusOne, 3);
     assert_eq!(goaded(&game), [false, false, true, true]);
-    game.set_current_controller(source, bob);
+    game.set_current_controller(source, bob).expect("finite controller fixture must refresh successfully");
     assert_eq!(goaded(&game), [true, false, false, true]);
     assert_eq!(
         game.active_goaders_for(creatures[0]),

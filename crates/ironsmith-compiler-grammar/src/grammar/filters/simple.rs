@@ -57,6 +57,7 @@ enum SimpleObjectFilterAtom {
     Nonhistoric,
     Modified,
     Suspected,
+    Transformed,
     Stickered,
     Goaded,
     Tapped,
@@ -508,6 +509,7 @@ fn parse_simple_filter_body(
             SimpleObjectFilterAtom::Nonhistoric => filter.nonhistoric = true,
             SimpleObjectFilterAtom::Modified => filter.modified = true,
             SimpleObjectFilterAtom::Suspected => filter.suspected = true,
+            SimpleObjectFilterAtom::Transformed => filter.transformed = true,
             SimpleObjectFilterAtom::Stickered => {
                 filter.sticker = Some(crate::events::KeywordActionKind::Sticker);
             }
@@ -808,6 +810,7 @@ fn parse_simple_flag_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilt
         "nonhistoric" | "non-historic" => SimpleObjectFilterAtom::Nonhistoric,
         "modified" => SimpleObjectFilterAtom::Modified,
         "suspected" => SimpleObjectFilterAtom::Suspected,
+        "transformed" => SimpleObjectFilterAtom::Transformed,
         "stickered" => SimpleObjectFilterAtom::Stickered,
         "goaded" => SimpleObjectFilterAtom::Goaded,
         "tapped" => SimpleObjectFilterAtom::Tapped,

@@ -5408,7 +5408,7 @@ mod tests {
             }
         };
         compare(&game, &mut groups);
-        game.set_current_controller(source, bob);
+        game.set_current_controller(source, bob).expect("finite controller fixture must refresh successfully");
         compare(&game, &mut groups);
         let checkpoint = game.clone();
         game.remove_object(source);
@@ -5450,7 +5450,7 @@ mod tests {
         compare(&game, &mut groups);
         assert!(game.attach_object_to_target(role, AttachmentTarget::Object(other)));
         compare(&game, &mut groups);
-        game.set_current_controller(role, bob);
+        game.set_current_controller(role, bob).expect("finite controller fixture must refresh successfully");
         compare(&game, &mut groups);
         game.remove_object(role);
         compare(&game, &mut groups);

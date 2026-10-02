@@ -2702,6 +2702,12 @@ impl From<crate::effects::CrewCostEffect> for Effect {
     }
 }
 
+impl From<crate::effects::SaddleCostEffect> for Effect {
+    fn from(value: crate::effects::SaddleCostEffect) -> Self {
+        Self::new(value)
+    }
+}
+
 impl From<crate::effects::ExertCostEffect> for Effect {
     fn from(value: crate::effects::ExertCostEffect) -> Self {
         Self::new(value)

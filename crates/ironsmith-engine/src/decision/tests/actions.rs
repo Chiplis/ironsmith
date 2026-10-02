@@ -867,6 +867,7 @@ fn test_numeric_input_may_choice() {
         player: PlayerId::from_index(0),
         source: Some(ObjectId::from_raw(1)),
         description: "Test?".to_string(),
+        can_accept: true,
         source_name: None,
         ui_hints: crate::decisions::context::DecisionUiHints::default(),
     };

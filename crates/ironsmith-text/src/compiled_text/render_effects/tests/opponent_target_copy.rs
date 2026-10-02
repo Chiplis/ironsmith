@@ -191,7 +191,7 @@ fn opponent_target_copy_activates_with_delegated_target_and_exiles_only_its_toke
             game.move_object_by_effect(target, Zone::Graveyard);
         }
         if change == "control" {
-            game.set_current_controller(target, bob);
+            game.set_current_controller(target, bob).expect("finite controller fixture must refresh successfully");
         }
         let before = game.battlefield.clone();
         crate::game_loop::resolve_stack_entry(&mut game).unwrap();

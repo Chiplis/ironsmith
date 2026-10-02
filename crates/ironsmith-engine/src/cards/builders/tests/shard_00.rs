@@ -2234,7 +2234,7 @@ pub(super) fn arvinox_the_mind_flail_creature_condition_counts_permanents_you_co
 
     for idx in 0..2 {
         let borrowed = game.create_object_from_definition(&permanent, bob, Zone::Battlefield);
-        game.set_current_controller(borrowed, alice);
+        game.set_current_controller(borrowed, alice).expect("finite controller fixture must refresh successfully");
         assert!(
             !game.current_is_creature(arvinox),
             "Arvinox should still not be a creature with only {} borrowed permanents",
@@ -2243,7 +2243,7 @@ pub(super) fn arvinox_the_mind_flail_creature_condition_counts_permanents_you_co
     }
 
     let third = game.create_object_from_definition(&permanent, bob, Zone::Battlefield);
-    game.set_current_controller(third, alice);
+    game.set_current_controller(third, alice).expect("finite controller fixture must refresh successfully");
 
     assert!(
         game.current_is_creature(arvinox),

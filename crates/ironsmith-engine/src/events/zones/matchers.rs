@@ -210,11 +210,24 @@ impl ReplacementMatcher for WouldDieMatcher {
 pub struct WouldDieDamagedBySourceThisTurnMatcher {
     pub filter: ObjectFilter,
     pub damaged_by: DamagedBySource,
+    /// "A creature dealt damage this way": only the permanents one
+    /// resolution dealt damage to, rather than everything the source damaged
+    /// this turn.
+    pub victims: Option<Vec<crate::ids::StableId>>,
 }
 
 impl WouldDieDamagedBySourceThisTurnMatcher {
     pub fn new(filter: ObjectFilter, damaged_by: DamagedBySource) -> Self {
-        Self { filter, damaged_by }
+        Self {
+            filter,
+            damaged_by,
+            victims: None,
+        }
+    }
+
+    pub fn with_victims(mut self, victims: Vec<crate::ids::StableId>) -> Self {
+        self.victims = Some(victims);
+        self
     }
 
     fn resolve_damager(&self, ctx: &EventContext) -> Option<ObjectId> {
@@ -269,6 +282,13 @@ impl ReplacementMatcher for WouldDieDamagedBySourceThisTurnMatcher {
             let victim_stable_id = zone_change.snapshot.as_ref().and_then(|snapshot| {
                 (snapshot.object_id == victim_id).then_some(snapshot.stable_id)
             });
+            if let Some(victims) = &self.victims {
+                let stable_id = victim_stable_id
+                    .or_else(|| ctx.game.object(victim_id).map(|obj| obj.stable_id));
+                if !stable_id.is_some_and(|stable_id| victims.contains(&stable_id)) {
+                    return false;
+                }
+            }
             self.victim_matches(victim_id, zone_change, ctx)
                 && ctx
                     .game
@@ -591,16 +611,16 @@ impl ReplacementMatcher for WouldChangeZoneMatcher {
             .and_then(|&id| ctx.game.object(id))
         {
             self.filter.matches(obj, &filter_ctx, ctx.game)
-                || self.matches_merged_card_component_only(zone_change, ctx)
+                || self.matches_prepared_merged_card_component_only(zone_change, ctx)
         } else {
             false
         }
     }
 
-    fn matches_merged_card_component_only(
+    fn matches_prepared_merged_card_component_only(
         &self,
         zone_change: &ZoneChangeEvent,
-        ctx: &EventContext,
+        ctx: &crate::events::context::PreparedEventContext,
     ) -> bool {
         if zone_change.from == Zone::Stack
             || self.from_zone.is_some_and(|zone| zone_change.from != zone)

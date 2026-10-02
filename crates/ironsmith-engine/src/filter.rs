@@ -3813,6 +3813,9 @@ impl ObjectFilterExt for ObjectFilter {
         if self.suspected {
             parts.push("suspected".to_string());
         }
+        if self.transformed {
+            parts.push("transformed".to_string());
+        }
         if self.goaded {
             parts.push("goaded".to_string());
         }

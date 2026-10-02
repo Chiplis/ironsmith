@@ -2930,7 +2930,7 @@ mod tests {
         compare(&game);
         assert_eq!(game.work_counters().objects_scanned_in_sba - before, 2);
         let checkpoint = game.clone();
-        game.set_current_controller(ids[1], PlayerId::from_index(1));
+        game.set_current_controller(ids[1], PlayerId::from_index(1)).expect("finite controller fixture must refresh successfully");
         compare(&game);
         game.clear_soulbond_pair(ids[2]);
         compare(&game);

@@ -1418,6 +1418,7 @@ impl Trigger {
         object_filter: ObjectFilter,
         source_controller: PlayerFilter,
         source_kind: ironsmith_core::filter_model::StackObjectKind,
+        once_per_stack_object: bool,
     ) -> Self {
         Self::new(
             PlayerOrObjectBecomesTargetedBySourceControllerTrigger::new(
@@ -1425,7 +1426,8 @@ impl Trigger {
                 object_filter,
                 source_controller,
             )
-            .with_source_kind(source_kind),
+            .with_source_kind(source_kind)
+            .with_once_per_stack_object(once_per_stack_object),
         )
     }
 

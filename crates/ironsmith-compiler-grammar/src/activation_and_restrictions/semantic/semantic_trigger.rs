@@ -3418,6 +3418,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     object,
                     source_controller,
                     source_kind,
+                    once_per_stack_object: false,
                 },
             );
         }
@@ -3485,6 +3486,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                         object: subject.filter,
                         source_controller,
                         source_kind: ironsmith_core::filter_model::StackObjectKind::SpellOrAbility,
+                        once_per_stack_object: subject.once_per_stack_object,
                     },
                 );
             }
@@ -4264,6 +4266,18 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         return Ok(TriggerSpec::WinsClash {
             player: PlayerFilter::You,
             surface: ironsmith_core::ClashWinTriggerSurface::ClashAndWin,
+        });
+    }
+
+    // "Whenever this creature becomes saddled" (Stubborn Burrowfiend) watches
+    // the permanent becoming saddled (CR 702.171b), not this creature
+    // saddling another Mount.
+    if let [subject @ .., "becomes", "saddled"] = words.as_slice()
+        && is_source_reference_words(subject)
+    {
+        return Ok(TriggerSpec::KeywordActionFromSource {
+            action: crate::events::KeywordActionKind::BecomeSaddled,
+            player: PlayerFilter::You,
         });
     }
 

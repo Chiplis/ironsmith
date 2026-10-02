@@ -906,7 +906,23 @@ fn share_terminal_card_type_union_zone(filter: &mut ObjectFilter, tokens: &[Owne
         .filter(|word| matches!(**word, "card" | "cards"))
         .count()
         == 1;
+    // An arm with its own explicit zone ("target creature on the battlefield
+    // or creature card in a graveyard", Taskmaster; "creatures from the
+    // battlefield and/or creature cards from graveyards", Angel of Serenity)
+    // keeps it; and a repeated type ("creature ... or creature card") means
+    // the arms are separate noun phrases, not one shared-noun type list.
+    let names_battlefield = words.iter().any(|word| *word == "battlefield");
+    let mut seen_types = Vec::new();
+    let repeated_type = filter.any_of.iter().any(|branch| {
+        branch.card_types.iter().any(|card_type| {
+            let repeated = seen_types.contains(card_type);
+            seen_types.push(*card_type);
+            repeated
+        })
+    });
     if !has_one_shared_card_noun
+        || names_battlefield
+        || repeated_type
         || filter.any_of.len() < 2
         || !filter.any_of.iter().all(|branch| {
             !branch.card_types.is_empty() && branch.controller.is_none() && branch.any_of.is_empty()

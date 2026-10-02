@@ -2451,6 +2451,20 @@ impl CrewCostEffect {
     }
 }
 
+/// Saddle N's cost (CR 702.171a): "Tap any number of other untapped
+/// creatures you control with total power N or greater".
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct SaddleCostEffect {
+    pub required_power: u32,
+}
+
+impl SaddleCostEffect {
+    pub fn new(required_power: u32) -> Self {
+        Self { required_power }
+    }
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default, TagKeyWalk)]
 pub struct BecomeSaddledUntilEotEffect;

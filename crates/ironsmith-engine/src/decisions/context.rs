@@ -158,6 +158,9 @@ pub struct BooleanContext {
     pub source: Option<ObjectId>,
     /// Description of what the player may do.
     pub description: String,
+    /// Whether accepting is legal in this engine's view. A concealed peer may
+    /// allow an answer provisionally until its required public opening arrives.
+    pub can_accept: bool,
     /// Name of the source card (for display).
     pub source_name: Option<String>,
     /// Optional richer UI hints for contextual rendering.
@@ -171,6 +174,7 @@ impl BooleanContext {
             player,
             source,
             description: description.into(),
+            can_accept: true,
             source_name: None,
             ui_hints: DecisionUiHints::default(),
         }

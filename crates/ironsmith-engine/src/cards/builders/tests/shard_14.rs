@@ -1231,7 +1231,7 @@ pub(super) fn herald_of_leshrac_leaves_trigger_returns_lands_to_their_owners() {
     let herald = game.create_object_from_definition(&def, alice, Zone::Battlefield);
     let alice_land = game.create_object_from_definition(&land_def, alice, Zone::Battlefield);
     let bob_land = game.create_object_from_definition(&land_def, bob, Zone::Battlefield);
-    game.set_current_controller(bob_land, alice);
+    game.set_current_controller(bob_land, alice).expect("finite controller fixture must refresh successfully");
     assert_eq!(game.current_controller(bob_land), Some(alice));
 
     let mut dm = PayCumulativeUpkeep;

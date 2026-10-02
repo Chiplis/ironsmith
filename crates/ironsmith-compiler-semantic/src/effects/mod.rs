@@ -16,7 +16,7 @@ pub use ironsmith_core::{
     ConspireCostEffect, ConsultTopOfLibraryEffect, ConsultTopOfLibraryStopRule,
     ControlCombatChoicesThisTurnEffect, ControlPlayerEffect, ConvertEffect, CopySpellEffect,
     CopySpellForEachTargetEffect, CounterEffect, CreateEmblemEffect as CoreCreateEmblemEffect,
-    CreateTokenEffect as CoreCreateTokenEffect, CrewCostEffect,
+    CreateTokenEffect as CoreCreateTokenEffect, CrewCostEffect, SaddleCostEffect,
     CumulativeUpkeepEffect as CoreCumulativeUpkeepEffect, DealDamageEffect,
     DealDistributedDamageEffect, DelayedTriggerSpec, DestroyEffect, DestroyNoRegenerationEffect,
     DetainEffect, DevourEffect, DirectionalAdjacentPlayerControlEffect, DiscardEffect,

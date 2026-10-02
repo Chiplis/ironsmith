@@ -6,10 +6,22 @@ import { chromium } from 'playwright';
 import { createServer } from 'vite';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const isolatedWasmPackage = process.env.IRONSMITH_TEST_WASM_PKG;
 
-for (const cardName of ['Brainstorm', 'Faithless Looting', 'Spelunking', 'Collected Company']) test(`${cardName} keeps committed identities across private draws and hand choices`, { timeout: 120000 }, async t => {
+const scenarios = [
+  ...['Brainstorm', 'Faithless Looting', 'Spelunking', 'Collected Company'].map(cardName => ({ cardName })),
+  { cardName: 'Wolf-Skull Shaman', topName: 'Llanowar Elves', acceptKinship: true },
+  { cardName: 'Wolf-Skull Shaman', topName: 'Llanowar Elves', acceptKinship: false },
+  { cardName: 'Wolf-Skull Shaman', topName: 'Grizzly Bears', acceptKinship: false },
+];
+for (const { cardName, topName, acceptKinship } of scenarios) test(`${cardName} keeps committed identities across private draws and hand choices${topName ? ` (${topName}, ${acceptKinship ? 'reveal' : 'decline'})` : ''}`, { timeout: 120000 }, async t => {
   const server = await createServer({ root, configFile: path.join(root, 'vite.config.js'), logLevel: 'error',
-    server: { host: '127.0.0.1', port: 0, hmr: false, watch: null } });
+    ...(isolatedWasmPackage ? { resolve: { alias: [{
+      find: /^.*wasm_demo\/pkg\/(.*)$/,
+      replacement: `${path.resolve(isolatedWasmPackage)}/$1`,
+    }] } } : {}),
+    server: { host: '127.0.0.1', port: 0, hmr: false, watch: null,
+      ...(isolatedWasmPackage ? { fs: { allow: [path.resolve(root, '../..'), path.resolve(isolatedWasmPackage)] } } : {}) } });
   await server.listen(); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage();
@@ -17,7 +29,7 @@ for (const cardName of ['Brainstorm', 'Faithless Looting', 'Spelunking', 'Collec
   page.on('pageerror', error => pageErrors.push(error.message));
   await page.route('**/opening-zone-test', route => route.fulfill({ contentType: 'text/html', body: '<div id="root"></div>' }));
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/opening-zone-test`);
-  const result = await page.evaluate(async ({ verifierUrl, cardName }) => {
+  const result = await page.evaluate(async ({ verifierUrl, cardName, topName, acceptKinship }) => {
     const { mountOpeningServices } = await import('/tests/ziffle-public-opening-zone-change-harness.js');
     const { buildPrivateDeckManifest, publicDeckManifest, publicCheckpointHash } = await import('/src/lib/multiplayer-audit.js');
     const { buildZiffleRuntimeManifest } = await import('/src/lib/ziffle-runtime-manifest.js');
@@ -73,10 +85,14 @@ for (const cardName of ['Brainstorm', 'Faithless Looting', 'Spelunking', 'Collec
         return { owner: 1, deckCount, context, keys, steps, deckHash: verified.deckHash, tokens, reveals };
       }
       const genesis = buildCeremony(61, 'zone-opening');
-      const originPosition = 60;
+      const originPosition = genesis.deckCount - 1;
       const spellSlot = genesis.reveals.find(reveal => reveal.cardPosition === originPosition).originalSlot;
-      const deck = Array(61).fill('Island');
+      const deck = Array(genesis.deckCount).fill('Island');
       deck[spellSlot] = cardName;
+      if (topName) {
+        const topSlot = genesis.reveals.find(reveal => reveal.cardPosition === originPosition - 1).originalSlot;
+        deck[topSlot] = topName;
+      }
       const manifests = await Promise.all([0, 1].map(owner => buildPrivateDeckManifest({ matchId: 'zone-opening', owner, deck })));
 
       await call('setPerspective', 1);
@@ -102,7 +118,7 @@ for (const cardName of ['Brainstorm', 'Faithless Looting', 'Spelunking', 'Collec
         originalSlot: spellSlot, cardName: secret.card, positionCommitment, commitment: secret.commitment });
       for (let index = deckCount - 1; index >= position; index--) await call('drawCard', 1);
       const manaLand = cardName === 'Brainstorm' ? 'Island' : cardName === 'Faithless Looting' ? 'Mountain' : 'Forest';
-      const manaCount = cardName === 'Collected Company' ? 4 : cardName === 'Spelunking' ? 3 : 1;
+      const manaCount = cardName === 'Collected Company' ? 4 : cardName === 'Spelunking' ? 3 : topName ? 2 : 1;
       for (let index = 0; index < manaCount; index++) await call('addCardToZone', 1, manaLand, 'battlefield', true);
       state = await call('uiState');
       const handSpell = state.players[1].hand_cards.find(card => card.name === cardName);
@@ -209,7 +225,7 @@ for (const cardName of ['Brainstorm', 'Faithless Looting', 'Spelunking', 'Collec
         await dispatchBoth({ type: 'priority_action', action_ref: action.action_ref, object_id: action.object_id }, `${prefix}cast`);
         if (state.decision?.kind !== 'mana_payment') throw new Error(`Expected payment: ${JSON.stringify(state.decision)}`);
         await dispatchBoth({ type: 'mana_payment', response: { action: 'confirm', plan_id: state.decision.plan_id, request_hash: state.decision.request_hash } }, `${prefix}payment`);
-        for (let index = 0; index < 2; index++) {
+        for (let index = 0; index < (cardName === 'Spelunking' ? 4 : 2); index++) {
           const pass = state.decision?.actions?.find(a => a.action_ref?.kind === 'pass_priority');
           if (!pass) throw new Error(`Missing resolution pass: ${JSON.stringify(state.decision)}`);
           await dispatchBoth({ type: 'priority_action', action_ref: pass.action_ref }, `${prefix}resolve-pass-${index}`);
@@ -233,6 +249,42 @@ for (const cardName of ['Brainstorm', 'Faithless Looting', 'Spelunking', 'Collec
         await resolveCast(action);
         const normalResolution = { owner: playerSummary(await call('exportSyncCheckpoint')),
           peer: playerSummary(await peer.call('exportSyncCheckpoint')), hashesEqual: await publicHash(call) === await publicHash(peer.call) };
+        if (topName) {
+          // Resume both complete engine views at the end of Alice's turn, so
+          // Bob's next upkeep generates the Kinship trigger normally.
+          for (const engineCall of [call, peer.call]) {
+            const checkpoint = await engineCall('exportSyncCheckpoint');
+            checkpoint.turn = { ...checkpoint.turn, activePlayer: 0, priorityPlayer: 0,
+              turnNumber: 2, phase: 'ending', step: 'end' };
+            checkpoint.priorityRuntime = { ...checkpoint.priorityRuntime,
+              turnRunnerState: 'end_step_priority', consecutivePriorityPasses: 0 };
+            await engineCall('importSyncCheckpoint', checkpoint);
+          }
+          state = await call('uiState'); refs.stateRef.current = state;
+          for (let index = 0; index < 8 && state.decision.kind === 'priority'; index++) {
+            await dispatchBoth({ type: 'priority_action', action_ref: { kind: 'pass_priority' } }, `kinship-pass-${index}`);
+          }
+          if (state.decision.description !== 'Look at the top card of your library') {
+            throw new Error(`Missing Kinship look offer: ${JSON.stringify(state.decision)}`);
+          }
+          await dispatchBoth({ type: 'select_options', option_indices: [1] }, 'kinship-look');
+          const revealOffer = state.decision;
+          if (revealOffer.description !== 'Reveal it') throw new Error(`Missing reveal offer: ${JSON.stringify(revealOffer)}`);
+          const peerBeforeReveal = await peer.call('exportSyncCheckpoint');
+          const hiddenTopId = peerBeforeReveal.players[1].library.at(-1);
+          if (peerBeforeReveal.objects.find(object => object.id === hiddenTopId).name !== 'Hidden Card') {
+            throw new Error('Private look leaked the top card to the peer');
+          }
+          await dispatchBoth({ type: 'select_options', option_indices: [acceptKinship ? 1 : 0] }, 'kinship-reveal');
+          const finalOwner = await call('exportSyncCheckpoint');
+          const finalPeer = await peer.call('exportSyncCheckpoint');
+          return { cardName, topName, acceptKinship, stage: 'kinship-complete', error: null, stages,
+            normalResolution, revealOffer, finalDecision: state.decision.kind,
+            wolfCount: finalOwner.objects.filter(object => object.name === 'Wolf' && object.zone === 'battlefield').length,
+            peerTopName: finalPeer.objects.find(object => object.id === hiddenTopId).name,
+            owner: playerSummary(finalOwner), peer: playerSummary(finalPeer),
+            hashesEqual: await publicHash(call) === await publicHash(peer.call) };
+        }
         let flashbackAction = null;
         if (cardName === 'Faithless Looting') {
           stage = 'flashback-setup';
@@ -257,7 +309,7 @@ for (const cardName of ['Brainstorm', 'Faithless Looting', 'Spelunking', 'Collec
           ownerCheckpoint: await call('exportSyncCheckpoint'), peerCheckpoint: await peer.call('exportSyncCheckpoint') };
       }
     } finally { reactRoot?.unmount(); worker.terminate(); peer?.worker.terminate(); }
-  }, { cardName, verifierUrl: `/@fs/${path.resolve(root, '../wasm_demo/pkg/verifier.js')}` });
+  }, { cardName, topName, acceptKinship, verifierUrl: `/@fs/${path.resolve(root, '../wasm_demo/pkg/verifier.js')}` });
   assert.deepEqual(pageErrors, []);
   if (process.env.ZIFFLE_PROBE_VERBOSE) console.log(JSON.stringify(result, null, 2));
   console.log(JSON.stringify({ cardName, stage: result.stage, error: result.error,
@@ -268,11 +320,30 @@ for (const cardName of ['Brainstorm', 'Faithless Looting', 'Spelunking', 'Collec
   assert.equal(result.error, null, `${cardName} failed at ${result.stage}`);
   assert.equal(result.finalDecision, 'priority');
   assert.equal(result.hashesEqual, true, 'both peers agree after public opening application');
+  if (topName) {
+    assert.ok(result.stages.every(stage => stage.hashesEqual), 'Kinship stays synchronized at every decision');
+    assert.equal(result.revealOffer.options.find(option => option.index === 1).legal, topName === 'Llanowar Elves');
+    const look = result.stages.find(stage => stage.label === 'kinship-look');
+    assert.equal(look.privateCount, 1);
+    assert.equal(look.peerDecision.description, 'Reveal it');
+    assert.equal(look.openings.length, 0, 'looking reveals nothing publicly');
+    const reveal = result.stages.find(stage => stage.label === 'kinship-reveal');
+    assert.equal(result.wolfCount, Number(acceptKinship));
+    if (acceptKinship) {
+      assert.equal(result.peerTopName, topName);
+      assert.ok(reveal.openings.some(opening => opening.card === topName && opening.proof && opening.salted));
+    } else {
+      assert.equal(result.peerTopName, 'Hidden Card');
+      assert.equal(reveal.openings.length, 0, 'declining preserves the private identity');
+      assert.ok(!reveal.requirements.some(requirement => requirement.type === 'public_open'));
+    }
+    return;
+  }
   if (['Spelunking', 'Collected Company'].includes(cardName)) {
     assert.equal(result.owner.hand, 0);
     assert.equal(result.owner.library, cardName === 'Spelunking' ? 59 : 60);
     assert.ok(result.stages.every(stage => stage.hashesEqual), 'public hashes match at every suspended instruction');
-    const resolving = result.stages.find(stage => stage.label === 'resolve-pass-1');
+    const resolving = result.stages.find(stage => stage.label === (cardName === 'Spelunking' ? 'resolve-pass-3' : 'resolve-pass-1'));
     assert.equal(resolving.privateCount, cardName === 'Spelunking' ? 1 : 6);
     assert.equal(resolving.decision.kind, cardName === 'Spelunking' ? 'select_options' : 'select_objects');
     if (cardName === 'Spelunking') {

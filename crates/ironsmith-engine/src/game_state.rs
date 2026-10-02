@@ -7749,6 +7749,36 @@ impl GameState {
                 .is_some()
     }
 
+    /// Whether a permanent is a transformed permanent: a transforming
+    /// double-faced permanent with its back face up (CR 712.2, glossary
+    /// "Transformed Permanent"). Transform-like families keep the front face
+    /// at the lower card id, so the face shown is the back face exactly when
+    /// its id is greater than its linked face's id.
+    pub fn is_transformed_permanent(&self, id: crate::ids::ObjectId) -> bool {
+        let Some(object) = self.object(id) else {
+            return false;
+        };
+        if object.zone != crate::zone::Zone::Battlefield
+            || object.linked_face_layout != crate::card::LinkedFaceLayout::TransformLike
+            || self.is_face_down(id)
+        {
+            return false;
+        }
+        let shown_id = match self.linked_face_definitions_by_name.get(object.name.as_ref()) {
+            Some(definition) => Some(definition.card.id),
+            None => self
+                .linked_face_definition_by_name_or_id(Some(object.name.as_ref()), None)
+                .map(|definition| definition.card.id),
+        };
+        let other_id = match object.other_face {
+            Some(other) => Some(other),
+            None => self
+                .linked_face_definition_by_name_or_id(object.other_face_name.as_deref(), None)
+                .map(|definition| definition.card.id),
+        };
+        matches!((shown_id, other_id), (Some(shown), Some(other)) if shown.0 > other.0)
+    }
+
     /// The prepare spell face of a prepared permanent, if it has one.
     pub fn prepare_spell_definition(
         &self,

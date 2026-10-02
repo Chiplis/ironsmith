@@ -58,12 +58,12 @@ fn aang_vigilance_rechecks_lesson_zone_and_current_controller() {
         vigil(&game),
         "two Lessons still satisfy the existential condition"
     );
-    game.set_current_controller(source, bob);
+    game.set_current_controller(source, bob).expect("finite controller fixture must refresh successfully");
     assert!(vigil(&game));
     game.move_object_by_effect(opposing_lesson, Zone::Exile)
         .unwrap();
     assert!(!vigil(&game), "your follows controller, not owner");
-    game.set_current_controller(source, alice);
+    game.set_current_controller(source, alice).expect("finite controller fixture must refresh successfully");
     assert_eq!(game.controller_of_id(source), Some(alice));
     assert!(vigil(&game));
     game.move_object_by_effect(own_lesson, Zone::Exile).unwrap();
@@ -141,7 +141,7 @@ fn aang_death_trigger_keeps_another_creature_controller_and_source_identity() {
         } else {
             game.create_object_from_definition(&fixture, owner, Zone::Battlefield)
         };
-        game.set_current_controller(other, controller);
+        game.set_current_controller(other, controller).expect("finite controller fixture must refresh successfully");
         game.move_object_by_effect(other, destination).unwrap();
         let mut queue = TriggerQueue::new();
         for event in game.take_pending_trigger_events() {

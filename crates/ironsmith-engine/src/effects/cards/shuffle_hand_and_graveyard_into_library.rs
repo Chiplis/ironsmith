@@ -165,8 +165,8 @@ mod tests {
         let bob = PlayerId::from_index(1);
         let alice_permanent = create_card_in_zone(&mut game, alice, Zone::Battlefield, "Alice's");
         let bob_permanent = create_card_in_zone(&mut game, bob, Zone::Battlefield, "Bob's");
-        game.set_current_controller(alice_permanent, bob);
-        game.set_current_controller(bob_permanent, alice);
+        game.set_current_controller(alice_permanent, bob).expect("finite controller fixture must refresh successfully");
+        game.set_current_controller(bob_permanent, alice).expect("finite controller fixture must refresh successfully");
 
         let source = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(source, alice);

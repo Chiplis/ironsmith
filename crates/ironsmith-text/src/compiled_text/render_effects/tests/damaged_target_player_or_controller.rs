@@ -96,7 +96,7 @@ fn damaged_target_player_or_controller_discards_and_sacrifices_only_seven() {
                 .card_types(vec![CardType::Planeswalker])
                 .build();
             let id = game.create_object_from_card(&card, bob, Zone::Battlefield);
-            game.set_current_controller(id, carol);
+            game.set_current_controller(id, carol).expect("finite controller fixture must refresh successfully");
             game.add_counters(id, CounterType::Loyalty, 10);
             Some(id)
         } else {

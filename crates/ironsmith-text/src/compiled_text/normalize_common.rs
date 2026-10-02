@@ -1385,6 +1385,10 @@ pub(super) fn describe_token_blueprint_with_presentation(
                     keyword_texts.push(crew.to_ascii_lowercase());
                     continue;
                 }
+                if let Some(saddle) = describe_structural_saddle_keyword(activated) {
+                    keyword_texts.push(saddle.to_ascii_lowercase());
+                    continue;
+                }
                 extra_ability_texts.push(quote_token_granted_ability_text(
                     describe_inline_ability(ability).as_str(),
                 ));
@@ -3458,6 +3462,77 @@ fn normalize_searched_tagged_hand_followup(line: &str) -> String {
         );
     }
     normalized
+}
+
+/// Separate optional named searches over the same zones that feed one shared
+/// result tag read as "search <zones> for up to one a card named A, search
+/// <zones> for up to one a card named B, <tail>". Oracle phrases the shared
+/// result as "a card named A and/or a card named B", then refers to the found
+/// cards as "them".
+fn compact_and_or_named_search_surface(line: &str) -> Option<String> {
+    const MARKER: &str = " for up to one a card named ";
+    let first_marker = line.find(MARKER)?;
+    let search_start = line[..first_marker].rfind("search ")?;
+    let zones = &line[search_start + "search ".len()..first_marker];
+    if zones.is_empty() || zones.contains(", search ") {
+        return None;
+    }
+    let repeat = format!(", search {zones}{MARKER}");
+    let mut names = Vec::new();
+    let mut cursor = first_marker + MARKER.len();
+    loop {
+        let rest = &line[cursor..];
+        if let Some(next) = rest.find(&repeat) {
+            // A card name never contains the repeated search clause.
+            names.push(&rest[..next]);
+            cursor += next + repeat.len();
+            continue;
+        }
+        // The final name ends at the first ", " that starts a lowercase
+        // continuation; commas inside card names precede capitalized words.
+        let end = rest.match_indices(", ").find_map(|(index, _)| {
+            rest[index + 2..]
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_ascii_lowercase())
+                .then_some(index)
+        })?;
+        names.push(&rest[..end]);
+        cursor += end;
+        break;
+    }
+    if names.len() < 2 || names.iter().any(|name| name.trim().is_empty()) {
+        return None;
+    }
+    let selections = names
+        .iter()
+        .map(|name| format!("a card named {}", name.trim()))
+        .collect::<Vec<_>>();
+    let selection = if selections.len() == 2 {
+        format!("{} and/or {}", selections[0], selections[1])
+    } else {
+        let (last, head) = selections.split_last()?;
+        format!("{}, and/or {last}", head.join(", "))
+    };
+    let tail = &line[cursor..];
+    let tail = if let Some(rest) = tail.strip_prefix(", and put it ") {
+        format!(" and put them {rest}")
+    } else if let Some(rest) = tail.strip_prefix(", reveal it, put it into its owner's hand, ") {
+        format!(", reveal them, put them into your hand, {rest}")
+    } else if let Some(rest) = tail.strip_prefix(", reveal it, put it into your hand, ") {
+        format!(", reveal them, put them into your hand, {rest}")
+    } else if let Some(rest) = tail.strip_prefix(", put it ") {
+        format!(", put them {rest}")
+    } else {
+        tail.to_string()
+    };
+    let tail = tail
+        .replace(", then shuffle your library.", ", then shuffle.")
+        .replace(", then shuffle your library", ", then shuffle");
+    Some(format!(
+        "{}search {zones} for {selection}{tail}",
+        &line[..search_start]
+    ))
 }
 
 fn compact_named_library_graveyard_search_to_hand_surface(line: &str) -> Option<String> {

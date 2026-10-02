@@ -312,6 +312,10 @@ pub enum TriggerKind {
         /// Spell, ability, or either ("a spell or ability").
         #[cfg_attr(feature = "serde", serde(default = "spell_or_ability_stack_kind"))]
         source_kind: crate::filter_model::StackObjectKind,
+        /// "You and/or at least one permanent you control": once per spell or
+        /// ability rather than once per matching target.
+        #[cfg_attr(feature = "serde", serde(default))]
+        once_per_stack_object: bool,
     },
     ThisDealsDamage,
     ThisDealsDamageToPlayer {
@@ -1166,16 +1170,49 @@ impl Trigger {
         controller: PlayerFilter,
         source_kind: crate::filter_model::StackObjectKind,
     ) -> Self {
+        Self::player_or_object_becomes_targeted_by_source_controller_batched(
+            player,
+            object,
+            controller,
+            source_kind,
+            false,
+        )
+    }
+    /// "Whenever you and/or at least one permanent you control becomes the
+    /// target ...": with `once_per_stack_object`, one trigger per spell or
+    /// ability instead of one per matching target.
+    pub fn player_or_object_becomes_targeted_by_source_controller_batched(
+        player: PlayerFilter,
+        object: ObjectFilter,
+        controller: PlayerFilter,
+        source_kind: crate::filter_model::StackObjectKind,
+        once_per_stack_object: bool,
+    ) -> Self {
         let controller_text = match controller {
             PlayerFilter::You => "you control",
             PlayerFilter::Opponent => "an opponent controls",
             _ => "a player controls",
         };
+        let object_text = object.description();
+        let object_text = if once_per_stack_object {
+            object_text
+                .strip_prefix("a ")
+                .or_else(|| object_text.strip_prefix("an "))
+                .unwrap_or(&object_text)
+                .to_string()
+        } else {
+            object_text
+        };
         Self::typed(
             format!(
-                "Whenever {} or {} becomes the target of {} {}",
+                "Whenever {} {} {} becomes the target of {} {}",
                 crate::filter_model::describe_player_filter(&player),
-                object.description(),
+                if once_per_stack_object {
+                    "and/or at least one"
+                } else {
+                    "or"
+                },
+                object_text,
                 match source_kind {
                     crate::filter_model::StackObjectKind::Spell => "a spell",
                     crate::filter_model::StackObjectKind::SpellOrAbility => "a spell or ability",
@@ -1188,6 +1225,7 @@ impl Trigger {
                 object,
                 controller,
                 source_kind,
+                once_per_stack_object,
             },
         )
     }

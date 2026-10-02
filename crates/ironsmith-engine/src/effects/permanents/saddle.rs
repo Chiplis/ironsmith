@@ -321,7 +321,23 @@ impl EffectExecutor for BecomeSaddledUntilEotEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        // CR 702.171b: an already-saddled permanent can't become saddled
+        // again; only a newly saddled permanent reports the event that
+        // "whenever this creature becomes saddled" watches.
+        if game.is_saddled(ctx.source) || game.object(ctx.source).is_none() {
+            game.set_saddled_until_end_of_turn(ctx.source);
+            return Ok(EffectOutcome::resolved());
+        }
         game.set_saddled_until_end_of_turn(ctx.source);
-        Ok(EffectOutcome::resolved())
+        let controller = game.controller_of_id(ctx.source).unwrap_or(ctx.controller);
+        let snapshot = game
+            .object(ctx.source)
+            .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
+        let event = TriggerEvent::new_with_provenance(
+            KeywordActionEvent::new(KeywordActionKind::BecomeSaddled, controller, ctx.source, 1)
+                .with_snapshot(snapshot),
+            ctx.provenance,
+        );
+        Ok(EffectOutcome::resolved().with_events(vec![event]))
     }
 }

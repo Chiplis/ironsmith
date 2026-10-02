@@ -77,7 +77,7 @@ fn u062_vanguards_modify_life_hands_and_function_from_command() {
     );
     assert_eq!(game.object(alice_card).unwrap().zone, Zone::Command);
 
-    game.set_current_controller(alice_card, bob);
+    game.set_current_controller(alice_card, bob).expect("finite controller fixture must refresh successfully");
     assert_eq!(game.controller_of_id(alice_card), Some(alice));
     let event = TriggerEvent::new_with_provenance(
         DieRolledEvent::new(alice, alice_card, 4, 6),

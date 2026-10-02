@@ -568,7 +568,7 @@ mod independent_occurrence_gameplay_tests {
                 game.cleanup_temporary_object_static_ability_grants_end_of_turn();
                 assert_eq!(keys(&game), before, "expiry of unrelated older grant cannot renumber survivors");
                 assert_eq!(keys(&game.clone()), before);
-                game.set_current_controller(source, bob);
+                game.set_current_controller(source, bob).expect("finite controller fixture must refresh successfully");
                 assert_eq!(keys(&game), before, "controller changes keep the same occurrences");
                 let mut ctx=crate::effects::EffectContext::new_default(source, bob);
                 let outcome=crate::effects::GainLifeEffect::you(1).execute(&mut game, &mut ctx).unwrap();
@@ -638,7 +638,7 @@ mod continuous_parent_occurrence_gameplay_tests {
             let outcome = crate::effects::GainLifeEffect::you(1).execute(&mut game, &mut ctx).unwrap();
             assert_eq!(game.player(alice).unwrap().life, 24); assert_eq!(outcome.count_or_zero(), 4);
             assert_eq!(outcome.events.len(), 1);
-            game.set_current_controller(source, bob);
+            game.set_current_controller(source, bob).expect("finite controller fixture must refresh successfully");
             assert_eq!(keys(&game), before, "controller binding cannot rename parent occurrence");
             let mut ctx = crate::effects::EffectContext::new_default(source, bob);
             let outcome = crate::effects::GainLifeEffect::you(1).execute(&mut game, &mut ctx).unwrap();
@@ -815,7 +815,7 @@ mod surviving_level_parent_gameplay_tests {
             let outcome = crate::effects::GainLifeEffect::you(1).execute(&mut game, &mut ctx).unwrap();
             assert_eq!(game.player(alice).unwrap().life, 24);
             assert_eq!(outcome.count_or_zero(), 4); assert_eq!(outcome.events.len(), 1);
-            game.set_current_controller(source, bob);
+            game.set_current_controller(source, bob).expect("finite controller fixture must refresh successfully");
             assert_eq!(keys(&game), before);
             let mut ctx = crate::effects::EffectContext::new_default(source, bob);
             let outcome = crate::effects::GainLifeEffect::you(1).execute(&mut game, &mut ctx).unwrap();
@@ -883,7 +883,7 @@ mod independent_static_copy_gameplay_tests {
             let outcome = crate::effects::GainLifeEffect::you(1).execute(&mut game, &mut ctx).unwrap();
             assert_eq!(outcome.count_or_zero(), 4); assert_eq!(outcome.events.len(), 1);
             assert_eq!(game.player(alice).unwrap().life, 24);
-            game.set_current_controller(recipient, bob);
+            game.set_current_controller(recipient, bob).expect("finite controller fixture must refresh successfully");
             assert_eq!(keys(&game), before, "binding cannot merge or rename copy occurrences");
             let mut ctx = crate::effects::EffectContext::new_default(recipient, bob);
             let outcome = crate::effects::GainLifeEffect::you(1).execute(&mut game, &mut ctx).unwrap();

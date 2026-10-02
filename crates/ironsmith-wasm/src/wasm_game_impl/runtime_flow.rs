@@ -1265,8 +1265,13 @@ impl WasmGame {
             (DecisionContext::ManaPayment(_), UiCommand::ManaPayment { response }) => {
                 Ok(ReplayDecisionAnswer::ManaPayment(response.into_runtime()?))
             }
-            (DecisionContext::Boolean(_), UiCommand::SelectOptions { option_indices }) => {
-                validate_option_selection(1, Some(1), &option_indices, &[0usize, 1usize])?;
+            (DecisionContext::Boolean(boolean), UiCommand::SelectOptions { option_indices }) => {
+                let legal = if boolean.can_accept {
+                    &[0usize, 1usize][..]
+                } else {
+                    &[0usize][..]
+                };
+                validate_option_selection(1, Some(1), &option_indices, legal)?;
                 let choice = option_indices
                     .first()
                     .copied()

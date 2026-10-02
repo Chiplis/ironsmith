@@ -77,6 +77,9 @@ pub enum KeywordActionKind {
     /// (CR 702.134): that creature "mentors" the creature that got the
     /// counter.
     Mentor,
+    /// A permanent becomes saddled (CR 702.171b): the event's source is the
+    /// permanent that became saddled, not a creature that saddled it.
+    BecomeSaddled,
 }
 
 impl KeywordActionKind {
@@ -230,6 +233,7 @@ impl KeywordActionKind {
             Self::Vote => "vote",
             Self::TakeInitiative => "take the initiative",
             Self::Mentor => "mentor",
+            Self::BecomeSaddled => "become saddled",
         }
     }
 
@@ -301,6 +305,7 @@ impl KeywordActionKind {
             Self::Vote => "votes",
             Self::TakeInitiative => "takes the initiative",
             Self::Mentor => "mentors",
+            Self::BecomeSaddled => "becomes saddled",
         }
     }
 }

@@ -69,7 +69,7 @@ fn greatest_power_discount_uses_current_controlled_battlefield_maximum() {
                 .to_oracle(),
                 "{1}{R}"
             );
-            game.set_current_controller(strongest, bob);
+            game.set_current_controller(strongest, bob).expect("finite controller fixture must refresh successfully");
             assert_eq!(
                 crate::decision::calculate_effective_mana_cost(
                     &game,

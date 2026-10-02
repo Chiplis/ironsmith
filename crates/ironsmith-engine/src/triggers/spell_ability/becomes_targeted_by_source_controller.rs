@@ -21,6 +21,10 @@ pub struct PlayerOrObjectBecomesTargetedBySourceControllerTrigger {
     pub source_controller: PlayerFilter,
     /// Spell, ability, or either ("a spell or ability").
     pub source_kind: ironsmith_core::filter_model::StackObjectKind,
+    /// "You and/or at least one permanent you control": the ability triggers
+    /// once per spell or ability however many matching things it targets,
+    /// rather than once per matching target.
+    pub once_per_stack_object: bool,
 }
 
 impl PlayerOrObjectBecomesTargetedBySourceControllerTrigger {
@@ -34,7 +38,13 @@ impl PlayerOrObjectBecomesTargetedBySourceControllerTrigger {
             object_filter,
             source_controller,
             source_kind: ironsmith_core::filter_model::StackObjectKind::SpellOrAbility,
+            once_per_stack_object: false,
         }
+    }
+
+    pub fn with_once_per_stack_object(mut self, once_per_stack_object: bool) -> Self {
+        self.once_per_stack_object = once_per_stack_object;
+        self
     }
 
     pub fn with_source_kind(
@@ -151,12 +161,34 @@ impl TriggerMatcher for PlayerOrObjectBecomesTargetedBySourceControllerTrigger {
         Some(vec![EventKind::BecomesTargeted])
     }
 
+    fn simultaneous_trigger_key(
+        &self,
+        event: &TriggerEvent,
+    ) -> Option<crate::triggers::matcher_trait::SimultaneousTriggerKey> {
+        (self.once_per_stack_object && event.kind() == EventKind::BecomesTargeted)
+            .then_some(crate::triggers::matcher_trait::SimultaneousTriggerKey::TargetingBatch)
+    }
+
     fn display(&self) -> String {
         let controller = match self.source_controller {
             PlayerFilter::You => "you control",
             PlayerFilter::Opponent => "an opponent controls",
             _ => "a player controls",
         };
+        if self.once_per_stack_object {
+            let object = self.object_filter.description();
+            let object = object
+                .strip_prefix("a ")
+                .or_else(|| object.strip_prefix("an "))
+                .unwrap_or(&object);
+            return format!(
+                "Whenever {} and/or at least one {} becomes the target of {} {}",
+                crate::triggers::describe_player_filter_subject(&self.player_filter),
+                object,
+                self.source_kind_text(),
+                controller
+            );
+        }
         format!(
             "Whenever {} or {} becomes the target of {} {}",
             crate::triggers::describe_player_filter_subject(&self.player_filter),

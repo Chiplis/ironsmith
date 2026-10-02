@@ -1299,7 +1299,7 @@ mod tests {
         let bob = PlayerId::from_index(1);
         let source = game.new_object_id();
         let creature_id = create_creature_on_battlefield(&mut game, "Borrowed Bear", alice);
-        game.set_current_controller(creature_id, bob);
+        game.set_current_controller(creature_id, bob).expect("finite controller fixture must refresh successfully");
 
         let mut ctx = ExecutionContext::new_default(source, bob);
         let result = SacrificeEffect::player(ObjectFilter::creature(), 1, PlayerFilter::You)

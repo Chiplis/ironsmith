@@ -125,7 +125,7 @@ pub(super) fn chain_of_vapor_uses_the_bounced_permanents_last_known_controller()
         .card_types(vec![CardType::Artifact])
         .build();
     let borrowed_id = game.create_object_from_card(&borrowed, alice, Zone::Battlefield);
-    game.set_current_controller(borrowed_id, bob);
+    game.set_current_controller(borrowed_id, bob).expect("finite controller fixture must refresh successfully");
 
     let land = CardBuilder::new(CardId::new(), "Bob's Island")
         .card_types(vec![CardType::Land])
@@ -289,7 +289,7 @@ pub(super) fn goaded_creatures_exact_controller_is_the_player_who_draws() {
         .card_types(vec![CardType::Creature])
         .build();
     let borrowed_id = game.create_object_from_card(&borrowed, charlie, Zone::Battlefield);
-    game.set_current_controller(borrowed_id, bob);
+    game.set_current_controller(borrowed_id, bob).expect("finite controller fixture must refresh successfully");
     let borrowed_snapshot = crate::snapshot::ObjectSnapshot::from_object(
         game.object(borrowed_id).expect("borrowed creature exists"),
         &game,
@@ -321,7 +321,7 @@ pub(super) fn destroyed_lands_exact_controller_chooses_the_new_aura_attachment()
         .build();
     let destroyed_land_id =
         game.create_object_from_card(&destroyed_land, charlie, Zone::Battlefield);
-    game.set_current_controller(destroyed_land_id, bob);
+    game.set_current_controller(destroyed_land_id, bob).expect("finite controller fixture must refresh successfully");
     let destroyed_snapshot = crate::snapshot::ObjectSnapshot::from_object(
         game.object(destroyed_land_id)
             .expect("destroyed land exists"),

@@ -101,8 +101,8 @@ fn a1_ring_bearer_retains_designation_and_legendary_after_type_loss() {
         Modification::AddCardTypes(vec![CardType::Creature]),
     );
     assert_eq!(g.current_ring_bearer(A), Some(id));
-    g.set_current_controller(id, BOB);
-    g.set_current_controller(id, A);
+    g.set_current_controller(id, BOB).expect("finite controller fixture must refresh successfully");
+    g.set_current_controller(id, A).expect("finite controller fixture must refresh successfully");
     assert_eq!(
         g.current_ring_bearer(A),
         None,
@@ -185,7 +185,7 @@ fn a3_cipher_survives_bearer_control_type_and_phasing_changes_but_is_not_copiabl
         bearer,
         Modification::RemoveCardTypes(vec![CardType::Creature]),
     );
-    g.set_current_controller(bearer, BOB);
+    g.set_current_controller(bearer, BOB).expect("finite controller fixture must refresh successfully");
     assert_eq!(encoded_trigger_count(&g, bearer), 1);
     g.phase_out(bearer);
     g.refresh_continuous_state();
@@ -389,13 +389,13 @@ fn a9_parsed_hideaway_gives_current_controller_and_retains_previous_entitlements
     let (source, exiled) = hideaway(&mut g);
     assert!(g.can_player_look_at_face_down_exiled_card(exiled, A));
     assert!(!g.can_player_look_at_face_down_exiled_card(exiled, BOB));
-    g.set_current_controller(source, BOB);
+    g.set_current_controller(source, BOB).expect("finite controller fixture must refresh successfully");
     // Bob need not look before losing control: entitlement alone persists.
-    g.set_current_controller(source, A);
+    g.set_current_controller(source, A).expect("finite controller fixture must refresh successfully");
     assert!(g.can_player_look_at_face_down_exiled_card(exiled, BOB));
     let hand = g.move_object_by_effect(source, Zone::Hand).unwrap();
     let returned = g.move_object_by_effect(hand, Zone::Battlefield).unwrap();
-    g.set_current_controller(returned, C);
+    g.set_current_controller(returned, C).expect("finite controller fixture must refresh successfully");
     assert!(
         !g.can_player_look_at_face_down_exiled_card(exiled, C),
         "new source incarnation has no old link"
@@ -424,7 +424,7 @@ fn a9_face_down_exile_without_linked_permission_stays_private() {
         .execute(&mut g, &mut ctx)
         .unwrap();
     let exiled = g.exile[0];
-    g.set_current_controller(source, BOB);
+    g.set_current_controller(source, BOB).expect("finite controller fixture must refresh successfully");
     assert!(g.can_player_look_at_face_down_exiled_card(exiled, A));
     assert!(!g.can_player_look_at_face_down_exiled_card(exiled, BOB));
 }

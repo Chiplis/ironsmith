@@ -223,6 +223,13 @@ fn read_while_qualified_event(
         crate::slice_primitives::select_position(tokens, |token| token.is_word("while"))
         && while_idx > 0
         && while_idx + 1 < tokens.len()
+        // "When this creature enters and whenever it attacks while saddled"
+        // (Autarch Mammoth): a repeated trigger introduction before the
+        // `while` makes the qualifier belong to the last event only; the
+        // repeated-intro union reading owns that shape.
+        && !tokens[..while_idx].windows(2).any(|pair| {
+            pair[0].is_word("and") && pair[1].is_any_word(&["when", "whenever", "at"])
+        })
     {
         let trigger_tokens = trim_edge_punctuation(&tokens[..while_idx]);
         let condition_tokens = trim_edge_punctuation(&tokens[while_idx + 1..]);

@@ -4535,7 +4535,7 @@ impl WasmGame {
             }
             let controller = PlayerId::from_index(object.controller);
             if controller != PlayerId::from_index(object.owner) {
-                self.game.set_current_controller(id, controller);
+                self.game.stage_controller_change_for_assembly(id, controller);
             }
         }
 
@@ -4553,6 +4553,8 @@ impl WasmGame {
         self.game.set_next_object_id_counter(id_counters.object);
         self.game
             .set_next_stack_ability_id_counter(checkpoint.id_counters.stack_ability);
+        self.game = self.game.continuous_query_snapshot()
+            .map_err(|error| format!("imported checkpoint continuous discovery failed: {error}"))?;
         self.pending_decision = self.game.turn.priority_player.map(|player| {
             ironsmith::game_loop::priority_context(&self.game, player).map(DecisionContext::Priority)
         }).transpose().map_err(|error| format!("priority action analysis failed: {error}"))?;

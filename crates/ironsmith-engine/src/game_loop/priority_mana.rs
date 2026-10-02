@@ -2860,7 +2860,7 @@ pub(crate) fn propose_spell_cast(
     };
 
     let mut mark_face_down = false;
-    game.set_current_controller(new_id, caster);
+    game.stage_controller_change_for_assembly(new_id, caster);
     if let Some(obj) = game.object_mut(new_id) {
         if let Some(method) = selected_method {
             obj.cast_alternative_method = Some(Box::new(method.clone()));
@@ -2994,7 +2994,8 @@ pub(crate) fn propose_spell_cast(
     // several independent legality, targeting, cost-modifier, and mana-source
     // queries.  Refresh once here so those views share the game-level
     // characteristic cache instead of each recalculating the same dirty board.
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().map_err(|error|
+        GameLoopError::ExecutionFailed(crate::effects::ExecutionError::ContinuousDiscovery(error)))?;
 
     Ok(new_id)
 }

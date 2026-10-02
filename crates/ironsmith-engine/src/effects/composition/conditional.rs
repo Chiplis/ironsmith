@@ -8,6 +8,139 @@ use crate::ids::{ObjectId, PlayerId};
 use crate::target::ChooseSpec;
 pub type ConditionalEffect = ironsmith_core::ConditionalEffect<crate::effect::Effect>;
 
+fn unwrapped_effect(mut effect: &crate::effect::Effect) -> &crate::effect::Effect {
+    while let Some(inner) = effect.transparent_child_effect() {
+        effect = inner;
+    }
+    effect
+}
+
+fn reveal_claim_filter(
+    filter: &crate::target::ObjectFilter,
+    game: &GameState,
+    source: ObjectId,
+) -> crate::target::ObjectFilter {
+    let mut claim = filter.clone();
+    claim.any_of = filter
+        .any_of
+        .iter()
+        .map(|branch| reveal_claim_filter(branch, game, source))
+        .collect();
+    if claim.shares_creature_type_with_source {
+        // Claims can be checked after the source leaves or changes types.
+        // Capture the public creature types at the instruction, rather than
+        // consulting the later source (or a placeholder's cached subtypes)
+        // when validating the opened card.
+        let subtypes = game
+            .current_subtypes(source)
+            .or_else(|| game.object(source).map(|object| object.subtypes.to_vec()))
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|subtype| subtype.is_creature_type())
+            .collect::<Vec<_>>();
+        claim.shares_creature_type_with_source = false;
+        let mut relation = if subtypes.is_empty() {
+            crate::target::ObjectFilter {
+                source: true,
+                other: true,
+                ..Default::default()
+            }
+        } else {
+            crate::target::ObjectFilter {
+                subtypes,
+                ..Default::default()
+            }
+        };
+        // The filter's base qualities are ANDed with its any_of group.
+        // Nest the old group to preserve its constraints while adding this
+        // captured relation, including when it already contains a union.
+        relation.any_of = std::mem::take(&mut claim.any_of);
+        claim.any_of = vec![relation];
+    }
+    claim
+}
+
+/// "If the privately looked-at card matches, you may reveal it. If you do,
+/// ..." must reach the optional reveal on every peer. Even a known mismatch
+/// needs an explicit decline: skipping it would disclose the conditional's
+/// result through the decision sequence and strand a concealed peer.
+///
+/// Only fold a condition into the offer when revealing the same single card
+/// is its first action and every subsequent instruction depends on accepting
+/// that offer. Arbitrary conditionals and else branches cannot be folded this
+/// way without changing their semantics.
+fn optional_hidden_reveal_guard(
+    effect: &ConditionalEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+    condition_matches: bool,
+) -> Option<crate::effects::context::OptionalIdentityGuard> {
+    use crate::effects::{IfEffect, MayEffect, RevealTaggedEffect, WithIdEffect};
+    if !effect.if_false.is_empty() {
+        return None;
+    }
+    let Condition::TaggedObjectMatches(tag, filter) = &effect.condition else {
+        return None;
+    };
+    if !filter.has_search_stated_quality() {
+        return None;
+    }
+    let first = effect.if_true.first()?;
+    let may = unwrapped_effect(first).downcast_ref::<MayEffect>()?;
+    if may.effects.len() != 1 {
+        return None;
+    }
+    let reveal = unwrapped_effect(&may.effects[0]).downcast_ref::<RevealTaggedEffect>()?;
+    if &reveal.tag != tag {
+        return None;
+    }
+    let mut outcome_ids = Vec::new();
+    let mut wrapped = first;
+    loop {
+        if let Some(with_id) = wrapped.downcast_ref::<WithIdEffect>() {
+            outcome_ids.push(with_id.id);
+        }
+        let Some(inner) = wrapped.transparent_child_effect() else {
+            break;
+        };
+        wrapped = inner;
+    }
+    if !effect.if_true.iter().skip(1).all(|effect| {
+        unwrapped_effect(effect)
+            .downcast_ref::<IfEffect>()
+            .is_some_and(|if_effect| {
+                outcome_ids.contains(&if_effect.condition)
+                    && matches!(
+                        if_effect.predicate,
+                        crate::effect::EffectPredicate::Happened
+                    )
+                    && if_effect.else_.is_empty()
+            })
+    }) {
+        return None;
+    }
+    let snapshots = ctx.get_tagged_all(tag)?;
+    if snapshots.len() != 1 {
+        return None;
+    }
+    let snapshot = &snapshots[0];
+    let object = game.object(snapshot.object_id).or_else(|| {
+        game.find_object_by_stable_id(snapshot.stable_id)
+            .and_then(|id| game.object(id))
+    })?;
+    // Tracking and zone membership are symmetric; local knowledge and public
+    // openings are not a reason to remove this decision during replay.
+    if game.hidden_card_info(object.id).is_none() || !object.zone.is_hidden() {
+        return None;
+    }
+    Some(crate::effects::context::OptionalIdentityGuard {
+        object: object.id,
+        filter: reveal_claim_filter(filter, game, ctx.source),
+        filter_ctx: ctx.filter_context(game),
+        can_accept: game.is_hidden_card_placeholder(object.id) || condition_matches,
+    })
+}
+
 /// Effect that branches based on game state conditions.
 ///
 /// Unlike `If` which checks the result of a prior effect, `Conditional`
@@ -65,6 +198,7 @@ impl EffectExecutor for ConditionalEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let mut result = evaluate_condition(game, &self.condition, ctx)?;
+        let identity_guard = optional_hidden_reveal_guard(self, game, ctx, result);
 
         // CR 700.2 / 601.2b: "If [condition] as you cast this spell, you may
         // choose both instead" fixes how many modes may be chosen during
@@ -87,7 +221,7 @@ impl EffectExecutor for ConditionalEffect {
             }
         }
 
-        let effects_to_execute = if result {
+        let effects_to_execute = if result || identity_guard.is_some() {
             &self.if_true
         } else {
             &self.if_false
@@ -95,7 +229,18 @@ impl EffectExecutor for ConditionalEffect {
 
         let mut outcomes = Vec::new();
         for (index, effect) in effects_to_execute.iter().enumerate() {
-            outcomes.push(execute_effect(game, effect, ctx)?);
+            if index == 0 && identity_guard.is_some() {
+                let previous_guard = ctx.optional_identity_guard.take();
+                ctx.optional_identity_guard = identity_guard.clone();
+                let outcome = execute_effect(game, effect, ctx);
+                ctx.optional_identity_guard = previous_guard;
+                outcomes.push(outcome?);
+            } else {
+                outcomes.push(execute_effect(game, effect, ctx)?);
+            }
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
             if let Some(next) = effects_to_execute.get(index + 1) {
                 crate::effects::match_triggers_at_instruction_boundary(
                     game,
@@ -196,6 +341,10 @@ fn evaluate_condition(
 ) -> Result<bool, ExecutionError> {
     crate::condition_eval::evaluate_condition_resolution(game, condition, ctx)
 }
+
+#[cfg(test)]
+#[path = "conditional_hidden_tests.rs"]
+mod hidden_tests;
 
 #[cfg(test)]
 mod tests {

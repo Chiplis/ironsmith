@@ -365,7 +365,7 @@ impl EnterBattlefieldEvent {
             prospective.battlefield.push(self.object);
         }
         if let Some(controller) = self.controller_override {
-            prospective.set_current_controller(self.object, controller);
+            prospective.stage_controller_change_for_assembly(self.object, controller);
         }
         if let Some(choices) = &self.prepared_choices {
             if let Some(object) = prospective.object_mut(self.object) {

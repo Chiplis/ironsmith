@@ -2154,6 +2154,11 @@ where
             crate::effects::BecomeSaddledUntilEotEffect::new(),
         ));
     }
+    if let Some(saddle) = M::downcast_ref::<ironsmith_core::SaddleCostEffect>(&effect) {
+        return Ok(Effect::new(crate::effects::SaddleCostEffect::new(
+            saddle.required_power,
+        )));
+    }
 
     macro_rules! clone_direct {
         ($($ty:path),* $(,)?) => {

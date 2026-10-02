@@ -1657,7 +1657,7 @@ mod tests {
             game.object(object).expect("object exists"),
             &game,
         );
-        game.set_current_controller(object, bob);
+        game.set_current_controller(object, bob).expect("finite controller fixture must refresh successfully");
         assert_eq!(game.controller_of_id(object), Some(bob));
 
         let mut effect_ctx = ExecutionContext::new_default(object, alice);

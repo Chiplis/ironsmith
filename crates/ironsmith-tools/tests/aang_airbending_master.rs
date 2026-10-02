@@ -58,7 +58,7 @@ fn airbend_exiles_another_creature_and_grants_only_its_owner_the_exact_incarnati
         let target = game.create_object_from_definition(&creature, bob, Zone::Battlefield);
         let stable = game.object(target).unwrap().stable_id;
         if controlled_by_alice {
-            game.set_current_controller(target, alice);
+            game.set_current_controller(target, alice).expect("finite controller fixture must refresh successfully");
         }
         let hand = game.create_object_from_definition(&definition, alice, Zone::Hand);
         let source = game
@@ -230,7 +230,7 @@ fn upkeep_uses_trigger_controller_and_experience_at_resolution() {
     ] {
         let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
         let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
-        game.set_current_controller(source, controller);
+        game.set_current_controller(source, controller).expect("finite controller fixture must refresh successfully");
         game.player_mut(controller).unwrap().experience_counters = before;
         let other = if controller == alice { bob } else { alice };
         game.player_mut(other).unwrap().experience_counters = 7;
@@ -252,7 +252,7 @@ fn upkeep_uses_trigger_controller_and_experience_at_resolution() {
         if depart {
             game.move_object_by_effect(source, Zone::Graveyard).unwrap();
         } else {
-            game.set_current_controller(source, other);
+            game.set_current_controller(source, other).expect("finite controller fixture must refresh successfully");
         }
         ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
         let tokens: Vec<_> = game
@@ -302,7 +302,7 @@ fn experience_counts_controlled_creature_departures_but_not_deaths() {
         } else {
             game.create_object_from_definition(&fixture, owner, Zone::Battlefield)
         };
-        game.set_current_controller(target, controller);
+        game.set_current_controller(target, controller).expect("finite controller fixture must refresh successfully");
         game.move_object_by_effect(target, destination).unwrap();
         let mut queue = TriggerQueue::new();
         for event in game.take_pending_trigger_events() {

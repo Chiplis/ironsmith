@@ -315,7 +315,7 @@ fn resolving_creature() -> (GameState, ObjectId, PlayerId, PlayerId) {
         .power_toughness(crate::card::PowerToughness::fixed(2, 2))
         .build();
     let spell = game.create_object_from_card(&card, bob, Zone::Stack);
-    game.set_current_controller(spell, alice);
+    game.set_current_controller(spell, alice).expect("finite controller fixture must refresh successfully");
     game.push_to_stack(crate::game_state::StackEntry::new(spell, alice));
     game.take_pending_trigger_events();
     (game, spell, alice, bob)
@@ -4300,7 +4300,7 @@ mod destruction_primary_observation_contract_tests {
         let first=game.create_object_from_card(&artifact,alice,Zone::Battlefield);
         let second=game.create_object_from_card(&artifact,bob,Zone::Battlefield);
         let protected=game.create_object_from_card(&artifact,alice,Zone::Battlefield);
-        game.set_current_controller(protected,bob);
+        game.set_current_controller(protected,bob).expect("finite controller fixture must refresh successfully");
         let source=prefix_card(&mut game,alice,Zone::Hand,"Destruction instruction source");
         let mut ctx=crate::effects::ExecutionContext::new_default(source,alice);
         crate::effects::execute_effect(&mut game,&Effect::regenerate(

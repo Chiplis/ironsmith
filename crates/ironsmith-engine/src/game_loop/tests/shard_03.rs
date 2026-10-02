@@ -754,7 +754,7 @@ pub(super) fn dinrova_horror_returns_target_and_its_owner_discards() {
         .card_types(vec![CardType::Artifact])
         .build();
     let target_id = game.create_object_from_card(&borrowed_permanent, alice, Zone::Battlefield);
-    game.set_current_controller(target_id, bob);
+    game.set_current_controller(target_id, bob).expect("finite controller fixture must refresh successfully");
 
     let alice_discard = CardBuilder::new(CardId::from_raw(78_012), "Alice Discard")
         .card_types(vec![CardType::Artifact])
@@ -1405,7 +1405,7 @@ pub(super) fn jhoira_exiles_nonland_card_and_granted_suspend_triggers_from_exile
         "Jhoira-granted suspended creature should gain suspend haste"
     );
 
-    game.set_current_controller(creature_id, bob);
+    game.set_current_controller(creature_id, bob).expect("finite controller fixture must refresh successfully");
 
     let has_haste_after_control_change = game
         .current_abilities(creature_id)

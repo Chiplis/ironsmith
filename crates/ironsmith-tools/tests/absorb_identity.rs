@@ -64,7 +64,7 @@ fn absorb_identity_returns_to_owner_and_copies_all_or_none_from_battlefield() {
                 game.turn.priority_player = Some(alice);
                 game.turn.phase = ironsmith::game_state::Phase::FirstMain;
                 let target = game.create_object_from_definition(&donor, bob, Zone::Battlefield);
-                game.set_current_controller(target, alice);
+                game.set_current_controller(target, alice).expect("finite controller fixture must refresh successfully");
                 let stable = game.object(target).unwrap().stable_id;
                 use ironsmith::effects::EffectExecutor;
                 let mut setup_dm = ironsmith::decision::SelectFirstDecisionMaker;
@@ -167,7 +167,7 @@ fn absorb_identity_returns_to_owner_and_copies_all_or_none_from_battlefield() {
                     }
                 }
                 if change == 3 {
-                    game.set_current_controller(target, bob);
+                    game.set_current_controller(target, bob).expect("finite controller fixture must refresh successfully");
                 }
                 ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
                 let current = game.find_object_by_stable_id(stable).unwrap();
@@ -236,7 +236,7 @@ fn absorb_identity_returns_to_owner_and_copies_all_or_none_from_battlefield() {
                     "copy set is fixed at resolution"
                 );
                 if accept && !invalid {
-                    game.set_current_controller(first, bob);
+                    game.set_current_controller(first, bob).expect("finite controller fixture must refresh successfully");
                     assert_eq!(
                         game.calculated_power(first),
                         Some(expected_power),

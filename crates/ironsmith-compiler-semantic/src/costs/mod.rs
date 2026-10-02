@@ -100,6 +100,7 @@ fn is_payment_effect(effect: &crate::effect::Effect) -> bool {
             .downcast_ref::<effects::ApplyContinuousEffect>()
             .is_some_and(is_controller_change_continuous_cost)
         || effect.downcast_ref::<effects::CrewCostEffect>().is_some()
+        || effect.downcast_ref::<effects::SaddleCostEffect>().is_some()
         || effect
             .downcast_ref::<effects::ConspireCostEffect>()
             .is_some()

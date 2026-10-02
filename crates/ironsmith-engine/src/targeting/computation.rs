@@ -2102,7 +2102,7 @@ mod tests {
                 game.create_object_from_card(&card, alice, Zone::Hand)
             })
             .collect::<Vec<_>>();
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("finite prewarm fixture refresh");
         game.object_mut(hand_ids[0])
             .expect("hand card should exist")
             .optional_costs_paid = Default::default();
@@ -2121,10 +2121,20 @@ mod tests {
             after.characteristics_full_recomputes, before.characteristics_full_recomputes,
             "nonbattlefield candidates should read their pass-local prewarmed characteristics"
         );
+        let total_sorts = after.dependency_sorts.checked_sub(before.dependency_sorts)
+            .expect("dependency sort counter is monotonic");
+        let shadow_sorts = after.shadow_dependency_sorts.checked_sub(before.shadow_dependency_sorts)
+            .expect("shadow sort counter is monotonic");
+        let production_sorts = total_sorts.checked_sub(shadow_sorts)
+            .expect("reference sorts are included in the total counter");
         assert!(
-            after.dependency_sorts <= before.dependency_sorts + 1,
+            production_sorts <= 1,
             "nonbattlefield filter matching should sort the type layer once, not once per card: before={before:?}, after={after:?}"
         );
+        #[cfg(feature = "shadow-continuous")]
+        assert!(shadow_sorts > 0, "this fixture must exercise reference validation");
+        #[cfg(not(feature = "shadow-continuous"))]
+        assert_eq!(shadow_sorts, 0, "reference work is absent without the shadow feature");
     }
 
     #[test]

@@ -137,7 +137,7 @@ fn airbend_nonland_selection_excludes_source_and_lands_and_can_decline() {
             .card_types(vec![CardType::Artifact])
             .build();
         let target = game.create_object_from_definition(&artifact, bob, Zone::Battlefield);
-        game.set_current_controller(target, alice);
+        game.set_current_controller(target, alice).expect("finite controller fixture must refresh successfully");
         let stable = game.object(target).unwrap().stable_id;
         let land = CardDefinitionBuilder::new(CardId::new(), "Excluded noncreature land")
             .card_types(vec![CardType::Land])
@@ -213,7 +213,7 @@ fn lifelink_follows_damage_controller_after_source_control_changes() {
     }
     assert_eq!(queue.entries.len(), 1);
     ironsmith::game_loop::put_triggers_on_stack(&mut game, &mut queue).unwrap();
-    game.set_current_controller(source, bob);
+    game.set_current_controller(source, bob).expect("finite controller fixture must refresh successfully");
     ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
     let blocker = CardDefinitionBuilder::new(CardId::new(), "Grounded blocker")
         .card_types(vec![CardType::Creature])

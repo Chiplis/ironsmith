@@ -151,7 +151,7 @@ fn canonical_multiplier_uses_current_source_characteristics_and_departed_source_
         game.push_to_stack(entry);
         let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
         match change {
-            1 => game.set_current_controller(source, bob),
+            1 => game.set_current_controller(source, bob).expect("finite controller fixture must refresh successfully"),
             2 => {
                 ironsmith::effects::ApplyContinuousEffect::new(
                     ironsmith::continuous::EffectTarget::Specific(source),
@@ -172,7 +172,7 @@ fn canonical_multiplier_uses_current_source_characteristics_and_departed_source_
                     .unwrap();
             }
             5 => {
-                game.set_current_controller(source, bob);
+                game.set_current_controller(source, bob).expect("finite controller fixture must refresh successfully");
                 game.move_object_by_effect(source, Zone::Graveyard).unwrap();
             }
             6 => {

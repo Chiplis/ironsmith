@@ -812,6 +812,37 @@ impl CardDefinitionBuilder {
         })
     }
 
+    /// Saddle N (CR 702.171a): "Tap any number of other untapped creatures you
+    /// control with total power N or greater: This permanent becomes saddled
+    /// until end of turn. Activate only as a sorcery."
+    pub fn saddle(
+        self,
+        amount: u32,
+        timing: crate::ability::ActivationTiming,
+        additional_restrictions: Vec<String>,
+    ) -> Self {
+        let cost = crate::cost::TotalCost::from_cost(crate::costs::Cost::effect(
+            crate::effects::SaddleCostEffect::new(amount),
+        ));
+        let saddle =
+            crate::effect::Effect::new(crate::effects::BecomeSaddledUntilEotEffect::new());
+        self.with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
+                mana_cost: cost,
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![saddle]),
+                choices: Vec::new(),
+                timing,
+                additional_restrictions,
+                activation_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
+            }),
+            functional_zones: vec![crate::zone::Zone::Battlefield],
+        })
+    }
+
     pub fn riot(self) -> Self {
         let modes = vec![
             crate::effect::EffectMode::new(

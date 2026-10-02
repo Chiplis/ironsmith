@@ -2185,6 +2185,9 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     normalized = normalize_token_quoted_ability_surfaces(&normalized);
     normalized = normalize_token_death_trigger_quote_surface(&normalized);
     normalized = normalize_searched_tagged_hand_followup(&normalized);
+    if let Some(compact) = compact_and_or_named_search_surface(&normalized) {
+        normalized = compact;
+    }
     if let Some(compact) = compact_three_way_looked_card_distribution(&normalized) {
         normalized = compact;
     }

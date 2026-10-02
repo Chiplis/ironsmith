@@ -347,7 +347,7 @@ fn a_killer_among_us_legality_requires_attacking_token_and_the_payers_own_choice
         !offered(&game, alice, source),
         "a nonattacking token is not eligible"
     );
-    game.set_current_controller(target, bob);
+    game.set_current_controller(target, bob).expect("finite controller fixture must refresh successfully");
     let mut combat = CombatState::default();
     combat.attackers.push(AttackerInfo {
         creature: target,
@@ -368,7 +368,7 @@ fn a_killer_among_us_legality_requires_attacking_token_and_the_payers_own_choice
         "attacking nontokens are not eligible"
     );
     game.object_mut(target).unwrap().kind = ironsmith::object::ObjectKind::Token;
-    game.set_current_controller(source, bob);
+    game.set_current_controller(source, bob).expect("finite controller fixture must refresh successfully");
     game.turn.priority_player = Some(bob);
     assert!(
         !offered(&game, bob, source),

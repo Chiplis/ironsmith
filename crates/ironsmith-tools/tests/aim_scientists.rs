@@ -144,7 +144,7 @@ fn aim_scientists_connive_uses_current_or_last_controller() {
             }
         }
         assert_eq!(queue.entries.len(), 1);
-        game.set_current_controller(source, bob);
+        game.set_current_controller(source, bob).expect("finite controller fixture must refresh successfully");
         if depart {
             game.move_object_by_effect(source, Zone::Graveyard).unwrap();
         }

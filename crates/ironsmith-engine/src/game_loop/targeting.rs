@@ -364,6 +364,10 @@ pub(super) fn queue_becomes_targeted_events(
     } else {
         None
     };
+    // "Whenever you and/or at least one permanent you control becomes the
+    // target of a spell or ability" (Leyline of Combustion) triggers once per
+    // spell or ability, however many of the matching things it targets.
+    let mut targeting_batches_seen = HashSet::new();
     for mut event in target_events_from_targets(
         targets,
         source,
@@ -374,7 +378,21 @@ pub(super) fn queue_becomes_targeted_events(
     ) {
         let event_provenance = game.alloc_child_event_provenance(provenance, event.kind());
         event.set_provenance(event_provenance);
-        queue_triggers_from_event(game, trigger_queue, event, true);
+        let mut candidates = TriggerQueue::new();
+        queue_triggers_from_event(game, &mut candidates, event, true);
+        for candidate in candidates.entries {
+            if candidate
+                .ability
+                .trigger
+                .simultaneous_trigger_key(&candidate.triggering_event)
+                == Some(crate::triggers::matcher_trait::SimultaneousTriggerKey::TargetingBatch)
+                && !targeting_batches_seen
+                    .insert((candidate.source_stable_id, candidate.trigger_identity))
+            {
+                continue;
+            }
+            trigger_queue.add(candidate);
+        }
     }
 
     if !targets.is_empty() && targets_commit_crime(game, source_controller, targets) {

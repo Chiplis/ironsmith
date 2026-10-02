@@ -98,7 +98,7 @@ pub use effect::{
     ContinuousDurationPlayer, ContinuousDurationPredicate, ControlCombatChoicesThisTurnEffect,
     ControlPlayerEffect, ConvertEffect, CopyAttackTargetMode, CopyPtAdjustment, CopySpellEffect,
     CopySpellForEachTargetEffect, CounterEffect, CreateEmblemEffect, CreateTokenCopyEffect,
-    CreateTokenEffect, CrewCostEffect, CumulativeUpkeepEffect, DamageDistributionMode,
+    CreateTokenEffect, CrewCostEffect, SaddleCostEffect, CumulativeUpkeepEffect, DamageDistributionMode,
     DamageFilter, DealDamageEffect, DealDistributedDamageEffect, DelayedTriggerDuration,
     DelayedTriggerPrepayment, DelayedTriggerSpec, DestinationPlayerReferenceSurface, DestroyEffect,
     DestroyNoRegenerationEffect, DetainEffect, DevourEffect,

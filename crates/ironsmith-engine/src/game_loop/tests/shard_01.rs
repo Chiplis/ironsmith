@@ -715,7 +715,7 @@ pub(super) fn trusted_advisor_upkeep_returns_blue_creature_you_control_to_owners
         bob,
         Some(crate::color::ColorSet::BLUE),
     );
-    game.set_current_controller(borrowed_blue, alice);
+    game.set_current_controller(borrowed_blue, alice).expect("finite controller fixture must refresh successfully");
     let borrowed_stable_id = game
         .object(borrowed_blue)
         .expect("borrowed creature should exist")

@@ -224,7 +224,7 @@ fn cascade_threshold_uses_total_opponent_loss_and_only_your_turn() {
         }
         if opponent_casts {
             ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
-            game.set_current_controller(source, bob);
+            game.set_current_controller(source, bob).expect("finite controller fixture must refresh successfully");
             game.turn.active_player = bob;
             game.turn.priority_player = Some(bob);
             let next_spell = game.create_object_from_definition(&fixture, bob, Zone::Hand);

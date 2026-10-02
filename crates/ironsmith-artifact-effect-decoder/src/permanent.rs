@@ -48,6 +48,7 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
                 .map(Some)
         }
         "CrewCostEffect" => decode_as::<ironsmith_core::CrewCostEffect>(payload).map(Some),
+        "SaddleCostEffect" => decode_as::<ironsmith_core::SaddleCostEffect>(payload).map(Some),
         "DetainEffect" => decode_as::<ironsmith_core::DetainEffect>(payload).map(Some),
         "DirectionalAdjacentPlayerControlEffect" => {
             decode_as::<ironsmith_core::DirectionalAdjacentPlayerControlEffect>(payload).map(Some)

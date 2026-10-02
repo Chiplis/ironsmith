@@ -794,7 +794,7 @@ fn delayed_sacrifice_after_controller_change(
         return Err("reanimation/attachment prerequisite was not established".into());
     }
     if transfer_control {
-        game.set_current_controller(returned, bob);
+        game.set_current_controller(returned, bob).expect("finite controller fixture must refresh successfully");
     }
     game.move_object_by_effect(aura, Zone::Graveyard)
         .ok_or("source failed to leave battlefield")?;

@@ -43,7 +43,7 @@ fn source_damage_transform_counts_damage_and_returns_to_owner() {
             let carol = game.players[2].id;
             game.create_object_from_definition(&back, alice, Zone::Exile);
             let source = game.create_object_from_definition(&front, alice, Zone::Battlefield);
-            game.set_current_controller(source, bob);
+            game.set_current_controller(source, bob).expect("finite controller fixture must refresh successfully");
             let mut ctx = crate::effects::EffectContext::new_default(source, bob);
             crate::effects::execute_effect(
                 &mut game,

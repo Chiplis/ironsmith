@@ -1,10 +1,16 @@
 use super::*;
+use ironsmith::decisions::context::BooleanContext;
+
+fn setup_game() -> GameState {
+    GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20)
+}
 
 #[test]
 fn suspended_draw_keeps_its_private_opening_and_hand_view_after_transaction_rollback() {
+    let _ids = crate::test_id_counter_guard();
     let mut wasm = WasmGame::new();
     let alice = PlayerId::from_index(0);
-    wasm.game = setup_two_player_game();
+    wasm.game = setup_game();
     let hidden = wasm
         .game
         .create_hidden_card_placeholder(alice, Zone::Library, 0, "draw".into());
@@ -87,8 +93,9 @@ fn suspended_draw_keeps_its_private_opening_and_hand_view_after_transaction_roll
 
 #[test]
 fn suspended_random_output_is_audited_once_across_prompts() {
+    let _ids = crate::test_id_counter_guard();
     let mut wasm = WasmGame::new();
-    wasm.game = setup_two_player_game();
+    wasm.game = setup_game();
     let physical = wasm.game.clone();
     let before = wasm.capture_crypto_audit_state();
     let mut values = [1, 2, 3];

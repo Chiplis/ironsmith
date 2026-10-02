@@ -214,6 +214,40 @@ impl GameState {
                         tagged_objects,
                     );
                 }
+                ironsmith_core::EnterAsCopyFollowup::TapCopiedObjectFrozenWhileYouControlSource => {
+                    // "When you do, tap the copied creature and it doesn't
+                    // untap during its controller's untap step for as long as
+                    // you control this creature" (CR 603.12): the reflexive
+                    // ability refers to the copied object as it was.
+                    let Some(copied) = self.object(copy_source_id) else {
+                        continue;
+                    };
+                    let copied_tag = crate::tag::TagKey::from("copied_object");
+                    let snapshot = crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                        copied, self,
+                    );
+                    let mut tagged_objects = std::collections::HashMap::new();
+                    tagged_objects.insert(copied_tag.clone(), vec![snapshot]);
+                    let frozen = crate::target::ObjectFilter::default().match_tagged(
+                        copied_tag.clone(),
+                        crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+                    );
+                    crate::effects::composition::queue_reflexive_trigger(
+                        self,
+                        new_id,
+                        controller,
+                        vec![
+                            crate::effect::Effect::tap(crate::target::ChooseSpec::Tagged(
+                                copied_tag,
+                            )),
+                            crate::effect::Effect::cant_until(
+                                crate::effect::Restriction::untap(frozen),
+                                crate::effect::Until::YouStopControllingThis,
+                            ),
+                        ],
+                        tagged_objects,
+                    );
+                }
             }
         }
     }
@@ -2516,6 +2550,11 @@ impl GameState {
             if decision_maker.awaiting_choice() {
                 return Ok(super::EntryCommitResult::pending());
             }
+            // Validate the completed entry before publishing it. Query
+            // preparation performs no day/night, ascend or other game rules
+            // procedures while this operation's working state is isolated.
+            working = working.continuous_query_snapshot()
+                .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
             *self = working;
             return outcome;
         }
@@ -2813,7 +2852,7 @@ impl GameState {
             }
         }
         if let Some(controller) = result.controller_override.or(entering_controller) {
-            self.set_current_controller(new_id, controller);
+            self.stage_controller_change_for_assembly(new_id, controller);
         }
 
         // Apply "enters as copy" before tapped/counter modifications. Ordinary
@@ -2920,8 +2959,9 @@ impl GameState {
                             locked_targets: vec![new_id],
                         },
                     );
+                    // Stage the copy with the remaining entry fields. Its
+                    // counters and prepared choices are not assembled yet.
                     self.effect_store.continuous_effects.add_effect(effect);
-                    self.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
                 }
             } else {
                 let copy_source = self.object(copy_source_id).cloned();
@@ -4553,6 +4593,13 @@ impl GameState {
         if self.is_conspiracy_card(id) {
             return Some(object.owner);
         }
+        // A nested layer query must use its enclosing view without publishing
+        // that partial controller into the game-level resolved cache.
+        if skipped_effect.is_none()
+            && let Some(chars) = crate::continuous::in_progress_characteristics(self, id)
+        {
+            return Some(chars.controller);
+        }
         if skipped_effect.is_none()
             && self.continuous_state_is_clean()
             && let Some(controller) = self.cached_current_controller(id, object)
@@ -4560,15 +4607,8 @@ impl GameState {
             return Some(controller);
         }
 
-        let mut effects = self.controller_change_effects_for_uncached_lookup();
-        effects.sort_by(|a, b| {
-            let layer_cmp = a.modification.layer().cmp(&b.modification.layer());
-            if layer_cmp != std::cmp::Ordering::Equal {
-                return layer_cmp;
-            }
-            a.timestamp.cmp(&b.timestamp)
-        });
-        Some(self.controller_from_change_effects(id, object, &effects, skipped_effect))
+        let effects = self.effects_for_controller_query();
+        self.controller_from_known_effects(id, object, &effects, skipped_effect)
     }
 
     fn cached_current_controller(&self, id: ObjectId, object: &Object) -> Option<PlayerId> {
@@ -4580,7 +4620,7 @@ impl GameState {
                 .as_ref()
                 .is_none_or(|cache| !cache.matches_state(self));
             if needs_rebuild {
-                let change_effects = Arc::new(self.controller_change_effects_for_cached_lookup());
+                let change_effects = Arc::new(self.cached_effects_for_controller_query());
                 *self.runtime_cache.controller_cache.borrow_mut() = Some(ControllerCache {
                     revision: self.effect_store.continuous_effects.revision(),
                     turn_number: self.turn.turn_number,
@@ -4607,102 +4647,57 @@ impl GameState {
             let cache = self.runtime_cache.controller_cache.borrow();
             Arc::clone(&cache.as_ref()?.change_effects)
         };
-        let controller = self.controller_from_change_effects(id, object, &change_effects, None);
+        let controller = self.controller_from_known_effects(id, object, &change_effects, None)?;
         if let Some(cache) = self.runtime_cache.controller_cache.borrow().as_ref() {
             cache.resolved.borrow_mut().insert(id, controller);
         }
         Some(controller)
     }
 
-    fn controller_change_effects_for_cached_lookup(&self) -> Vec<ContinuousEffect> {
-        let mut effects: Vec<_> = self
-            .cached_continuous_effects_snapshot_arc()
-            .iter()
-            .filter(|effect| matches!(effect.modification, Modification::ChangeController(_)))
-            .cloned()
-            .collect();
-        effects.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
-        effects
+    fn cached_effects_for_controller_query(&self) -> Vec<ContinuousEffect> {
+        // Control predicates can inspect copy/type/ability facts. Retain the
+        // full known snapshot rather than querying discovery from a filter.
+        self.cached_continuous_effects_snapshot_arc().iter().cloned().collect()
     }
 
-    fn controller_change_effects_for_uncached_lookup(&self) -> Vec<ContinuousEffect> {
+    fn effects_for_controller_query(&self) -> Vec<ContinuousEffect> {
         if self.continuous_state_is_clean() {
-            self.controller_change_effects_for_cached_lookup()
+            self.cached_effects_for_controller_query()
         } else {
-            self.effect_store
-                .continuous_effects
-                .effects_sorted()
-                .into_iter()
-                .filter(|effect| matches!(effect.modification, Modification::ChangeController(_)))
-                .cloned()
-                .collect()
+            self.effect_store.continuous_effects.effects_sorted()
+                .into_iter().cloned().collect()
         }
     }
 
-    fn controller_from_change_effects(
+    fn controller_from_known_effects(
         &self,
         id: ObjectId,
         object: &Object,
         effects: &[ContinuousEffect],
         skipped_effect: Option<ContinuousEffectId>,
-    ) -> PlayerId {
-        let mut controller = object.owner;
-        for effect in effects
-            .iter()
-            .filter(|effect| matches!(effect.modification, Modification::ChangeController(_)))
+    ) -> Option<PlayerId> {
+        if !effects.iter().any(|effect|
+            skipped_effect != Some(effect.id)
+                && matches!(effect.modification, Modification::ChangeController(_)))
         {
-            if skipped_effect == Some(effect.id) {
-                continue;
-            }
-            if let EffectSourceType::Resolution { locked_targets } = &effect.source_type
-                && !locked_targets.contains(&id)
-            {
-                continue;
-            }
-            let can_apply = match &effect.applies_to {
-                EffectTarget::Specific(target) => *target == id,
-                EffectTarget::Source => effect.source == id,
-                EffectTarget::AllPermanents => object.zone == Zone::Battlefield,
-                EffectTarget::AttachedTo(source) => {
-                    self.object(*source)
-                        .and_then(|source| source.attached_to)
-                        .and_then(|target| target.object_id())
-                        == Some(id)
-                }
-                EffectTarget::AllCreatures | EffectTarget::Filter(_) => true,
-            };
-            if !can_apply {
-                continue;
-            }
-
-            if !crate::continuous::continuous_effect_duration_and_condition_are_active(effect, self)
-            {
-                continue;
-            }
-            let applies = match &effect.applies_to {
-                EffectTarget::Specific(target) => *target == id,
-                EffectTarget::Source => effect.source == id,
-                EffectTarget::AllPermanents => object.zone == Zone::Battlefield,
-                EffectTarget::AllCreatures => {
-                    object.zone == Zone::Battlefield && self.current_is_creature(id)
-                }
-                EffectTarget::Filter(filter) => filter.matches(
-                    object,
-                    &self.filter_context_for(effect.controller, Some(effect.source)),
-                    self,
-                ),
-                EffectTarget::AttachedTo(source) => {
-                    self.object(*source)
-                        .and_then(|source| source.attached_to)
-                        .and_then(|target| target.object_id())
-                        == Some(id)
-                }
-            };
-            if applies && let Modification::ChangeController(new_controller) = effect.modification {
-                controller = new_controller;
-            }
+            return Some(object.owner);
         }
-        controller
+        let query_effects: std::borrow::Cow<'_, [ContinuousEffect]> = match skipped_effect {
+            Some(skipped) => std::borrow::Cow::Owned(effects.iter()
+                .filter(|effect| effect.id != skipped).cloned().collect()),
+            None => std::borrow::Cow::Borrowed(effects),
+        };
+        // Duration checks that omit one control effect need an independent
+        // layer frame, not the enclosing frame that includes that effect.
+        let isolated;
+        let query_game = if skipped_effect.is_some() {
+            isolated = self.clone();
+            &isolated
+        } else { self };
+        crate::continuous::calculate_characteristics_with_effects(
+            id, query_game.objects_map(), &query_effects, &query_game.battlefield,
+            query_game.commander_objects(), query_game,
+        ).map(|chars| chars.controller)
     }
 
     /// Return the object's current controller, falling back to its owner if the
@@ -4719,24 +4714,32 @@ impl GameState {
         Some(self.controller_of(object))
     }
 
-    /// Set an object's controller as derived state rather than object storage.
-    pub fn set_current_controller(&mut self, id: ObjectId, controller: PlayerId) {
-        let Some(_) = self.object(id) else {
-            return;
-        };
-        if self.current_controller(id) == Some(controller) {
-            return;
-        }
+    /// Commit a controller change only after complete discovery succeeds.
+    /// The original game is preserved on both preflight and post-change errors.
+    pub fn set_current_controller(
+        &mut self,
+        id: ObjectId,
+        controller: PlayerId,
+    ) -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
+        if self.object(id).is_none() { return Ok(()); }
+        let mut working = self.continuous_query_snapshot()?;
+        if working.current_controller(id) == Some(controller) { return Ok(()); }
+        working.stage_controller_change_for_assembly(id, controller);
+        working.refresh_continuous_state()?;
+        *self = working;
+        Ok(())
+    }
+
+    /// Stage an ordinary control-changing effect while assembling an isolated
+    /// proposal. The caller must validate the complete proposal before publishing
+    /// it. This is not an initial/default controller assignment.
+    pub fn stage_controller_change_for_assembly(&mut self, id: ObjectId, controller: PlayerId) {
+        if self.object(id).is_none() || self.current_controller(id) == Some(controller) { return; }
         self.set_summoning_sick(id);
         let effect = ContinuousEffect::new(
-            id,
-            controller,
-            EffectTarget::Specific(id),
-            Modification::ChangeController(controller),
-        )
-        .until(Until::Forever);
+            id, controller, EffectTarget::Specific(id), Modification::ChangeController(controller),
+        ).until(Until::Forever);
         self.effect_store.continuous_effects.add_effect(effect);
-        self.refresh_continuous_state();
     }
 
     /// Return the object's current card types in its zone.

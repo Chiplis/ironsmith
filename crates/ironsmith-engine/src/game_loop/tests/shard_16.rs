@@ -3679,7 +3679,7 @@ pub(super) fn lightning_reflexes_schedules_sacrifice_only_for_non_sorcery_timing
 
     // The Oracle instruction follows the resulting permanent and uses its
     // current controller. A control change must not detach the delayed action.
-    off_time_game.set_current_controller(off_time_permanent, bob);
+    off_time_game.set_current_controller(off_time_permanent, bob).expect("finite controller fixture must refresh successfully");
     let cleanup = TriggerEvent::new_with_provenance(
         crate::events::phase::BeginningOfCleanupStepEvent::new(alice),
         crate::provenance::ProvNodeId::default(),
@@ -4139,7 +4139,7 @@ pub(super) fn scroll_of_isildur_chapter_one_steals_artifact_until_saga_not_contr
         "chapter I should choose Alice's only creature as Ring-bearer"
     );
 
-    game.set_current_controller(scroll_id, bob);
+    game.set_current_controller(scroll_id, bob).expect("finite controller fixture must refresh successfully");
     game.refresh_continuous_state();
     assert_eq!(
         game.current_controller(relic_id),

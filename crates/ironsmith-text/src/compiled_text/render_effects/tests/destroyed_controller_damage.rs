@@ -44,7 +44,7 @@ fn check_destroyed_count(protection: u8) {
         alice,
         Zone::Battlefield,
     );
-    game.set_current_controller(borrowed, bob);
+    game.set_current_controller(borrowed, bob).expect("finite controller fixture must refresh successfully");
     for _ in 0..4 {
         game.create_object_from_definition(&artifact, alice, Zone::Graveyard);
     }

@@ -2226,7 +2226,7 @@ mod tests {
         game.refresh_continuous_state();
         assert_eq!(game.current_characteristics(source).unwrap().abilities.len(), 2);
         assert_eq!(identities(&game), before, "removing another ability must not renumber permission origins");
-        game.set_current_controller(source, bob);
+        game.set_current_controller(source, bob).expect("finite controller fixture must refresh successfully");
         assert_eq!(identities(&game), before, "control changes preserve permission identity");
         assert_eq!(identities(&game.clone()), before, "checkpoints retain permission identity");
     }

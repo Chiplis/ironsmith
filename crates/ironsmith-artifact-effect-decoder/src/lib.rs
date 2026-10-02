@@ -104,6 +104,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "CreateTokenCopyEffect" => Some(EffectFamily::Permanent),
         "CreateTokenEffect" => Some(EffectFamily::Permanent),
         "CrewCostEffect" => Some(EffectFamily::Permanent),
+        "SaddleCostEffect" => Some(EffectFamily::Permanent),
         "CumulativeUpkeepEffect" => Some(EffectFamily::CompositionAL),
         "DealDamageEffect" => Some(EffectFamily::Combat),
         "DealDistributedDamageEffect" => Some(EffectFamily::Combat),

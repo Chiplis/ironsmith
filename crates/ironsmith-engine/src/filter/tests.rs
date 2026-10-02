@@ -3269,7 +3269,7 @@ fn qualified_rider_candidate_owner_filter_binds_live_and_snapshot_subjects() {
     let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Candidate owner probe")
         .card_types(vec![crate::types::CardType::Instant]).build();
     let id = game.create_object_from_card(&card, alice, crate::zone::Zone::Stack);
-    game.set_current_controller(id, bob);
+    game.set_current_controller(id, bob).expect("finite controller fixture must refresh successfully");
     let ctx = game.filter_context_for(bob, Some(id));
     let snapshot = crate::snapshot::ObjectSnapshot::from_object(game.object(id).unwrap(), &game);
     let candidate_owner = crate::filter::PlayerFilter::OwnerOf(crate::filter::ObjectRef::FilterCandidate);
