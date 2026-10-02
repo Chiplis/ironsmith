@@ -74,3 +74,5 @@ mod opening_hand_pregame;
 mod shard_00;
 mod shard_01;
 mod shard_02;
+
+mod hidden_resolution;

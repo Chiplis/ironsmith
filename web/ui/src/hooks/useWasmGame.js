@@ -41,6 +41,7 @@ const WORKER_METHODS = [
   "exportPublicAuditCheckpoint",
   "exportRedactedSyncCheckpoint",
   "exportSyncCheckpoint",
+  "isReplayCheckpointBoundary",
   "filterKnownCardNames",
   "finishPuzzleSetup",
   "forfeitPlayer",

@@ -19,8 +19,8 @@ export const DISCONNECT_FORFEIT_REASON = "disconnect_timeout_policy";
 export const DISCONNECT_AUTO_FORFEIT_MS = 60 * 1000;
 export const PROTOCOL_RESPONSE_TIMEOUT_REASON = "protocol_response_timeout_policy";
 export const PROTOCOL_RESPONSE_TIMEOUT_MS = 120 * 1000;
-export const CURRENT_AUDIT_PROTOCOL_VERSION = 16;
-const SUPPORTED_AUDIT_PROTOCOL_VERSIONS = new Set([14, CURRENT_AUDIT_PROTOCOL_VERSION]);
+export const CURRENT_AUDIT_PROTOCOL_VERSION = 17;
+const SUPPORTED_AUDIT_PROTOCOL_VERSIONS = new Set([14, 16, CURRENT_AUDIT_PROTOCOL_VERSION]);
 export const CURRENT_AUDIT_MIN_PLAYERS = 2;
 export const CURRENT_AUDIT_MAX_PLAYERS = 4;
 export const ZIFFLE_OPENING_PROOF_TYPE = "ziffle_position_opening_v1";
@@ -1606,7 +1606,7 @@ export async function verifyProtocolResponseTimeoutCertificate({
   };
 }
 
-function sequencedActionSignedPayload(action) {
+export function sequencedActionSignedPayload(action) {
   const audit = action?.audit || {};
   const signer = Number(audit.signer ?? audit.actor);
   return {

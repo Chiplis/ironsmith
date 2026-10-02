@@ -367,7 +367,7 @@ mod tests {
             crate::events::cause::EventCause::effect(),
         );
         assert!(
-            !matcher.matches_event(&unpreventable, &ctx),
+            !matcher.matches_event(&unpreventable, &ctx).expect("finite matcher fixture evaluates successfully"),
             "matcher should not match unpreventable damage"
         );
     }

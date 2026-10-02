@@ -20,8 +20,8 @@ use crate::zone::Zone;
 struct SmallLifeLoss(u32);
 
 impl ReplacementMatcher for SmallLifeLoss {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
-        WouldLoseLifeMatcher::you().matches_event(event, ctx)
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
+        WouldLoseLifeMatcher::you().matches_prepared_event(event, ctx)
             && crate::events::downcast_event::<crate::events::LifeLossEvent>(event)
                 .is_some_and(|event| event.amount <= self.0)
     }
@@ -604,7 +604,7 @@ fn radiation_replacements_preserve_radiation_flag_and_execute_instead() {
     #[derive(Clone, Debug)]
     struct RadiationLoss;
     impl ReplacementMatcher for RadiationLoss {
-        fn matches_event(&self, event: &dyn GameEventType, _: &EventContext) -> bool {
+        fn matches_prepared_event(&self, event: &dyn GameEventType, _: &crate::events::context::PreparedEventContext) -> bool {
             crate::events::downcast_event::<crate::events::LifeLossEvent>(event)
                 .is_some_and(|loss| loss.from_radiation)
         }

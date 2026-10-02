@@ -3980,6 +3980,7 @@ impl WasmGame {
         self.semantic_threshold = checkpoint.semantic_threshold;
         self.snapshot_serial = checkpoint.snapshot_serial;
         self.active_viewed_cards = None;
+        self.pending_decision_game = None;
         self.active_audit_viewed_cards.clear();
         self.active_resolving_stack_object = None;
         self.last_crypto_requirements.clear();

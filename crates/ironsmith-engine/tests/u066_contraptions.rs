@@ -153,7 +153,7 @@ fn u066_steamflogger_uses_the_generic_typed_keyword_action_replacement() {
             1,
         ),
         &event_context,
-    ));
+    ).expect("finite matcher fixture evaluates successfully"));
     assert!(!matcher.matches_event(
         &KeywordActionEvent::new(
             KeywordActionKind::AssembleContraption,
@@ -162,5 +162,5 @@ fn u066_steamflogger_uses_the_generic_typed_keyword_action_replacement() {
             1,
         ),
         &event_context,
-    ));
+    ).expect("finite matcher fixture evaluates successfully"));
 }

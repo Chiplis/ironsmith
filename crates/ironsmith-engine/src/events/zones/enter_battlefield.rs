@@ -410,6 +410,45 @@ impl EnterBattlefieldEvent {
         Some(prospective)
     }
 
+    /// Construct a complete prospective query world without publishing the
+    /// entry or running state-based game procedures. Missing objects remain
+    /// distinct from failed continuous-effect discovery.
+    pub(crate) fn try_prospective_game_state(
+        &self,
+        game: &GameState,
+    ) -> Result<Option<GameState>, crate::static_ability_processor::StaticEffectDiscoveryError> {
+        if game.object(self.object).is_none() {
+            return Ok(None);
+        }
+        // Copy values must be read from a complete original world, before the
+        // entrant's own changes are applied in the separate prospective world.
+        let original = game.continuous_query_snapshot()?;
+        // Assemble every entry field before evaluating the final world. The
+        // public controller setter performs game procedures; speculative
+        // construction must only stage the same control modification.
+        let mut entry = self.clone();
+        entry.controller_override = None;
+        let Some(mut prospective) = entry.prospective_game_state(&original) else {
+            return Ok(None);
+        };
+        if let Some(controller) = self.controller_override
+            && original.current_controller(self.object) != Some(controller)
+        {
+            prospective.set_summoning_sick(self.object);
+            prospective.effect_store.continuous_effects.add_effect(
+                crate::continuous::ContinuousEffect::new(
+                    self.object,
+                    controller,
+                    crate::continuous::EffectTarget::Specific(self.object),
+                    crate::continuous::Modification::ChangeController(controller),
+                ).until(crate::effect::Until::Forever),
+            );
+        }
+        // Completeness does not carry across the zone, copy, control, counter,
+        // ability and prepared-choice modifications.
+        prospective.continuous_query_snapshot().map(Some)
+    }
+
     /// Get the total count of a specific counter type.
     pub fn counter_count(&self, counter_type: CounterType) -> u32 {
         self.enters_with_counters

@@ -7,7 +7,7 @@ import { createServer } from 'vite';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-for (const cardName of ['Brainstorm', 'Faithless Looting']) test(`${cardName} keeps committed identities across private draws and hand choices`, { timeout: 120000 }, async t => {
+for (const cardName of ['Brainstorm', 'Faithless Looting', 'Spelunking', 'Collected Company']) test(`${cardName} keeps committed identities across private draws and hand choices`, { timeout: 120000 }, async t => {
   const server = await createServer({ root, configFile: path.join(root, 'vite.config.js'), logLevel: 'error',
     server: { host: '127.0.0.1', port: 0, hmr: false, watch: null } });
   await server.listen(); t.after(() => server.close());
@@ -101,7 +101,9 @@ for (const cardName of ['Brainstorm', 'Faithless Looting']) test(`${cardName} ke
       await call('revealHiddenPosition', { owner: 1, objectId: afterOrder[position], position,
         originalSlot: spellSlot, cardName: secret.card, positionCommitment, commitment: secret.commitment });
       for (let index = deckCount - 1; index >= position; index--) await call('drawCard', 1);
-      await call('addCardToZone', 1, cardName === 'Brainstorm' ? 'Island' : 'Mountain', 'battlefield', true);
+      const manaLand = cardName === 'Brainstorm' ? 'Island' : cardName === 'Faithless Looting' ? 'Mountain' : 'Forest';
+      const manaCount = cardName === 'Collected Company' ? 4 : cardName === 'Spelunking' ? 3 : 1;
+      for (let index = 0; index < manaCount; index++) await call('addCardToZone', 1, manaLand, 'battlefield', true);
       state = await call('uiState');
       const handSpell = state.players[1].hand_cards.find(card => card.name === cardName);
       if (!handSpell) throw new Error('Draw did not produce the committed spell');
@@ -215,7 +217,7 @@ for (const cardName of ['Brainstorm', 'Faithless Looting']) test(`${cardName} ke
         for (let index = 0; index < 8 && state.decision?.kind !== 'priority'; index++) {
           const decision = state.decision;
           if (decision.kind === 'select_objects') {
-            const chosen = decision.candidates.filter(candidate => candidate.legal).slice(0, decision.min);
+            const chosen = decision.candidates.filter(candidate => candidate.legal).slice(0, cardName === 'Spelunking' ? 1 : decision.min);
             const command = { type: 'select_objects', object_ids: chosen.map(candidate => candidate.id),
               object_hidden_refs: chosen.map(candidate => ({ owner: candidate.hidden_ref.owner, zone: candidate.hidden_ref.zone,
                 public_slot: candidate.hidden_ref.public_slot, public_commitment: candidate.hidden_ref.public_commitment })) };
@@ -266,6 +268,27 @@ for (const cardName of ['Brainstorm', 'Faithless Looting']) test(`${cardName} ke
   assert.equal(result.error, null, `${cardName} failed at ${result.stage}`);
   assert.equal(result.finalDecision, 'priority');
   assert.equal(result.hashesEqual, true, 'both peers agree after public opening application');
+  if (['Spelunking', 'Collected Company'].includes(cardName)) {
+    assert.equal(result.owner.hand, 0);
+    assert.equal(result.owner.library, cardName === 'Spelunking' ? 59 : 60);
+    assert.ok(result.stages.every(stage => stage.hashesEqual), 'public hashes match at every suspended instruction');
+    const resolving = result.stages.find(stage => stage.label === 'resolve-pass-1');
+    assert.equal(resolving.privateCount, cardName === 'Spelunking' ? 1 : 6);
+    assert.equal(resolving.decision.kind, cardName === 'Spelunking' ? 'select_options' : 'select_objects');
+    if (cardName === 'Spelunking') {
+      const landChoice = result.stages.find(stage => stage.label.startsWith('ordering-'));
+      assert.equal(landChoice.decision.kind, 'select_objects');
+      assert.ok(landChoice.decision.candidates.every(card => card.name === 'Island'));
+      assert.ok(landChoice.peerDecision.candidates.every(card => card.name === 'Hidden card'));
+      assert.ok(result.stages.flatMap(stage => stage.openings).some(opening => opening.card === 'Island'),
+        'putting the privately drawn land onto the battlefield requires its public proof');
+    } else {
+      assert.equal(resolving.decision.candidates.length, 0, 'the owner knows none of the six cards is a creature');
+      assert.equal(resolving.peerDecision.candidates.length, 6, 'the peer retains the same explicit private choice');
+    }
+    assert.ok(result.stages.flatMap(stage => stage.openings).every(opening => opening.proof && opening.salted));
+    return;
+  }
   assert.equal(result.owner.hand, cardName === 'Brainstorm' ? 1 : 0);
   assert.equal(result.owner.library, cardName === 'Brainstorm' ? 59 : 56);
   assert.equal(result.owner.graveyard.length, cardName === 'Brainstorm' ? 1 : 4);

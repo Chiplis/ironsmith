@@ -669,6 +669,10 @@ export function usePeerLobby({
         return result;
       };
       assertSubmissionActive();
+      if (servicesRef.current.isRecoveringSequencedActions?.() && !isForfeitCommand(command)) {
+        setStatus("Waiting for missing actions to be verified", true);
+        return;
+      }
       let session = multiplayerRef.current;
       if (!session.matchStarted) {
         setStatus("Match has not started yet", true);
@@ -2051,9 +2055,14 @@ export function usePeerLobby({
   // Timer lifetimes must not depend on the action callback, whose dependencies
   // can change on each render. Restarting a timer runs its immediate tick again,
   // which publishes state and can starve socket reconnect events in a render loop.
-  const submitMultiplayerCommand = useCallback((command, label = "") =>
-    optimisticState.stageOptimisticLocalCommand(command, label, submitVerifiedMultiplayerCommand),
-  [optimisticState, submitVerifiedMultiplayerCommand]);
+  const submitMultiplayerCommand = useCallback((command, label = "") => {
+    if (servicesRef.current.isRecoveringSequencedActions?.() && !isForfeitCommand(command)) {
+      setStatus("Waiting for missing actions to be verified", true);
+      return Promise.resolve(false);
+    }
+    return optimisticState.stageOptimisticLocalCommand(command, label, submitVerifiedMultiplayerCommand);
+  },
+  [optimisticState, submitVerifiedMultiplayerCommand, setStatus]);
 
   // Sub-hooks reach these through servicesRef (timeout claims, witness forfeits).
   servicesRef.current.submitMultiplayerCommand = submitMultiplayerCommand;

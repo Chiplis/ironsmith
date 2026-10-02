@@ -5920,7 +5920,7 @@ mod tests {
         let mut processor_game = game.clone();
         let processed = crate::events::processing::process_trait_event(
             &mut processor_game, crate::events::Event::draw_in_instruction(alice, 1, true, true, true),
-        );
+        ).expect("finite replacement fixture evaluates successfully");
         let (crate::events::processing::TraitEventResult::Proceed(event) | crate::events::processing::TraitEventResult::Modified(event)) = processed else {
             panic!("the draw redirect must produce a modified carrier");
         };

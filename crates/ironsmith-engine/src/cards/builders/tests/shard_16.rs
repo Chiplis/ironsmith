@@ -2657,7 +2657,7 @@ pub(super) fn kami_of_whispered_hopes_adds_one_counter_only_to_your_matching_per
             crate::object::CounterType::PlusOnePlusOne,
             2,
             crate::events::EventCause::effect(),
-        ),
+        ).expect("finite replacement fixture evaluates successfully"),
         3,
         "Kami should add exactly one +1/+1 counter to your permanent"
     );
@@ -2668,7 +2668,7 @@ pub(super) fn kami_of_whispered_hopes_adds_one_counter_only_to_your_matching_per
             crate::object::CounterType::PlusOnePlusOne,
             2,
             crate::events::EventCause::effect(),
-        ),
+        ).expect("finite replacement fixture evaluates successfully"),
         2,
         "Kami must not modify counters placed on an opponent's permanent"
     );

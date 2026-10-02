@@ -222,3 +222,49 @@ test('suspension during timeout hashing gives queued packets a fresh observation
   await h.advance(6000);
   assert.equal(h.claims.length, 1);
 });
+
+function retryHarness() {
+  const h = harness();
+  const c = h.context;
+  c.ignoredActionIntentKeysRef = { current: new Map() };
+  c.IGNORED_ACTION_INTENT_TTL_MS = 600000; c.MAX_IGNORED_ACTION_INTENTS = 256;
+  c.actionIntentCancelPayload = (intent, reason) => ({ intent, reason });
+  c.importCachedAuditPublicKey = async () => 'key'; c.publicKeyForAuditSigner = () => 'key';
+  c.verifyAuditPayload = async (_key, _payload, signature) => signature === 'valid';
+  c.markActionIntentObservationCancelled = () => {};
+  c.servicesRef.current.cancelOptimisticIntent = async () => {};
+  vm.runInContext(['pruneIgnoredActionIntents', 'rememberIgnoredActionIntentKey',
+    'ignoredActionIntentReason', 'protocolActionIntentInactiveReason',
+    'handleActionIntentCancelMessage'].map(implementation).join('\n'), c);
+  return h;
+}
+
+test('cancelling one signed attempt permits a fresh attempt at the same sequence', async () => {
+  const h = retryHarness();
+  const first = { ...h.intent, attemptId: 'first' };
+  let pending = h.remember(4000, first); await h.settle(); h.observations.pop()({}); await pending;
+  await h.context.handleActionIntentCancelMessage({ actionIntent: first, cancelSignature: 'valid', reason: 'failed' });
+  assert.equal(h.record(), undefined);
+  assert.equal(h.context.ignoredActionIntentReason(h.key, first), 'failed');
+  const retry = { ...first, attemptId: 'retry', command: { type: 'select_objects', object_ids: [] } };
+  pending = h.remember(4000, retry); await h.settle(); h.observations.pop()({}); await pending;
+  assert.equal(h.record().intent.attemptId, 'retry');
+  assert.equal(h.context.ignoredActionIntentReason(h.key, retry), '');
+  await h.context.handleActionIntentCancelMessage({ actionIntent: first, cancelSignature: 'valid', reason: 'late cancel' });
+  assert.equal(h.record().intent.attemptId, 'retry', 'a delayed old cancel cannot drop the new attempt');
+});
+
+test('fresh attempt IDs cannot bypass a command pinned by disclosed material', async () => {
+  const h = retryHarness();
+  h.context.servicesRef.current.fairRandomRevealLockConflict = value => value.command.type !== 'mana_payment';
+  await assert.rejects(h.remember(4000, { ...h.intent, attemptId: 'new', command: { type: 'select_objects' } }),
+    /conflicting signed action intent/);
+  assert.equal(h.record(), undefined);
+});
+
+test('forged cancellation cannot retire an attempt or clear its pending record', async () => {
+  const h = retryHarness(); await readyIntent(h);
+  await assert.rejects(h.context.handleActionIntentCancelMessage({ actionIntent: h.intent, cancelSignature: 'forged' }),
+    /not signed/);
+  assert.ok(h.record()); assert.equal(h.context.ignoredActionIntentKeysRef.current.size, 0);
+});

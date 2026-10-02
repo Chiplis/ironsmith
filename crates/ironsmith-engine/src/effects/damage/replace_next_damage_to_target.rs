@@ -22,7 +22,7 @@ struct DamageToExactTargetMatcher {
 }
 
 impl ReplacementMatcher for DamageToExactTargetMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, _ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, _ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
         }
@@ -217,6 +217,6 @@ mod tests {
             EventCause::effect(),
         );
         let ctx = EventContext::for_replacement_effect(alice, source, &game);
-        assert!(matcher.matches_event(&event, &ctx));
+        assert!(matcher.matches_event(&event, &ctx).expect("finite matcher fixture evaluates successfully"));
     }
 }

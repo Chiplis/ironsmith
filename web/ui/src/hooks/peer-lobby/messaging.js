@@ -413,6 +413,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       }
       await servicesRef.current.resetOptimisticState?.("State recovery");
       servicesRef.current.resetProtocolActionOrder?.("State recovery");
+      servicesRef.current.resetSequencedActionRecovery?.();
       const matchPayload = message?.match;
       assertRuntimeVersion(matchPayload);
       if (!matchPayload || typeof matchPayload !== "object") {
@@ -2697,6 +2698,12 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         case "trusted_command_error":
           servicesRef.current.rejectTrustedIntent(message);
           return;
+        case "signed_action_recovery_request":
+          servicesRef.current.answerSignedActionRecoveryRequest(hostConnectionRef.current, message);
+          return;
+        case "signed_action_recovery_response":
+          await servicesRef.current.receiveSignedActionRecoveryResponse(hostConnectionRef.current, message);
+          return;
         case "apply_action": {
           if (isTrustedMultiplayerSecurityMode(sessionSecurityMode(multiplayerRef.current))
               && message.matchId !== relayMatchId(matchStartPayloadRef.current)) return;
@@ -2797,6 +2804,12 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         return;
       case "lobby_chat_send":
         publishLobbyChat(conn.peer, message.text);
+        return;
+      case "signed_action_recovery_request":
+        servicesRef.current.answerSignedActionRecoveryRequest(conn, message);
+        return;
+      case "signed_action_recovery_response":
+        await servicesRef.current.receiveSignedActionRecoveryResponse(conn, message);
         return;
       case "apply_action":
         if (isTrustedMultiplayerSecurityMode(sessionSecurityMode(multiplayerRef.current))) return;
@@ -2991,6 +3004,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           || message?.type === "protocol_timeout_vote_response"
           || message?.type === "action_quorum_vote_request"
           || message?.type === "action_quorum_vote_response"
+          || message?.type === "signed_action_recovery_request"
+          || message?.type === "signed_action_recovery_response"
           || message?.type === "crypto_material_request"
           || message?.type === "crypto_material_response"
           || message?.type === "action_intent_progress"
@@ -3219,6 +3234,12 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           safeSend(conn, { type: "trusted_command_error", protocolVersion: PROTOCOL_VERSION,
             commandId: message.commandId, reason: toErrorMessage(error) });
         }
+        return;
+      case "signed_action_recovery_request":
+        servicesRef.current.answerSignedActionRecoveryRequest(conn, message);
+        return;
+      case "signed_action_recovery_response":
+        await servicesRef.current.receiveSignedActionRecoveryResponse(conn, message);
         return;
       case "apply_action": {
         if (isTrustedMultiplayerSecurityMode(sessionSecurityMode(multiplayerRef.current))) return;
@@ -3932,6 +3953,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           || message?.type === "protocol_timeout_vote_response"
           || message?.type === "action_quorum_vote_request"
           || message?.type === "action_quorum_vote_response"
+          || message?.type === "signed_action_recovery_request"
+          || message?.type === "signed_action_recovery_response"
           || message?.type === "crypto_material_request"
           || message?.type === "crypto_material_response"
           || message?.type === "action_intent_progress"
@@ -4897,6 +4920,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
             || message?.type === "protocol_timeout_vote_response"
             || message?.type === "action_quorum_vote_request"
             || message?.type === "action_quorum_vote_response"
+            || message?.type === "signed_action_recovery_request"
+            || message?.type === "signed_action_recovery_response"
             || message?.type === "crypto_material_request"
             || message?.type === "crypto_material_response"
             || message?.type === "action_intent_progress"

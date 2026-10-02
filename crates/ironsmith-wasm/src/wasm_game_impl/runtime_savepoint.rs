@@ -80,6 +80,7 @@ runtime_savepoint! {
     pregame: Option<PregameState>,
     match_format: MatchFormatInput,
     pending_decision: Option<DecisionContext>,
+    pending_decision_game: Option<Box<GameState>>,
     pending_replay_action: Option<PendingReplayAction>,
     pending_action_checkpoint: Option<ReplayCheckpoint>,
     pending_live_action_root: Option<PriorityResponse>,

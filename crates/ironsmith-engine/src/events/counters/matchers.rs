@@ -44,7 +44,7 @@ impl WouldPutCountersMatcher {
 }
 
 impl ReplacementMatcher for WouldPutCountersMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::PutCounters {
             return false;
         }
@@ -111,7 +111,7 @@ impl WouldRemoveCountersMatcher {
 }
 
 impl ReplacementMatcher for WouldRemoveCountersMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::RemoveCounters {
             return false;
         }
@@ -175,7 +175,7 @@ mod tests {
         );
 
         // Won't match because object doesn't exist in game
-        assert!(!matcher.matches_event(&event, &ctx));
+        assert!(!matcher.matches_event(&event, &ctx).expect("finite matcher fixture evaluates successfully"));
     }
 
     #[test]
@@ -195,7 +195,7 @@ mod tests {
         );
 
         // Won't match even if object existed because counter type is wrong
-        assert!(!matcher.matches_event(&event, &ctx));
+        assert!(!matcher.matches_event(&event, &ctx).expect("finite matcher fixture evaluates successfully"));
     }
 
     #[test]
@@ -232,6 +232,6 @@ mod tests {
             crate::events::cause::EventCause::from_combat_damage(ObjectId::from_raw(2), alice),
         );
 
-        assert!(!matcher.matches_event(&event, &ctx));
+        assert!(!matcher.matches_event(&event, &ctx).expect("finite matcher fixture evaluates successfully"));
     }
 }

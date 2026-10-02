@@ -40,7 +40,7 @@ impl DamageToPlayerMatcher {
 }
 
 impl ReplacementMatcher for DamageToPlayerMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
         }
@@ -74,7 +74,7 @@ pub struct PreventableDamageToPlayerMatcher {
 }
 
 impl ReplacementMatcher for PreventableDamageToPlayerMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
         }
@@ -114,7 +114,7 @@ impl DamageToObjectMatcher {
 }
 
 impl ReplacementMatcher for DamageToObjectMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
         }
@@ -157,7 +157,7 @@ impl DamageToPlayerOrObjectMatcher {
 }
 
 impl ReplacementMatcher for DamageToPlayerOrObjectMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
         }
@@ -190,7 +190,7 @@ impl ReplacementMatcher for DamageToPlayerOrObjectMatcher {
 pub struct CombatDamageMatcher;
 
 impl ReplacementMatcher for CombatDamageMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, _ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, _ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
         }
@@ -220,7 +220,7 @@ impl PreventableCombatDamageToObjectMatcher {
 }
 
 impl ReplacementMatcher for PreventableCombatDamageToObjectMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
         }
@@ -267,7 +267,7 @@ impl PreventableNoncombatDamageToObjectMatcher {
 }
 
 impl ReplacementMatcher for PreventableNoncombatDamageToObjectMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
         }
@@ -306,7 +306,7 @@ impl ReplacementMatcher for PreventableNoncombatDamageToObjectMatcher {
 pub struct NoncombatDamageMatcher;
 
 impl ReplacementMatcher for NoncombatDamageMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, _ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, _ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
         }
@@ -341,7 +341,7 @@ impl DamageFromSourceMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSourceMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
         }
@@ -388,7 +388,7 @@ impl DamageFromSourceToPlayerMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSourceToPlayerMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
         }
@@ -495,7 +495,7 @@ impl DamageFromSourceToObjectMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSourceToObjectMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
         }
@@ -548,7 +548,7 @@ impl Default for DamageFromSelfMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSelfMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
         }
@@ -594,7 +594,7 @@ impl Default for DamageToOrFromSelfMatcher {
 }
 
 impl ReplacementMatcher for DamageToOrFromSelfMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
         }
@@ -640,7 +640,7 @@ impl Default for DamageFromSelfCombatMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSelfCombatMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
         }
@@ -755,7 +755,7 @@ impl PreventableDamageConstraintMatcher {
 }
 
 impl ReplacementMatcher for PreventableDamageConstraintMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
         }
@@ -837,7 +837,7 @@ impl Default for DamageToSelfMatcher {
 }
 
 impl ReplacementMatcher for DamageToSelfMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
         }
@@ -878,7 +878,7 @@ impl Default for DamageToAttachedObjectMatcher {
 }
 
 impl ReplacementMatcher for DamageToAttachedObjectMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
         }
@@ -943,7 +943,7 @@ impl DamageToSelfConstraintMatcher {
 }
 
 impl ReplacementMatcher for DamageToSelfConstraintMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
         }
@@ -1013,7 +1013,7 @@ impl Default for DamageToSelfCombatMatcher {
 }
 
 impl ReplacementMatcher for DamageToSelfCombatMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
         }
@@ -1062,7 +1062,7 @@ impl DamageToOtherCreatureYouControlMatcher {
 }
 
 impl ReplacementMatcher for DamageToOtherCreatureYouControlMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
         }
@@ -1136,7 +1136,7 @@ impl DamageToSelfFromSourceFilterMatcher {
 }
 
 impl ReplacementMatcher for DamageToSelfFromSourceFilterMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
         }
@@ -1237,11 +1237,11 @@ mod tests {
 
         // Damage to Alice (the controller) should match
         let event_to_alice = damage(ObjectId::from_raw(1), DamageTarget::Player(alice), 3, false);
-        assert!(matcher.matches_event(&event_to_alice, &ctx));
+        assert!(matcher.matches_event(&event_to_alice, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         // Damage to Bob should not match "you"
         let event_to_bob = damage(ObjectId::from_raw(1), DamageTarget::Player(bob), 3, false);
-        assert!(!matcher.matches_event(&event_to_bob, &ctx));
+        assert!(!matcher.matches_event(&event_to_bob, &ctx).expect("finite matcher fixture evaluates successfully"));
     }
 
     #[test]
@@ -1253,10 +1253,10 @@ mod tests {
         let matcher = CombatDamageMatcher;
 
         let combat_damage = damage(ObjectId::from_raw(1), DamageTarget::Player(alice), 3, true);
-        assert!(matcher.matches_event(&combat_damage, &ctx));
+        assert!(matcher.matches_event(&combat_damage, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         let noncombat_damage = damage(ObjectId::from_raw(1), DamageTarget::Player(alice), 3, false);
-        assert!(!matcher.matches_event(&noncombat_damage, &ctx));
+        assert!(!matcher.matches_event(&noncombat_damage, &ctx).expect("finite matcher fixture evaluates successfully"));
     }
 
     #[test]
@@ -1268,10 +1268,10 @@ mod tests {
         let matcher = NoncombatDamageMatcher;
 
         let noncombat_damage = damage(ObjectId::from_raw(1), DamageTarget::Player(alice), 3, false);
-        assert!(matcher.matches_event(&noncombat_damage, &ctx));
+        assert!(matcher.matches_event(&noncombat_damage, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         let combat_damage = damage(ObjectId::from_raw(1), DamageTarget::Player(alice), 3, true);
-        assert!(!matcher.matches_event(&combat_damage, &ctx));
+        assert!(!matcher.matches_event(&combat_damage, &ctx).expect("finite matcher fixture evaluates successfully"));
     }
 
     #[test]
@@ -1290,19 +1290,19 @@ mod tests {
         let ctx = EventContext::for_replacement_effect(alice, src, &game);
 
         let combat_to_self = damage(src, DamageTarget::Object(src), 3, true);
-        assert!(matcher.matches_event(&combat_to_self, &ctx));
+        assert!(matcher.matches_event(&combat_to_self, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         let noncombat_to_self = damage(src, DamageTarget::Object(src), 3, false);
-        assert!(!matcher.matches_event(&noncombat_to_self, &ctx));
+        assert!(!matcher.matches_event(&noncombat_to_self, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         let combat_to_other = damage(src, DamageTarget::Object(ObjectId::from_raw(7)), 3, true);
-        assert!(!matcher.matches_event(&combat_to_other, &ctx));
+        assert!(!matcher.matches_event(&combat_to_other, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         let combat_to_player = damage(src, DamageTarget::Player(alice), 3, true);
-        assert!(!matcher.matches_event(&combat_to_player, &ctx));
+        assert!(!matcher.matches_event(&combat_to_player, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         let unpreventable = unpreventable_damage(src, DamageTarget::Object(src), 3, true);
-        assert!(!matcher.matches_event(&unpreventable, &ctx));
+        assert!(!matcher.matches_event(&unpreventable, &ctx).expect("finite matcher fixture evaluates successfully"));
     }
 
     #[test]
@@ -1316,15 +1316,15 @@ mod tests {
 
         // Damage from the replacement effect's source should match.
         let from_src = damage(src, DamageTarget::Player(alice), 3, false);
-        assert!(matcher.matches_event(&from_src, &ctx));
+        assert!(matcher.matches_event(&from_src, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         // Damage from a different source should not match.
         let other = damage(ObjectId::from_raw(7), DamageTarget::Player(alice), 3, false);
-        assert!(!matcher.matches_event(&other, &ctx));
+        assert!(!matcher.matches_event(&other, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         // Unpreventable damage should not match (prevention can't apply).
         let unpreventable = unpreventable_damage(src, DamageTarget::Player(alice), 3, false);
-        assert!(!matcher.matches_event(&unpreventable, &ctx));
+        assert!(!matcher.matches_event(&unpreventable, &ctx).expect("finite matcher fixture evaluates successfully"));
     }
 
     #[test]
@@ -1337,17 +1337,17 @@ mod tests {
         let matcher = DamageFromSelfCombatMatcher::new();
 
         let combat_from_src = damage(src, DamageTarget::Player(alice), 3, true);
-        assert!(matcher.matches_event(&combat_from_src, &ctx));
+        assert!(matcher.matches_event(&combat_from_src, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         let noncombat_from_src = damage(src, DamageTarget::Player(alice), 3, false);
-        assert!(!matcher.matches_event(&noncombat_from_src, &ctx));
+        assert!(!matcher.matches_event(&noncombat_from_src, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         let other_source = damage(ObjectId::from_raw(7), DamageTarget::Player(alice), 3, true);
-        assert!(!matcher.matches_event(&other_source, &ctx));
+        assert!(!matcher.matches_event(&other_source, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         let unpreventable_from_src =
             unpreventable_damage(src, DamageTarget::Player(alice), 3, true);
-        assert!(!matcher.matches_event(&unpreventable_from_src, &ctx));
+        assert!(!matcher.matches_event(&unpreventable_from_src, &ctx).expect("finite matcher fixture evaluates successfully"));
     }
 
     #[test]
@@ -1376,10 +1376,10 @@ mod tests {
         let ctx = EventContext::for_replacement_effect(alice, target, &game);
 
         let creature_damage = damage(creature_source, DamageTarget::Object(target), 3, false);
-        assert!(matcher.matches_event(&creature_damage, &ctx));
+        assert!(matcher.matches_event(&creature_damage, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         let noncreature_damage = damage(artifact_source, DamageTarget::Object(target), 3, false);
-        assert!(!matcher.matches_event(&noncreature_damage, &ctx));
+        assert!(!matcher.matches_event(&noncreature_damage, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         let wrong_target_damage = damage(
             creature_source,
@@ -1387,11 +1387,11 @@ mod tests {
             3,
             false,
         );
-        assert!(!matcher.matches_event(&wrong_target_damage, &ctx));
+        assert!(!matcher.matches_event(&wrong_target_damage, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         let unpreventable =
             unpreventable_damage(creature_source, DamageTarget::Object(target), 3, false);
-        assert!(!matcher.matches_event(&unpreventable, &ctx));
+        assert!(!matcher.matches_event(&unpreventable, &ctx).expect("finite matcher fixture evaluates successfully"));
     }
 
     #[test]
@@ -1422,13 +1422,13 @@ mod tests {
         let ctx = EventContext::for_replacement_effect(alice, replacement_source, &game);
 
         let matching_damage = damage(creature_source, DamageTarget::Player(alice), 3, false);
-        assert!(matcher.matches_event(&matching_damage, &ctx));
+        assert!(matcher.matches_event(&matching_damage, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         let nonmatching_source = damage(artifact_source, DamageTarget::Player(alice), 3, false);
-        assert!(!matcher.matches_event(&nonmatching_source, &ctx));
+        assert!(!matcher.matches_event(&nonmatching_source, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         let wrong_player = damage(creature_source, DamageTarget::Player(bob), 3, false);
-        assert!(!matcher.matches_event(&wrong_player, &ctx));
+        assert!(!matcher.matches_event(&wrong_player, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         let object_target = damage(
             creature_source,
@@ -1436,11 +1436,11 @@ mod tests {
             3,
             false,
         );
-        assert!(!matcher.matches_event(&object_target, &ctx));
+        assert!(!matcher.matches_event(&object_target, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         let unpreventable =
             unpreventable_damage(creature_source, DamageTarget::Player(alice), 3, false);
-        assert!(!matcher.matches_event(&unpreventable, &ctx));
+        assert!(!matcher.matches_event(&unpreventable, &ctx).expect("finite matcher fixture evaluates successfully"));
     }
 
     #[test]
@@ -1474,25 +1474,25 @@ mod tests {
         let ctx = EventContext::for_replacement_effect(alice, target, &game)
             .with_event_source_snapshot(Some(&source_snapshot));
 
-        assert!(DamageFromSourceMatcher::from_creature().matches_event(&from_creature, &ctx));
+        assert!(DamageFromSourceMatcher::from_creature().matches_event(&from_creature, &ctx).expect("finite matcher fixture evaluates successfully"));
         assert!(
             DamageFromSourceToPlayerMatcher::to_you(ObjectFilter::creature())
-                .matches_event(&damage(source, DamageTarget::Player(alice), 3, false), &ctx)
+                .matches_event(&damage(source, DamageTarget::Player(alice), 3, false), &ctx).expect("finite matcher fixture evaluates successfully")
         );
         assert!(
             PreventableDamageConstraintMatcher::from_filter(
                 ObjectFilter::creature(),
                 DamageTargetConstraint::Any,
             )
-            .matches_event(&from_creature, &ctx)
+            .matches_event(&from_creature, &ctx).expect("finite matcher fixture evaluates successfully")
         );
         assert!(
             DamageToSelfFromSourceFilterMatcher::from_creature()
-                .matches_event(&from_creature, &ctx)
+                .matches_event(&from_creature, &ctx).expect("finite matcher fixture evaluates successfully")
         );
         assert!(
             DamageToSelfConstraintMatcher::from_source_filter(ObjectFilter::creature())
-                .matches_event(&from_creature, &ctx)
+                .matches_event(&from_creature, &ctx).expect("finite matcher fixture evaluates successfully")
         );
     }
 }

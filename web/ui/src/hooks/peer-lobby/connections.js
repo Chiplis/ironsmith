@@ -2986,6 +2986,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
     const { keyPair } = await ensureAuditIdentity();
     const payload = signedActionIntentPayload({
       matchId: currentAuditMatchId(),
+      attemptId: randomAuditHex(16),
       seq,
       actorIndex,
       prevStateHash,
@@ -3014,9 +3015,11 @@ export function usePeerLobbyConnections(base, servicesRef) {
         ?? expected.publicCheckpointHash
         ?? payload.preActionPublicCheckpointHash,
       command: expected.command ?? payload.command,
+      attemptId: expected.attemptId ?? payload.attemptId,
     });
     if (
       payload.domain !== ACTION_INTENT_DOMAIN
+      || String(payload.attemptId || "") !== String(expectedPayload.attemptId || "")
       || payload.matchId !== expectedPayload.matchId
       || Number(payload.seq) !== Number(expectedPayload.seq)
       || Number(payload.actorIndex) !== Number(expectedPayload.actorIndex)
@@ -3054,24 +3057,27 @@ export function usePeerLobbyConnections(base, servicesRef) {
     }
   }
 
-  function rememberIgnoredActionIntentKey(actionIntentKeyValue, reason = "") {
+  function rememberIgnoredActionIntentKey(actionIntentKeyValue, reason = "", intent = null) {
     const key = String(actionIntentKeyValue || "");
     if (!key) return false;
+    const fingerprint = intent ? actionIntentFingerprint(intent) : "";
+    const storageKey = fingerprint ? `${key}:${fingerprint}` : key;
     const nowMs = Date.now();
-    ignoredActionIntentKeysRef.current.set(key, {
-      reason: String(reason || ""),
-      at: nowMs,
-    });
+    ignoredActionIntentKeysRef.current.set(storageKey, { reason: String(reason || ""), at: nowMs });
     pruneIgnoredActionIntents(nowMs);
-    clearPeerWaitForActionIntent(key);
+    const active = pendingActionIntentsRef.current.get(key);
+    if (!active || !intent || active.fingerprint === fingerprint) clearPeerWaitForActionIntent(key);
     return true;
   }
 
-  function ignoredActionIntentReason(actionIntentKeyValue) {
+  function ignoredActionIntentReason(actionIntentKeyValue, intent = null) {
     const key = String(actionIntentKeyValue || "");
     if (!key) return "";
     pruneIgnoredActionIntents();
-    return String(ignoredActionIntentKeysRef.current.get(key)?.reason || "");
+    const currentIntent = intent || pendingActionIntentsRef.current.get(key)?.intent;
+    const specific = currentIntent
+      ? ignoredActionIntentKeysRef.current.get(`${key}:${actionIntentFingerprint(currentIntent)}`) : null;
+    return String(specific?.reason || ignoredActionIntentKeysRef.current.get(key)?.reason || "");
   }
 
   function actionIntentKeyFromProtocolPayload(payload = {}) {
@@ -3092,8 +3098,8 @@ export function usePeerLobbyConnections(base, servicesRef) {
     return actionIntentKeyFromProtocolPayload(claim.requestPayload || claim.request_payload || claim);
   }
 
-  function protocolActionIntentInactiveReason(actionIntentKeyValue = "") {
-    const ignoredReason = ignoredActionIntentReason(actionIntentKeyValue);
+  function protocolActionIntentInactiveReason(actionIntentKeyValue = "", intent = null) {
+    const ignoredReason = ignoredActionIntentReason(actionIntentKeyValue, intent);
     if (ignoredReason) return ignoredReason;
     const session = multiplayerRef.current;
     if (session.mode === "disputed") return "match_disputed";
@@ -3367,7 +3373,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
     if (servicesRef.current.fairRandomRevealLockConflict?.(verifiedIntent)) {
       throw new Error("Refusing conflicting signed action intent for this sequence");
     }
-    const inactiveReason = protocolActionIntentInactiveReason(key);
+    const inactiveReason = protocolActionIntentInactiveReason(key, verifiedIntent);
     if (inactiveReason) {
       recordPeerSyncPerf("action_intent:ignored", {
         key,
@@ -3541,6 +3547,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
     const payload = signedActionIntentPayload(intent);
     const key = actionIntentKey(payload);
     const actorName = playerNameForIndex(multiplayerRef.current.players, payload.actorIndex);
+    if (servicesRef.current.isRecoveringSequencedActions?.()) return;
     const operation = actionIntentProgressOperation(phase);
     const requestId = `action-progress:${key}`;
     const patch = {
@@ -3565,7 +3572,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
   async function handleActionIntentProgressMessage(message) {
     if (!message?.actionIntent) return;
     const messageIntentKey = actionIntentKeyFromProtocolPayload(message);
-    const inactiveReason = protocolActionIntentInactiveReason(messageIntentKey);
+    const inactiveReason = protocolActionIntentInactiveReason(messageIntentKey, message.actionIntent);
     if (inactiveReason) {
       recordPeerSyncPerf("action_intent_progress:ignored", {
         request_id: String(message.requestId || ""),
@@ -3651,13 +3658,14 @@ export function usePeerLobbyConnections(base, servicesRef) {
     // hidden material for the intent, the disclosure lock (validation.js
     // fairRandomRevealLockKey) survives it and still pins the sequence to the
     // intent's command, so peeking and then substituting another action fails.
-    rememberIgnoredActionIntentKey(key, String(message.reason || "action_intent_cancel"));
-    markActionIntentObservationCancelled(key, message.senderIndex);
-    const hadPending = pendingActionIntentsRef.current.has(key);
-    if (hadPending || matchingAppliedActionForIntent(verifiedIntent)) {
+    rememberIgnoredActionIntentKey(key, String(message.reason || "action_intent_cancel"), verifiedIntent);
+    const active = pendingActionIntentsRef.current.get(key);
+    const hadPending = active?.fingerprint === actionIntentFingerprint(verifiedIntent);
+    if (hadPending) {
+      markActionIntentObservationCancelled(key, message.senderIndex);
       clearPendingActionIntent(key);
+      await servicesRef.current.cancelOptimisticIntent?.(verifiedIntent);
     }
-    await servicesRef.current.cancelOptimisticIntent?.(verifiedIntent);
     recordPeerSyncPerf("action_intent_cancel:received", {
       request_id: String(message.requestId || ""),
       sender: message.senderIndex == null ? null : Number(message.senderIndex),

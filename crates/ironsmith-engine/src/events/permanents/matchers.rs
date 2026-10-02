@@ -32,7 +32,7 @@ impl WouldBecomeTappedMatcher {
 }
 
 impl ReplacementMatcher for WouldBecomeTappedMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::BecomeTapped {
             return false;
         }
@@ -71,7 +71,7 @@ impl WouldBecomeUntappedMatcher {
 }
 
 impl ReplacementMatcher for WouldBecomeUntappedMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::BecomeUntapped {
             return false;
         }
@@ -115,7 +115,7 @@ impl WouldBeDestroyedMatcher {
 }
 
 impl ReplacementMatcher for WouldBeDestroyedMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Destroy {
             return false;
         }
@@ -141,7 +141,7 @@ impl ReplacementMatcher for WouldBeDestroyedMatcher {
 pub struct ThisWouldBeDestroyedMatcher;
 
 impl ReplacementMatcher for ThisWouldBeDestroyedMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Destroy {
             return false;
         }
@@ -175,7 +175,7 @@ impl AttachedPermanentWouldBeDestroyedMatcher {
 }
 
 impl ReplacementMatcher for AttachedPermanentWouldBeDestroyedMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Destroy {
             return false;
         }
@@ -219,7 +219,7 @@ impl WouldBeSacrificedMatcher {
 }
 
 impl ReplacementMatcher for WouldBeSacrificedMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Sacrifice {
             return false;
         }
@@ -261,7 +261,7 @@ impl RegenerationShieldMatcher {
 }
 
 impl ReplacementMatcher for RegenerationShieldMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Destroy {
             return false;
         }
@@ -317,7 +317,7 @@ mod tests {
         let event = TapEvent::new(ObjectId::from_raw(1));
 
         // Won't match because object doesn't exist in game
-        assert!(!matcher.matches_event(&event, &ctx));
+        assert!(!matcher.matches_event(&event, &ctx).expect("finite matcher fixture evaluates successfully"));
     }
 
     #[test]

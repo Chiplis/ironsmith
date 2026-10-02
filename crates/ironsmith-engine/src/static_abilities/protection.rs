@@ -196,10 +196,10 @@ impl StaticAbilityKind for Protection {
 struct ProtectionDamageMatcher(ProtectionFrom);
 
 impl crate::events::traits::ReplacementMatcher for ProtectionDamageMatcher {
-    fn matches_event(
+    fn matches_prepared_event(
         &self,
         event: &dyn crate::events::traits::GameEventType,
-        ctx: &crate::events::context::EventContext,
+        ctx: &crate::events::context::PreparedEventContext,
     ) -> bool {
         let Some(damage) = crate::events::downcast_event::<crate::events::DamageEvent>(event)
         else {

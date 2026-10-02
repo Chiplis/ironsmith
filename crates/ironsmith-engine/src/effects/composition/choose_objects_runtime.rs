@@ -528,6 +528,57 @@ fn hidden_hand_choice(
     Ok(game.hand_choice_depends_on_hidden_identity(&hand_zone_filter(effect), hand_ids))
 }
 
+/// Choices among a privately viewed, tagged library pool must survive on
+/// peers that cannot evaluate the card qualities. Membership in that pool is
+/// public; qualifying identities are checked when selected cards are opened.
+fn hidden_library_pool_choice(
+    effect: &ChooseObjectsEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+    chooser_id: PlayerId,
+) -> Result<bool, ExecutionError> {
+    if effect.count.is_random()
+        || !filter_references_tagged_pool(effect)
+        || !effective_search_zones(effect, game, chooser_id)?.contains(&Zone::Library)
+    {
+        return Ok(false);
+    }
+    let filter_ctx = choice_filter_context(effect, game, ctx, chooser_id);
+    let generic = hidden_library_pool_filter(effect);
+    Ok(
+        library_candidate_players(effect, game, ctx, &filter_ctx, chooser_id)?
+            .into_iter()
+            .filter_map(|owner| game.player(owner))
+            .flat_map(|player| player.library.iter())
+            .any(|id| {
+                game.hidden_card_info(*id).is_some()
+                    && game
+                        .object(*id)
+                        .is_some_and(|object| generic.matches(object, &filter_ctx, game))
+            }),
+    )
+}
+
+fn hidden_library_pool_filter(effect: &ChooseObjectsEffect) -> ObjectFilter {
+    let mut generic = ObjectFilter::default();
+    generic.zone = effect.filter.zone;
+    generic.controller = effect.filter.controller.clone();
+    generic.owner = None;
+    generic.tagged_constraints = effect
+        .filter
+        .tagged_constraints
+        .iter()
+        .filter(|constraint| {
+            matches!(
+                constraint.relation,
+                crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            )
+        })
+        .cloned()
+        .collect();
+    generic
+}
+
 fn collect_candidates_in_zone(
     effect: &ChooseObjectsEffect,
     game: &GameState,
@@ -545,6 +596,8 @@ fn collect_candidates_in_zone(
         hidden_zone_filter.owner = None;
     }
 
+    let hidden_library_pool = hidden_library_pool_choice(effect, game, ctx, chooser_id)?;
+    let pool_filter = hidden_library_pool_filter(effect);
     let candidates = match search_zone {
         Zone::Battlefield => game
             .battlefield
@@ -650,7 +703,8 @@ fn collect_candidates_in_zone(
                             .rev()
                             .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
                         {
-                            if effect.is_search
+                            if (effect.is_search
+                                || (hidden_library_pool && pool_filter.matches(obj, &filter_ctx, game)))
                                 && (game.is_hidden_card_placeholder(id)
                                     || (obj.zone == Zone::Library && obj.name == "Hidden Card"))
                             {
@@ -677,7 +731,8 @@ fn collect_candidates_in_zone(
                         .flat_map(|player| player.library.iter())
                         .filter_map(|&id| {
                             let obj = game.object(id)?;
-                            if effect.is_search
+                            if (effect.is_search
+                                || (hidden_library_pool && pool_filter.matches(obj, &filter_ctx, game)))
                                 && (game.is_hidden_card_placeholder(id)
                                     || (obj.zone == Zone::Library && obj.name == "Hidden Card"))
                             {
@@ -1359,7 +1414,9 @@ pub(crate) fn fixed_choice_requirement_is_unmet(
         crate::effects::helpers::resolve_player_filter_as_chooser(game, &effect.chooser, ctx)?;
     // Whether a hidden hand holds enough matches is known only to its owner;
     // withholding the offer on that basis would desync the peers.
-    if hidden_hand_choice(effect, game, ctx, chooser_id)? {
+    if hidden_hand_choice(effect, game, ctx, chooser_id)?
+        || hidden_library_pool_choice(effect, game, ctx, chooser_id)?
+    {
         return Ok(false);
     }
     let mut candidates = collect_candidates(effect, game, ctx, chooser_id)?;
@@ -1523,7 +1580,9 @@ pub(crate) fn run_choose_objects(
             }
         }
         // Symmetric across peers; see `game_state::hidden_hand_choices`.
-        let hidden_hand_choice = hidden_hand_choice(effect, game, ctx, chooser_id)?;
+        let hidden_library_pool = hidden_library_pool_choice(effect, game, ctx, chooser_id)?;
+        let hidden_identity_choice =
+            hidden_hand_choice(effect, game, ctx, chooser_id)? || hidden_library_pool;
         // CR 107.3f: an X that appears
         // only in the text and isn't defined is chosen by the controller as
         // the ability resolves. For "reveal X cards" that choice is the
@@ -1532,7 +1591,7 @@ pub(crate) fn run_choose_objects(
             && effect.count_value.is_none()
             && ctx.x_value.is_none()
             && !effect.is_search;
-        if candidates.is_empty() && !hidden_hand_choice {
+        if candidates.is_empty() && !hidden_identity_choice {
             if binds_undefined_x {
                 ctx.x_value = Some(0);
             }
@@ -1578,7 +1637,7 @@ pub(crate) fn run_choose_objects(
         } else {
             compute_choice_bounds(effect.count, candidates.len())
         };
-        if max == 0 && !hidden_hand_choice {
+        if max == 0 && !hidden_identity_choice {
             if binds_undefined_x {
                 ctx.x_value = Some(0);
             }
@@ -1687,10 +1746,10 @@ pub(crate) fn run_choose_objects(
             if let Some(constraint) = aggregate_constraint.clone() {
                 spec = spec.with_aggregate_constraint(constraint);
             }
-            if allow_hidden_partial || hidden_hand_choice {
+            if allow_hidden_partial || hidden_identity_choice {
                 spec = spec.allow_partial_completion();
             }
-            if has_hidden_search_zones || hidden_hand_choice {
+            if has_hidden_search_zones || hidden_identity_choice {
                 spec = spec.require_explicit_choice();
             }
             if has_hidden_search_zones {
@@ -1718,7 +1777,7 @@ pub(crate) fn run_choose_objects(
                 outcome
             });
         }
-        if effect.is_search
+        if (effect.is_search || hidden_library_pool)
             && !effect.count.is_random()
             && let Some(rejected) = chosen.iter().copied().find(|id| {
                 !candidates.contains(id)
@@ -1744,15 +1803,15 @@ pub(crate) fn run_choose_objects(
         let preserve_order = effect.count_value.as_ref().is_some_and(|value| {
             value.has_surface_hint(ironsmith_core::ValueSurfaceHint::ChooseAllInOrder)
         });
-        // Never fill a hidden hand choice up to its minimum: the fill would
+        // Never fill a hidden identity choice up to its minimum: the fill would
         // pick different cards on the owner and on peers holding placeholders.
-        let fill_to_min = !allow_hidden_partial && !hidden_hand_choice;
+        let fill_to_min = !allow_hidden_partial && !hidden_identity_choice;
         let chosen =
             normalize_chosen_objects(chosen, &candidates, min, max, fill_to_min, preserve_order);
         if binds_undefined_x {
             ctx.x_value = Some(chosen.len() as u32);
         }
-        if hidden_hand_choice && chosen.iter().any(|id| !candidates.contains(id)) {
+        if hidden_identity_choice && chosen.iter().any(|id| !candidates.contains(id)) {
             // A known card outside the candidates failed the filter (for a
             // peer, after the chosen card was opened): reject the choice.
             return Err(ExecutionError::InvalidTarget);
@@ -1773,10 +1832,10 @@ pub(crate) fn run_choose_objects(
                         .object(*id)
                         .is_some_and(|object| object.zone == Zone::Library)
             });
-        let chose_placeholder = (hidden_hand_choice
+        let chose_placeholder = (hidden_identity_choice
             && chosen.iter().any(|id| game.is_hidden_card_placeholder(*id)))
             || chose_library_placeholder;
-        let allow_hidden_partial = allow_hidden_partial || hidden_hand_choice;
+        let allow_hidden_partial = allow_hidden_partial || hidden_identity_choice;
         let chosen = enforce_public_search_choice_constraint(
             game,
             &candidates,
@@ -1926,18 +1985,22 @@ pub(crate) fn run_choose_objects(
                 );
             }
         }
-        if hidden_hand_choice {
+        if hidden_identity_choice {
             // Symmetric condition (the owner chooses no placeholder), so every
             // peer records the same claims about the chosen private cards.
             let filter_ctx = choice_filter_context(effect, game, ctx, chooser_id);
-            let hand_placeholders: Vec<ObjectId> = chosen
+            let hidden_choices: Vec<ObjectId> = chosen
                 .iter()
                 .copied()
-                .filter(|id| game.is_hidden_tracked_hand_card(*id))
+                .filter(|id| game.hidden_card_info(*id).is_some())
                 .collect();
             game.record_hidden_identity_obligations(
-                &hand_placeholders,
-                &hand_zone_filter(effect),
+                &hidden_choices,
+                &if hidden_library_pool {
+                    library_zone_filter(effect)
+                } else {
+                    hand_zone_filter(effect)
+                },
                 &filter_ctx,
                 &claim_description,
             );

@@ -121,7 +121,7 @@ const CARD_ZONE_KEYS = [
 
 // Unknown methods invalidate by default. Presentation reads cannot cancel a
 // long search merely because the user hovered a card or requested a snapshot.
-const ANALYSIS_READ_METHOD = /^(beginPaymentAnalysis|stepPaymentAnalysis|cancelPaymentAnalysis|snapshot|snapshotJson|uiState|last\w*Perf|lastWorkCounters|export\w+|autocompleteCardNames|get\w+|cardsMeetingThreshold|objectDetails|inspectorActions|preview\w+|registrySize|filterKnownCardNames|isKnownCardName|cardLoadDiagnostics|validateMatchConfig|createRuntimeSavepoint|releaseRuntimeSavepoint)$/;
+const ANALYSIS_READ_METHOD = /^(beginPaymentAnalysis|stepPaymentAnalysis|cancelPaymentAnalysis|snapshot|snapshotJson|uiState|last\w*Perf|lastWorkCounters|export\w+|autocompleteCardNames|get\w+|cardsMeetingThreshold|objectDetails|inspectorActions|preview\w+|registrySize|filterKnownCardNames|isKnownCardName|isReplayCheckpointBoundary|cardLoadDiagnostics|validateMatchConfig|createRuntimeSavepoint|releaseRuntimeSavepoint)$/;
 let priorityIdentity = null;
 let priorityViewRevision = 0;
 const priorityAnalysis = createPriorityAnalysisScheduler({
@@ -839,7 +839,7 @@ function handleTargetPreview(id, args) {
 function handleCall(msg) {
   const { id, method, args = [] } = msg;
   if (msg.runtimeBranch == null && method === "previewCastTargets") { handleTargetPreview(id, args); return; }
-  if (!/^(snapshot|uiState|last\w*Perf|exportSyncCheckpoint|exportPublicAuditCheckpoint|autocompleteCardNames|getCardSemanticScore|cardsMeetingThreshold)$/.test(method)) {
+  if (!/^(snapshot|uiState|last\w*Perf|exportSyncCheckpoint|exportPublicAuditCheckpoint|isReplayCheckpointBoundary|autocompleteCardNames|getCardSemanticScore|cardsMeetingThreshold)$/.test(method)) {
     try {
       console.debug(`[ironsmith] worker call: ${method} ${JSON.stringify({ argumentCount: args.length, commandType: args[0]?.type })}`);
     } catch {

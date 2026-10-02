@@ -2086,6 +2086,7 @@ export async function timePeerSyncPhase(label, payload, task) {
 export function signedActionIntentPayload(intent = {}) {
   return {
     domain: ACTION_INTENT_DOMAIN,
+    ...(intent.attemptId ? { attemptId: String(intent.attemptId) } : {}),
     matchId: String(intent.matchId || ""),
     seq: Number(intent.seq || 0),
     actorIndex: Number(intent.actorIndex ?? intent.actor ?? 0),

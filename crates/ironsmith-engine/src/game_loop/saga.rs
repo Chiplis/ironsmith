@@ -190,19 +190,19 @@ pub(crate) fn add_entry_lore_counters(
     game: &mut GameState,
     saga_id: ObjectId,
     decision_maker: &mut dyn DecisionMaker,
-) {
+) -> Result<(), crate::effects::ExecutionError> {
     if game.has_processed_saga_entry_lore(saga_id) {
-        return;
+        return Ok(());
     }
     let Some(amount) = entry_lore_counter_amount(game, saga_id, decision_maker) else {
-        return;
+        return Ok(());
     };
     if decision_maker.awaiting_choice() {
-        return;
+        return Ok(());
     }
     if amount == 0 {
         game.mark_saga_entry_lore_processed(saga_id);
-        return;
+        return Ok(());
     }
     // CR 122.6 / 614.1: the lore counters a Saga enters with are "put" on it,
     // so counter replacements and "can't have counters" effects apply.
@@ -213,14 +213,15 @@ pub(crate) fn add_entry_lore_counters(
         amount,
         saga_entry_lore_cause(game, saga_id),
         decision_maker,
-    );
+    )?;
     if decision_maker.awaiting_choice() {
-        return;
+        return Ok(());
     }
     if let Some(event) = game.add_counters(saga_id, CounterType::Lore, amount) {
         game.queue_trigger_event(event.provenance(), event);
     }
     game.mark_saga_entry_lore_processed(saga_id);
+    Ok(())
 }
 
 /// The entry lore counter (CR 714.3a) is put on by a game rule, not by an

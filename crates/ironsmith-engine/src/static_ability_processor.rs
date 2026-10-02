@@ -1564,4 +1564,338 @@ fn generic_entry_uses_complete_finite_prospective_replacement_discovery() {
     assert_finite_prospective_entry_replacement_is_complete(true);
 }
 
+#[test]
+fn checked_prospective_entry_query_discovers_deep_grants_and_preserves_live_state() {
+    std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
+        for depth in [1, 8, 9, 10, 12] {
+            for controlled_by_owner in [true, false] {
+                let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+                let alice = game.players[0].id;
+                let controller = game.players[usize::from(!controlled_by_owner)].id;
+                let card = CardBuilder::new(CardId::new(), "Checked prospective recipient")
+                    .card_types(vec![CardType::Land]).build();
+                let source = game.create_object_from_card(&card, alice, Zone::Hand);
+                let mut model = ironsmith_core::StaticAbility::enters_untapped_for_filter(ObjectFilter::source());
+                for _ in 0..depth {
+                    model = ironsmith_core::StaticAbility::grant_object_ability_for_filter(
+                        ObjectFilter::source(), ironsmith_core::Ability::static_ability(model), "Source has ability");
+                }
+                game.object_mut(source).expect("source exists").abilities_mut()
+                    .push(Ability::static_ability(StaticAbility::from_model(model)));
+                let revision = game.effect_store.continuous_effects.revision();
+                let sickness = game.is_summoning_sick(source);
+                let mut event = crate::events::EnterBattlefieldEvent::new(source, Zone::Hand)
+                    .with_controller_override(controller);
+                event.enters_with_counters.push((crate::object::CounterType::Charge, 3));
+                let preview = event.try_prospective_game_state(&game)
+                    .expect("finite prospective discovery succeeds").expect("source exists");
+                assert_eq!(preview.current_controller(source), Some(controller));
+                assert_eq!(preview.object(source).unwrap().counters.get(&crate::object::CounterType::Charge), Some(&3));
+                let replacements = crate::replacement_ability_processor::generate_replacement_effects_from_abilities(&preview)
+                    .expect("checked prospective replacements are complete");
+                assert!(replacements.iter().any(|effect| matches!(effect.replacement, crate::replacement::ReplacementAction::EnterUntapped)),
+                    "depth={depth}, owner={controlled_by_owner}: discover the leaf replacement");
+                assert_eq!(game.object(source).unwrap().zone, Zone::Hand);
+                assert!(game.object(source).unwrap().counters.is_empty());
+                assert_eq!(game.effect_store.continuous_effects.revision(), revision);
+                assert_eq!(game.is_summoning_sick(source), sickness);
+                assert!(game.battlefield.is_empty());
+            }
+        }
+    }).expect("fixture worker starts").join().expect("fixture worker completes");
+}
+
+#[test]
+fn checked_prospective_entry_query_distinguishes_missing_from_failed_discovery() {
+    std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id;
+        let card = CardBuilder::new(CardId::new(), "Nonfinite prospective recipient")
+            .card_types(vec![CardType::Artifact]).build();
+        let source = game.create_object_from_card(&card, alice, Zone::Hand);
+        game.object_mut(source).unwrap().abilities_mut().push(Ability::static_ability(
+            StaticAbility::new(RegrantParent(Arc::new(AtomicUsize::new(0))))));
+        game.try_all_continuous_effects().expect("hand world is finite");
+        let revision = game.effect_store.continuous_effects.revision();
+        let event = crate::events::EnterBattlefieldEvent::new(source, Zone::Hand);
+        assert!(matches!(event.try_prospective_game_state(&game),
+            Err(StaticEffectDiscoveryError::RoundLimit { maximum: 128, generated_effects: 129 })));
+        assert_eq!(game.object(source).unwrap().zone, Zone::Hand);
+        assert_eq!(game.effect_store.continuous_effects.revision(), revision);
+        assert!(game.battlefield.is_empty());
+        let missing = crate::events::EnterBattlefieldEvent::new(ObjectId(u64::MAX), Zone::Hand);
+        assert!(missing.try_prospective_game_state(&game).expect("missing is not discovery failure").is_none());
+    }).expect("fixture worker starts").join().expect("fixture worker completes");
+}
+
+#[test]
+fn direct_and_generic_entry_discovery_failures_preserve_live_zone_and_effects() {
+    use crate::effects::EffectExecutor;
+    std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
+        for generic in [false, true] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = game.players[0].id;
+            let card = CardBuilder::new(CardId::new(), "Failed prospective entry")
+                .card_types(vec![CardType::Artifact]).build();
+            let source = game.create_object_from_card(&card, alice, Zone::Hand);
+            game.object_mut(source).unwrap().abilities_mut().push(Ability::static_ability(
+                StaticAbility::new(RegrantParent(Arc::new(AtomicUsize::new(0))))));
+            game.refresh_continuous_state().expect("original hand world is finite");
+            let effects = game.effect_store.continuous_effects.effects().len();
+            let revision = game.effect_store.continuous_effects.revision();
+            let replacement_count = game.effect_store.replacement_effects.effects().len();
+            let instruction = crate::effects::PutOntoBattlefieldEffect::you_control(
+                crate::target::ChooseSpec::SpecificObject(source), true);
+            let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
+            let result = if generic {
+                crate::effects::execute_effect(&mut game, &crate::effect::Effect::new(instruction), &mut ctx)
+            } else {
+                instruction.execute(&mut game, &mut ctx)
+            };
+            assert!(matches!(result, Err(crate::effects::ExecutionError::ContinuousDiscovery(
+                StaticEffectDiscoveryError::RoundLimit { maximum: 128, generated_effects: 129 }))),
+                "generic={generic}: discovery error must reach caller");
+            assert_eq!(game.object(source).unwrap().zone, Zone::Hand);
+            assert!(game.battlefield.is_empty());
+            assert!(!game.is_tapped(source));
+            assert_eq!(game.effect_store.continuous_effects.effects().len(), effects);
+            assert_eq!(game.effect_store.continuous_effects.revision(), revision);
+            assert_eq!(game.effect_store.replacement_effects.effects().len(), replacement_count);
+            assert!(!ctx.decision_maker.awaiting_choice());
+        }
+    }).expect("fixture worker starts").join().expect("fixture worker completes");
+}
+
+#[test]
+fn deep_prospective_counter_prohibitions_apply_at_entry_without_suppressing_control_counters() {
+    std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
+        for depth in [1, 10, 12] {
+            for prohibited in [false, true] {
+                let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+                let alice = game.players[0].id;
+                let card = CardBuilder::new(CardId::new(), "Deep counter recipient")
+                    .card_types(vec![CardType::Artifact]).build();
+                let source = game.create_object_from_card(&card, alice, Zone::Hand);
+                if prohibited {
+                    let mut model = ironsmith_core::StaticAbility::cant_have_counters_placed();
+                    for _ in 0..depth {
+                        model = ironsmith_core::StaticAbility::grant_object_ability_for_filter(
+                            ObjectFilter::source(), ironsmith_core::Ability::static_ability(model), "Source has ability");
+                    }
+                    game.object_mut(source).unwrap().abilities_mut()
+                        .push(Ability::static_ability(StaticAbility::from_model(model)));
+                }
+                let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
+                let receipt = game.move_object_with_etb_processing_with_initial_counters_with_dm(
+                    source, Zone::Battlefield, vec![(crate::object::CounterType::Charge, 3)],
+                    &mut ctx.decision_maker).expect("finite entry succeeds");
+                let entered = receipt.assert_completed_without_additions().expect("entry is not prevented");
+                let object = game.object(entered.new_id).expect("permanent entered");
+                assert_eq!(object.zone, Zone::Battlefield);
+                assert_eq!(object.counters.get(&crate::object::CounterType::Charge).copied().unwrap_or(0),
+                    if prohibited { 0 } else { 3 }, "depth={depth}, prohibited={prohibited}");
+                assert!(!ctx.decision_maker.awaiting_choice());
+                assert!(game.object(source).is_none(), "entry actually changes object identity");
+            }
+        }
+    }).expect("fixture worker starts").join().expect("fixture worker completes");
+}
+
+#[test]
+fn raw_entry_matcher_uses_complete_prospective_keyword_grants() {
+    use crate::events::ReplacementMatcher;
+    std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
+        for depth in [1, 8, 9, 10, 12] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = game.players[0].id;
+            let card = CardBuilder::new(CardId::new(), "Prospective type recipient")
+                .card_types(vec![CardType::Artifact]).build();
+            let source = game.create_object_from_card(&card, alice, Zone::Hand);
+            let mut model = ironsmith_core::StaticAbility::flying();
+            for _ in 0..depth {
+                model = ironsmith_core::StaticAbility::grant_object_ability_for_filter(
+                    ObjectFilter::source(), ironsmith_core::Ability::static_ability(model), "Source has ability");
+            }
+            game.object_mut(source).unwrap().abilities_mut()
+                .push(Ability::static_ability(StaticAbility::from_model(model)));
+            let event = crate::events::EnterBattlefieldEvent::new(source, Zone::Hand);
+            let preview = event.try_prospective_game_state(&game).expect("finite world").expect("source exists");
+            assert!(preview.current_abilities(source).unwrap().iter().any(|ability| matches!(
+                &ability.kind, crate::ability::AbilityKind::Static(ability)
+                    if ability.id() == crate::static_abilities::StaticAbilityId::Flying)),
+                "depth={depth}: checked-world keyword control");
+            let matcher = crate::events::zones::matchers::WouldEnterBattlefieldMatcher::new(
+                ObjectFilter::permanent().with_static_ability(crate::static_abilities::StaticAbilityId::Flying));
+            let ctx = crate::events::EventContext::for_controller(alice, &game);
+            assert!(matcher.matches_event(&event, &ctx.clone().with_prospective_etb_game(Some(&preview))).expect("finite matcher fixture evaluates successfully"),
+                "checked supplied world is an actual positive control");
+            assert!(matcher.matches_event(&event, &ctx).expect("finite matcher fixture evaluates successfully"),
+                "depth={depth}: raw matcher must discover the same complete prospective flying ability");
+        }
+    }).expect("fixture worker starts").join().expect("fixture worker completes");
+}
+
+#[test]
+fn fallible_entry_matching_uses_complete_keyword_grants() {
+    use crate::events::ReplacementMatcher;
+    std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
+        for depth in [1, 8, 9, 10, 12] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = game.players[0].id;
+            let card = CardBuilder::new(CardId::new(), "Prospective type recipient")
+                .card_types(vec![CardType::Artifact]).build();
+            let source = game.create_object_from_card(&card, alice, Zone::Hand);
+            let mut model = ironsmith_core::StaticAbility::flying();
+            for _ in 0..depth {
+                model = ironsmith_core::StaticAbility::grant_object_ability_for_filter(
+                    ObjectFilter::source(), ironsmith_core::Ability::static_ability(model), "Source has ability");
+            }
+            game.object_mut(source).unwrap().abilities_mut()
+                .push(Ability::static_ability(StaticAbility::from_model(model)));
+            let event = crate::events::EnterBattlefieldEvent::new(source, Zone::Hand);
+            let preview = event.try_prospective_game_state(&game).expect("finite world").expect("source exists");
+            assert!(preview.current_abilities(source).unwrap().iter().any(|ability| matches!(
+                &ability.kind, crate::ability::AbilityKind::Static(ability)
+                    if ability.id() == crate::static_abilities::StaticAbilityId::Flying)),
+                "depth={depth}: checked-world keyword control");
+            let matcher = crate::events::zones::matchers::WouldEnterBattlefieldMatcher::new(
+                ObjectFilter::permanent().with_static_ability(crate::static_abilities::StaticAbilityId::Flying));
+            let ctx = crate::events::EventContext::for_controller(alice, &game);
+            assert!(matcher.matches_entry_event(&event, &ctx.clone().with_prospective_etb_game(Some(&preview))).expect("supplied finite prospective query"),
+                "checked supplied world is an actual positive control");
+            assert!(matcher.matches_entry_event(&event, &ctx).expect("finite prospective query"),
+                "depth={depth}: raw matcher must discover the same complete prospective flying ability");
+        }
+    }).expect("fixture worker starts").join().expect("fixture worker completes");
+}
+
+#[test]
+fn fallible_entry_matching_reports_nonfinite_prospective_discovery() {
+    use crate::events::ReplacementMatcher;
+    std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id;
+        let card = CardBuilder::new(CardId::new(), "Nonfinite matcher recipient")
+            .card_types(vec![CardType::Artifact]).build();
+        let source = game.create_object_from_card(&card, alice, Zone::Hand);
+        game.object_mut(source).unwrap().abilities_mut().push(Ability::static_ability(
+            StaticAbility::new(RegrantParent(Arc::new(AtomicUsize::new(0))))));
+        game.try_all_continuous_effects().expect("original world finite");
+        let revision = game.effect_store.continuous_effects.revision();
+        let event = crate::events::EnterBattlefieldEvent::new(source, Zone::Hand);
+        let matcher = crate::events::zones::matchers::WouldEnterBattlefieldMatcher::any();
+        let ctx = crate::events::EventContext::for_replacement_effect(alice, source, &game);
+        assert!(matches!(matcher.matches_entry_event(&event, &ctx),
+            Err(StaticEffectDiscoveryError::RoundLimit { maximum: 128, generated_effects: 129 })));
+        assert_eq!(game.object(source).unwrap().zone, Zone::Hand);
+        assert_eq!(game.effect_store.continuous_effects.revision(), revision);
+        assert!(game.battlefield.is_empty());
+    }).expect("fixture worker starts").join().expect("fixture worker completes");
+}
+
+#[test]
+fn processor_and_continuation_restore_one_shot_after_copy_discovery_failure() {
+    use crate::events::processing::{process_trait_event, continue_replacement_choice_with_scope};
+    use crate::replacement::{ReplacementAction, ReplacementEffect};
+    std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
+        for continuation in [false, true] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = game.players[0].id;
+            let card = CardBuilder::new(CardId::new(), "Copy failure recipient").card_types(vec![CardType::Artifact]).build();
+            let recipient = game.create_object_from_card(&card, alice, Zone::Hand);
+            let donor = game.create_object_from_card(&card, alice, Zone::Hand);
+            let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+            game.object_mut(donor).unwrap().abilities_mut().push(Ability::static_ability(
+                StaticAbility::new(RegrantParent(Arc::new(AtomicUsize::new(0))))));
+            game.try_all_continuous_effects().expect("original hand-donor world finite");
+            let event = crate::events::EnterBattlefieldEvent::new(recipient, Zone::Hand);
+            event.try_prospective_game_state(&game).expect("initial entry finite").expect("recipient exists");
+            let mut copied = event.clone(); copied.enters_as_copy_of = Some(donor);
+            assert!(matches!(copied.try_prospective_game_state(&game),
+                Err(StaticEffectDiscoveryError::RoundLimit { maximum: 128, generated_effects: 129 })));
+            let matcher = crate::events::zones::matchers::WouldEnterBattlefieldMatcher::new(ObjectFilter::specific(recipient));
+            let copy_id = game.effect_store.replacement_effects.add_one_shot_effect(
+                ReplacementEffect::with_matcher(source, alice, matcher.clone(), ReplacementAction::EnterAsCopy {
+                    source: donor, enters_tapped: false, copy_duration: None, linked_exile_objects: vec![],
+                    additional_counters: vec![], name_override: None, added_colors: Default::default(),
+                    added_card_types: vec![], removes_other_card_types: false, added_supertypes: vec![],
+                    removed_supertypes: vec![], added_subtypes: vec![], added_abilities: vec![],
+                    set_base_power_toughness: None, copy_followups: vec![],
+                }));
+            if continuation {
+                game.effect_store.replacement_effects.add_one_shot_effect(
+                    ReplacementEffect::with_matcher(source, alice, matcher, ReplacementAction::EnterTapped));
+            }
+            let before = game.effect_store.replacement_effects.one_shot_effects_snapshot();
+            let revision = game.effect_store.continuous_effects.revision();
+            let result = if continuation {
+                let pending = process_trait_event(&mut game, crate::events::Event::new_with_provenance(event, Default::default())).expect("initial choice finite");
+                assert!(matches!(pending, crate::events::processing::TraitEventResult::NeedsChoice { .. }));
+                continue_replacement_choice_with_scope(&mut game, pending, copy_id, None, &[], None)
+            } else { process_trait_event(&mut game, crate::events::Event::new_with_provenance(event, Default::default())) };
+            assert!(matches!(result, Err(crate::effects::ExecutionError::ContinuousDiscovery(
+                StaticEffectDiscoveryError::RoundLimit { maximum: 128, generated_effects: 129 }))), "continuation={continuation}");
+            assert_eq!(game.effect_store.replacement_effects.one_shot_effects_snapshot(), before);
+            assert_eq!(game.effect_store.continuous_effects.revision(), revision);
+            assert_eq!(game.object(recipient).unwrap().zone, Zone::Hand);
+            assert_eq!(game.object(donor).unwrap().zone, Zone::Hand);
+            assert_eq!(game.battlefield, vec![source]);
+        }
+    }).expect("fixture worker starts").join().expect("fixture worker completes");
+}
+
+#[test]
+fn multi_entry_matching_does_not_import_a_simultaneous_siblings_static_grant() {
+    use crate::events::ReplacementMatcher;
+    for existing_grantor in [false, true] {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id;
+        let card = CardBuilder::new(CardId::new(), "Batch grantor").card_types(vec![CardType::Artifact]).build();
+        let grantor = game.create_object_from_card(&card, alice,
+            if existing_grantor { Zone::Battlefield } else { Zone::Hand });
+        game.object_mut(grantor).unwrap().abilities_mut().push(Ability::static_ability(StaticAbility::from_model(
+            ironsmith_core::StaticAbility::grant_object_ability_for_filter(ObjectFilter::land(),
+                ironsmith_core::Ability::static_ability(ironsmith_core::StaticAbility::flying()), "Lands have flying"))));
+        let land = CardBuilder::new(CardId::new(), "Batch land").card_types(vec![CardType::Land]).build();
+        let entrant = game.create_object_from_card(&land, alice, Zone::Hand);
+        let mut event = crate::events::ZoneChangeEvent::with_cause(entrant, Zone::Hand, Zone::Battlefield,
+            crate::events::cause::EventCause::effect(), None);
+        if !existing_grantor { event.objects.insert(0, grantor); }
+        let matcher = crate::events::zones::matchers::WouldEnterBattlefieldMatcher::new(
+            ObjectFilter::specific(entrant).with_static_ability(crate::static_abilities::StaticAbilityId::Flying));
+        let context = crate::events::EventContext::for_controller(alice, &game);
+        assert_eq!(matcher.matches_event(&event, &context).expect("finite batch matching"), existing_grantor,
+            "only a pre-existing grantor may grant flying to its simultaneous sibling");
+        assert_eq!(game.object(entrant).unwrap().zone, Zone::Hand);
+        assert_eq!(game.object(grantor).unwrap().zone,
+            if existing_grantor { Zone::Battlefield } else { Zone::Hand });
+    }
+}
+
+#[test]
+fn multi_entry_matching_reports_failed_member_before_accepting_an_earlier_match() {
+    use crate::events::ReplacementMatcher;
+    std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id;
+        let card = CardBuilder::new(CardId::new(), "Batch recipient").card_types(vec![CardType::Artifact]).build();
+        let first = game.create_object_from_card(&card, alice, Zone::Hand);
+        let failing = game.create_object_from_card(&card, alice, Zone::Hand);
+        game.object_mut(failing).unwrap().abilities_mut().push(Ability::static_ability(
+            StaticAbility::new(RegrantParent(Arc::new(AtomicUsize::new(0))))));
+        game.try_all_continuous_effects().expect("original batch world finite");
+        let mut event = crate::events::ZoneChangeEvent::with_cause(first, Zone::Hand, Zone::Battlefield,
+            crate::events::cause::EventCause::effect(), None);
+        event.objects.push(failing);
+        let matcher = crate::events::zones::matchers::WouldEnterBattlefieldMatcher::any();
+        let context = crate::events::EventContext::for_controller(alice, &game);
+        assert!(matches!(matcher.matches_event(&event, &context),
+            Err(StaticEffectDiscoveryError::RoundLimit { maximum: 128, generated_effects: 129 })),
+            "an earlier successful member cannot conceal later discovery failure");
+        assert!(game.battlefield.is_empty());
+        assert_eq!(game.object(first).unwrap().zone, Zone::Hand);
+        assert_eq!(game.object(failing).unwrap().zone, Zone::Hand);
+    }).expect("fixture worker starts").join().expect("fixture worker completes");
+}
+
 }

@@ -1050,7 +1050,7 @@ mod tests {
         let result = crate::events::processing::process_trait_event(
             &mut game,
             crate::events::Event::draw(alice, 1, true),
-        );
+        ).expect("finite replacement fixture evaluates successfully");
         let crate::events::processing::TraitEventResult::NeedsChoice {
             applicable_effects, ..
         } = result

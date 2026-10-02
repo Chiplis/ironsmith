@@ -36,7 +36,7 @@ impl WouldDrawCardMatcher {
 }
 
 impl ReplacementMatcher for WouldDrawCardMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Draw {
             return false;
         }
@@ -77,7 +77,7 @@ impl WouldDrawCardWhileLibraryEmptyMatcher {
 }
 
 impl ReplacementMatcher for WouldDrawCardWhileLibraryEmptyMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Draw {
             return false;
         }
@@ -124,7 +124,7 @@ impl WouldDrawFirstCardMatcher {
 }
 
 impl ReplacementMatcher for WouldDrawFirstCardMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Draw {
             return false;
         }
@@ -225,7 +225,7 @@ impl WouldDiscardMatcher {
 }
 
 impl ReplacementMatcher for WouldDiscardMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Discard {
             return false;
         }
@@ -317,11 +317,11 @@ mod tests {
 
         // Alice draws - should match
         let event_alice = DrawEvent::new(alice, 1, false);
-        assert!(matcher.matches_event(&event_alice, &ctx));
+        assert!(matcher.matches_event(&event_alice, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         // Bob draws - should not match
         let event_bob = DrawEvent::new(bob, 1, false);
-        assert!(!matcher.matches_event(&event_bob, &ctx));
+        assert!(!matcher.matches_event(&event_bob, &ctx).expect("finite matcher fixture evaluates successfully"));
     }
 
     #[test]
@@ -334,11 +334,11 @@ mod tests {
 
         // First draw this turn - should match
         let event_first = DrawEvent::new(alice, 1, true);
-        assert!(matcher.matches_event(&event_first, &ctx));
+        assert!(matcher.matches_event(&event_first, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         // Not first draw - should not match
         let event_not_first = DrawEvent::new(alice, 1, false);
-        assert!(!matcher.matches_event(&event_not_first, &ctx));
+        assert!(!matcher.matches_event(&event_not_first, &ctx).expect("finite matcher fixture evaluates successfully"));
     }
 
     #[test]
@@ -355,7 +355,7 @@ mod tests {
             alice,
             crate::events::cause::EventCause::effect(),
         );
-        assert!(matcher.matches_event(&event_effect, &ctx));
+        assert!(matcher.matches_event(&event_effect, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         // Discard as cost - should not match (effect-like filter)
         let event_cost = DiscardEvent::with_cause(
@@ -363,7 +363,7 @@ mod tests {
             alice,
             crate::events::cause::EventCause::from_cost(ObjectId::from_raw(1), alice),
         );
-        assert!(!matcher.matches_event(&event_cost, &ctx));
+        assert!(!matcher.matches_event(&event_cost, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         // Discard from game rule - should match
         let event_rule = DiscardEvent::with_cause(
@@ -371,7 +371,7 @@ mod tests {
             alice,
             crate::events::cause::EventCause::from_game_rule(),
         );
-        assert!(!matcher.matches_event(&event_rule, &ctx));
+        assert!(!matcher.matches_event(&event_rule, &ctx).expect("finite matcher fixture evaluates successfully"));
     }
 
     #[test]
@@ -388,14 +388,14 @@ mod tests {
             alice,
             crate::events::cause::EventCause::effect(),
         );
-        assert!(matcher.matches_event(&event_effect, &ctx));
+        assert!(matcher.matches_event(&event_effect, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         let event_cost = DiscardEvent::with_cause(
             ObjectId::from_raw(1),
             alice,
             crate::events::cause::EventCause::from_cost(ObjectId::from_raw(1), alice),
         );
-        assert!(matcher.matches_event(&event_cost, &ctx));
+        assert!(matcher.matches_event(&event_cost, &ctx).expect("finite matcher fixture evaluates successfully"));
     }
 
     #[test]

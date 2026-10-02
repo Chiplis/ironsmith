@@ -114,7 +114,7 @@ fn conditional_other_permanent_entry_rules_follow_source_status_and_exclude_sour
                 .matcher
                 .as_ref()
                 .expect("tapped rule matcher")
-                .matches_event(&incoming_event, &ctx),
+                .matches_event(&incoming_event, &ctx).expect("finite matcher fixture evaluates successfully"),
             "the tapped rule must be inactive while its source is untapped"
         );
         assert!(
@@ -122,7 +122,7 @@ fn conditional_other_permanent_entry_rules_follow_source_status_and_exclude_sour
                 .matcher
                 .as_ref()
                 .expect("untapped rule matcher")
-                .matches_event(&incoming_event, &ctx),
+                .matches_event(&incoming_event, &ctx).expect("finite matcher fixture evaluates successfully"),
             "the untapped rule must be active while its source is untapped"
         );
     }
@@ -134,7 +134,7 @@ fn conditional_other_permanent_entry_rules_follow_source_status_and_exclude_sour
             .matcher
             .as_ref()
             .expect("tapped rule matcher")
-            .matches_event(&incoming_event, &ctx),
+            .matches_event(&incoming_event, &ctx).expect("finite matcher fixture evaluates successfully"),
         "the tapped rule must become active when its source is tapped"
     );
     assert!(
@@ -142,7 +142,7 @@ fn conditional_other_permanent_entry_rules_follow_source_status_and_exclude_sour
             .matcher
             .as_ref()
             .expect("untapped rule matcher")
-            .matches_event(&incoming_event, &ctx),
+            .matches_event(&incoming_event, &ctx).expect("finite matcher fixture evaluates successfully"),
         "the untapped rule must become inactive when its source is tapped"
     );
 
@@ -158,7 +158,7 @@ fn conditional_other_permanent_entry_rules_follow_source_status_and_exclude_sour
             .matcher
             .as_ref()
             .expect("tapped rule matcher")
-            .matches_event(&source_event, &ctx),
+            .matches_event(&source_event, &ctx).expect("finite matcher fixture evaluates successfully"),
         "other permanents must exclude the entry-rule source itself"
     );
 }
@@ -523,7 +523,7 @@ fn harsh_judgment_redirects_chosen_color_spell_damage_to_source_controller() {
             .matcher
             .as_ref()
             .expect("replacement should have a matcher")
-            .matches_event(&matching_event, &matching_ctx),
+            .matches_event(&matching_event, &matching_ctx).expect("finite matcher fixture evaluates successfully"),
         "Harsh Judgment replacement should match chosen-color spell damage to you"
     );
     game.effect_store
@@ -973,7 +973,7 @@ fn test_bloodthirst_replacement_matches_when_opponent_was_dealt_damage() {
     let ctx = EventContext::for_replacement_effect(alice, source, &game);
 
     assert!(
-        matcher.matches_event(&event, &ctx),
+        matcher.matches_event(&event, &ctx).expect("finite matcher fixture evaluates successfully"),
         "bloodthirst should match when an opponent was dealt damage"
     );
 }
@@ -1002,7 +1002,7 @@ fn test_bloodthirst_replacement_does_not_match_without_opponent_damage() {
     let ctx = EventContext::for_replacement_effect(alice, source, &game);
 
     assert!(
-        !matcher.matches_event(&event, &ctx),
+        !matcher.matches_event(&event, &ctx).expect("finite matcher fixture evaluates successfully"),
         "bloodthirst should not match when no opponent was dealt damage"
     );
 }
@@ -1039,7 +1039,7 @@ fn test_enters_with_counters_if_condition_matches_when_true() {
     );
     let ctx = EventContext::for_replacement_effect(alice, source, &game);
     assert!(
-        matcher.matches_event(&event, &ctx),
+        matcher.matches_event(&event, &ctx).expect("finite matcher fixture evaluates successfully"),
         "conditional enters-with-counters should match when condition is true"
     );
 }
@@ -1072,7 +1072,7 @@ fn test_enters_with_counters_if_condition_does_not_match_when_false() {
     );
     let ctx = EventContext::for_replacement_effect(alice, source, &game);
     assert!(
-        !matcher.matches_event(&event, &ctx),
+        !matcher.matches_event(&event, &ctx).expect("finite matcher fixture evaluates successfully"),
         "conditional enters-with-counters should not match when condition is false"
     );
 }
@@ -1266,7 +1266,7 @@ fn test_enters_with_counters_if_condition_matches_when_opponent_lost_life() {
     );
     let ctx = EventContext::for_replacement_effect(alice, source, &game);
     assert!(
-        matcher.matches_event(&event, &ctx),
+        matcher.matches_event(&event, &ctx).expect("finite matcher fixture evaluates successfully"),
         "conditional enters-with-counters should match when an opponent lost life this turn"
     );
 }
@@ -1306,7 +1306,7 @@ fn test_enters_with_counters_if_condition_matches_when_permanent_left_battlefiel
     );
     let ctx = EventContext::for_replacement_effect(alice, source, &game);
     assert!(
-        matcher.matches_event(&event, &ctx),
+        matcher.matches_event(&event, &ctx).expect("finite matcher fixture evaluates successfully"),
         "conditional enters-with-counters should match when a permanent left under your control"
     );
 }
@@ -1340,7 +1340,7 @@ fn first_three_turns_replacement_applies(turn_number: u32, player: PlayerId) -> 
         None,
     );
     let ctx = EventContext::for_replacement_effect(player, source, &game);
-    matcher.matches_event(&event, &ctx)
+    matcher.matches_event(&event, &ctx).expect("finite matcher fixture evaluates successfully")
 }
 
 #[test]
@@ -1384,7 +1384,7 @@ fn test_prevent_all_damage_dealt_by_this_permanent_generates_replacement() {
         false,
         crate::events::cause::EventCause::effect(),
     );
-    assert!(matcher.matches_event(&dmg, &ctx));
+    assert!(matcher.matches_event(&dmg, &ctx).expect("finite matcher fixture evaluates successfully"));
 
     // Unpreventable damage from this permanent does not match.
     let unpreventable = DamageEvent::unpreventable_with_cause(
@@ -1394,7 +1394,7 @@ fn test_prevent_all_damage_dealt_by_this_permanent_generates_replacement() {
         false,
         crate::events::cause::EventCause::effect(),
     );
-    assert!(!matcher.matches_event(&unpreventable, &ctx));
+    assert!(!matcher.matches_event(&unpreventable, &ctx).expect("finite matcher fixture evaluates successfully"));
 }
 
 #[test]
@@ -1422,7 +1422,7 @@ fn test_prevent_all_combat_damage_dealt_by_this_permanent_generates_replacement(
         true,
         crate::events::cause::EventCause::effect(),
     );
-    assert!(matcher.matches_event(&combat, &ctx));
+    assert!(matcher.matches_event(&combat, &ctx).expect("finite matcher fixture evaluates successfully"));
 
     let noncombat = DamageEvent::with_cause(
         src,
@@ -1431,7 +1431,7 @@ fn test_prevent_all_combat_damage_dealt_by_this_permanent_generates_replacement(
         false,
         crate::events::cause::EventCause::effect(),
     );
-    assert!(!matcher.matches_event(&noncombat, &ctx));
+    assert!(!matcher.matches_event(&noncombat, &ctx).expect("finite matcher fixture evaluates successfully"));
 
     let from_other = DamageEvent::with_cause(
         ObjectId::from_raw(7),
@@ -1440,7 +1440,7 @@ fn test_prevent_all_combat_damage_dealt_by_this_permanent_generates_replacement(
         true,
         crate::events::cause::EventCause::effect(),
     );
-    assert!(!matcher.matches_event(&from_other, &ctx));
+    assert!(!matcher.matches_event(&from_other, &ctx).expect("finite matcher fixture evaluates successfully"));
 }
 
 #[test]
@@ -1472,7 +1472,7 @@ fn test_prevent_all_damage_dealt_to_creatures_generates_replacement() {
         false,
         crate::events::cause::EventCause::effect(),
     );
-    assert!(matcher.matches_event(&creature_damage, &ctx));
+    assert!(matcher.matches_event(&creature_damage, &ctx).expect("finite matcher fixture evaluates successfully"));
 
     let player_damage = DamageEvent::with_cause(
         src,
@@ -1481,7 +1481,7 @@ fn test_prevent_all_damage_dealt_to_creatures_generates_replacement() {
         false,
         crate::events::cause::EventCause::effect(),
     );
-    assert!(!matcher.matches_event(&player_damage, &ctx));
+    assert!(!matcher.matches_event(&player_damage, &ctx).expect("finite matcher fixture evaluates successfully"));
 }
 
 #[test]
@@ -1525,7 +1525,7 @@ fn test_prevent_all_damage_to_self_by_creatures_generates_replacement() {
         false,
         crate::events::cause::EventCause::effect(),
     );
-    assert!(matcher.matches_event(&creature_damage, &ctx));
+    assert!(matcher.matches_event(&creature_damage, &ctx).expect("finite matcher fixture evaluates successfully"));
 
     let noncreature_damage = DamageEvent::with_cause(
         noncreature_source,
@@ -1534,7 +1534,7 @@ fn test_prevent_all_damage_to_self_by_creatures_generates_replacement() {
         false,
         crate::events::cause::EventCause::effect(),
     );
-    assert!(!matcher.matches_event(&noncreature_damage, &ctx));
+    assert!(!matcher.matches_event(&noncreature_damage, &ctx).expect("finite matcher fixture evaluates successfully"));
 }
 
 #[test]
@@ -1584,7 +1584,7 @@ fn test_prevent_all_noncombat_damage_to_permanents_matching_generates_replacemen
         false,
         crate::events::cause::EventCause::effect(),
     );
-    assert!(matcher.matches_event(&noncombat_to_controlled_creature, &ctx));
+    assert!(matcher.matches_event(&noncombat_to_controlled_creature, &ctx).expect("finite matcher fixture evaluates successfully"));
 
     let combat_to_controlled_creature = DamageEvent::with_cause(
         damage_source_id,
@@ -1593,7 +1593,7 @@ fn test_prevent_all_noncombat_damage_to_permanents_matching_generates_replacemen
         true,
         crate::events::cause::EventCause::combat_damage(damage_source_id),
     );
-    assert!(!matcher.matches_event(&combat_to_controlled_creature, &ctx));
+    assert!(!matcher.matches_event(&combat_to_controlled_creature, &ctx).expect("finite matcher fixture evaluates successfully"));
 
     let noncombat_to_opponent_creature = DamageEvent::with_cause(
         damage_source_id,
@@ -1602,7 +1602,7 @@ fn test_prevent_all_noncombat_damage_to_permanents_matching_generates_replacemen
         false,
         crate::events::cause::EventCause::effect(),
     );
-    assert!(!matcher.matches_event(&noncombat_to_opponent_creature, &ctx));
+    assert!(!matcher.matches_event(&noncombat_to_opponent_creature, &ctx).expect("finite matcher fixture evaluates successfully"));
 
     let unpreventable = DamageEvent::unpreventable_with_cause(
         damage_source_id,
@@ -1611,7 +1611,7 @@ fn test_prevent_all_noncombat_damage_to_permanents_matching_generates_replacemen
         false,
         crate::events::cause::EventCause::effect(),
     );
-    assert!(!matcher.matches_event(&unpreventable, &ctx));
+    assert!(!matcher.matches_event(&unpreventable, &ctx).expect("finite matcher fixture evaluates successfully"));
 }
 
 #[test]
@@ -1640,7 +1640,7 @@ fn test_prevent_all_combat_damage_to_self_generates_replacement() {
         true,
         crate::events::cause::EventCause::combat_damage(source),
     );
-    assert!(matcher.matches_event(&combat_damage, &ctx));
+    assert!(matcher.matches_event(&combat_damage, &ctx).expect("finite matcher fixture evaluates successfully"));
 
     let noncombat_damage = DamageEvent::with_cause(
         source,
@@ -1649,7 +1649,7 @@ fn test_prevent_all_combat_damage_to_self_generates_replacement() {
         false,
         crate::events::cause::EventCause::effect(),
     );
-    assert!(!matcher.matches_event(&noncombat_damage, &ctx));
+    assert!(!matcher.matches_event(&noncombat_damage, &ctx).expect("finite matcher fixture evaluates successfully"));
 
     let unpreventable = DamageEvent::unpreventable_with_cause(
         source,
@@ -1658,7 +1658,7 @@ fn test_prevent_all_combat_damage_to_self_generates_replacement() {
         true,
         crate::events::cause::EventCause::combat_damage(source),
     );
-    assert!(!matcher.matches_event(&unpreventable, &ctx));
+    assert!(!matcher.matches_event(&unpreventable, &ctx).expect("finite matcher fixture evaluates successfully"));
 }
 
 #[test]
@@ -1687,7 +1687,7 @@ fn test_prevent_all_damage_to_self_generates_replacement() {
         true,
         crate::events::cause::EventCause::combat_damage(source),
     );
-    assert!(matcher.matches_event(&combat_damage, &ctx));
+    assert!(matcher.matches_event(&combat_damage, &ctx).expect("finite matcher fixture evaluates successfully"));
 
     let noncombat_damage = DamageEvent::with_cause(
         source,
@@ -1696,7 +1696,7 @@ fn test_prevent_all_damage_to_self_generates_replacement() {
         false,
         crate::events::cause::EventCause::effect(),
     );
-    assert!(matcher.matches_event(&noncombat_damage, &ctx));
+    assert!(matcher.matches_event(&noncombat_damage, &ctx).expect("finite matcher fixture evaluates successfully"));
 
     let wrong_target = DamageEvent::with_cause(
         source,
@@ -1705,7 +1705,7 @@ fn test_prevent_all_damage_to_self_generates_replacement() {
         false,
         crate::events::cause::EventCause::effect(),
     );
-    assert!(!matcher.matches_event(&wrong_target, &ctx));
+    assert!(!matcher.matches_event(&wrong_target, &ctx).expect("finite matcher fixture evaluates successfully"));
 }
 
 #[test]
@@ -1748,7 +1748,7 @@ fn test_prevent_all_noncombat_damage_to_other_creatures_you_control() {
         false,
         crate::events::cause::EventCause::effect(),
     );
-    assert!(matcher.matches_event(&noncombat_to_other, &ctx));
+    assert!(matcher.matches_event(&noncombat_to_other, &ctx).expect("finite matcher fixture evaluates successfully"));
 
     let combat_to_other = DamageEvent::with_cause(
         opponent_id,
@@ -1757,7 +1757,7 @@ fn test_prevent_all_noncombat_damage_to_other_creatures_you_control() {
         true,
         crate::events::cause::EventCause::combat_damage(opponent_id),
     );
-    assert!(!matcher.matches_event(&combat_to_other, &ctx));
+    assert!(!matcher.matches_event(&combat_to_other, &ctx).expect("finite matcher fixture evaluates successfully"));
 
     let noncombat_to_source = DamageEvent::with_cause(
         opponent_id,
@@ -1766,7 +1766,7 @@ fn test_prevent_all_noncombat_damage_to_other_creatures_you_control() {
         false,
         crate::events::cause::EventCause::effect(),
     );
-    assert!(!matcher.matches_event(&noncombat_to_source, &ctx));
+    assert!(!matcher.matches_event(&noncombat_to_source, &ctx).expect("finite matcher fixture evaluates successfully"));
 }
 
 #[test]

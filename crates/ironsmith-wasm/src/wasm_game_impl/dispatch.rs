@@ -90,7 +90,7 @@ impl WasmGame {
         let battlefield_transitions =
             battlefield_transition_snapshots(self.game.take_ui_battlefield_transitions());
         let mut snap = GameSnapshot::from_game_with_object_view_cache(
-            &self.game,
+            self.pending_decision_game.as_deref().unwrap_or(&self.game),
             self.perspective,
             self.pending_decision.as_ref(),
             self.current_mana_payment_view(),
@@ -117,7 +117,7 @@ impl WasmGame {
         let result = ironsmith::rules::state_based::apply_legend_rule_choice_from_group_with_decision_maker(
             &mut self.game, keep_id, legend_group, &mut legend_dm,
         );
-        let (pending, _, _) = legend_dm.finish();
+        let (pending, _, _, _) = legend_dm.finish();
         if result.is_err() || pending.is_some() {
             self.restore_execution_replay_checkpoint(&probe_checkpoint, result.is_ok() && pending.is_some());
         }
@@ -1280,6 +1280,7 @@ impl WasmGame {
             snapshot_serial: 0,
             active_viewed_cards: None,
             active_audit_viewed_cards: Vec::new(),
+            pending_decision_game: None,
             last_crypto_requirements: Vec::new(),
             pending_crypto_audit_before: None,
             active_resolving_stack_object: None,
@@ -2264,7 +2265,15 @@ impl WasmGame {
         let owner = PlayerId::from_index(input.owner);
         let position_commitment = input.position_commitment.as_deref();
         let explicit_target = if let Some(raw) = input.object_id {
-            let object_id = ObjectId::from_raw(raw);
+            let requested_id = ObjectId::from_raw(raw);
+            // A suspended draw has a new incarnation only in the decision
+            // view. Open its retained physical card in the replay checkpoint;
+            // the position/commitment checks below still authenticate it.
+            let object_id = if self.game.object(requested_id).is_some() { requested_id }
+                else { self.pending_decision_game.as_deref()
+                    .and_then(|view| view.object(requested_id))
+                    .and_then(|object| self.game.find_object_by_stable_id(object.stable_id))
+                    .unwrap_or(requested_id) };
             let Some(info) = self.game.hidden_card_info(object_id).cloned() else {
                 return Err(JsValue::from_str(
                     "explicit hidden ziffle object is not present in this engine",
@@ -2667,7 +2676,9 @@ impl WasmGame {
     #[wasm_bindgen(js_name = hiddenCardOpenState)]
     pub fn hidden_card_open_state(&self, object_id: u64) -> Result<JsValue, JsValue> {
         let id = ObjectId::from_raw(object_id);
-        let info = self.game.hidden_card_info(id);
+        let game = self.pending_decision_game.as_deref()
+            .filter(|game| game.object(id).is_some()).unwrap_or(&self.game);
+        let info = game.hidden_card_info(id);
         #[derive(Serialize)]
         struct HiddenCardOpenState {
             tracked: bool,
@@ -2678,7 +2689,7 @@ impl WasmGame {
             tracked: info.is_some(),
             owner: info.map(|info| info.owner.index() as u8),
             open: info.is_some()
-                && self.game.object(id).is_some_and(|object| object.card.is_some()),
+                && game.object(id).is_some_and(|object| object.card.is_some()),
         };
         serde_wasm_bindgen::to_value(&state)
             .map_err(|e| JsValue::from_str(&format!("failed to serialize hidden card state: {e}")))
@@ -2692,9 +2703,12 @@ impl WasmGame {
     /// a face-down permanent it owns but does not control.
     #[wasm_bindgen(js_name = hiddenObjectViewableBy)]
     pub fn hidden_object_viewable_by(&self, object_id: u64, viewer: u8) -> bool {
+        let id = ObjectId::from_raw(object_id);
+        let game = self.pending_decision_game.as_deref()
+            .filter(|game| game.object(id).is_some()).unwrap_or(&self.game);
         crate::hidden_object_viewable_by_player(
-            &self.game,
-            ObjectId::from_raw(object_id),
+            game,
+            id,
             PlayerId::from_index(viewer),
         )
     }
@@ -2724,6 +2738,8 @@ impl WasmGame {
         let priority_epoch_undo_locked_by_mana = self.priority_epoch_undo_locked_by_mana;
         let priority_epoch_undo_land_stable_id = self.priority_epoch_undo_land_stable_id;
         let active_viewed_cards = self.active_viewed_cards.clone();
+        let pending_decision_game = self.pending_decision_game.clone();
+        let active_audit_viewed_cards = self.active_audit_viewed_cards.clone();
         let active_resolving_stack_object = self.active_resolving_stack_object.clone();
         let snapshot_serial = self.snapshot_serial;
         let last_snapshot_perf = self.last_snapshot_perf.clone();
@@ -2752,6 +2768,8 @@ impl WasmGame {
         self.priority_epoch_undo_locked_by_mana = priority_epoch_undo_locked_by_mana;
         self.priority_epoch_undo_land_stable_id = priority_epoch_undo_land_stable_id;
         self.active_viewed_cards = active_viewed_cards;
+        self.pending_decision_game = pending_decision_game;
+        self.active_audit_viewed_cards = active_audit_viewed_cards;
         self.active_resolving_stack_object = active_resolving_stack_object;
         self.snapshot_serial = snapshot_serial;
         self.last_snapshot_perf = last_snapshot_perf;
@@ -3101,12 +3119,12 @@ impl WasmGame {
         &self,
         object_id: ObjectId,
     ) -> Result<HiddenCardOpeningExport, JsValue> {
-        let info = self
-            .game
+        let game = self.pending_decision_game.as_deref()
+            .filter(|game| game.object(object_id).is_some()).unwrap_or(&self.game);
+        let info = game
             .hidden_card_info(object_id)
             .ok_or_else(|| JsValue::from_str("object is not tracked as a hidden card"))?;
-        let object = self
-            .game
+        let object = game
             .object(object_id)
             .ok_or_else(|| JsValue::from_str("hidden card object is not present"))?;
         let Some(card_id) = object.card else {
@@ -3165,7 +3183,7 @@ impl WasmGame {
             &mana_payment_view,
         );
         #[cfg(target_arch = "wasm32")]
-        if !self.game.has_ui_battlefield_transitions()
+        if self.pending_decision_game.is_none() && !self.game.has_ui_battlefield_transitions()
             && self.pending_crypto_audit_before.is_none()
             && let Some(cached) = self.cached_snapshot.as_ref()
             && cached.key == cache_key
@@ -3187,7 +3205,7 @@ impl WasmGame {
             self.update_crypto_requirements_from(before);
         }
         let mut snap = GameSnapshot::from_game_with_object_view_cache(
-            &self.game,
+            self.pending_decision_game.as_deref().unwrap_or(&self.game),
             self.perspective,
             self.pending_decision.as_ref(),
             mana_payment_view,
@@ -3232,7 +3250,8 @@ impl WasmGame {
         };
         self.last_snapshot_perf = Some(perf.clone());
         #[cfg(target_arch = "wasm32")]
-        if !had_battlefield_transitions && self.pending_crypto_audit_before.is_none() {
+        if self.pending_decision_game.is_none() && !had_battlefield_transitions
+            && self.pending_crypto_audit_before.is_none() {
             self.cached_snapshot = Some(CachedSnapshot {
                 key: cache_key,
                 value: encoded.clone(),
@@ -3342,9 +3361,10 @@ impl WasmGame {
     #[wasm_bindgen(js_name = objectDetails)]
     pub fn object_details(&self, object_id: u64) -> Result<JsValue, JsValue> {
         let object_id = ObjectId::from_raw(object_id);
-        if self.game.is_face_down_conspiracy(object_id)
-            && self
-                .game
+        let game = self.pending_decision_game.as_deref()
+            .filter(|game| game.object(object_id).is_some()).unwrap_or(&self.game);
+        if game.is_face_down_conspiracy(object_id)
+            && game
                 .object(object_id)
                 .is_some_and(|object| object.owner != self.perspective)
         {
@@ -3352,12 +3372,11 @@ impl WasmGame {
                 "a face-down conspiracy may be inspected only by its controller",
             ));
         }
-        let definition = self
-            .game
+        let definition = game
             .object(object_id)
             .and_then(|object| object.card)
             .and_then(|card_id| self.registry.get_by_id(card_id));
-        let details = build_object_details_snapshot(&self.game, object_id, definition)
+        let details = build_object_details_snapshot(game, object_id, definition)
             .ok_or_else(|| JsValue::from_str(&format!("unknown object id: {}", object_id.0)))?;
         serde_wasm_bindgen::to_value(&details)
             .map_err(|e| JsValue::from_str(&format!("objectDetails encode failed: {e}")))
@@ -3629,10 +3648,11 @@ impl WasmGame {
         let checkpoint = self.capture_replay_checkpoint();
         let mut dm = WasmReplayDecisionMaker::new(&[]);
         let result = self.force_turn_face_up_with_dm(player, id, &mut dm);
-        let (pending, viewed_cards, audit_viewed_cards) = dm.finish();
+        let (pending, viewed_cards, audit_viewed_cards, pending_game) = dm.finish();
         if matches!(result, Err(ForceFaceUpError::PendingChoice)) {
             if let Some(context) = pending {
                 session.restore(self);
+                        self.pending_decision_game = pending_game;
                 self.active_viewed_cards = viewed_cards;
                 self.active_audit_viewed_cards = audit_viewed_cards;
                 self.pending_decision = Some(context);
@@ -3872,12 +3892,13 @@ impl WasmGame {
                 skip_triggers,
                 &mut replay_dm,
             );
-            let (pending_context, viewed_cards, audit_viewed_cards) = replay_dm.finish();
+            let (pending_context, viewed_cards, audit_viewed_cards, pending_game) = replay_dm.finish();
             self.active_viewed_cards = viewed_cards;
             self.active_audit_viewed_cards = audit_viewed_cards;
 
             if let Some(ctx) = pending_context {
                 self.restore_replay_checkpoint(&checkpoint);
+                self.pending_decision_game = pending_game;
                 self.pending_decision = Some(ctx);
                 self.runner_pending_decision = false;
                 self.pending_replay_action = Some(PendingReplayAction {
@@ -4493,6 +4514,24 @@ impl WasmGame {
         Ok(())
     }
 
+    /// Serialized checkpoints do not encode live instruction continuations or
+    /// undo transactions. Recovery anchors may only sample a complete boundary.
+    #[wasm_bindgen(js_name = isReplayCheckpointBoundary)]
+    pub fn is_replay_checkpoint_boundary(&self) -> bool {
+        self.pregame.is_none()
+            && matches!(self.pending_decision, Some(DecisionContext::Priority(_)))
+            && self.pending_decision_game.is_none()
+            && self.pending_replay_action.is_none()
+            && self.pending_live_continuation.is_none()
+            && self.pending_action_checkpoint.is_none()
+            && self.pending_live_action_root.is_none()
+            && self.priority_state.pending_cast.is_none()
+            && self.priority_state.pending_activation.is_none()
+            && self.priority_state.pending_continuation.is_none()
+            && !self.runner_pending_decision
+            && !self.priority_epoch_has_undoable_action
+    }
+
     /// Cancel the current pending decision chain.
     ///
     /// Rollback preference:
@@ -4527,6 +4566,7 @@ impl WasmGame {
         self.priority_epoch_undo_locked_by_mana = false;
         self.priority_epoch_undo_land_stable_id = None;
         self.active_viewed_cards = None;
+        self.pending_decision_game = None;
         self.active_audit_viewed_cards.clear();
         self.clear_active_resolving_stack_object();
         self.recompute_ui_decision()?;
@@ -4538,7 +4578,13 @@ impl WasmGame {
     pub fn dispatch(&mut self, command: JsValue) -> Result<JsValue, JsValue> {
         let dispatch_started_at = PerfTimer::start();
         self.dispatch_advance_until_decision_perfs.clear();
+        let prior_decision_game = self.pending_decision_game.clone();
+        let prior_decision = self.pending_decision.clone();
         let result = self.dispatch_routed(command);
+        if result.is_err() && self.pending_decision_game.is_none() && self.pending_decision.is_some()
+            && hash_debug_value(&self.pending_decision) == hash_debug_value(&prior_decision) {
+            self.pending_decision_game = prior_decision_game;
+        }
         self.finalize_dispatch_perf(dispatch_started_at, result.is_ok());
         result
     }
@@ -4576,6 +4622,7 @@ impl WasmGame {
         self.clear_active_resolving_stack_object();
         self.last_crypto_requirements.clear();
         self.pending_crypto_audit_before = Some(self.capture_crypto_audit_state());
+        self.pending_decision_game = None;
 
         let pending_ctx = self
             .pending_decision
@@ -4583,6 +4630,7 @@ impl WasmGame {
             .ok_or_else(|| JsValue::from_str("no pending decision to dispatch"))?;
         if matches!(pending_ctx, DecisionContext::Priority(_)) {
             self.active_viewed_cards = None;
+            self.pending_decision_game = None;
             self.active_audit_viewed_cards.clear();
         }
         let mut dispatch_perf = DispatchPerfMetrics {
@@ -4755,7 +4803,8 @@ impl WasmGame {
                     &response,
                     &mut live_dm,
                 );
-                let (pending_context, viewed_cards, audit_viewed_cards) = live_dm.finish();
+                let (pending_context, viewed_cards, audit_viewed_cards, pending_game) = live_dm.finish();
+                self.pending_decision_game = pending_game;
                 self.active_viewed_cards =
                     merge_carried_active_viewed_cards(carry_viewed_cards, viewed_cards);
                 self.active_audit_viewed_cards = audit_viewed_cards;

@@ -1372,7 +1372,7 @@ mod tests {
                         &mut game,
                         event.clone(),
                         library_effect_id,
-                    ),
+                    ).expect("finite replacement fixture evaluates successfully"),
                     Zone::Library,
                 );
                 assert_zone_change_destination(
@@ -1380,7 +1380,7 @@ mod tests {
                         &mut game,
                         event,
                         exile_effect_id,
-                    ),
+                    ).expect("finite replacement fixture evaluates successfully"),
                     Zone::Exile,
                 );
             }

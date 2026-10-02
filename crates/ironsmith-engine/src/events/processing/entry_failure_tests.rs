@@ -639,7 +639,7 @@ fn zone_entry_continuation_retains_history_and_zone_cause_matchers() {
             &mut game, crate::events::Event::new_with_provenance(zone, Default::default()),
             &mut dm, &[], &Default::default(), &Default::default(), None, &mut state,
         );
-        let event = result.into_event().unwrap();
+        let event = result.expect("finite destination processing succeeds").into_event().unwrap();
         assert_eq!(event.kind(), crate::events::EventKind::ZoneChange);
         assert!(state.was_applied(redirect));
         assert!(!state.was_applied(controller));
@@ -3401,7 +3401,7 @@ fn check_expanded_choice_continuation(ephemeral: bool) {
     game.take_pending_trigger_events();
     let pending = process_trait_event_with_additional_effects(
         &mut game, crate::events::Event::life_gain(alice, 2), &temporary,
-    );
+    ).expect("finite replacement fixture evaluates successfully");
     let (original, programs) = pending.clone().into_expansion();
     assert_eq!(programs.len(), 1);
     let TraitEventResult::NeedsChoice { applicable_effects, applied_effects, .. } = original else {
@@ -3675,7 +3675,7 @@ mod captured_affected_player_contract_tests {
         game.effect_store.replacement_effects.add_one_shot_effect(replacement);
         let mut dm = crate::decision::SelectFirstDecisionMaker;
         let event = if zone_event {Event::zone_change(original,from,Zone::Graveyard,crate::events::cause::EventCause::from_effect(source,alice),None)} else {Event::destroy(original,Some(source))};
-        let result = process_with_dm_and_additional_effects(&mut game,event,&mut dm,&[]);
+        let result = process_with_dm_and_additional_effects(&mut game,event,&mut dm,&[]).expect("finite replacement fixture evaluates successfully");
         let TraitEventResult::Replaced {context,effects,source,controller,..} = result else {panic!("replacement was captured before the original event commits");};
         if remove { assert!(game.move_object_by_effect(original,Zone::Graveyard).is_some()); assert!(game.object(original).is_none()); }
         game.take_pending_trigger_events();

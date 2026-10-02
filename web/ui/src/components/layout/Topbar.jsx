@@ -329,7 +329,7 @@ export default function Topbar({
               "--topbar-decision-rgb": perspectiveAccent.rgb,
             }}
           >
-            {state?.decision?.kind === "priority" ? (
+            {state?.decision?.kind === "priority" || state?.game_over ? (
               <div className="table-action-bar relative h-full w-full rounded-none border">
                 <DecisionPopupLayer priorityInline />
               </div>

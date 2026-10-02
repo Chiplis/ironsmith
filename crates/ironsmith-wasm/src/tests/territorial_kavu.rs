@@ -177,7 +177,7 @@ fn territorial_kavu_discard_mode_defers_discard_until_resolution_and_draws() {
     let mut dm = WasmReplayDecisionMaker::new(&[]);
     ironsmith::game_loop::resolve_stack_entry_with(&mut wasm.game, &mut dm)
         .expect("resolution should pause for the discard");
-    let (prompt, _, _) = dm.finish();
+    let (prompt, _, _, _) = dm.finish();
     let ctx = match prompt {
         Some(DecisionContext::SelectObjects(ctx)) => ctx,
         other => panic!("expected a discard selection during resolution, got {other:?}"),

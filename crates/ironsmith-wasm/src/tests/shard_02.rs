@@ -958,7 +958,7 @@ pub(super) fn public_reveal_survives_replay_advance_to_next_prompt() {
     let view_ctx = ViewCardsContext::new(alice, bob, None, Zone::Library, "Reveal consulted cards")
         .with_public(true);
     DecisionMaker::view_cards(&mut replay_dm, &wasm.game, alice, &[revealed_id], &view_ctx);
-    let (_, viewed_cards, audit_viewed_cards) = replay_dm.finish();
+    let (_, viewed_cards, audit_viewed_cards, _pending_game) = replay_dm.finish();
     wasm.active_viewed_cards = viewed_cards;
     wasm.active_audit_viewed_cards = audit_viewed_cards;
 
@@ -1006,7 +1006,7 @@ pub(super) fn public_reveal_resolves_stale_replay_ids_to_live_card_names() {
     let view_ctx = ViewCardsContext::new(alice, bob, None, Zone::Library, "Reveal consulted cards")
         .with_public(true);
     DecisionMaker::view_cards(&mut replay_dm, &wasm.game, alice, &[revealed_id], &view_ctx);
-    let (_, viewed_cards, audit_viewed_cards) = replay_dm.finish();
+    let (_, viewed_cards, audit_viewed_cards, _pending_game) = replay_dm.finish();
     wasm.active_viewed_cards = viewed_cards;
     wasm.active_audit_viewed_cards = audit_viewed_cards;
 

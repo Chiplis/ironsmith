@@ -17,7 +17,7 @@ const B: PlayerId = PlayerId(1);
 #[derive(Debug, Clone)]
 struct ObserveDrawPhase([usize; 2], Arc<AtomicUsize>);
 impl ReplacementMatcher for ObserveDrawPhase {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() == EventKind::Draw {
             self.1.fetch_add(1, Ordering::Relaxed);
             for (player, expected) in [A, B].into_iter().zip(self.0) {

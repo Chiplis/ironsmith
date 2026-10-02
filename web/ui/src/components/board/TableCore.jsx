@@ -103,8 +103,8 @@ export default function TableCore({
   const decision = state?.decision || null;
   const activeZoneActionControls = tableToolsExpanded ? zoneActionControls : null;
   const expandedActionBar = Boolean(
-    decision
-    && decision.kind !== "priority"
+    state?.game_over
+    || (decision && decision.kind !== "priority")
   );
   useDecisionControlMotion(tableRef, expandedActionBar);
   const compactPriorityBarHeight = portraitCompactViewport

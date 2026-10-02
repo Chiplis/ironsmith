@@ -3,6 +3,23 @@ import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
 import {createServer} from 'vite';
 
+test('finished multiplayer game shows a working Play again button without a decision', {timeout: 60000}, async () => {
+  const vite = await createServer({server: {host: '127.0.0.1', port: 0}, logLevel: 'silent'});
+  await vite.listen();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({viewport: {width: 1280, height: 720}});
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/topbar-match-clock.html?gameOver`);
+    const button = page.getByRole('button', {name: 'Play again', exact: true});
+    await button.waitFor({timeout: 30000});
+    await button.click();
+    assert.equal(await page.evaluate(() => window.__rematchRequested), true);
+    assert.deepEqual(errors, []);
+  } finally {await browser.close(); await vite.close();}
+});
+
 // The per-player clocks ride with the turn status, beside the perspective
 // picker: the mulligan prompt opens over the left of the toolbar, which is
 // where they used to sit.

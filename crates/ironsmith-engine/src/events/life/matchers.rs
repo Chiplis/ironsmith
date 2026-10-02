@@ -35,7 +35,7 @@ impl WouldGainLifeMatcher {
 }
 
 impl ReplacementMatcher for WouldGainLifeMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::LifeGain {
             return false;
         }
@@ -86,7 +86,7 @@ impl WouldLoseLifeMatcher {
 }
 
 impl ReplacementMatcher for WouldLoseLifeMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::LifeLoss {
             return false;
         }
@@ -130,11 +130,11 @@ mod tests {
 
         // Alice gains life - should match
         let event_alice = LifeGainEvent::new(alice, 5);
-        assert!(matcher.matches_event(&event_alice, &ctx));
+        assert!(matcher.matches_event(&event_alice, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         // Bob gains life - should not match
         let event_bob = LifeGainEvent::new(bob, 5);
-        assert!(!matcher.matches_event(&event_bob, &ctx));
+        assert!(!matcher.matches_event(&event_bob, &ctx).expect("finite matcher fixture evaluates successfully"));
     }
 
     #[test]
@@ -148,10 +148,10 @@ mod tests {
 
         // Both should match
         let event_alice = LifeGainEvent::new(alice, 5);
-        assert!(matcher.matches_event(&event_alice, &ctx));
+        assert!(matcher.matches_event(&event_alice, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         let event_bob = LifeGainEvent::new(bob, 5);
-        assert!(matcher.matches_event(&event_bob, &ctx));
+        assert!(matcher.matches_event(&event_bob, &ctx).expect("finite matcher fixture evaluates successfully"));
     }
 
     #[test]
@@ -165,11 +165,11 @@ mod tests {
 
         // Alice loses life - should not match (not opponent)
         let event_alice = LifeLossEvent::from_effect(alice, 5);
-        assert!(!matcher.matches_event(&event_alice, &ctx));
+        assert!(!matcher.matches_event(&event_alice, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         // Bob loses life - should match (is opponent)
         let event_bob = LifeLossEvent::from_effect(bob, 5);
-        assert!(matcher.matches_event(&event_bob, &ctx));
+        assert!(matcher.matches_event(&event_bob, &ctx).expect("finite matcher fixture evaluates successfully"));
     }
 
     #[test]

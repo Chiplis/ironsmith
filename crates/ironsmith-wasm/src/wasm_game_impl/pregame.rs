@@ -2313,7 +2313,8 @@ impl WasmGame {
                 },
             )?;
         }
-        let (pending_context, viewed_cards, audit_viewed_cards) = decision_maker.finish();
+        let (pending_context, viewed_cards, audit_viewed_cards, pending_game) = decision_maker.finish();
+        self.pending_decision_game = pending_game;
         if pending_context.is_some() {
             return Err(JsValue::from_str(
                 "opening-hand reveal consequence unexpectedly requested a decision",

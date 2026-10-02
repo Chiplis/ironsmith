@@ -75,7 +75,7 @@ fn catalog_vizier_reduces_only_matching_counter_placements() {
                 counter,
                 count,
                 engine::events::cause::EventCause::effect()
-            ),
+            ).expect("finite replacement fixture evaluates successfully"),
             expected
         );
     }

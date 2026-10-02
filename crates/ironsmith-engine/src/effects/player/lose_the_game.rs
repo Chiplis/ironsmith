@@ -278,7 +278,7 @@ mod replacement_loss_owner_contract_tests {
     #[derive(Debug, Clone)]
     struct LossOf(PlayerId);
     impl crate::events::ReplacementMatcher for LossOf {
-        fn matches_event(&self, event: &dyn crate::events::GameEventType, _: &crate::events::EventContext) -> bool {
+        fn matches_prepared_event(&self, event: &dyn crate::events::GameEventType, _: &crate::events::context::PreparedEventContext) -> bool {
             event.as_any().downcast_ref::<crate::events::PlayerLosesGameEvent>().is_some_and(|event| event.player == self.0)
         }
         fn display(&self) -> String { "Fixture loss".into() }

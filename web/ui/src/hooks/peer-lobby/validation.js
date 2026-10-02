@@ -105,7 +105,7 @@ import {
 import { recordDiagnosticEvent } from "../../lib/action-diagnostics.js";
 import { disclosureDueForPlayer } from "./end-of-match-disclosure.js";
 import { assertGenesisSeedRevealBinding, assertVerifiedMatchStartIsFresh, rememberStartedGenesis, rotateGenesisSeedNonce } from "./genesis-binding.js";
-import { initialAuditStateHashForMatch } from "../../lib/multiplayer-audit.js";
+import { sequencedActionSignedPayload, initialAuditStateHashForMatch } from "../../lib/multiplayer-audit.js";
 import { genesisAuditKeyLookup, signZiffleShuffleStep, verifyZiffleCeremonyStepSignatures } from "../../lib/ziffle-step-signatures.js";
 
 export function usePeerLobbyValidation(base, servicesRef) {
@@ -348,6 +348,30 @@ export function usePeerLobbyValidation(base, servicesRef) {
       await handleHistoricalSequencedAction(message);
       return;
     }
+    // A future payload must be signed before it can pause this match for
+    // recovery. Its chain and material are verified again after the gap closes.
+    if (nextSequence > session.lastAppliedSequence + 1
+      && isVerifiedMultiplayerSecurityMode(sessionSecurityMode(session))) {
+      if (nextSequence > session.lastAppliedSequence + 64
+        || (pendingSequencedActionsRef.current.size >= 64
+          && !pendingSequencedActionsRef.current.has(nextSequence))) {
+        throw new Error("Future action exceeds the bounded recovery window");
+      }
+      const audit = message.audit;
+      if (!audit || audit.matchId !== currentAuditMatchId()
+        || Number(audit.seq) !== nextSequence || Number(audit.actor) !== Number(message.actorIndex)
+        || Number(audit.signer ?? audit.actor) !== Number(message.actorIndex)
+        || canonicalMultiplayerPayload(audit.command) !== canonicalMultiplayerPayload(message.command)) {
+        throw new Error("Future action has an invalid signed envelope");
+      }
+      const key = await importCachedAuditPublicKey(publicKeyForAuditSigner(message.actorIndex));
+      if (!await verifyAuditPayload(key, sequencedActionSignedPayload(message), audit.signature || "")) {
+        throw new Error("Future action signature is invalid");
+      }
+      if (Number(multiplayerRef.current.lastAppliedSequence) !== Number(session.lastAppliedSequence)) {
+        return applySequencedActionMessageInner(message, options);
+      }
+    }
     if (nextSequence !== session.lastAppliedSequence + 1) {
       if (
         !dryRun
@@ -357,6 +381,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
         && bufferFutureSequencedAction(message, options)
       ) {
         setStatus(`Waiting for action ${session.lastAppliedSequence + 1}`);
+        servicesRef.current.requestMissingSequencedActions?.(message);
         if (isTrustedMultiplayerSecurityMode(sessionSecurityMode(session))) {
           servicesRef.current.requestResync("Recovering missing accepted actions", { forceCheckpoint: false });
         }
@@ -480,7 +505,8 @@ export function usePeerLobbyValidation(base, servicesRef) {
             securityMode: MULTIPLAYER_SECURITY_TRUSTED,
           });
         }
-        await drainPendingSequencedActions();
+        servicesRef.current.notifySequencedActionRecovery?.();
+      await drainPendingSequencedActions();
         return { trusted: true };
       }
       applyPhase = markApplyPhase("verify_audit");
@@ -808,6 +834,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
       await publishCurrentRuntimeState(
         viewedCardsStateHint(remotePostOpeningState, appliedState)
       );
+      servicesRef.current.notifySequencedActionRecovery?.();
       await drainPendingSequencedActions();
 	    } catch (err) {
 	      const failureReason = err instanceof Error ? err.message : String(err);

@@ -65,17 +65,14 @@ impl WouldEnterBattlefieldMatcher {
             .matches_with_view(obj, &ctx.filter_ctx, prospective_game, &view)
     }
 
-    fn matches_would_enter_event(&self, event: &EnterBattlefieldEvent, ctx: &EventContext) -> bool {
-        if let Some(prospective_game) = ctx.prospective_etb_game {
-            return self.matches_in_prospective_game(event.object, prospective_game, ctx);
-        }
-
-        event
-            .prospective_game_state(ctx.game)
-            .is_some_and(|prospective_game| {
-                self.matches_in_prospective_game(event.object, &prospective_game, ctx)
-            })
+    fn matches_would_enter_event(
+        &self, event: &EnterBattlefieldEvent,
+        ctx: &crate::events::context::PreparedEventContext,
+    ) -> bool {
+        ctx.prospective_entry_world(event.object).is_some_and(|world|
+            self.matches_in_prospective_game(event.object, world, ctx))
     }
+
 }
 
 impl ReplacementMatcher for WouldEnterBattlefieldMatcher {
@@ -83,7 +80,7 @@ impl ReplacementMatcher for WouldEnterBattlefieldMatcher {
         self.filter.source
     }
 
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         match event.event_kind() {
             EventKind::ZoneChange => {
                 let Some(zone_change) = downcast_event::<ZoneChangeEvent>(event) else {
@@ -123,7 +120,7 @@ impl ReplacementMatcher for ThisWouldEnterBattlefieldMatcher {
         true
     }
 
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         let object_id = match event.event_kind() {
             EventKind::ZoneChange => {
                 let Some(zone_change) = downcast_event::<ZoneChangeEvent>(event) else {
@@ -181,7 +178,7 @@ impl WouldDieMatcher {
 }
 
 impl ReplacementMatcher for WouldDieMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::ZoneChange {
             return false;
         }
@@ -252,7 +249,7 @@ impl WouldDieDamagedBySourceThisTurnMatcher {
 }
 
 impl ReplacementMatcher for WouldDieDamagedBySourceThisTurnMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::ZoneChange {
             return false;
         }
@@ -382,7 +379,7 @@ impl WouldDieDamagedByFilteredSourceThisTurnMatcher {
 }
 
 impl ReplacementMatcher for WouldDieDamagedByFilteredSourceThisTurnMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::ZoneChange {
             return false;
         }
@@ -416,7 +413,7 @@ impl ReplacementMatcher for WouldDieDamagedByFilteredSourceThisTurnMatcher {
 pub struct ThisWouldDieMatcher;
 
 impl ReplacementMatcher for ThisWouldDieMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         let object_id = if event.event_kind() == EventKind::ZoneChange {
             let Some(zone_change) = downcast_event::<ZoneChangeEvent>(event) else {
                 return false;
@@ -457,7 +454,7 @@ impl WouldGoToGraveyardMatcher {
 }
 
 impl ReplacementMatcher for WouldGoToGraveyardMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::ZoneChange {
             return false;
         }
@@ -538,7 +535,7 @@ impl ReplacementMatcher for WouldChangeZoneMatcher {
         self.filter.source
     }
 
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::ZoneChange {
             return false;
         }
@@ -674,7 +671,7 @@ impl WouldBeExiledMatcher {
 }
 
 impl ReplacementMatcher for WouldBeExiledMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::ZoneChange {
             return false;
         }
@@ -713,7 +710,7 @@ impl ReplacementMatcher for WouldBeExiledMatcher {
 pub struct ThisWouldGoToGraveyardMatcher;
 
 impl ReplacementMatcher for ThisWouldGoToGraveyardMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         let object_id = if event.event_kind() == EventKind::ZoneChange {
             let Some(zone_change) = downcast_event::<ZoneChangeEvent>(event) else {
                 return false;
@@ -764,7 +761,7 @@ impl WouldGoToHandMatcher {
 }
 
 impl ReplacementMatcher for WouldGoToHandMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::ZoneChange {
             return false;
         }
@@ -816,7 +813,7 @@ impl WouldLeaveBattlefieldMatcher {
 }
 
 impl ReplacementMatcher for WouldLeaveBattlefieldMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::ZoneChange {
             return false;
         }
@@ -894,11 +891,11 @@ mod tests {
         let event = effect_zone_change(ObjectId::from_raw(1), Zone::Hand, Zone::Battlefield, None);
         // Note: This won't actually match because the object doesn't exist in the game
         // In real usage, the object would be looked up from game state
-        assert!(!matcher.matches_event(&event, &ctx));
+        assert!(!matcher.matches_event(&event, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         // Zone change to graveyard should not match
         let event = effect_zone_change(ObjectId::from_raw(1), Zone::Hand, Zone::Graveyard, None);
-        assert!(!matcher.matches_event(&event, &ctx));
+        assert!(!matcher.matches_event(&event, &ctx).expect("finite matcher fixture evaluates successfully"));
     }
 
     #[test]
@@ -917,13 +914,13 @@ mod tests {
 
         let zone_change = effect_zone_change(creature_id, Zone::Hand, Zone::Battlefield, None);
         assert!(
-            matcher.matches_event(&zone_change, &ctx),
+            matcher.matches_event(&zone_change, &ctx).expect("finite matcher fixture evaluates successfully"),
             "zone-change ETB matcher should evaluate the object as entering battlefield"
         );
 
         let etb = EnterBattlefieldEvent::new(creature_id, Zone::Hand);
         assert!(
-            matcher.matches_event(&etb, &ctx),
+            matcher.matches_event(&etb, &ctx).expect("finite matcher fixture evaluates successfully"),
             "ETB matcher should evaluate the object as entering battlefield"
         );
     }
@@ -995,8 +992,8 @@ mod tests {
             effect_zone_change(victim, Zone::Battlefield, Zone::Graveyard, Some(snapshot))
         };
 
-        assert!(matcher.matches_event(&would_die(alice_victim), &ctx));
-        assert!(!matcher.matches_event(&would_die(bob_victim), &ctx));
+        assert!(matcher.matches_event(&would_die(alice_victim), &ctx).expect("finite matcher fixture evaluates successfully"));
+        assert!(!matcher.matches_event(&would_die(bob_victim), &ctx).expect("finite matcher fixture evaluates successfully"));
     }
 
     #[test]
@@ -1017,16 +1014,16 @@ mod tests {
 
         // Zone change to graveyard for the source should match
         let event = effect_zone_change(source_id, Zone::Library, Zone::Graveyard, None);
-        assert!(matcher.matches_event(&event, &ctx));
+        assert!(matcher.matches_event(&event, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         // Zone change to graveyard for different object should not match
         let other_id = ObjectId::from_raw(2);
         let event = effect_zone_change(other_id, Zone::Library, Zone::Graveyard, None);
-        assert!(!matcher.matches_event(&event, &ctx));
+        assert!(!matcher.matches_event(&event, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         // Zone change to exile should not match
         let event = effect_zone_change(source_id, Zone::Library, Zone::Exile, None);
-        assert!(!matcher.matches_event(&event, &ctx));
+        assert!(!matcher.matches_event(&event, &ctx).expect("finite matcher fixture evaluates successfully"));
     }
 
     #[test]
@@ -1049,7 +1046,7 @@ mod tests {
         // Zone change to hand should try to match (won't match because object doesn't exist)
         let event = effect_zone_change(ObjectId::from_raw(1), Zone::Library, Zone::Hand, None);
         // This won't match because the object doesn't exist in game
-        assert!(!matcher.matches_event(&event, &ctx));
+        assert!(!matcher.matches_event(&event, &ctx).expect("finite matcher fixture evaluates successfully"));
 
         // Zone change to battlefield should not match
         let event = effect_zone_change(
@@ -1058,7 +1055,7 @@ mod tests {
             Zone::Battlefield,
             None,
         );
-        assert!(!matcher.matches_event(&event, &ctx));
+        assert!(!matcher.matches_event(&event, &ctx).expect("finite matcher fixture evaluates successfully"));
     }
 
     #[test]

@@ -3314,7 +3314,7 @@ impl GameState {
 
         // CR 714.3a / 702.155b: a Saga gets its lore counter(s) as it enters,
         // however it enters.
-        crate::game_loop::add_entry_lore_counters(self, new_id, decision_maker);
+        crate::game_loop::add_entry_lore_counters(self, new_id, decision_maker)?;
 
         // CR 709.5d: a Room gets the unlocked designation for the half that was
         // cast; one entering any other way has neither door unlocked. CR

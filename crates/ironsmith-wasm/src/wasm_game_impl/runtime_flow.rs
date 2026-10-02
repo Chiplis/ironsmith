@@ -131,6 +131,7 @@ impl WasmGame {
         self.priority_epoch_undo_locked_by_mana = false;
         self.priority_epoch_undo_land_stable_id = None;
         self.active_viewed_cards = None;
+        self.pending_decision_game = None;
         self.active_audit_viewed_cards.clear();
         self.clear_active_resolving_stack_object();
         if self.game_over.is_some() {
@@ -161,6 +162,7 @@ impl WasmGame {
         self.pending_live_continuation = None;
         self.priority_state.pending_continuation = None;
         self.active_viewed_cards = None;
+        self.pending_decision_game = None;
         self.active_audit_viewed_cards.clear();
         self.clear_active_resolving_stack_object();
         self.advance_until_decision()?;
@@ -766,7 +768,8 @@ impl WasmGame {
             Ok(GameProgress::GameOver(_)) => "game_over_progress".to_string(),
             Err(_) => "apply_priority_response_error".to_string(),
         };
-        let (pending_context, viewed_cards, audit_viewed_cards) = live_dm.finish();
+        let (pending_context, viewed_cards, audit_viewed_cards, pending_game) = live_dm.finish();
+        self.pending_decision_game = pending_game;
         self.active_viewed_cards =
             merge_carried_active_viewed_cards(carry_viewed_cards, viewed_cards);
         self.active_audit_viewed_cards = audit_viewed_cards;
@@ -920,7 +923,8 @@ impl WasmGame {
                 )
             }
         };
-        let (pending_context, viewed_cards, audit_viewed_cards) = live_dm.finish();
+        let (pending_context, viewed_cards, audit_viewed_cards, pending_game) = live_dm.finish();
+        self.pending_decision_game = pending_game;
         self.active_viewed_cards =
             merge_carried_active_viewed_cards(carry_viewed_cards, viewed_cards);
         self.active_audit_viewed_cards = audit_viewed_cards;
@@ -995,7 +999,8 @@ impl WasmGame {
                 )
             }
         };
-        let (pending_context, viewed_cards, audit_viewed_cards) = live_dm.finish();
+        let (pending_context, viewed_cards, audit_viewed_cards, pending_game) = live_dm.finish();
+        self.pending_decision_game = pending_game;
         self.active_viewed_cards =
             merge_carried_active_viewed_cards(carry_viewed_cards, viewed_cards);
         self.active_audit_viewed_cards = audit_viewed_cards;
@@ -1062,6 +1067,7 @@ impl WasmGame {
         self.priority_state = checkpoint.priority_state.clone();
         self.game_over = checkpoint.game_over.clone();
         self.last_crypto_requirements.clear();
+        self.pending_decision_game = None;
         self.pending_crypto_audit_before = None;
     }
 
@@ -1093,12 +1099,11 @@ impl WasmGame {
         checkpoint: &ReplayCheckpoint,
     ) -> Option<StackObjectSnapshot> {
         let entry = checkpoint.game.stack.last()?;
-        if checkpoint.game.stack.len() != self.game.stack.len() + 1 {
+        let decision_game = self.pending_decision_game.as_deref().unwrap_or(&self.game);
+        if checkpoint.game.stack.len() != decision_game.stack.len() + 1 {
             return None;
         }
-        if self
-            .game
-            .stack
+        if decision_game.stack
             .iter()
             // By stack identity: another ability of the same source may
             // still be on the stack.
@@ -1145,6 +1150,7 @@ impl WasmGame {
         self.pending_crypto_audit_before = pending_crypto_audit_before;
         perf.restore_checkpoint_ms = restore_started_at.elapsed_ms();
         self.active_viewed_cards = None;
+        self.pending_decision_game = None;
         self.active_audit_viewed_cards.clear();
         self.clear_active_resolving_stack_object();
 
@@ -1200,7 +1206,8 @@ impl WasmGame {
         perf.priority_advance = last_priority_advance_perf();
 
         let finish_started_at = PerfTimer::start();
-        let (pending_context, viewed_cards, audit_viewed_cards) = replay_dm.finish();
+        let (pending_context, viewed_cards, audit_viewed_cards, pending_game) = replay_dm.finish();
+        self.pending_decision_game = pending_game;
         perf.decision_maker_finish_ms = finish_started_at.elapsed_ms();
         self.active_viewed_cards =
             merge_carried_active_viewed_cards(carry_viewed_cards, viewed_cards);
@@ -1237,6 +1244,7 @@ impl WasmGame {
             }
             Err(e) => {
                 self.active_viewed_cards = None;
+                self.pending_decision_game = None;
                 self.active_audit_viewed_cards.clear();
                 self.clear_active_resolving_stack_object();
                 self.restore_replay_checkpoint(checkpoint);

@@ -2007,17 +2007,23 @@ fn effective_before_shuffle_order(
 
 impl WasmGame {
     fn capture_crypto_audit_state(&self) -> CryptoAuditState {
+        self.capture_crypto_audit_state_for(
+            self.pending_decision_game.as_deref().unwrap_or(&self.game),
+        )
+    }
+
+    fn capture_crypto_audit_state_for(&self, game: &GameState) -> CryptoAuditState {
         let mut state = CryptoAuditState {
-            random_count: self.game.irreversible_random_count(),
-            operation_checkpoint: self.game.crypto_audit_checkpoint(),
+            random_count: game.irreversible_random_count(),
+            operation_checkpoint: game.crypto_audit_checkpoint(),
             ..CryptoAuditState::default()
         };
         // Sorted so a (owner, slot, commitment) key collision in
         // `hidden_by_key` resolves identically on every peer.
-        let mut hidden_entries: Vec<_> = self.game.hidden_card_entries().collect();
+        let mut hidden_entries: Vec<_> = game.hidden_card_entries().collect();
         hidden_entries.sort_unstable_by_key(|(object_id, _)| **object_id);
         for (&object_id, info) in hidden_entries {
-            let Some(object) = self.game.object(object_id) else {
+            let Some(object) = game.object(object_id) else {
                 continue;
             };
             let card = HiddenAuditCard {
@@ -2033,19 +2039,19 @@ impl WasmGame {
                 card: object.card
                     .and_then(|card_id| self.registry.get_by_id(card_id))
                     .map(|definition| definition.card.name.clone()),
-                face_down: self.game.is_face_down(object_id),
-                foretold: self.game.is_foretold(object_id),
+                face_down: game.is_face_down(object_id),
+                foretold: game.is_foretold(object_id),
             };
             state
                 .hidden_by_key
                 .insert(hidden_audit_key(&card), card.clone());
             state.hidden_by_id.insert(object_id, card);
         }
-        for player in &self.game.players {
+        for player in &game.players {
             state.libraries.insert(player.id, player.library.to_vec());
             state.hands.insert(player.id, player.hand.to_vec());
             for &object_id in player.library.iter().chain(player.hand.iter()) {
-                if let Some(object) = self.game.object(object_id) {
+                if let Some(object) = game.object(object_id) {
                     state.stable_by_id.insert(object_id, object.stable_id);
                     state.id_by_stable.insert(object.stable_id, object_id);
                 }
@@ -2055,12 +2061,11 @@ impl WasmGame {
     }
 
     fn update_crypto_requirements_from(&mut self, before: CryptoAuditState) {
-        let after = self.capture_crypto_audit_state();
+        let audit_game = self.pending_decision_game.as_deref().unwrap_or(&self.game);
+        let after = self.capture_crypto_audit_state_for(audit_game);
         let mut requirements = Vec::new();
         let mut seen = HashSet::new();
-        let operations = self
-            .game
-            .crypto_audit_operations_since(before.operation_checkpoint);
+        let operations = audit_game.crypto_audit_operations_since(before.operation_checkpoint);
         let mut journaled_shuffle_players = HashSet::new();
         let mut journaled_random_delta = 0u64;
 
@@ -2203,11 +2208,9 @@ impl WasmGame {
                     if delta == 0 {
                         continue;
                     }
-                    let owner = self
-                        .game
-                        .turn
+                    let owner = audit_game.turn
                         .priority_player
-                        .unwrap_or(self.game.turn.active_player);
+                        .unwrap_or(audit_game.turn.active_player);
                     push_requirement_unique(
                         &mut requirements,
                         &mut seen,
@@ -2267,7 +2270,7 @@ impl WasmGame {
                 continue;
             }
 
-            if let Some(object) = self.game.object(before_card.object_id)
+            if let Some(object) = audit_game.object(before_card.object_id)
                 && object.card.is_some()
             {
                 let mut opened = before_card.clone();
@@ -2297,7 +2300,7 @@ impl WasmGame {
         {
             audit_views.push(view.clone());
         }
-        append_static_visibility_views(&self.game, &mut audit_views);
+        append_static_visibility_views(audit_game, &mut audit_views);
 
         for view in audit_views {
             let count = view.cards.len().min(u16::MAX as usize) as u16;
@@ -2308,8 +2311,8 @@ impl WasmGame {
                 && view.viewer != view.subject
                 && view.zone == Zone::Exile
                 && view.cards.iter().enumerate().any(|(index, &object_id)| {
-                    let resolved = view.resolved_object_id(&self.game, index, object_id);
-                    !hidden_object_viewable_by_player(&self.game, resolved, view.subject)
+                    let resolved = view.resolved_object_id(audit_game, index, object_id);
+                    !hidden_object_viewable_by_player(audit_game, resolved, view.subject)
                 });
             let view_requirement = CryptoRequirementView {
                 timing: None,
@@ -2352,7 +2355,7 @@ impl WasmGame {
             push_requirement_unique(&mut requirements, &mut seen, view_requirement);
 
             for (index, &object_id) in view.cards.iter().enumerate() {
-                let resolved_object_id = view.resolved_object_id(&self.game, index, object_id);
+                let resolved_object_id = view.resolved_object_id(audit_game, index, object_id);
                 let Some(card) = after
                     .hidden_by_id
                     .get(&resolved_object_id)
@@ -4076,6 +4079,7 @@ fn replay_outcome_kind(outcome: &ReplayOutcome) -> &'static str {
 struct WasmReplayDecisionMaker {
     answers: VecDeque<ReplayDecisionAnswer>,
     pending_context: Option<DecisionContext>,
+    pending_game: Option<Box<GameState>>,
     viewed_cards: Option<ActiveViewedCards>,
     audit_viewed_cards: Vec<ActiveViewedCards>,
 }
@@ -4085,6 +4089,7 @@ impl WasmReplayDecisionMaker {
         Self {
             answers: answers.iter().cloned().collect(),
             pending_context: None,
+            pending_game: None,
             viewed_cards: None,
             audit_viewed_cards: Vec::new(),
         }
@@ -4097,6 +4102,9 @@ impl WasmReplayDecisionMaker {
     }
 
     fn capture_once_for_game(&mut self, game: &GameState, ctx: DecisionContext) {
+        if self.pending_context.is_none() {
+            self.pending_game = Some(Box::new(game.clone()));
+        }
         let enriched = ironsmith::decisions::context::enrich_display_hints(game, ctx);
         merge_hidden_decision_views(
             game,
@@ -4113,11 +4121,13 @@ impl WasmReplayDecisionMaker {
         Option<DecisionContext>,
         Option<ActiveViewedCards>,
         Vec<ActiveViewedCards>,
+        Option<Box<GameState>>,
     ) {
         (
             self.pending_context,
             self.viewed_cards,
             self.audit_viewed_cards,
+            self.pending_game,
         )
     }
 }
@@ -4563,6 +4573,9 @@ pub struct WasmGame {
     active_viewed_cards: Option<ActiveViewedCards>,
     /// All hidden-card view events emitted by the most recent resolved command.
     active_audit_viewed_cards: Vec<ActiveViewedCards>,
+    /// Display and audit view at a suspended instruction boundary. Physical
+    /// state remains in the transaction checkpoint until resolution completes.
+    pending_decision_game: Option<Box<GameState>>,
     /// Crypto material required by the most recent resolved command.
     last_crypto_requirements: Vec<CryptoRequirementView>,
     /// Hidden/random snapshot captured immediately before the command currently
@@ -6138,7 +6151,7 @@ mod native_tests {
         let before = wasm.capture_crypto_audit_state();
         let mut replay = WasmReplayDecisionMaker::new(&[]);
         replay.capture_once_for_game(&wasm.game, ctx);
-        let (_pending, viewed_cards, audit_views) = replay.finish();
+        let (_pending, viewed_cards, audit_views, _) = replay.finish();
         wasm.active_viewed_cards = viewed_cards;
         wasm.active_audit_viewed_cards = audit_views;
 
@@ -6193,7 +6206,7 @@ mod native_tests {
         let before = wasm.capture_crypto_audit_state();
         let mut replay = WasmReplayDecisionMaker::new(&[]);
         replay.capture_once_for_game(&wasm.game, ctx);
-        let (_pending, viewed_cards, audit_views) = replay.finish();
+        let (_pending, viewed_cards, audit_views, _) = replay.finish();
         wasm.active_viewed_cards = viewed_cards;
         wasm.active_audit_viewed_cards = audit_views;
         wasm.update_crypto_requirements_from(before);
@@ -6271,7 +6284,7 @@ mod native_tests {
         );
         let mut replay = WasmReplayDecisionMaker::new(&[]);
         replay.capture_once_for_game(&wasm.game, hand_ctx);
-        let (_, active, audit) = replay.finish();
+        let (_, active, audit, _) = replay.finish();
         assert_eq!(active.expect("active hand view").viewer, alice);
         assert!(audit.iter().any(|view| view.viewer == alice));
         assert!(audit.iter().any(|view| view.viewer == bob));
@@ -6290,7 +6303,7 @@ mod native_tests {
         );
         let mut replay = WasmReplayDecisionMaker::new(&[]);
         replay.capture_once_for_game(&wasm.game, outside_ctx);
-        let (_, active, audit) = replay.finish();
+        let (_, active, audit, _) = replay.finish();
         assert_eq!(active.expect("active sideboard view").viewer, alice);
         assert_eq!(audit.len(), 1);
         assert_eq!(audit[0].viewer, alice);

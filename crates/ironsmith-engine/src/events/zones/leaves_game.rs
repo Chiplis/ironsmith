@@ -35,7 +35,7 @@ mod tests {
     #[derive(Debug, Clone)]
     struct AnyEvent;
     impl crate::events::ReplacementMatcher for AnyEvent {
-        fn matches_event(&self, _event: &dyn GameEventType, _ctx: &crate::events::EventContext) -> bool { true }
+        fn matches_prepared_event(&self, _event: &dyn GameEventType, _ctx: &crate::events::context::PreparedEventContext) -> bool { true }
         fn display(&self) -> String { "any proposed event".into() }
     }
     #[test]
@@ -49,7 +49,7 @@ mod tests {
         let shield=game.effect_store.replacement_effects.add_one_shot_effect(crate::replacement::ReplacementEffect::with_matcher(
             object,alice,AnyEvent,crate::replacement::ReplacementAction::Prevent));
         let event=crate::events::Event::new_with_provenance(ObjectLeavesGameEvent::new(object,snapshot,EventCause::from_game_rule()), Default::default());
-        let outcome=crate::events::processing::process_trait_event(&mut game,event);
+        let outcome=crate::events::processing::process_trait_event(&mut game,event).expect("finite replacement fixture evaluates successfully");
         assert!(matches!(outcome,crate::events::processing::TraitEventResult::Proceed(event) if event.kind()==EventKind::ObjectLeavesGame));
         assert!(game.effect_store.replacement_effects.get_effect(shield).is_some());
     }

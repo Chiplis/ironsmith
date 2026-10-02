@@ -2886,7 +2886,7 @@ pub(super) fn losheel_clockwork_scholar_prevention_rejects_nonattacking_and_oppo
         true,
         crate::events::cause::EventCause::combat_damage(damage_source),
     );
-    assert!(matcher.matches_event(&protected, &ctx));
+    assert!(matcher.matches_event(&protected, &ctx).expect("finite matcher fixture evaluates successfully"));
 
     let nonattacking = crate::events::damage::DamageEvent::with_cause(
         damage_source,
@@ -2895,7 +2895,7 @@ pub(super) fn losheel_clockwork_scholar_prevention_rejects_nonattacking_and_oppo
         true,
         crate::events::cause::EventCause::combat_damage(damage_source),
     );
-    assert!(!matcher.matches_event(&nonattacking, &ctx));
+    assert!(!matcher.matches_event(&nonattacking, &ctx).expect("finite matcher fixture evaluates successfully"));
 
     let opponent_controlled = crate::events::damage::DamageEvent::with_cause(
         damage_source,
@@ -2904,7 +2904,7 @@ pub(super) fn losheel_clockwork_scholar_prevention_rejects_nonattacking_and_oppo
         true,
         crate::events::cause::EventCause::combat_damage(damage_source),
     );
-    assert!(!matcher.matches_event(&opponent_controlled, &ctx));
+    assert!(!matcher.matches_event(&opponent_controlled, &ctx).expect("finite matcher fixture evaluates successfully"));
 
     let noncombat = crate::events::damage::DamageEvent::with_cause(
         damage_source,
@@ -2913,7 +2913,7 @@ pub(super) fn losheel_clockwork_scholar_prevention_rejects_nonattacking_and_oppo
         false,
         crate::events::cause::EventCause::effect(),
     );
-    assert!(!matcher.matches_event(&noncombat, &ctx));
+    assert!(!matcher.matches_event(&noncombat, &ctx).expect("finite matcher fixture evaluates successfully"));
 
     let unpreventable = crate::events::damage::DamageEvent::unpreventable_with_cause(
         damage_source,
@@ -2922,7 +2922,7 @@ pub(super) fn losheel_clockwork_scholar_prevention_rejects_nonattacking_and_oppo
         true,
         crate::events::cause::EventCause::combat_damage(damage_source),
     );
-    assert!(!matcher.matches_event(&unpreventable, &ctx));
+    assert!(!matcher.matches_event(&unpreventable, &ctx).expect("finite matcher fixture evaluates successfully"));
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

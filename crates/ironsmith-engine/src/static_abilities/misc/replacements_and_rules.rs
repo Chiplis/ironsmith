@@ -18,10 +18,10 @@ struct ChosenTypeDamageSourceMatcher {
 }
 
 impl ReplacementMatcher for ChosenTypeDamageSourceMatcher {
-    fn matches_event(
+    fn matches_prepared_event(
         &self,
         event: &dyn crate::events::traits::GameEventType,
-        ctx: &crate::events::context::EventContext,
+        ctx: &crate::events::context::PreparedEventContext,
     ) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -322,10 +322,10 @@ impl DamageAmountReplacementMatcher {
 }
 
 impl ReplacementMatcher for DamageAmountReplacementMatcher {
-    fn matches_event(
+    fn matches_prepared_event(
         &self,
         event: &dyn crate::events::traits::GameEventType,
-        ctx: &crate::events::context::EventContext<'_>,
+        ctx: &crate::events::context::PreparedEventContext<'_>,
     ) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -658,10 +658,10 @@ impl WouldPutCountersOrEnterWithCountersMatcher {
 }
 
 impl ReplacementMatcher for WouldPutCountersOrEnterWithCountersMatcher {
-    fn matches_event(
+    fn matches_prepared_event(
         &self,
         event: &dyn crate::events::traits::GameEventType,
-        ctx: &crate::events::context::EventContext,
+        ctx: &crate::events::context::PreparedEventContext,
     ) -> bool {
         match event.event_kind() {
             EventKind::PutCounters => {
@@ -731,7 +731,7 @@ impl ReplacementMatcher for WouldPutCountersOrEnterWithCountersMatcher {
                 crate::events::zones::matchers::WouldEnterBattlefieldMatcher::new(
                     self.filter.clone(),
                 )
-                .matches_event(event, ctx)
+                .matches_prepared_event(event, ctx)
             }
             _ => false,
         }
@@ -1775,10 +1775,10 @@ struct DredgeDrawMatcher {
 }
 
 impl ReplacementMatcher for DredgeDrawMatcher {
-    fn matches_event(
+    fn matches_prepared_event(
         &self,
         event: &dyn crate::events::traits::GameEventType,
-        ctx: &crate::events::context::EventContext,
+        ctx: &crate::events::context::PreparedEventContext,
     ) -> bool {
         if event.event_kind() != EventKind::Draw {
             return false;
@@ -2104,8 +2104,8 @@ struct ConditionalWouldDrawCardMatcher {
 }
 
 impl ReplacementMatcher for ConditionalWouldDrawCardMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
-        if !WouldDrawCardMatcher::you().matches_event(event, ctx) {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
+        if !WouldDrawCardMatcher::you().matches_prepared_event(event, ctx) {
             return false;
         }
 
@@ -2224,8 +2224,8 @@ struct WouldDrawInstructionMatcher {
 }
 
 impl ReplacementMatcher for WouldDrawInstructionMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
-        if !WouldDrawCardMatcher::you().matches_event(event, ctx) {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
+        if !WouldDrawCardMatcher::you().matches_prepared_event(event, ctx) {
             return false;
         }
         let Some(draw) = crate::events::downcast_event::<crate::events::DrawEvent>(event) else {
@@ -2441,8 +2441,8 @@ struct WouldDrawByPlayerMatcher {
 }
 
 impl ReplacementMatcher for WouldDrawByPlayerMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
-        if !WouldDrawCardMatcher::new(self.drawer.clone()).matches_event(event, ctx) {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
+        if !WouldDrawCardMatcher::new(self.drawer.clone()).matches_prepared_event(event, ctx) {
             return false;
         }
         let Some(draw) = crate::events::downcast_event::<crate::events::DrawEvent>(event) else {
@@ -2893,7 +2893,7 @@ impl WouldGoToGraveyardFromAnywhereMatcher {
 }
 
 impl ReplacementMatcher for WouldGoToGraveyardFromAnywhereMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         match event.event_kind() {
             EventKind::Discard => {
                 let Some(discard) = downcast_event::<DiscardEvent>(event) else {
@@ -3499,8 +3499,8 @@ impl WouldEnterFromZoneMatcher {
 }
 
 impl ReplacementMatcher for WouldEnterFromZoneMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
-        self.enter_matcher.matches_event(event, ctx) && self.origin_allowed(event)
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
+        self.enter_matcher.matches_prepared_event(event, ctx) && self.origin_allowed(event)
     }
 
     fn priority(&self) -> ReplacementPriority {
@@ -3622,8 +3622,8 @@ struct TappedForMinimumManaMatcher {
 }
 
 impl ReplacementMatcher for TappedForMinimumManaMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
-        self.inner.matches_event(event, ctx)
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
+        self.inner.matches_prepared_event(event, ctx)
             && crate::events::downcast_event::<crate::events::ManaAddedEvent>(event)
                 .is_some_and(|added| added.mana.len() >= self.minimum_amount as usize)
     }
@@ -3707,13 +3707,13 @@ struct ConditionalWouldChangeLifeMatcher {
 }
 
 impl ReplacementMatcher for ConditionalWouldChangeLifeMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         let matches_change = if self.loss {
             crate::events::life::matchers::WouldLoseLifeMatcher::new(self.player.clone())
-                .matches_event(event, ctx)
+                .matches_prepared_event(event, ctx)
         } else {
             crate::events::life::matchers::WouldGainLifeMatcher::new(self.player.clone())
-                .matches_event(event, ctx)
+                .matches_prepared_event(event, ctx)
         };
         if !matches_change {
             return false;

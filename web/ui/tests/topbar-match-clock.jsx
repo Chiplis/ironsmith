@@ -22,6 +22,14 @@ const context = {
   matchClockStore: {subscribe: () => () => {}, getSnapshot: () => clock},
   dispatch: async () => {}, dispatchInBackground: async () => {},
 };
+if (new URLSearchParams(window.location.search).has("gameOver")) {
+  context.state.decision = null;
+  context.state.game_over = {kind: "winner", player: 0, name: "Alice P1"};
+  context.multiplayer.mode = "in_match";
+  context.startRematchSideboarding = async () => {
+    window.__rematchRequested = true;
+  };
+}
 createRoot(document.getElementById("root")).render(
   <I18nProvider><GameContext.Provider value={context}><HoverProvider><DragProvider><CombatArrowProvider><TooltipProvider>
     <Topbar />

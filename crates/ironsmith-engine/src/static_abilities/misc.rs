@@ -1478,10 +1478,10 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrMoreOtherLands
         true
     }
 
-    fn matches_event(
+    fn matches_prepared_event(
         &self,
         event: &dyn crate::events::traits::GameEventType,
-        ctx: &crate::events::EventContext,
+        ctx: &crate::events::context::PreparedEventContext,
     ) -> bool {
         if !matches_this_would_enter_battlefield(event, ctx) {
             return false;
@@ -1514,10 +1514,10 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrFewerOtherLand
         true
     }
 
-    fn matches_event(
+    fn matches_prepared_event(
         &self,
         event: &dyn crate::events::traits::GameEventType,
-        ctx: &crate::events::EventContext,
+        ctx: &crate::events::context::PreparedEventContext,
     ) -> bool {
         if !matches_this_would_enter_battlefield(event, ctx) {
             return false;
@@ -1550,10 +1550,10 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrMoreBasicLands
         true
     }
 
-    fn matches_event(
+    fn matches_prepared_event(
         &self,
         event: &dyn crate::events::traits::GameEventType,
-        ctx: &crate::events::EventContext,
+        ctx: &crate::events::context::PreparedEventContext,
     ) -> bool {
         if !matches_this_would_enter_battlefield(event, ctx) {
             return false;
@@ -1590,10 +1590,10 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessAPlayerHas13OrLessLifeMatc
         true
     }
 
-    fn matches_event(
+    fn matches_prepared_event(
         &self,
         event: &dyn crate::events::traits::GameEventType,
-        ctx: &crate::events::EventContext,
+        ctx: &crate::events::context::PreparedEventContext,
     ) -> bool {
         if !matches_this_would_enter_battlefield(event, ctx) {
             return false;
@@ -1622,10 +1622,10 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessTwoOrMoreOpponentsMatcher 
         true
     }
 
-    fn matches_event(
+    fn matches_prepared_event(
         &self,
         event: &dyn crate::events::traits::GameEventType,
-        ctx: &crate::events::EventContext,
+        ctx: &crate::events::context::PreparedEventContext,
     ) -> bool {
         if !matches_this_would_enter_battlefield(event, ctx) {
             return false;
@@ -1751,10 +1751,10 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessConditionMatcher {
         true
     }
 
-    fn matches_event(
+    fn matches_prepared_event(
         &self,
         event: &dyn crate::events::traits::GameEventType,
-        ctx: &crate::events::EventContext,
+        ctx: &crate::events::context::PreparedEventContext,
     ) -> bool {
         if !matches_this_would_enter_battlefield(event, ctx) {
             return false;
@@ -1875,10 +1875,10 @@ impl ReplacementMatcher for ThisWouldEnterWithBloodthirstMatcher {
         true
     }
 
-    fn matches_event(
+    fn matches_prepared_event(
         &self,
         event: &dyn crate::events::traits::GameEventType,
-        ctx: &crate::events::EventContext,
+        ctx: &crate::events::context::PreparedEventContext,
     ) -> bool {
         if !matches_this_would_enter_battlefield(event, ctx) {
             return false;
@@ -2310,10 +2310,10 @@ impl ReplacementMatcher for ThisWouldEnterWithCountersIfConditionMatcher {
         true
     }
 
-    fn matches_event(
+    fn matches_prepared_event(
         &self,
         event: &dyn crate::events::traits::GameEventType,
-        ctx: &crate::events::EventContext,
+        ctx: &crate::events::context::PreparedEventContext,
     ) -> bool {
         if !matches_this_would_enter_battlefield(event, ctx) {
             return false;
@@ -3133,14 +3133,14 @@ struct PreventableCombatDamageToOrByObjectMatcher {
 }
 
 impl ReplacementMatcher for PreventableCombatDamageToOrByObjectMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
-        if self.to.matches_event(event, ctx) {
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
+        if self.to.matches_prepared_event(event, ctx) {
             return true;
         }
         let Some(damage) = downcast_event::<DamageEvent>(event) else {
             return false;
         };
-        damage.is_combat && !damage.is_unpreventable && self.by.matches_event(event, ctx)
+        damage.is_combat && !damage.is_unpreventable && self.by.matches_prepared_event(event, ctx)
     }
 
     fn priority(&self) -> ReplacementPriority {
@@ -3240,8 +3240,8 @@ struct PreventableAnyDamageToObjectMatcher {
 }
 
 impl ReplacementMatcher for PreventableAnyDamageToObjectMatcher {
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
-        self.combat.matches_event(event, ctx) || self.noncombat.matches_event(event, ctx)
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
+        self.combat.matches_prepared_event(event, ctx) || self.noncombat.matches_prepared_event(event, ctx)
     }
 
     fn display(&self) -> String {
@@ -4410,8 +4410,8 @@ impl ReplacementMatcher for ConditionalWouldEnterBattlefieldMatcher {
         self.enter_matcher.applies_from_entering_source()
     }
 
-    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
-        self.enter_matcher.matches_event(event, ctx) && self.condition_matches(event, ctx)
+    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
+        self.enter_matcher.matches_prepared_event(event, ctx) && self.condition_matches(event, ctx)
     }
 
     fn priority(&self) -> ReplacementPriority {
