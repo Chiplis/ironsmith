@@ -3,6 +3,29 @@ import assert from "node:assert/strict";
 import { createPriorityAnalysisScheduler, mergePriorityAnalysis } from "../src/lib/priority-analysis-scheduler.js";
 import { priorityHoldReason } from "../src/lib/priority-automation.js";
 
+test('diagnostics announce an overdue slice budget before its blocking work', async () => {
+  let clock = 0, tick;
+  const stages = [], slices = [], kinds = [];
+  const engine = { beginPriorityAnalysis: () => true,
+    stepPriorityAnalysis(_token, budget) {
+      assert.equal(stages.at(-1).phase, 'priority_analysis');
+      assert.equal(stages.at(-1).details.nodeBudget, budget);
+      clock += 43_000;
+      return { kind: 'priority', analysis_complete: true };
+    }, lastAnalysisSliceNodes: () => 12 };
+  const scheduler = createPriorityAnalysisScheduler({ game: () => engine, busy: () => false,
+    now: () => clock, schedule: fn => { tick = fn; return 1; }, cancel() {},
+    enqueue: async (fn, metadata) => { kinds.push(metadata.kind); return fn(); },
+    publish() {}, fail: assert.fail,
+    reportStage: (phase, details) => stages.push({ phase, details }), reportSlice: slice => slices.push(slice),
+    runSetup: (metadata, fn) => { kinds.push(metadata.kind); return fn(); } });
+  scheduler.start(); clock = 2001; tick(); await Promise.resolve();
+  assert.deepEqual(kinds, ['priority_analysis_setup', 'priority_analysis']);
+  assert.equal(stages[0].details.nodeBudget, 4096);
+  assert.equal(stages.at(-1).details.spentNodes, 12);
+  assert.equal(slices[0].elapsedMs, 43_000); assert.equal(slices[0].overdue, true);
+});
+
 function harness() {
   const timers = new Map(); let id = 0; const events = []; let busy = false; let steps = 0;
   const engine = { beginPriorityAnalysis: () => true, cancelPriorityAnalysis() {},

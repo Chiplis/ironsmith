@@ -34,6 +34,9 @@ const store = {
   mainThread: { lagMs: 0, worstStallMs: 0, worstStallAt: null, lastTickAt: null, longTasks: 0 },
   engine: null,
   engineRequests: new Map(),
+  workerTasks: null,
+  workerTaskHistory: [],
+  engineResultReceipts: [],
   listeners: new Set(),
   version: 0,
   traceSequence: 0,
@@ -284,10 +287,38 @@ export function stopMainThreadMonitor() {
 
 // Track unanswered worker calls separately from the last completed dispatch.
 // Method names and timings only: request arguments can contain private cards.
-export function beginEngineRequest(id, method) {
-  store.engineRequests.set(id, { id, method, startedAt: now(), startedAtWall: Date.now() });
+export function beginEngineRequest(id, method, runtimeBranch = null) {
+  store.engineRequests.set(id, { id, method, runtimeBranch, startedAt: now(), startedAtWall: Date.now() });
 }
 export function endEngineRequest(id) { store.engineRequests.delete(id); }
+
+// Retained on the main thread, independent of the worker request queue. These
+// updates deliberately do not trigger React renders for every worker phase.
+export function recordWorkerTaskDiagnostics(message) {
+  if (!message?.state) return;
+  if (store.workerTasks?.state.generation !== message.state.generation) store.workerTaskHistory = [];
+  const receivedAtWall = Date.now();
+  store.workerTasks = { state: message.state, receivedAt: now(), receivedAtWall,
+    deliveryDelayMs: Math.max(0, receivedAtWall - message.state.sentAtWall) };
+  if (message.completed) {
+    store.workerTaskHistory.push({ ...message.completed, receivedAtWall });
+    if (store.workerTaskHistory.length > 32) store.workerTaskHistory.shift();
+  }
+}
+
+export function recordEngineResultReceipt(id, { snapshotDecodeMs = 0, sentAtWall = null,
+  receivedAtWall = Date.now() } = {}) {
+  const request = store.engineRequests.get(id);
+  if (!request) return;
+  store.engineResultReceipts.push({ id, method: request.method, runtimeBranch: request.runtimeBranch,
+    receivedAtWall, roundTripMs: Math.max(0, now() - request.startedAt), snapshotDecodeMs,
+    deliveryDelayMs: sentAtWall == null ? null : Math.max(0, receivedAtWall - sentAtWall) });
+  if (store.engineResultReceipts.length > 32) store.engineResultReceipts.shift();
+}
+
+export function resetWorkerTaskDiagnostics() {
+  store.workerTasks = null; store.workerTaskHistory = []; store.engineResultReceipts = [];
+}
 
 // ---------------------------------------------------------------------------
 // Reading
@@ -303,6 +334,10 @@ export function diagnosticsVersion() {
 
 export function getDiagnosticsSnapshot() {
   const at = now();
+  const messageAgeMs = store.workerTasks ? Math.max(0, at - store.workerTasks.receivedAt) : 0;
+  const ageTask = task => task && ({ ...task,
+    elapsedMs: task.elapsedMs + messageAgeMs + store.workerTasks.deliveryDelayMs,
+    phaseElapsedMs: task.phaseElapsedMs + messageAgeMs + store.workerTasks.deliveryDelayMs });
   return {
     at,
     atWall: Date.now(),
@@ -317,6 +352,17 @@ export function getDiagnosticsSnapshot() {
     })),
     mainThread: { ...store.mainThread, stalls: store.stalls.filter((stall) => stall.at >= at - STALL_WINDOW_MS) },
     engine: store.engine,
+    workerTasks: store.workerTasks ? {
+      ...store.workerTasks.state,
+      active: ageTask(store.workerTasks.state.active),
+      queued: store.workerTasks.state.queued.map(ageTask),
+      outsideQueue: store.workerTasks.state.outsideQueue.map(ageTask),
+      receivedAtWall: store.workerTasks.receivedAtWall,
+      deliveryDelayMs: store.workerTasks.deliveryDelayMs,
+      lastMessageAgeMs: messageAgeMs,
+      recent: store.workerTaskHistory.slice().reverse(),
+      resultReceipts: store.engineResultReceipts.slice().reverse(),
+    } : null,
     engineRequests: { count: store.engineRequests.size,
       oldest: [...store.engineRequests.values()].slice(0, 12).map(request => ({ ...request, elapsedMs: at - request.startedAt })) },
   };
@@ -387,6 +433,7 @@ export function exportDiagnostics(extra = null, gameState = null) {
     ...(gameStateError ? { gameStateError } : {}),
     at: snapshot.at, atWall: snapshot.atWall,
     current: snapshot.current, engine: snapshot.engine, engineRequests: snapshot.engineRequests,
+    workerTasks: snapshot.workerTasks,
     peers: snapshot.peers, mainThread: snapshot.mainThread,
     events: snapshot.events,
     traces: snapshot.traces,
@@ -405,6 +452,7 @@ export function resetDiagnostics() {
   store.stalls = [];
   store.mainThread = { lagMs: 0, worstStallMs: 0, worstStallAt: null, lastTickAt: null, longTasks: 0 };
   store.engine = null;
+  resetWorkerTaskDiagnostics();
   resetJournal();
   notify();
 }

@@ -1,5 +1,6 @@
 import { createSnapshotDecoder } from "../lib/snapshot-channel.js";
-import { beginEngineRequest, endEngineRequest } from '../lib/action-diagnostics.js';
+import { beginEngineRequest, endEngineRequest, recordWorkerTaskDiagnostics,
+  recordEngineResultReceipt, resetWorkerTaskDiagnostics } from '../lib/action-diagnostics.js';
 import { beginJournalEntry, completeJournalEntry, failJournalEntry, recordWorkerInit } from '../lib/engine-journal.js';
 import { useLayoutEffect, useState } from "react";
 import { isGameRead } from '../lib/game-methods.js';
@@ -235,7 +236,7 @@ export function useWasmGame() {
           mutation,
           runtimeBranch,
         });
-        beginEngineRequest(id, method);
+        beginEngineRequest(id, method, runtimeBranch);
         try { worker.postMessage({ type: "call", id, method, args, runtimeBranch }); }
         catch (error) {
           pending.delete(id); if (mutation) pendingMutations--; endEngineRequest(id);
@@ -411,6 +412,10 @@ export function useWasmGame() {
         return;
       }
 
+      if (msg.type === 'workerDiagnostics') {
+        recordWorkerTaskDiagnostics(msg);
+        return;
+      }
       if (msg.type === "priorityAnalysis") {
         latestPriorityAnalysis = msg;
         for (const listener of priorityAnalysisListeners) listener(msg);
@@ -421,6 +426,8 @@ export function useWasmGame() {
         return;
       }
       if (msg.type === "result") {
+        const receivedAtWall = Date.now();
+        const decodeStartedAt = performance.now();
         if (msg.snapshot) {
           try { msg.result = snapshotDecoder.decode(msg.snapshot); }
           catch (error) {
@@ -432,6 +439,8 @@ export function useWasmGame() {
         }
         const req = pending.get(msg.id);
         if (!req) return;
+        recordEngineResultReceipt(msg.id, { snapshotDecodeMs: msg.snapshot ? performance.now() - decodeStartedAt : 0,
+          sentAtWall: msg.sentAtWall, receivedAtWall });
         pending.delete(msg.id);
         if (req.mutation) pendingMutations--;
         endEngineRequest(msg.id);
@@ -491,6 +500,7 @@ export function useWasmGame() {
     // A replay has to start the engine the same way this session did, so the
     // init message is part of the journal's preamble.
     recordWorkerInit({ assetBaseUrl, startedAtWall: Date.now() });
+    resetWorkerTaskDiagnostics();
     worker.postMessage({ type: "init", assetBaseUrl });
 
     return () => {

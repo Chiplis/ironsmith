@@ -7,6 +7,7 @@ import { replayTrustedMatch, replayTrustedActions } from "../lib/relay/replay-tr
 import { compileWasmWithProgress } from "../lib/wasm-loading.js";
 import { createAdaptiveWorkBudget } from "../lib/adaptive-work-budget.js";
 import { createPriorityAnalysisScheduler } from "../lib/priority-analysis-scheduler.js";
+import { createWorkerTaskDiagnostics } from "../lib/worker-task-diagnostics.js";
 import initWasm, { WasmGame } from "../../../wasm_demo/pkg/ironsmith.js";
 import engineWasmUrl from "../../../wasm_demo/pkg/engine_bg.wasm?url";
 
@@ -124,10 +125,13 @@ const CARD_ZONE_KEYS = [
 const ANALYSIS_READ_METHOD = /^(beginPaymentAnalysis|stepPaymentAnalysis|cancelPaymentAnalysis|snapshot|snapshotJson|uiState|last\w*Perf|lastWorkCounters|export\w+|autocompleteCardNames|get\w+|cardsMeetingThreshold|objectDetails|inspectorActions|preview\w+|registrySize|filterKnownCardNames|isKnownCardName|isReplayCheckpointBoundary|cardLoadDiagnostics|validateMatchConfig|createRuntimeSavepoint|releaseRuntimeSavepoint)$/;
 let priorityIdentity = null;
 let priorityViewRevision = 0;
+const workerTasks = createWorkerTaskDiagnostics({ publish: message => self.postMessage(message) });
 const priorityAnalysis = createPriorityAnalysisScheduler({
   game: () => game,
   busy: () => pendingCallCount > 0,
   enqueue: enqueueCall,
+  reportStage: (name, details) => workerTasks.phaseActive(name, details),
+  runSetup: (metadata, operation) => workerTasks.runSync(metadata, operation),
   publish: (analysis) => {
     priorityIdentity = game.priorityAnalysisIdentity();
     self.postMessage({ type: "priorityAnalysis", ...analysis });
@@ -141,6 +145,10 @@ function nowMs() {
 
 function clampMs(value) {
   return Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+function postWorkerResult(message) {
+  self.postMessage({ ...message, sentAtWall: Date.now() });
 }
 
 function decorateResultWithPerf(result, perf) {
@@ -727,7 +735,10 @@ async function runBackgroundCompileStep() {
     return;
   }
   try {
-    const status = preloadBudget.run(units => game.preloadRegistryChunk(units));
+    const status = workerTasks.runSync({ kind: 'registry_preload' }, () => preloadBudget.run(units => {
+      workerTasks.phaseActive('registry_preload', { nodeBudget: units });
+      return game.preloadRegistryChunk(units);
+    }));
     postRegistryStatus(status);
     if (status?.done) {
       backgroundCompileDone = true;
@@ -741,6 +752,10 @@ async function runBackgroundCompileStep() {
 }
 
 async function handleInit(msg = {}) {
+  workerTasks.reset();
+  const task = workerTasks.create({ kind: 'initialization' });
+  workerTasks.start(task);
+  let outcome = 'error';
   try {
     clearBackgroundTimer();
     snapshotEncoder.reset();
@@ -762,14 +777,17 @@ async function handleInit(msg = {}) {
     postProgress("module", 0);
 
     postProgress("download", 0);
+    workerTasks.phase(task, 'module_download');
     engineModule = await compileWasmWithProgress(engineWasmUrl,
       (p) => postProgress("download", p), { estimatedSize: WASM_ESTIMATED_SIZE });
     postProgress("init", 1);
+    workerTasks.phase(task, 'wasm_initialization');
     // The engine's exports carry its linear memory. Its size over a session is
     // the one signal that separates "this call is expensive" from "this session
     // has grown expensive", which a single slow call cannot tell apart.
     engineExports = await initWasm({ engine: engineModule, compiler: false, verifier: false });
     game = new WasmGame();
+    workerTasks.phase(task, 'catalog_load');
     if (typeof game.getEmbeddedCardCatalogIndexJson === "function") {
       const raw = game.getEmbeddedCardCatalogIndexJson();
       if (raw != null) {
@@ -780,6 +798,7 @@ async function handleInit(msg = {}) {
       }
     }
     game.setDeferredPriorityAnalysis(true);
+    workerTasks.phase(task, 'registry_status');
     const status = readRegistryStatus();
     if (status) {
       postRegistryStatus(status, true);
@@ -789,30 +808,49 @@ async function handleInit(msg = {}) {
       }
     }
 
+    workerTasks.phase(task, 'ready_post');
     self.postMessage({ type: "ready", runtimeSavepoints: typeof game.createRuntimeSavepoint === "function",
       runtimeBranches: typeof game.exchangeRuntimeSavepoint === "function",
       embeddedCardCatalog: embeddedCardIndex !== null });
+    outcome = 'ok';
   } catch (err) {
     self.postMessage({ type: "error", error: serializeError(err) });
-  }
+  } finally { workerTasks.finish(task, outcome); }
 }
 
-function enqueueCall(task) {
-  callQueue = callQueue.then(task, task);
+function enqueueCall(operation, metadata = { kind: 'background_analysis' }, retainedTask = null) {
+  const task = retainedTask || workerTasks.create(metadata);
+  workerTasks.enqueue(task);
+  const run = async () => {
+    workerTasks.start(task);
+    let outcome = 'error';
+    try { const result = await operation(); outcome = 'ok'; return result; }
+    finally {
+      workerTasks.leaveQueue(task);
+      if (!retainedTask) workerTasks.finish(task, outcome);
+    }
+  };
+  callQueue = callQueue.then(run, run);
   return callQueue;
 }
 
 function handleTargetPreview(id, args) {
+  const task = workerTasks.create({ kind: 'target_preview', requestId: id, method: 'previewCastTargets' });
+  const respond = (task, message) => {
+    workerTasks.phase(task, 'response_post'); postWorkerResult(message);
+    workerTasks.finish(task, message.ok ? 'ok' : 'error');
+  };
   latestTargetPreview = id;
-  for (const previous of targetPreviews.keys()) self.postMessage({ type: "result", id: previous, ok: true, result: null });
+  for (const [previous, request] of targetPreviews) respond(request.task, { type: "result", id: previous, ok: true, result: null });
   targetPreviews.clear();
   previewWorker?.postMessage({ type: "cancel" });
   pendingCallCount++;
   enqueueCall(() => {
+    workerTasks.phase(task, 'target_checkpoint');
     if (!game) throw new Error("Game is not initialized yet");
     return { checkpoint: game.exportSyncCheckpoint(), identity: game.priorityAnalysisIdentity(), sources: [...new Map([...previewCardSources].map(([route, source]) => [source, route])).entries()].map(([source, route]) => [route, source]) };
-  }).then(input => {
-    if (id !== latestTargetPreview) { self.postMessage({ type: "result", id, ok: true, result: null }); return; }
+  }, {}, task).then(input => {
+    if (id !== latestTargetPreview) { respond(task, { type: "result", id, ok: true, result: null }); return; }
     if (!previewWorker) {
       previewWorker = new Worker(new URL("./targetPreviewWorker.js", import.meta.url), { type: "module" });
       previewWorker.onmessage = ({ data }) => {
@@ -820,19 +858,20 @@ function handleTargetPreview(id, args) {
         if (!request) return;
         targetPreviews.delete(data.id);
         const current = game?.priorityAnalysisIdentity() === request.identity;
-        self.postMessage(data.error && current
+        respond(request.task, data.error && current
           ? { type: "result", id: data.id, ok: false, error: { message: data.error } }
           : { type: "result", id: data.id, ok: true, result: current ? data.result : null });
       };
       previewWorker.onerror = event => {
-        for (const id of targetPreviews.keys()) self.postMessage({ type: "result", id, ok: false, error: { message: event.message } });
+        for (const [id, request] of targetPreviews) respond(request.task, { type: "result", id, ok: false, error: { message: event.message } });
         targetPreviews.clear(); previewWorker.terminate(); previewWorker = null;
       };
     }
-    targetPreviews.set(id, { identity: input.identity });
+    targetPreviews.set(id, { identity: input.identity, task });
+    workerTasks.phase(task, 'target_worker_wait');
     previewWorker.postMessage({ type: "preview", id, module: engineModule,
       checkpoint: input.checkpoint, sources: input.sources, actions: args[0], perspective: args[1] });
-  }).catch(error => self.postMessage({ type: "result", id, ok: false, error: serializeError(error) }))
+  }).catch(error => respond(task, { type: "result", id, ok: false, error: serializeError(error) }))
     .finally(() => { pendingCallCount--; priorityAnalysis.start(priorityViewRevision); });
 }
 
@@ -849,19 +888,34 @@ function handleCall(msg) {
   // A preview promise must never occupy the authoritative command queue.
   // Its bounded slices use that queue separately, yielding to game commands.
   if (msg.runtimeBranch == null && method === "inspectorActions" && game) {
+    const task = workerTasks.create({ kind: 'inspector_request', requestId: id, method });
+    workerTasks.phase(task, 'analysis_wait');
     priorityAnalysis.inspector(...args).then(result => {
       if (result && typeof result === "object" && "decision" in result) {
-        self.postMessage({ type: "result", id, ok: true, snapshot: snapshotEncoder.encode(result, { full: method === "snapshot" }) });
-      } else self.postMessage({ type: "result", id, ok: true, result });
+        workerTasks.phase(task, 'snapshot_encode');
+        const snapshot = snapshotEncoder.encode(result);
+        workerTasks.phase(task, 'response_post');
+        postWorkerResult({ type: "result", id, ok: true, snapshot });
+      } else {
+        workerTasks.phase(task, 'response_post'); postWorkerResult({ type: "result", id, ok: true, result });
+      }
+      workerTasks.finish(task);
+    }).catch(error => {
+      postWorkerResult({ type: 'result', id, ok: false, error: serializeError(error) });
+      workerTasks.finish(task, 'error');
     });
     return;
   }
   const enqueuedAt = nowMs();
+  const diagnosticTask = workerTasks.create({ requestId: id, method,
+    commandType: args[0]?.type, runtimeBranch: msg.runtimeBranch });
   const preparation = (DUNGEON_LOADING_METHODS.has(method) ? dungeonCardNames() : Promise.resolve([]))
     .then(dungeons => prepareCardSourcesForNames([...collectNamesForMethod(method, args), ...dungeons]))
-    .then(sources => ({ sources }), error => ({ error }));
+    .then(sources => ({ sources }), error => ({ error }))
+    .then(prepared => { workerTasks.prepared(diagnosticTask, enqueuedAt); return prepared; });
   pendingCallCount += 1;
   enqueueCall(async () => {
+    workerTasks.phase(diagnosticTask, 'preparation_wait');
     const prepared = await preparation;
     if (prepared.error) throw prepared.error;
     return inRuntimeBranch(game, msg.runtimeBranch, async () => {
@@ -875,6 +929,7 @@ function handleCall(msg) {
     const startedAt = nowMs();
     const queueWaitMs = startedAt - enqueuedAt;
     if (prepared.sources?.length) {
+      workerTasks.phase(diagnosticTask, 'card_registration');
       const registration = registerFetchedCardSources([...new Set(prepared.sources)]);
       if (registration?.failed?.length) {
         console.warn("[ironsmith] on-demand card registration warnings", registration.failed);
@@ -890,6 +945,7 @@ function handleCall(msg) {
         }
       }
     }
+    workerTasks.phase(diagnosticTask, 'engine_call');
     if (method === "autocompleteCardNames") {
       return {
         result: await autocompleteFromCardIndex(args[0], args[1]),
@@ -940,6 +996,7 @@ function handleCall(msg) {
     if (previousPerspectiveIdentity !== null && previousPerspectiveIdentity !== game.priorityAnalysisIdentity()) priorityAnalysis.invalidate();
     rememberCardNamesFromEngineResult(result);
     const wasmCallMs = nowMs() - wasmStartedAt;
+    workerTasks.phase(diagnosticTask, 'perf_collection');
     let snapshotPerf = null;
     let snapshotPerfReadMs = 0;
     let dispatchPerf = null;
@@ -1000,9 +1057,10 @@ function handleCall(msg) {
       result: decorateResultWithPerf(result, perf),
       registryStatus,
     };
-    });
-  })
+    }, name => workerTasks.phase(diagnosticTask, name));
+  }, {}, diagnosticTask)
     .then(({ result, registryStatus }) => {
+      workerTasks.phase(diagnosticTask, 'registry_publish');
       if (registryStatus) {
         postRegistryStatus(registryStatus);
         if (!registryStatus.done) scheduleBackgroundCompile(0);
@@ -1015,16 +1073,25 @@ function handleCall(msg) {
           priorityViewRevision = priorityAnalysis.revision();
         }
         if (msg.runtimeBranch == null) result.__priority_revision = priorityViewRevision;
-        self.postMessage({ type: "result", id, ok: true, snapshot: snapshotEncoder.encode(result, { full: method === "snapshot" }) });
-      } else self.postMessage({ type: "result", id, ok: true, result });
+        workerTasks.phase(diagnosticTask, 'snapshot_encode');
+        const snapshot = snapshotEncoder.encode(result, { full: method === "snapshot" });
+        workerTasks.phase(diagnosticTask, 'response_post');
+        postWorkerResult({ type: "result", id, ok: true, snapshot });
+      } else {
+        workerTasks.phase(diagnosticTask, 'response_post');
+        postWorkerResult({ type: "result", id, ok: true, result });
+      }
+      workerTasks.finish(diagnosticTask);
     })
     .catch((err) => {
-      self.postMessage({
+      workerTasks.phase(diagnosticTask, 'error_response_post');
+      postWorkerResult({
         type: "result",
         id,
         ok: false,
         error: serializeError(err),
       });
+      workerTasks.finish(diagnosticTask, 'error');
     })
     .finally(() => {
       pendingCallCount = Math.max(0, pendingCallCount - 1);

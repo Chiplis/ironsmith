@@ -1,12 +1,15 @@
 // A branch is a lossless engine session, not a redacted wire checkpoint.
 // Worker calls enter and leave it in one queue task; network awaits never hold
 // the visible engine in the verification branch.
-export async function inRuntimeBranch(game, handle, operation) {
+export async function inRuntimeBranch(game, handle, operation, reportPhase = () => {}) {
   if (handle == null) return operation();
+  reportPhase('branch_enter');
   game.exchangeRuntimeSavepoint(handle);
   try {
+    reportPhase('branch_operation');
     return await operation();
   } finally {
+    reportPhase('branch_exit');
     game.exchangeRuntimeSavepoint(handle);
   }
 }
