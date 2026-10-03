@@ -650,8 +650,7 @@ pub(super) fn comma_boundary_facts(
         && (contains_any(before, &["whenever", "when"])
             || primitives::has_phrase(before, &["at", "the"]));
     let target_card_type_list = primitives::contains_word(before, "target")
-        && (first_word(after).is_some_and(is_card_type_word)
-            || starts_any(after, &[&["or"]]) && nth_word(after, 1).is_some_and(is_card_type_word))
+        && crate::grammar::effects::coordination::starts_card_type_list_arm(after)
         && !is_cant_restriction(after);
     let inline_token_rules = (is_token_creation_context_tokens(before)
         || has_inline_token_rules_context(before))
