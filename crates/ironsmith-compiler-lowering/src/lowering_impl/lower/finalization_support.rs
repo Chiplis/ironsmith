@@ -12,6 +12,11 @@ pub fn derive_triggered_ability_functional_zones_from_facts(
         TriggerSpec::WithIntro { trigger, .. } => {
             return derive_triggered_ability_functional_zones_from_facts(trigger, facts);
         }
+        TriggerSpec::ZoneChange(ironsmith_core::ZoneChangeTrigger {
+            this: true,
+            from: Some(origin),
+            ..
+        }) => vec![*origin],
         TriggerSpec::YouCastThisSpell => vec![Zone::Stack],
         TriggerSpec::KeywordActionFromSource {
             action: crate::events::KeywordActionKind::Cycle,

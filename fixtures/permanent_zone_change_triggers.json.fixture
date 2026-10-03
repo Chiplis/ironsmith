@@ -1,0 +1,82 @@
+[
+  {
+    "name": "Aetherworks Marvel",
+    "text": "Mana cost: {4}\nType: Legendary Artifact\nWhenever a permanent you control is put into a graveyard, you get {E} (an energy counter).\n{T}, Pay six {E}: Look at the top six cards of your library. You may cast a spell from among them without paying its mana cost. Put the rest on the bottom of your library in a random order.",
+    "oracle_id": "470ec98e-120c-446d-ade6-7d80aa836b55",
+    "source": "https://scryfall.com/card/drc/123/aetherworks-marvel?utm_source=api",
+    "baseline_content_hash": "5359076dfa6cbd5a4e43e0a2257f8b9335446a1cc2e7974132c3298edd3ec5f1",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever a permanent you control is put into a graveyard, you get {E} (an energy counter).' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever a permanent you control is put into a graveyard, you get {E}.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Patron of the Nezumi",
+    "text": "Mana cost: {5}{B}{B}\nType: Legendary Creature \u2014 Spirit\nPower/Toughness: 6/6\nRat offering (You may cast this spell any time you could cast an instant by sacrificing a Rat and paying the difference in mana costs between this and the sacrificed Rat. Mana cost includes color.)\nWhenever a permanent is put into an opponent's graveyard, that player loses 1 life.",
+    "oracle_id": "038a8b6b-4529-4e06-bdff-9ee7ba291776",
+    "source": "https://scryfall.com/card/cm2/72/patron-of-the-nezumi?utm_source=api",
+    "baseline_content_hash": "55b39aa08cb8e35b3040353c6d458117adece45e13de6b4fed8b174366166ffa",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever a permanent is put into an opponent's graveyard, that player loses 1 life.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever a permanent is put into an opponent's graveyard, that player loses 1 life.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Liability",
+    "text": "Mana cost: {1}{B}{B}\nType: Enchantment\nWhenever a nontoken permanent is put into a player's graveyard from the battlefield, that player loses 1 life.",
+    "oracle_id": "65f1bebb-6441-4189-b6de-993ec9d24a59",
+    "source": "https://scryfall.com/card/mmq/144/liability?utm_source=api",
+    "baseline_content_hash": "06c703eb2df0046450665027e7eb080fce073d7be23726337a18cf1b55ec0b44",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever a nontoken permanent is put into a player's graveyard from the battlefield, that player loses 1 life.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever a nontoken permanent is put into a player's graveyard from the battlefield, that player loses 1 life.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Azorius Aethermage",
+    "text": "Mana cost: {1}{W}{U}\nType: Creature \u2014 Human Wizard\nPower/Toughness: 1/1\nWhenever a permanent is returned to your hand, you may pay {1}. If you do, draw a card.",
+    "oracle_id": "12971527-aa8e-4517-9b00-71474caebfd0",
+    "source": "https://scryfall.com/card/dis/104/azorius-aethermage?utm_source=api",
+    "baseline_content_hash": "b227d49a35f57929bcf286596df48a08ccb4fa6c53d396d9b77f54d64a17ed9d",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever a permanent is returned to your hand, you may pay {1}. If you do, draw a card.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever a permanent is returned to your hand, you may pay {1}. If you do, draw a card.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Justice, Vance Astrovik",
+    "text": "Mana cost: {2}{U}\nType: Legendary Creature \u2014 Mutant Hero\nPower/Toughness: 2/2\nFlying\nWhen Justice enters, return up to one target nonland, nontoken permanent to its owner's hand.\nWhenever another nonland permanent you control is returned to its owner's hand, put a +1/+1 counter on Justice.",
+    "oracle_id": "184dba74-63ed-4820-9174-68adf26bfabf",
+    "source": "https://scryfall.com/card/msh/61/justice-vance-astrovik?utm_source=api",
+    "baseline_content_hash": "83bb578b388e86c9471b4f814f87a7b855e4afd3a9d221e0f1b6125741f34106",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever another nonland permanent you control is returned to its owner's hand, put a +1/+1 counter on Justice.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever another nonland permanent you control is returned to its owner's hand, put a +1/+1 counter on Justice.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Stormfront Riders",
+    "text": "Mana cost: {4}{W}\nType: Creature \u2014 Human Soldier\nPower/Toughness: 4/3\nFlying\nWhen this creature enters, return two creatures you control to their owner's hand.\nWhenever this creature or another creature is returned to your hand from the battlefield, create a 1/1 white Soldier creature token.",
+    "oracle_id": "9df318b9-16c6-42f1-9f81-6f73ca01e5c1",
+    "source": "https://scryfall.com/card/tsr/46/stormfront-riders?utm_source=api",
+    "baseline_content_hash": "41f933a2eea77b4ee196295d5ea8f1769a0f7eef0c3bedac03a8545bb54817b2",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever this creature or another creature is returned to your hand from the battlefield, create a 1/1 white Soldier creature token.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever this creature or another creature is returned to your hand from the battlefield, create a 1/1 white Soldier creature token.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Tameshi, Reality Architect",
+    "text": "Mana cost: {2}{U}\nType: Legendary Creature \u2014 Moonfolk Wizard\nPower/Toughness: 2/3\nWhenever one or more noncreature permanents are returned to hand, draw a card. This ability triggers only once each turn.\n{X}{W}, Return a land you control to its owner's hand: Return target artifact or enchantment card with mana value X or less from your graveyard to the battlefield. Activate only as a sorcery.",
+    "oracle_id": "b47b3cfe-7005-4b33-9d41-83b60808e12b",
+    "source": "https://scryfall.com/card/pneo/82s/tameshi-reality-architect?utm_source=api",
+    "baseline_content_hash": "37e55f5c4c0ea51f4e92cbf501b542279af3d8286527904c37cf415e509727ac",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever one or more noncreature permanents are returned to hand, draw a card. This ability triggers only once each turn.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever one or more noncreature permanents are returned to hand, draw a card. This ability triggers only once each turn.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Warped Devotion",
+    "text": "Mana cost: {2}{B}\nType: Enchantment\nWhenever a permanent is returned to a player's hand, that player discards a card.",
+    "oracle_id": "22c49415-e8d2-4b4c-b021-57ee54670f86",
+    "source": "https://scryfall.com/card/8ed/172%E2%98%85/warped-devotion?utm_source=api",
+    "baseline_content_hash": "7feb8400a7fc158382227b38b72c21b87ebc66125ae9f77be88f992c709454da",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever a permanent is returned to a player's hand, that player discards a card.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever a permanent is returned to a player's hand, that player discards a card.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Oni-Cult Anvil",
+    "text": "Mana cost: {B}{R}\nType: Artifact\nWhenever one or more artifacts you control leave the battlefield during your turn, create a 1/1 colorless Construct artifact creature token. This ability triggers only once each turn.\n{T}, Sacrifice an artifact: This artifact deals 1 damage to each opponent. You gain 1 life.",
+    "oracle_id": "c018f072-8f6d-4835-a717-ed4ecba70d97",
+    "source": "https://scryfall.com/card/brc/127/oni-cult-anvil?utm_source=api",
+    "baseline_content_hash": "1d3430156efea7cc4787133496a150252b6b4c56af47a2a5c72282fd02e10222",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever one or more artifacts you control leave the battlefield during your turn, create a 1/1 colorless Construct artifact creature token. This ability triggers only once each turn.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever one or more artifacts you control leave the battlefield during your turn, create a 1/1 colorless Construct artifact creature token. This ability triggers only once each turn.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Suki, Courageous Rescuer",
+    "text": "Mana cost: {1}{W}{W}\nType: Legendary Creature \u2014 Human Warrior Ally\nPower/Toughness: 2/4\nOther creatures you control get +1/+0.\nWhenever another permanent you control leaves the battlefield during your turn, create a 1/1 white Ally creature token. This ability triggers only once each turn.",
+    "oracle_id": "70ea1a9d-ec52-4c11-8c4d-0d957e5491ad",
+    "source": "https://scryfall.com/card/tla/37/suki-courageous-rescuer?utm_source=api",
+    "baseline_content_hash": "6ea402c3d0ac0dd97b80d73bed2209a6b723aeac1851ad24d54f704ef5ef4bf3",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever another permanent you control leaves the battlefield during your turn, create a 1/1 white Ally creature token. This ability triggers only once each turn.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever another permanent you control leaves the battlefield during your turn, create a 1/1 white Ally creature token. This ability triggers only once each turn.' [rule-path=statement-line > triggered-line]"
+  }
+]
