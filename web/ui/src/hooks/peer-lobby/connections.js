@@ -915,7 +915,26 @@ export function usePeerLobbyConnections(base, servicesRef) {
     ziffle_shuffle_step_request: "answerZiffleShuffleStepRequest",
     rng_commit_request: "answerRngCommitRequest",
     rng_reveal_request: "answerRngRevealRequest",
+    action_quorum_vote_request: "answerActionQuorumVoteRequest",
   };
+
+  function protocolWaitSupportsRequestType(requestType) {
+    return typeof requestType === "string"
+      && Object.hasOwn(PROTOCOL_WAIT_REQUEST_ANSWERERS, requestType);
+  }
+
+  // Validate the transport envelope before treating a payload as an
+  // answerable request. Type-specific authorization remains with its answerer.
+  // Some requests carry match/seat context inside their signed action instead.
+  function protocolWaitRequestMatchesNotice(notice, request) {
+    return protocolWaitSupportsRequestType(notice.requestType)
+      && request != null && typeof request === "object" && !Array.isArray(request)
+      && request.type === notice.requestType
+      && request.requestId === notice.requestId
+      && request.protocolVersion === PROTOCOL_VERSION
+      && (request.requesterIndex === undefined || request.requesterIndex === notice.requester)
+      && (request.matchId === undefined || request.matchId === notice.matchId);
+  }
 
   function protocolWaitKey(requester, requestId) {
     return `${Number(requester)}:${String(requestId || "")}`;
@@ -943,8 +962,9 @@ export function usePeerLobbyConnections(base, servicesRef) {
   // large to forward in the notice).
   function protocolWaitIsSubstantiated(entry) {
     if (!entry || entry.placeholder) return false;
+    if (!protocolWaitSupportsRequestType(entry.requestType)) return false;
     if (entry.answerStatus) return true;
-    return Boolean(entry.requestPayload) && entry.deliverable !== false;
+    return protocolWaitRequestMatchesNotice(entry, entry.requestPayload) && entry.deliverable !== false;
   }
 
   function protocolWaitCreditTimeoutMs(entry) {
@@ -995,13 +1015,18 @@ export function usePeerLobbyConnections(base, servicesRef) {
     const key = protocolWaitKey(notice.requester, notice.requestId);
     const existing = map.get(key);
     if (existing && !existing.placeholder) {
+      // A request ID cannot acquire a payload or answer belonging to a
+      // different signed notice, nor restart its original observation time.
+      if (canonicalMultiplayerPayload(protocolWaitNoticePayload(existing))
+        !== canonicalMultiplayerPayload(notice)) return null;
       if (!existing.requestPayload && extra.requestPayload) existing.requestPayload = extra.requestPayload;
       return existing;
     }
     // An answer seen before the notice only counts if it came from the seat
     // the notice names.
     const earlyAnswerValid = existing?.answerStatus
-      && (existing.target == null || Number(existing.target) === Number(notice.target));
+      && Number(existing.target) === Number(notice.target)
+      && existing.requestType === notice.requestType;
     const entry = {
       ...(existing || {}),
       ...notice,
@@ -1078,9 +1103,8 @@ export function usePeerLobbyConnections(base, servicesRef) {
     if (requester == null || target == null || requester === target || !requestId) return null;
     if (Number(requester) !== Number(resolveLocalPlayerIndex(session))) return null;
     const requestPayload = cloneMultiplayerPayload(claim.requestPayload || {});
-    const requestPayloadHash = String(
-      claim.requestPayloadHash || await sha256Hex(canonicalMultiplayerPayload(requestPayload))
-    );
+    const requestPayloadHash = await sha256Hex(canonicalMultiplayerPayload(requestPayload));
+    if (claim.requestPayloadHash && claim.requestPayloadHash !== requestPayloadHash) return null;
     const notice = protocolWaitNoticePayload({
       matchId: currentAuditMatchId(),
       basisSequence: claim.basisSequence ?? session.lastAppliedSequence ?? 0,
@@ -1091,10 +1115,12 @@ export function usePeerLobbyConnections(base, servicesRef) {
       requestPayloadHash,
       responseTimeoutMs: claim.responseTimeoutMs,
     });
+    if (!protocolWaitRequestMatchesNotice(notice, requestPayload)) return null;
     // Peers only credit a wait whose payload they received (or that the
     // target answered), so the requester's own view applies the same rule.
     const deliverable = payloadSizeBytes(requestPayload) <= PROTOCOL_WAIT_MAX_FORWARD_BYTES;
     const entry = recordProtocolWaitObservation(notice, { requestPayload, local: true, deliverable });
+    if (!entry) return null;
     const { keyPair } = await ensureAuditIdentity();
     const signature = await signAuditPayload(keyPair, notice);
     broadcastProtocolWaitMessage({
@@ -1116,6 +1142,9 @@ export function usePeerLobbyConnections(base, servicesRef) {
     if (!session.matchStarted || !message?.notice) return;
     const notice = protocolWaitNoticePayload(message.notice);
     if (canonicalMultiplayerPayload(notice) !== canonicalMultiplayerPayload(message.notice)) return;
+    if (!protocolWaitSupportsRequestType(notice.requestType)) return;
+    if (!Number.isSafeInteger(notice.basisSequence) || notice.basisSequence < 0
+      || !Number.isSafeInteger(notice.responseTimeoutMs) || notice.responseTimeoutMs <= 0) return;
     if (notice.matchId !== currentAuditMatchId()) return;
     if (notice.basisSequence < Number(session.lastAppliedSequence || 0)) return;
     const localIndex = resolveLocalPlayerIndex(session);
@@ -1127,17 +1156,15 @@ export function usePeerLobbyConnections(base, servicesRef) {
       throw new Error("Protocol wait notice signature is invalid");
     }
     let requestPayload = null;
-    if (message.requestPayload && typeof message.requestPayload === "object") {
+    if (message.requestPayload !== undefined) {
+      if (!protocolWaitRequestMatchesNotice(notice, message.requestPayload)
+        || payloadSizeBytes(message.requestPayload) > PROTOCOL_WAIT_MAX_FORWARD_BYTES) return;
       const hash = await sha256Hex(canonicalMultiplayerPayload(message.requestPayload));
-      if (
-        hash === notice.requestPayloadHash
-        && String(message.requestPayload.type || "") === notice.requestType
-        && String(message.requestPayload.requestId || "") === notice.requestId
-      ) {
-        requestPayload = cloneMultiplayerPayload(message.requestPayload);
-      }
+      if (hash !== notice.requestPayloadHash) return;
+      requestPayload = cloneMultiplayerPayload(message.requestPayload);
     }
     const entry = recordProtocolWaitObservation(notice, { requestPayload });
+    if (!entry) return;
     if (Number(notice.target) === Number(localIndex)) {
       scheduleProtocolRequestFromNotice(entry);
       return;
@@ -1173,6 +1200,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
   // Target: the direct request never arrived, so answer the copy carried by
   // the signed notice. The response still goes only to the requester.
   async function answerProtocolRequestFromNotice(entry) {
+    if (!protocolWaitRequestMatchesNotice(entry, entry.requestPayload)) return;
     const answererName = PROTOCOL_WAIT_REQUEST_ANSWERERS[String(entry.requestType || "")];
     const answerer = answererName ? servicesRef.current[answererName] : null;
     if (typeof answerer !== "function") return;
@@ -1197,6 +1225,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
   function protocolResponseConn(conn, request = {}) {
     const requestId = String(request?.requestId || "");
     if (!conn || !requestId || !multiplayerRef.current.matchStarted) return conn;
+    if (!protocolWaitSupportsRequestType(request?.type)) return conn;
     // Requests relayed through the host arrive on the host's connection, so
     // prefer the requester seat the request names.
     const requester = normalizePlayerIndex(request?.requesterIndex)
@@ -1238,7 +1267,15 @@ export function usePeerLobbyConnections(base, servicesRef) {
       status: response?.error ? "error" : "answered",
       responseHash: await sha256Hex(canonicalMultiplayerPayload(response || {})),
     });
-    markProtocolWaitAnswered(protocolWaitPlaceholder(requester, answer.requestId), answer.status);
+    const entry = protocolWaitPlaceholder(requester, answer.requestId);
+    if (entry.placeholder || (Number(entry.target) === Number(responder)
+      && entry.requestType === answer.requestType)) {
+      if (entry.placeholder) {
+        entry.target = Number(responder);
+        entry.requestType = answer.requestType;
+      }
+      markProtocolWaitAnswered(entry, answer.status);
+    }
     const { keyPair } = await ensureAuditIdentity();
     broadcastProtocolWaitMessage({
       type: "protocol_wait_answer",
@@ -1253,6 +1290,8 @@ export function usePeerLobbyConnections(base, servicesRef) {
     if (!session.matchStarted || !message?.answer) return;
     const answer = protocolWaitAnswerPayload(message.answer);
     if (canonicalMultiplayerPayload(answer) !== canonicalMultiplayerPayload(message.answer)) return;
+    if (!protocolWaitSupportsRequestType(answer.requestType)) return;
+    if (answer.status !== "answered" && answer.status !== "error") return;
     if (answer.matchId !== currentAuditMatchId() || !answer.requestId) return;
     if (!protocolWaitPlayer(answer.responder) || !protocolWaitPlayer(answer.requester)) return;
     const publicKey = await importCachedAuditPublicKey(publicKeyForAuditSigner(answer.responder));
@@ -1261,8 +1300,12 @@ export function usePeerLobbyConnections(base, servicesRef) {
     }
     const entry = protocolWaitPlaceholder(answer.requester, answer.requestId);
     // Only the seat the request was addressed to can close it.
-    if (!entry.placeholder && Number(entry.target) !== Number(answer.responder)) return;
-    if (entry.placeholder) entry.target = Number(answer.responder);
+    if (!entry.placeholder && (Number(entry.target) !== Number(answer.responder)
+      || entry.requestType !== answer.requestType)) return;
+    if (entry.placeholder) {
+      entry.target = Number(answer.responder);
+      entry.requestType = answer.requestType;
+    }
     markProtocolWaitAnswered(entry, answer.status);
   }
 

@@ -4184,6 +4184,8 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
   }
 
   async function answerActionQuorumVoteRequest(conn, message) {
+    // Close the protocol wait on every peer, including when validation fails.
+    conn = servicesRef.current.protocolResponseConn?.(conn, message) || conn;
     const quorumPerf = {
       request_id: String(message?.requestId || ""),
       requester: message?.requesterIndex == null ? null : Number(message.requesterIndex),
