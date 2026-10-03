@@ -80,6 +80,8 @@ pub enum KeywordActionKind {
     /// A permanent becomes saddled (CR 702.171b): the event's source is the
     /// permanent that became saddled, not a creature that saddled it.
     BecomeSaddled,
+    /// A player empowers Jace (CR 701.71).
+    EmpowerJace,
 }
 
 impl KeywordActionKind {
@@ -105,6 +107,7 @@ impl KeywordActionKind {
         match word {
             "sticker" | "stickers" | "stickered" => Some(Self::Sticker),
             "amass" | "amasses" | "amassed" | "amassing" => Some(Self::Amass),
+            "empower" | "empowers" | "empowered" | "empowering" => Some(Self::EmpowerJace),
             "assemble" | "assembles" | "assembled" | "assembling" => {
                 Some(Self::AssembleContraption)
             }
@@ -169,6 +172,7 @@ impl KeywordActionKind {
         match self {
             Self::Sticker => "put a sticker",
             Self::Amass => "amass",
+            Self::EmpowerJace => "empower Jace",
             Self::AssembleContraption => "assemble a Contraption",
             Self::ArtSticker => "put an art sticker",
             Self::AbilitySticker => "put an ability sticker",
@@ -241,6 +245,7 @@ impl KeywordActionKind {
         match self {
             Self::Sticker => "puts a sticker",
             Self::Amass => "amasses",
+            Self::EmpowerJace => "empowers Jace",
             Self::AssembleContraption => "assembles a Contraption",
             Self::ArtSticker => "puts an art sticker",
             Self::AbilitySticker => "puts an ability sticker",

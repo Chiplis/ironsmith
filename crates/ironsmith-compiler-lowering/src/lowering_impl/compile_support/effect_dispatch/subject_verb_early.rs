@@ -33,6 +33,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::TurnStructure(
                 TurnStructureActionAst::AdditionalLandPlays { .. }
             )
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmpowerJace { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { .. })
             | SubjectVerbActionAst::DamagePrevention(
                 DamagePreventionActionAst::AssignNoCombatDamage { .. }
@@ -690,6 +691,16 @@ pub(super) fn compile_subject_verb_early(
                 ],
                 Vec::new(),
             ))
+        }
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmpowerJace { amount }) => {
+            let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
+            let mut effect = Effect::new(crate::effects::EmpowerJaceEffect::new(amount));
+            if ctx.auto_tag_object_targets {
+                let tag = ctx.next_tag("empowered");
+                ctx.last_object_tag = Some(tag.clone());
+                effect = effect.tag(tag);
+            }
+            Ok((vec![effect], Vec::new()))
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { subtype, amount }) => {
             let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;

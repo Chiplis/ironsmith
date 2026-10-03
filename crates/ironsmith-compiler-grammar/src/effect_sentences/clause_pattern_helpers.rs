@@ -2114,6 +2114,29 @@ pub fn parse_keyword_mechanic_clause(
     };
     let clause_text = LexedClause::new(tokens).text();
     let effect = match shape {
+        clause_shapes::KeywordMechanicShape::EmpowerJace {
+            amount_and_binding_tokens,
+        } => {
+            let Some((mut amount, used)) = parse_value(amount_and_binding_tokens) else {
+                return Err(CardTextError::ParseError(format!(
+                    "missing numeric amount for empower Jace clause (clause: '{clause_text}')"
+                )));
+            };
+            let trailing_tokens = trim_commas(&amount_and_binding_tokens[used..]);
+            if !trailing_tokens.is_empty() {
+                let Some(where_value) = parse_value_binding_clause(&trailing_tokens) else {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported trailing empower Jace clause (clause: '{clause_text}')"
+                    )));
+                };
+                amount = super::super::util::replace_unbound_x_with_value(
+                    amount,
+                    &where_value,
+                    &clause_text,
+                )?;
+            }
+            EffectAst::subject_verb_empower_jace(amount)
+        }
         clause_shapes::KeywordMechanicShape::Amass {
             subtype,
             amount_and_binding_tokens,

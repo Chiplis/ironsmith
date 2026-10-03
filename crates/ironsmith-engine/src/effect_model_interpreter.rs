@@ -2194,6 +2194,7 @@ where
 
     clone_direct!(
         crate::effects::AmassEffect,
+        crate::effects::EmpowerJaceEffect,
         crate::effects::AmplifyEffect,
         crate::effects::DevourEffect,
         crate::effects::player::MayCastForMiracleCostEffect,

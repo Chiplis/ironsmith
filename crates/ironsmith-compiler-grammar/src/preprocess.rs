@@ -820,6 +820,13 @@ fn replace_names_with_map(
             })
     }
 
+    // The planeswalker type in the named keyword action is not a self
+    // reference, even on a source with that short name (CR 701.71).
+    fn is_empower_jace_subtype(bytes: &[u8], idx: usize, len: usize) -> bool {
+        previous_word(bytes, idx) == Some(b"empower".as_slice())
+            && bytes[idx..idx + len].eq_ignore_ascii_case(b"jace")
+    }
+
     /// "Target Assembly-Worker creature" on a card named Assembly-Worker: a
     /// name spelled as a subtype between a selecting word and a type noun
     /// describes a class of objects, not this object.
@@ -1034,6 +1041,7 @@ fn replace_names_with_map(
             && !appears_to_be_created_token_name(bytes, idx, full_bytes.len())
             && !within_vote_choice_clause(bytes, line_tokens, idx)
             && !is_indefinite_become_descriptor(bytes, idx)
+            && !is_empower_jace_subtype(bytes, idx, full_bytes.len())
             && !is_subtype_descriptor_usage(bytes, idx, full_bytes.len())
             && !(preserve_source_surfaces
                 && should_preserve_source_surface_context(
@@ -1079,6 +1087,7 @@ fn replace_names_with_map(
             && !appears_to_be_created_token_name(bytes, idx, short_bytes.len())
             && !within_vote_choice_clause(bytes, line_tokens, idx)
             && !is_indefinite_become_descriptor(bytes, idx)
+            && !is_empower_jace_subtype(bytes, idx, short_bytes.len())
             && (is_short_name_self_reference_context(bytes, idx, short_bytes.len())
                 || is_result_optional_companion_short_name_context(
                     bytes,
@@ -2376,6 +2385,19 @@ mod tests {
             normalize_line_for_parse_text("Draw a card as it resolves.", "", "", false)
                 .expect("resolution line should normalize");
         assert_eq!(normalized.normalized, "draw a card.");
+    }
+
+    #[test]
+    fn preprocess_preserves_empower_jace_keyword_subtype_on_a_jace_source() {
+        let line = normalize_line_for_parse_text(
+            "Empower Jace X, where X is the number of Islands you control.",
+            "jace, reality sculptor", "jace", false,
+        ).unwrap();
+        assert!(line.normalized.starts_with("empower jace x"), "{}", line.normalized);
+        let ordinary = normalize_line_for_parse_text(
+            "Put a loyalty counter on Jace.", "jace, reality sculptor", "jace", false,
+        ).unwrap();
+        assert!(!ordinary.normalized.contains("on jace"), "ordinary source references still normalize");
     }
 
     #[test]

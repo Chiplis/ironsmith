@@ -3739,6 +3739,20 @@ impl PayManaEffect {
     }
 }
 
+/// CR 701.71: choose a controlled Jace planeswalker token, creating the
+/// predefined blue token only when none exists, then put N loyalty counters on it.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct EmpowerJaceEffect {
+    pub amount: Value,
+}
+
+impl EmpowerJaceEffect {
+    pub fn new(amount: impl Into<Value>) -> Self {
+        Self { amount: amount.into() }
+    }
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct AmassEffect {

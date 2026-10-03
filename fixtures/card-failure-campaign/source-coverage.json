@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "3844170c59e2a8cc3e0967b65027cd16e70e5649",
+  "source_implementation_commit": "d7436701a1a646ea70bbd13e534c5fbcc668df76",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 180,
-    "additional_proposed_compile_entries": 180,
+    "additional_proposed_unique_cards": 210,
+    "additional_proposed_compile_entries": 210,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true
   },
@@ -370,6 +370,76 @@
         "dynamic Equipment attachment counts evaluated at declaration",
         "forced-all legal block requirements composed with unlimited permission"
       ]
+    },
+    {
+      "id": "empower-jace-action",
+      "stage": 20,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/empower_jace.json.fixture",
+      "baseline_entries": [
+        "Academic Ascent",
+        "Arcane Amphisbaena",
+        "Avatar of Burgeoning Echoes",
+        "Campus Crier",
+        "Countersculpt",
+        "Fatehold Charm",
+        "Hexhaven Battalion",
+        "Inspired Tethermage",
+        "Jace, Reality Sculptor",
+        "Keeper of the Quiet Hour",
+        "Mindseeker Oculus",
+        "No Admittance",
+        "Overwrite the Multiverse",
+        "Plan for All Outcomes",
+        "Protege's Awakening",
+        "Repurposed Enforcer",
+        "Rewrite Regrets",
+        "Solve for Disappointment",
+        "Tam's Resistance",
+        "Theorist's Proxy",
+        "Vraska's Final Mercy",
+        "Way of the Cryomancer",
+        "Way of the Deathbringer",
+        "Way of the Healer",
+        "Way of the Mentor",
+        "Way of the Necromancer",
+        "Way of the Paradox",
+        "Way of the Pyromancer",
+        "Way of the Warlord",
+        "Way of the Wildspeaker"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "Jace's Machinations",
+          "remaining_blocker": "Separate temporary loyalty timing permission with any-player-turn wording."
+        },
+        {
+          "card_name": "Sanctum Lurker",
+          "remaining_blocker": "Separate static zero-loyalty state-based-action exception has no runtime model."
+        },
+        {
+          "card_name": "Theorist's Sanctum",
+          "remaining_blocker": "Separate optional behold-as-entry replacement is the frozen first diagnostic."
+        },
+        {
+          "card_name": "Violent Echoes",
+          "remaining_blocker": "Separate excess-damage conditional and where-X binding is the frozen first diagnostic."
+        },
+        {
+          "card_name": "Way of the Mind Sculptor",
+          "remaining_blocker": "Separate intervening-if predicate inspects loyalty counters paid to activate the triggering ability."
+        }
+      ],
+      "implementation_commit": "d7436701a1a646ea70bbd13e534c5fbcc668df76",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "final CR701.71 token-only planeswalker subtype and current-controller eligibility",
+        "Jace Token printed characteristics and real loyalty payment/programs",
+        "ordinary creation and loyalty counter replacement pipelines",
+        "selection among existing or copied eligible tokens",
+        "atomic pending-choice rollback and one keyword-action event",
+        "where-X and source-name-safe subtype operand"
+      ]
     }
   ],
   "cards": [
@@ -420,8 +490,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Accursed Witch // Infectious Curse",
@@ -1440,8 +1512,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Arcane Bombardment",
@@ -2050,8 +2124,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Avatar of Hope",
@@ -4032,8 +4108,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Candletrap",
@@ -5624,8 +5702,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Countryside Crusher",
@@ -9529,8 +9609,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Fates' Reversal",
@@ -12741,8 +12823,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Hexmark Destroyer",
@@ -13856,8 +13940,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Inspired Ultimatum",
@@ -14296,8 +14382,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Jace, Architect of Thought",
@@ -14326,8 +14415,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Jace, the Perfected Mind",
@@ -15032,8 +15123,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Kefka, Dancing Mad",
@@ -17728,8 +17821,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Mindshrieker",
@@ -19254,8 +19349,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Noble Heritage",
@@ -20028,8 +20125,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Ovika, Enigma Goliath",
@@ -20786,8 +20885,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Planar Ally",
@@ -21384,8 +21485,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Prowl, Stoic Strategist // Prowl, Pursuit Vehicle",
@@ -22538,8 +22641,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Research // Development",
@@ -22740,8 +22845,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Reyhan, Last of the Abzan",
@@ -23592,8 +23699,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Sanctum Prelate",
@@ -25552,8 +25662,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Song of Inspiration",
@@ -27258,8 +27370,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Tam, Mindful First-Year",
@@ -28714,8 +28828,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Theorist's Sanctum",
@@ -28724,8 +28840,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Thermal Flux",
@@ -30772,8 +30891,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Viper's Kiss",
@@ -31152,8 +31274,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Vraska, Betrayal's Sting",
@@ -31644,8 +31768,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Way of the Deathbringer",
@@ -31654,8 +31780,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Way of the Healer",
@@ -31664,8 +31792,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Way of the Mentor",
@@ -31674,8 +31804,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Way of the Mind Sculptor",
@@ -31684,8 +31816,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Way of the Necromancer",
@@ -31694,8 +31829,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Way of the Paradox",
@@ -31704,8 +31841,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Way of the Pyromancer",
@@ -31714,8 +31853,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Way of the Warlord",
@@ -31724,8 +31865,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Way of the Wildspeaker",
@@ -31734,8 +31877,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "empower-jace-action"
+      ]
     },
     {
       "card_name": "Wayward Angel",

@@ -5,6 +5,7 @@
 //! - `CreateTokenCopyEffect` - Create token copies of permanents
 
 mod amass;
+mod empower_jace;
 mod create_token;
 mod create_token_copy;
 mod incubate;
@@ -12,6 +13,7 @@ mod investigate;
 mod lifecycle;
 
 pub use amass::AmassEffect;
+pub use empower_jace::EmpowerJaceEffect;
 pub use create_token::CreateTokenEffect;
 pub use create_token_copy::{
     CopyAttackTargetMode, CreateTokenCopyEffect, TokenCopyReferenceSurface,

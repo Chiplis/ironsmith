@@ -7,6 +7,7 @@ pub(super) fn parse_keyword_mechanic_lexed<'a>(
     opt(primitives::kw("you")).parse_next(input)?;
     alt((
         parse_amass,
+        parse_empower_jace,
         parse_forage,
         parse_harness,
         parse_roll_d6,
