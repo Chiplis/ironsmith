@@ -366,6 +366,8 @@ pub enum StaticAbilityId {
     /// Trample over planeswalkers (CR 702.19c). A variant of trample, not an
     /// instance of it: "has trample" checks don't match it.
     TrampleOverPlaneswalkers,
+    /// A blocking-only permission that preserves the attacker's landwalk abilities.
+    BlockingAsThoughNoLandwalk,
 }
 
 impl StaticAbilityId {
@@ -688,6 +690,7 @@ impl StaticAbilityId {
             | SpendManaAsAnyColorActivationCosts
             | RuleRestriction
             | TargetingAsThoughNoAbility
+            | BlockingAsThoughNoLandwalk
             | DiscardOrRedirectReplacement
             | SacrificeOrRedirectReplacement
             | PayLifeOrEnterTappedReplacement
@@ -839,6 +842,7 @@ impl StaticAbilityId {
                 | FlyingOnlyRestriction
                 | CanBlockFlying
                 | CanBlockAsThoughNoShadow
+                | BlockingAsThoughNoLandwalk
                 | CanBlockOnlyFlying
                 | MaxCreaturesCanAttackEachCombat
                 | MaxCreaturesCanBlockEachCombat

@@ -292,6 +292,15 @@ pub(crate) fn can_block_with_view(
         .iter()
         .filter_map(|ability| ability.landwalk_kind())
     {
+        // CR 609.4: this permission changes only this blocking check. The
+        // attacker keeps landwalk for every other characteristic query.
+        if game
+            .effect_store
+            .cant_effects
+            .ignores_landwalk_for_blocking(game, attacker.id, landwalk_kind)
+        {
+            continue;
+        }
         let blocker_controller = game.current_controller(blocker.id);
         let defending_has_required_land = game
             .battlefield

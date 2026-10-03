@@ -61,6 +61,16 @@ pub struct TargetingAsThoughNoAbilitySpec {
     pub display: String,
 }
 
+/// A permission to ignore landwalk only while determining legal blockers.
+/// `None` ignores all landwalk kinds; `Some` ignores only the named kind.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct BlockingAsThoughNoLandwalkSpec {
+    pub objects: ObjectFilter,
+    pub landwalk: Option<LandwalkKind>,
+    pub display: String,
+}
+
 /// The quality of spell onto which a card's splice ability may be applied.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
@@ -1300,6 +1310,8 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         subtypes: Vec<Subtype>,
     },
     EntersUnderChosenControl(PlayerFilter),
+    // Append new payloads so existing serialized variant positions stay stable.
+    BlockingAsThoughNoLandwalk(BlockingAsThoughNoLandwalkSpec),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1915,6 +1927,9 @@ where
             }
             StaticAbilityPayload::TargetingAsThoughNoAbility(spec) => {
                 StaticAbilityPayload::TargetingAsThoughNoAbility(spec)
+            }
+            StaticAbilityPayload::BlockingAsThoughNoLandwalk(spec) => {
+                StaticAbilityPayload::BlockingAsThoughNoLandwalk(spec)
             }
             StaticAbilityPayload::CantBeBlockedByMoreThan(count) => {
                 StaticAbilityPayload::CantBeBlockedByMoreThan(count)
@@ -3815,6 +3830,14 @@ impl<
             id: Some(StaticAbilityId::CanAttackAsThoughNoDefender),
             label: "This creature can attack players who attacked you during their last turn as though it didn't have defender".to_string(),
             payload: StaticAbilityPayload::CanAttackPlayersWhoAttackedControllerLastTurnAsThoughNoDefender,
+        }
+    }
+
+    pub fn blocking_as_though_no_landwalk(spec: BlockingAsThoughNoLandwalkSpec) -> Self {
+        Self {
+            id: Some(StaticAbilityId::BlockingAsThoughNoLandwalk),
+            label: spec.display.clone(),
+            payload: StaticAbilityPayload::BlockingAsThoughNoLandwalk(spec),
         }
     }
 
