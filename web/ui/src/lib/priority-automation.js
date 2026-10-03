@@ -121,6 +121,17 @@ export function buildMultiplayerSmartAutoPass({
     if (perspective !== null && activePlayer === perspective) {
       return { command: null, holdReason: LOCAL_EMPTY_STACK_HOLD_REASON, passAction };
     }
+    // The first deferred snapshot only contains Pass priority. Passing here
+    // would skip the opponent-turn casting window before the hand can light up.
+    if (decision.analysis_complete === false) {
+      return { command: null, holdReason: "checking playable actions", passAction };
+    }
+    const hasPlayableAction = (decision.actions || []).some(action =>
+      !["pass_priority", "activate_mana_ability", "untap_land"].includes(action.kind)
+    );
+    if (hasPlayableAction) {
+      return { command: null, holdReason: "playable actions available", passAction };
+    }
     return {
       command: priorityCommandForAction(passAction),
       holdReason: null,

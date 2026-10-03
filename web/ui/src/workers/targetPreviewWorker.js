@@ -14,8 +14,10 @@ self.onmessage = async ({ data }) => {
     for (const [route, source] of data.sources) {
       if (registered.has(route)) continue;
       if (token !== generation) { self.postMessage({ id: data.id, result: null }); return; }
-      const summary = compileAndRegisterCardSources(preview, [source]);
-      if (summary.failed?.length) throw new Error(summary.failed[0].error);
+      // Fetched sources include rejected cards retained for load diagnostics.
+      // Mirror the command worker: keep successful definitions and let the
+      // checkpoint/operation validate the cards this analysis actually needs.
+      compileAndRegisterCardSources(preview, [source]);
       registered.add(route);
       await new Promise(resolve => setTimeout(resolve, 0));
     }

@@ -5,14 +5,14 @@ import vm from 'node:vm';
 
 const source = readFileSync(new URL('../src/workers/priorityAnalysisWorker.js', import.meta.url), 'utf8')
   .replace(/^import .*;\n/, '');
-function harness() {
+function harness({ rejectedSource = null, checkpointError = null } = {}) {
   const timers = [], messages = [], imports = [], compiled = [];
   let constructors = 0;
   class WasmGame {
     constructor() { constructors++; }
     free() {}
     setDeferredPriorityAnalysis() {}
-    importSyncCheckpoint(checkpoint) { imports.push(checkpoint.id); this.steps = 0; }
+    importSyncCheckpoint(checkpoint) { if (checkpointError) throw new Error(checkpointError); imports.push(checkpoint.id); this.steps = 0; }
     beginPriorityAnalysis() { return true; }
     stepPriorityAnalysis() { return { analysis_complete: ++this.steps === 2, actions: [] }; }
     beginInspectorAnalysis() { this.inspectorSteps = 0; }
@@ -20,7 +20,7 @@ function harness() {
   }
   const self = { postMessage: message => messages.push(message) };
   vm.runInNewContext(source, { self, WasmGame, initWasm: async () => {},
-    compileAndRegisterCardSources: (_, sources) => { compiled.push(...sources); return {}; },
+    compileAndRegisterCardSources: (_, sources) => { compiled.push(...sources); return { failed: sources.includes(rejectedSource) ? [{ error: "unsupported mechanics" }] : [] }; },
     setTimeout: fn => timers.push(fn) });
   const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
   return { messages, imports, compiled, constructors: () => constructors,
@@ -72,4 +72,28 @@ test('inspector cancellation yields to the next snapshot without publishing its 
   assert.equal(h.messages.filter(m => m.type === 'inspector').length, 0);
   assert.deepEqual(h.imports, [1, 2]);
   assert.equal(h.constructors(), 1);
+});
+
+
+test('a rejected fetched source does not strand the guest priority menu', async () => {
+  const h = harness({ rejectedSource: 'unsupported' });
+  await h.send(analysis(1, [['rejected', 'unsupported'], ['land', 'Mountain']]));
+  await h.drain();
+  assert.deepEqual(h.compiled, ['unsupported', 'Mountain']);
+  assert.deepEqual(h.imports, [1]);
+  assert.equal(h.messages.some(m => m.type === 'error'), false);
+  assert.ok(h.messages.some(m => m.type === 'priority' && m.decision.analysis_complete));
+  await h.send(analysis(2, [['rejected', 'unsupported'], ['land', 'Mountain']]));
+  await h.drain();
+  assert.equal(h.constructors(), 1, 'the initialized registry survives the diagnostic failure');
+  assert.deepEqual(h.imports, [1, 2]);
+});
+
+
+test('priority analysis still reports a checkpoint that cannot be restored', async () => {
+  const h = harness({ checkpointError: 'missing required definition' });
+  await h.send(analysis(1));
+  await h.drain();
+  assert.ok(h.messages.some(m => m.type === 'error' && m.error.includes('missing required definition')));
+  assert.equal(h.messages.some(m => m.type === 'priority'), false);
 });

@@ -1527,7 +1527,9 @@ version = "0.1.0"
 dependencies = [
  "ironsmith-artifact-effect-decoder",
  "ironsmith-compiled-artifact",
+ "ironsmith-core",
  "ironsmith-engine",
+ "serde",
  "serde_json",
 ]
 
@@ -1635,7 +1637,9 @@ dependencies = [
  "console_error_panic_hook",
  "getrandom 0.4.2",
  "ironsmith-card-catalog",
+ "ironsmith-card-source",
  "ironsmith-compiled-artifact",
+ "ironsmith-compiler-runtime",
  "ironsmith-core",
  "ironsmith-dynamic-compile",
  "ironsmith-engine",

@@ -2757,7 +2757,16 @@ fn mana_cost_can_be_paid_with_view_at_x(
     x_value: u32,
     view: &DerivedGameView<'_>,
 ) -> bool {
-    if crate::mana_payment::has_potential_mana_triggers(game, view)
+    let has_restricted_mana = game.player(player).is_some_and(|player| !player.restricted_mana.is_empty())
+        || game.battlefield.iter().any(|source| {
+            view.abilities_rc(*source).is_some_and(|abilities| abilities.iter().any(|ability| {
+                ability.functions_in(&Zone::Battlefield)
+                    && matches!(&ability.kind, crate::ability::AbilityKind::Activated(activated)
+                        if !activated.mana_usage_restrictions.is_empty())
+            }))
+        });
+    if has_restricted_mana
+        || crate::mana_payment::has_potential_mana_triggers(game, view)
         || crate::mana_payment::has_mana_modifying_replacements(game)
         || game.object(spell_id).is_some_and(|spell| {
         game.controller_of(spell) == player
@@ -2773,7 +2782,19 @@ fn mana_cost_can_be_paid_with_view_at_x(
         )
         .with_spend_policy(game.mana_spend_policy(player, Some(spell_id)));
         request.x_value = x_value;
-        return resumable::check_payment(game, &request);
+        // CR 601.2a: spending restrictions inspect the proposed spell on the
+        // stack. The real card stays in its origin zone during menu analysis.
+        // Give the payment planner that proposal too, rather than a hand card
+        // that can never satisfy a creature-spell restriction.
+        let mut prospective;
+        let payment_game = if game.object(spell_id).is_some_and(|spell| spell.zone != Zone::Stack) {
+            prospective = game.clone();
+            prospective.object_mut(spell_id).expect("proposal source exists").zone = Zone::Stack;
+            &prospective
+        } else {
+            game
+        };
+        return resumable::check_payment(payment_game, &request);
     }
     let potential = view.potential_mana(player);
     let mana_spend_policy = game.mana_spend_policy(player, Some(spell_id));

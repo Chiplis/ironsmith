@@ -25,6 +25,8 @@ import {
   keyboardPlacementDragArgs,
 } from "@/lib/hand-cast-keyboard";
 
+import { reconcilePseudoHand } from "@/lib/pseudo-hand";
+
 const HAND_ROULETTE_THRESHOLD = 10;
 const HAND_ROULETTE_VISIBLE_CARDS = 7;
 const HAND_ROULETTE_EDGE_PADDING = 12;
@@ -688,11 +690,26 @@ export default function HandZone({
   const isMe = player?.id === state?.perspective;
 
   const actionsPausedForSync = Boolean(multiplayer?.matchStarted && multiplayer?.submittingAction);
-  const { handPlayable, extraPlayable } = useMemo(
-    () => isMe && !actionsPausedForSync
+  const [pseudoHandCache, setPseudoHandCache] = useState({ state: null, perspective: null, cards: new Map() });
+  const { handPlayable, extraPlayable } = useMemo(() => {
+    const maps = isMe
       ? buildPlayableMaps(state, player)
-      : { handPlayable: new Map(), extraPlayable: new Map() },
-    [actionsPausedForSync, isMe, state, player]
+      : { handPlayable: new Map(), extraPlayable: new Map() };
+    const previous = pseudoHandCache;
+    maps.extraPlayable = reconcilePseudoHand(
+      previous.perspective === state?.perspective ? previous.cards : new Map(),
+      maps.extraPlayable,
+      state,
+    );
+    if (!isMe) maps.extraPlayable.clear();
+    return maps;
+  }, [isMe, state, player, pseudoHandCache]);
+  if (pseudoHandCache.state !== state) {
+    setPseudoHandCache({ state, perspective: state?.perspective, cards: extraPlayable });
+  }
+  const displayedHandPlayable = useMemo(
+    () => actionsPausedForSync ? new Map() : handPlayable,
+    [actionsPausedForSync, handPlayable]
   );
   const priorityActionObjectIds = useMemo(() => {
     const ids = new Set();
@@ -716,12 +733,12 @@ export default function HandZone({
         name: data.name,
         card: data.card,
         fromZone: data.fromZone,
-        actions: data.actions,
+        actions: actionsPausedForSync ? [] : data.actions,
         glowKind: data.glowKind,
       });
     }
     return cards;
-  }, [extraPlayable]);
+  }, [actionsPausedForSync, extraPlayable]);
   const hoverableHandObjectIds = useMemo(() => {
     const ids = new Set();
     for (const card of handCards) {
@@ -802,10 +819,10 @@ export default function HandZone({
   const activeFanIsPlayable = useMemo(() => {
     if (!activeFanObjectId) return false;
     const handCard = handCards.find((card) => String(card.id) === activeFanObjectId);
-    if (handCard) return (handPlayable.get(Number(handCard.id)) || []).length > 0;
+    if (handCard) return (displayedHandPlayable.get(Number(handCard.id)) || []).length > 0;
     const extra = extraCards.find((card) => String(card.id) === activeFanObjectId);
     return Boolean(extra?.actions?.length);
-  }, [activeFanObjectId, extraCards, handCards, handPlayable]);
+  }, [activeFanObjectId, extraCards, handCards, displayedHandPlayable]);
   // Both pointer hover and keyboard focus keep the card in its slot. Explicit
   // click selection also uses the same in-place reading treatment.
   const activeFanShouldCenter = false;
@@ -1558,7 +1575,7 @@ export default function HandZone({
 
       if (entry.kind === "hand") {
         const { card, visualIndex } = entry;
-        const plays = handPlayable.get(Number(card.id)) || [];
+        const plays = displayedHandPlayable.get(Number(card.id)) || [];
         const isPlayable = plays.length > 0;
         const baseGlowKind = isPlayable ? handGlowFromTypes(card.card_types) : null;
         const isActionLinkedHover = (
@@ -1694,7 +1711,7 @@ export default function HandZone({
 
       if (entry.kind === "hand") {
         const { card, visualIndex } = entry;
-        const plays = handPlayable.get(Number(card.id)) || [];
+        const plays = displayedHandPlayable.get(Number(card.id)) || [];
         const isPlayable = plays.length > 0;
         const baseGlowKind = isPlayable ? handGlowFromTypes(card.card_types) : null;
         const isActionLinkedHover = (

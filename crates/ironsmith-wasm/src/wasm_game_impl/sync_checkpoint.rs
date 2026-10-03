@@ -91,6 +91,37 @@ impl From<SyncManaPool> for ManaPool {
     }
 }
 
+// Mana restrictions without executable spend payloads use the shared value
+// model directly. Never turn a restriction/bonus into unrestricted mana when
+// its executable payload cannot be represented by this checkpoint.
+type SyncRestrictedManaUnit = ironsmith_core::RestrictedManaUnit<()>;
+fn sync_restricted_mana(
+    units: &[ironsmith::ability::RestrictedManaUnit],
+) -> Result<Vec<SyncRestrictedManaUnit>, String> {
+    units
+        .iter()
+        .map(|unit| {
+            Ok(SyncRestrictedManaUnit {
+                symbol: unit.symbol,
+                source: unit.source,
+                source_chosen_creature_type: unit.source_chosen_creature_type,
+                restrictions: unit
+                    .restrictions
+                    .iter()
+                    .cloned()
+                    .map(|restriction| {
+                        restriction.try_map_effects(&mut |_| {
+                            Err(
+                                "mana spend payload requires an approved executable identity graph"
+                                    .to_string(),
+                            )
+                        })
+                    })
+                    .collect::<Result<_, String>>()?,
+            })
+        })
+        .collect()
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SyncPlayer {
@@ -99,6 +130,8 @@ struct SyncPlayer {
     starting_life: i32,
     life: i32,
     mana_pool: SyncManaPool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    restricted_mana: Vec<SyncRestrictedManaUnit>,
     poison_counters: u32,
     energy_counters: u32,
     experience_counters: u32,
@@ -206,6 +239,10 @@ struct SyncObject {
     token: bool,
     card_types: Vec<String>,
     subtypes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    chosen_subtype: Option<Subtype>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    chosen_subtypes: Vec<Subtype>,
     power: Option<i32>,
     toughness: Option<i32>,
     loyalty: Option<u32>,
@@ -289,6 +326,8 @@ struct PublicAuditPlayer {
     starting_life: i32,
     life: i32,
     mana_pool: SyncManaPool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    restricted_mana: Vec<SyncRestrictedManaUnit>,
     poison_counters: u32,
     energy_counters: u32,
     experience_counters: u32,
@@ -325,6 +364,10 @@ struct PublicAuditObject {
     controller: u8,
     zone: String,
     identity: Option<PublicAuditObjectIdentity>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    chosen_subtype: Option<Subtype>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    chosen_subtypes: Vec<Subtype>,
     token: bool,
     power: Option<i32>,
     toughness: Option<i32>,
@@ -534,6 +577,8 @@ struct SyncExecutableState {
         Vec<ironsmith_runtime_catalog::artifact_materializer::RetainedOccurrenceLiveObject<u32>>,
     continuous: ironsmith_runtime_catalog::artifact_materializer::RetainedGraphRegisteredState<u32>,
     grants: ironsmith_runtime_catalog::artifact_materializer::RetainedOccurrenceGrantRegistry<u32>,
+    used_grant_permissions: Vec<(PlayerId, ironsmith_runtime_catalog::artifact_materializer::RetainedOccurrenceGrantPermission<u32>)>,
+    delayed_triggers: Vec<ironsmith_runtime_catalog::artifact_materializer::RetainedDelayedTrigger<u32>>,
 }
 
 struct RestoredSyncExecutableState {
@@ -541,6 +586,8 @@ struct RestoredSyncExecutableState {
     objects: Vec<Object>,
     continuous: ironsmith::continuous::RegisteredContinuousEffectState,
     grants: ironsmith::grant_registry::RegisteredGrantState,
+    used_grant_permissions: Vec<(PlayerId, ironsmith::grant_registry::GrantPermissionIdentity)>,
+    delayed_triggers: Vec<ironsmith::triggers::DelayedTrigger>,
 }
 
 impl SyncExecutableState {
@@ -553,6 +600,8 @@ impl SyncExecutableState {
         objects: Vec<Object>,
         continuous: ironsmith::continuous::RegisteredContinuousEffectState,
         grants: ironsmith::grant_registry::RegisteredGrantState,
+        used_grant_permissions: Vec<(PlayerId, ironsmith::grant_registry::GrantPermissionIdentity)>,
+        delayed_triggers: Vec<ironsmith::triggers::DelayedTrigger>,
     ) -> Result<Self, String> {
         use ironsmith_runtime_catalog::artifact_materializer::{
             OccurrenceBindingError, StaticAbilityOccurrenceEncoder,
@@ -605,6 +654,13 @@ impl SyncExecutableState {
             .map_err(|e| e.to_string())?;
         probe.encode_grant_registry(grants.clone(), &mut discover)
             .map_err(|e| e.to_string())?;
+        for (_, permission) in &used_grant_permissions {
+            probe.encode_permission_identity(permission.clone(), &mut discover)
+                .map_err(|e| e.to_string())?;
+        }
+        for trigger in &delayed_triggers {
+            probe.encode_delayed_trigger(trigger.clone(), &mut discover).map_err(|e| e.to_string())?;
+        }
         drop(discover);
         let graph: Vec<_> = graph.into_iter().collect();
         let graph_card_count =
@@ -641,6 +697,19 @@ impl SyncExecutableState {
             .map_err(|e| e.to_string())?;
         let grants = encoder.encode_grant_registry(grants, bind)
             .map_err(|e| e.to_string())?;
+        let delayed_triggers = delayed_triggers.into_iter().map(|trigger|
+            encoder.encode_delayed_trigger(trigger, bind).map_err(|e| e.to_string()))
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut used_grant_permissions = used_grant_permissions.into_iter().map(|(player, permission)| {
+            let retained = encoder.encode_permission_identity(permission, bind).map_err(|e| e.to_string())?;
+            let key = serde_json::to_string(&(player, &retained)).map_err(|e| e.to_string())?;
+            Ok::<_, String>((key, (player, retained)))
+        }).collect::<Result<Vec<_>, _>>()?;
+        used_grant_permissions.sort_by(|a, b| a.0.cmp(&b.0));
+        if used_grant_permissions.windows(2).any(|pair| pair[0].0 == pair[1].0) {
+            return Err("duplicate used grant permission root".into());
+        }
+        let used_grant_permissions = used_grant_permissions.into_iter().map(|(_, value)| value).collect();
         Ok(Self {
             graph_card_count,
             occurrences: encoder.into_table(),
@@ -648,6 +717,8 @@ impl SyncExecutableState {
             objects,
             continuous,
             grants,
+            used_grant_permissions,
+            delayed_triggers,
         })
     }
 
@@ -714,6 +785,22 @@ impl SyncExecutableState {
             .map_err(|e| e.to_string())?;
         let grants = decoder.restore_grant_registry(self.grants.clone(), bind)
             .map_err(|e| e.to_string())?;
+        let mut used = std::collections::HashSet::new();
+        let used_grant_permissions = self.used_grant_permissions.iter().map(|(player, permission)| {
+            let permission = decoder.restore_permission_identity(permission.clone(), bind)
+                .map_err(|e| e.to_string())?;
+            if matches!(&permission, ironsmith::grant_registry::GrantPermissionIdentity::Stored(id)
+                if *id >= grants.next_permission_identity) {
+                return Err("used grant permission exceeds its allocator".into());
+            }
+            if !used.insert((*player, permission.clone())) {
+                return Err("duplicate used grant permission root".into());
+            }
+            Ok((*player, permission))
+        }).collect::<Result<Vec<_>, String>>()?;
+        let delayed_triggers = self.delayed_triggers.iter().map(|trigger|
+            decoder.restore_delayed_trigger(trigger.clone(), bind).map_err(|e| e.to_string()))
+            .collect::<Result<Vec<_>, _>>()?;
         // Validate descriptor identity, allocators, chronology and latches now,
         // rather than leaving a partially decoded world for the owner to reject.
         let mut manager = ironsmith::continuous::ContinuousEffectManager::new();
@@ -723,6 +810,8 @@ impl SyncExecutableState {
             objects,
             continuous,
             grants,
+            used_grant_permissions,
+            delayed_triggers,
         })
     }
 }
@@ -2881,12 +2970,14 @@ impl WasmGame {
             .game
             .players
             .iter()
-            .map(|player| SyncPlayer {
+            .map(|player| Ok(SyncPlayer {
                 id: player.id.0,
                 name: player.name.clone(),
                 starting_life: player.starting_life,
                 life: player.life,
                 mana_pool: SyncManaPool::from(&player.mana_pool),
+                restricted_mana: sync_restricted_mana(&player.restricted_mana)
+                    .map_err(|error| JsValue::from_str(&error))?,
                 poison_counters: player.poison_counters,
                 energy_counters: player.energy_counters,
                 experience_counters: player.experience_counters,
@@ -2907,8 +2998,8 @@ impl WasmGame {
                     .iter()
                     .map(|(id, identity)| (id.0, *identity))
                     .collect(),
-            })
-            .collect();
+            }))
+            .collect::<Result<Vec<_>, JsValue>>()?;
 
         let objects = self
             .sync_checkpoint_object_ids()
@@ -2937,6 +3028,13 @@ impl WasmGame {
                         .iter()
                         .map(|subtype| subtype.display_name())
                         .collect(),
+                    chosen_subtype: self.game.chosen_subtype(id),
+                    chosen_subtypes: {
+                        let mut types: Vec<_> = self.game.chosen_subtypes(id)
+                            .into_iter().flatten().copied().collect();
+                        types.sort_by_key(|subtype| subtype.display_name());
+                        types
+                    },
                     power: object.power(),
                     toughness: object.toughness(),
                     loyalty: object.loyalty(),
@@ -3775,12 +3873,14 @@ impl WasmGame {
             .game
             .players
             .iter()
-            .map(|player| PublicAuditPlayer {
+            .map(|player| Ok(PublicAuditPlayer {
                 id: player.id.0,
                 name: player.name.clone(),
                 starting_life: player.starting_life,
                 life: player.life,
                 mana_pool: SyncManaPool::from(&player.mana_pool),
+                restricted_mana: sync_restricted_mana(&player.restricted_mana)
+                    .map_err(|error| JsValue::from_str(&error))?,
                 poison_counters: player.poison_counters,
                 energy_counters: player.energy_counters,
                 experience_counters: player.experience_counters,
@@ -3796,8 +3896,8 @@ impl WasmGame {
                 sideboard_count: player.sideboard.len(),
                 graveyard: raw_ids(&player.graveyard),
                 commanders: raw_ids(&player.commanders),
-            })
-            .collect();
+            }))
+            .collect::<Result<Vec<_>, JsValue>>()?;
 
         let objects = self
             .public_audit_object_ids()
@@ -3819,6 +3919,13 @@ impl WasmGame {
                     controller: self.game.controller_of(object).0,
                     zone: sync_zone_name(object.zone).to_string(),
                     identity: self.public_audit_object_identity(id, object),
+                    chosen_subtype: self.game.chosen_subtype(id),
+                    chosen_subtypes: {
+                        let mut types: Vec<_> = self.game.chosen_subtypes(id)
+                            .into_iter().flatten().copied().collect();
+                        types.sort_by_key(|subtype| subtype.display_name());
+                        types
+                    },
                     token: matches!(object.kind, ironsmith::object::ObjectKind::Token),
                     power: stats_public.then(|| object.power()).flatten(),
                     toughness: stats_public.then(|| object.toughness()).flatten(),
@@ -4400,6 +4507,20 @@ impl WasmGame {
             let player_id = PlayerId::from_index(player_checkpoint.id);
             if let Some(player) = self.game.player_mut(player_id) {
                 player.life = player_checkpoint.life;
+                let restricted_mana = player_checkpoint.restricted_mana.iter().map(|unit| {
+                    Ok(ironsmith::ability::RestrictedManaUnit {
+                        symbol: unit.symbol,
+                        source: unit.source,
+                        source_chosen_creature_type: unit.source_chosen_creature_type,
+                        restrictions: unit.restrictions.iter().cloned().map(|restriction|
+                            restriction.try_map_effects(&mut unsupported_checkpoint_effect_payload)
+                        ).collect::<Result<_, String>>()?,
+                    })
+                }).collect::<Result<Vec<_>, String>>()?;
+                // The planner matches restricted units through production
+                // provenance. Restoring only the side ledger would free this
+                // mana in compact payment assignment.
+                for unit in restricted_mana { player.add_restricted_mana(unit); }
                 player.mana_pool = ManaPool::from(player_checkpoint.mana_pool.clone());
                 player.poison_counters = player_checkpoint.poison_counters;
                 player.energy_counters = player_checkpoint.energy_counters;
@@ -4735,6 +4856,15 @@ impl WasmGame {
             }
         }
         self.game.set_deploy_creatures(checkpoint.deploy_creatures);
+        for object in &checkpoint.objects {
+            let id = ObjectId::from_raw(object.id);
+            for subtype in &object.chosen_subtypes {
+                self.game.set_chosen_subtype(id, *subtype);
+            }
+            if let Some(subtype) = object.chosen_subtype {
+                self.game.set_chosen_subtype(id, subtype);
+            }
+        }
         self.restore_sync_rules_state(&checkpoint.rules, checkpoint.grand_melee.is_some());
         self.game.restore_regeneration_state(
             checkpoint.rules.regeneration_shields.iter().map(|&(id, count)| (ObjectId::from_raw(id), count)).collect(),
@@ -4974,6 +5104,22 @@ impl WasmGame {
 }
 
 #[cfg(test)]
+fn test_delayed_registration(turn: u32, alice: PlayerId) -> ironsmith::triggers::DelayedTrigger {
+    ironsmith::triggers::DelayedTrigger {
+            trigger: ironsmith::triggers::Trigger::beginning_of_end_step(ironsmith::target::PlayerFilter::You),
+            effects: ironsmith::resolution::ResolutionProgram::from_effects(vec![ironsmith::Effect::gain_life(7)]),
+            one_shot: true, x_value: Some(3), not_before_turn: Some(turn),
+            expires_at_turn: None, expires_before_controller_turn_after: None,
+            expires_at_end_of_combat: false, bound_extra_turn_index: None,
+            while_any_tagged_object_in_zone: None, target_objects: vec![],
+            ability_source: None, ability_source_stable_id: None, ability_source_name: None,
+            ability_source_snapshot: None, controller: alice, choices: vec![],
+            tagged_objects: std::collections::HashMap::new(),
+            tagged_players: std::collections::HashMap::new(), prepayment: None, prevention_shield: None,
+        }
+}
+
+#[cfg(test)]
 mod sync_checkpoint_tests {
     use super::*;
 
@@ -4996,7 +5142,7 @@ mod sync_checkpoint_tests {
             if reverse {
                 wasm.registry.register(ironsmith::cards::builders::CardDefinitionBuilder::new(
                     CardId::from_raw(9900), "Private unobserved registration")
-                    .card_types(vec![CardType::Sorcery]).with_spell_effect(vec![Effect::gain_life(7777)])
+                    .card_types(vec![CardType::Sorcery]).with_spell_effect(vec![ironsmith::Effect::gain_life(7777)])
                     .build());
                 for definition in definitions.iter().rev() { wasm.registry.register(definition.clone()); }
             } else {
@@ -5019,7 +5165,7 @@ mod sync_checkpoint_tests {
         assert_eq!(public, serde_json::to_value(right.build_public_audit_checkpoint()).unwrap());
         let static_id = |id| right.game.object(id).unwrap().abilities.iter().find_map(|ability| {
             match &ability.kind {
-                AbilityKind::Static(value) => Some(value.instance_id()),
+                ironsmith::AbilityKind::Static(value) => Some(value.instance_id()),
                 _ => None,
             }
         }).unwrap();
@@ -5337,6 +5483,121 @@ mod sync_checkpoint_tests {
                 .unwrap_or(0),
             2
         );
+    }
+
+    #[test]
+    fn sync_checkpoint_preserves_cavern_choice_and_restricted_mana_legality() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        use ironsmith::ability::{
+            ManaUsageRestriction, ManaUsageSubtypeRequirement, RestrictedManaUnit,
+        };
+        let owner = PlayerId::from_index(0);
+        for (chosen, with_trigger) in [
+            (Subtype::Dwarf, false),
+            (Subtype::Elf, false),
+            (Subtype::Dwarf, true),
+            (Subtype::Elf, true),
+        ] {
+            let mut host = WasmGame::new();
+            host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+            host.game.turn.active_player = owner;
+            host.game.turn.priority_player = Some(owner);
+            host.game.turn.phase = Phase::FirstMain;
+            host.game.turn.step = None;
+            host.runner = Some(TurnRunner::from_state_for_sync(
+                RunnerTurnState::FirstMainPriority,
+            ));
+            host.runner_awaiting_priority = true;
+            let definitions: Vec<_> = [
+                ("Cavern of Souls", "Type: Land\nAs this land enters, choose a creature type.\n{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast a creature spell of the chosen type, and that spell can't be countered.", Zone::Battlefield),
+                ("Dáin's Company", "Mana cost: {R}{W}\nType: Creature — Dwarf Warrior\nPower/Toughness: 2/2", Zone::Hand),
+                ("Plains", "Type: Basic Land — Plains\n{T}: Add {W}.", Zone::Battlefield),
+                ("Mana trigger probe", "Type: Enchantment\nWhenever you tap a creature for mana, add {G}.", Zone::Battlefield),
+            ].into_iter().filter(|(name, _, _)| with_trigger || *name != "Mana trigger probe").map(|(name, text, zone)| {
+                let definition = ironsmith_registry_test::compile_to_runtime_definition(name, text, false).unwrap();
+                let id = host.game.create_object_from_definition(&definition, owner, zone);
+                host.registry.register(definition.clone());
+                (definition, id)
+            }).collect();
+            let cavern = definitions[0].1;
+            let spell = definitions[1].1;
+            let can_cast = |wasm: &WasmGame| {
+                ironsmith::decision::compute_actions_for_source(&wasm.game, owner, Some(spell)).unwrap().iter()
+                    .any(|action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))
+            };
+            host.game.set_chosen_creature_type(cavern, chosen);
+
+            assert_eq!(can_cast(&host), chosen == Subtype::Dwarf);
+            let mut peer = WasmGame::new();
+            for (definition, _) in &definitions {
+                peer.registry.register(definition.clone());
+            }
+            peer.apply_sync_checkpoint(host.build_sync_checkpoint())
+                .unwrap();
+            assert_eq!(peer.game.chosen_creature_type(cavern), Some(chosen));
+            assert_eq!(
+                can_cast(&peer),
+                can_cast(&host),
+                "untapped Cavern affordability must agree"
+            );
+            host.game.tap(cavern);
+            host.game
+                .player_mut(owner)
+                .unwrap()
+                .add_restricted_mana(RestrictedManaUnit {
+                    symbol: ManaSymbol::Red,
+                    source: cavern,
+                    source_chosen_creature_type: Some(chosen),
+                    restrictions: vec![ManaUsageRestriction::CastSpell {
+                        card_types: vec![CardType::Creature],
+                        subtype_requirement: Some(ManaUsageSubtypeRequirement::ChosenTypeOfSource),
+                        restrict_to_matching_spell: true,
+                        grant_uncounterable: true,
+                        enters_with_counters: vec![],
+                        granted_abilities: vec![],
+                    }],
+                });
+            let checkpoint = host.build_sync_checkpoint();
+            // Round-trip the wire representation too, rather than clone native state.
+            let checkpoint = serde_json::from_value(serde_json::to_value(checkpoint).unwrap()).unwrap();
+            peer.apply_sync_checkpoint(checkpoint).unwrap();
+            assert_eq!(
+                peer.game.player(owner).unwrap().restricted_mana,
+                host.game.player(owner).unwrap().restricted_mana
+            );
+            assert_eq!(can_cast(&host), chosen == Subtype::Dwarf);
+            assert_eq!(
+                can_cast(&peer),
+                can_cast(&host),
+                "floated restricted mana must not become unrestricted"
+            );
+            assert_eq!(
+                serde_json::to_value(peer.build_public_audit_checkpoint()).unwrap(),
+                serde_json::to_value(host.build_public_audit_checkpoint()).unwrap()
+            );
+            peer.game.object_mut(spell).unwrap().zone = Zone::Stack;
+            peer.game
+                .player_mut(owner)
+                .unwrap()
+                .mana_pool
+                .add(ManaSymbol::White, 1);
+            let cost = peer.game.object(spell).unwrap().mana_cost.clone().unwrap();
+            assert_eq!(
+                peer.game.try_pay_mana_cost_with_reason(
+                    owner,
+                    Some(spell),
+                    &cost,
+                    0,
+                    ironsmith::costs::PaymentReason::CastSpell
+                ),
+                chosen == Subtype::Dwarf
+            );
+            if chosen == Subtype::Dwarf {
+                assert_eq!(peer.game.player(owner).unwrap().mana_pool.total(), 0);
+                assert!(peer.game.current_abilities(spell).unwrap().iter().any(|ability|
+                        matches!(&ability.kind, ironsmith::ability::AbilityKind::Static(ability) if ability.cant_be_countered())));
+            }
+        }
     }
 
     #[test]
@@ -7888,6 +8149,26 @@ mod sync_checkpoint_tests {
     }
 
     #[test]
+    fn sync_checkpoint_preserves_delayed_program_at_settled_priority() {
+        let _guard = crate::test_id_counter_guard();
+        let mut source = WasmGame::new();
+        source.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let alice = PlayerId::from_index(0);
+        source.game.effect_store.delayed_triggers.push(test_delayed_registration(source.game.turn.turn_number, alice));
+        assert!(source.game.stack.is_empty());
+        let checkpoint = source.build_sync_checkpoint();
+        let mut receiver = WasmGame::new();
+        receiver.apply_sync_checkpoint(checkpoint).unwrap();
+        assert_eq!(receiver.game.effect_store.delayed_triggers.len(), 1,
+            "settled priority must retain a pending delayed registration");
+        let retained = &receiver.game.effect_store.delayed_triggers[0];
+        assert!(retained.one_shot);
+        assert_eq!(retained.x_value, Some(3));
+        assert_eq!(retained.controller, alice);
+        assert_eq!(retained.effects.all_effects().len(), 1);
+    }
+
+    #[test]
     fn sync_checkpoint_preserves_regeneration_shields_and_departed_turn_counts() {
         let _guard = crate::test_id_counter_guard();
         let alice = PlayerId::from_index(0);
@@ -9138,6 +9419,23 @@ mod owning_sync_executable_tests {
         );
         game.refresh_continuous_state().unwrap();
         assert_eq!(game.current_colors(artifact), Some(ColorSet::RED));
+        game.turn_store.grant_cast_uses_this_turn.insert((alice,
+            game.effect_store.grant_registry.registered_state().grants[0].permission_identity.clone().unwrap()));
+        let mut delayed = test_delayed_registration(game.turn.turn_number, alice);
+        let snapshot = ironsmith::snapshot::ObjectSnapshot::from_object(game.object(artifact).unwrap(), &game);
+        delayed.ability_source = Some(artifact);
+        delayed.ability_source_stable_id = Some(snapshot.stable_id);
+        delayed.ability_source_snapshot = Some(snapshot.clone());
+        delayed.tagged_objects.insert("retained delayed source".into(), vec![snapshot]);
+        delayed.tagged_players.insert("retained delayed player".into(), vec![alice]);
+        delayed.expires_before_controller_turn_after = Some(9);
+        delayed.bound_extra_turn_index = Some(0);
+        delayed.prepayment = Some(ironsmith::triggers::PendingDelayedTriggerPayment {
+            player: alice, source: artifact,
+            cost: ironsmith::cost::TotalCost::mana(ironsmith::mana::ManaCost::from_symbols(
+                vec![ironsmith::mana::ManaSymbol::Generic(2)])),
+        });
+        game.effect_store.delayed_triggers.push(delayed);
         let objects = vec![
             game.object(artifact).unwrap().clone(),
             game.object(spell).unwrap().clone(),
@@ -9161,6 +9459,8 @@ mod owning_sync_executable_tests {
             objects,
             game.effect_store.continuous_effects.registered_state(),
             game.effect_store.grant_registry.registered_state(),
+            game.turn_store.grant_cast_uses_this_turn.iter().cloned().collect(),
+            game.effect_store.delayed_triggers.clone(),
         )
         .unwrap();
         let json = serde_json::to_value(&encoded).unwrap();
@@ -9219,6 +9519,18 @@ mod owning_sync_executable_tests {
             .unwrap();
         peer.effect_store.grant_registry.restore_registered_state(restored.grants.clone()).unwrap();
         assert_eq!(restored.grants.grants.len(), 3);
+        assert_eq!(restored.delayed_triggers.len(), 1);
+        assert_eq!(restored.delayed_triggers[0].x_value, Some(3));
+        assert!(restored.delayed_triggers[0].one_shot);
+        assert_eq!(restored.delayed_triggers[0].expires_before_controller_turn_after, Some(9));
+        assert_eq!(restored.delayed_triggers[0].bound_extra_turn_index, Some(0));
+        assert_eq!(restored.delayed_triggers[0].prepayment.as_ref().unwrap().source, artifact);
+        assert_eq!(restored.delayed_triggers[0].tagged_objects.len(), 1);
+        assert_eq!(restored.delayed_triggers[0].tagged_players.len(), 1);
+        assert_eq!(restored.delayed_triggers[0].ability_source_snapshot.as_ref().unwrap().object_id, artifact);
+        assert_eq!(restored.used_grant_permissions.len(), 1);
+        peer.turn_store.grant_cast_uses_this_turn = restored.used_grant_permissions.iter().cloned().collect();
+        assert_eq!(peer.turn_store.grant_cast_uses_this_turn, game.turn_store.grant_cast_uses_this_turn);
         let exhausted = restored.grants.grants[1].shared_usage_id.unwrap();
         assert!(!peer.effect_store.grant_registry.consume_shared_usage(exhausted));
         peer.refresh_continuous_state().unwrap();
@@ -9229,6 +9541,8 @@ mod owning_sync_executable_tests {
             restored.objects,
             restored.continuous.clone(),
             restored.grants.clone(),
+            restored.used_grant_permissions.clone(),
+            restored.delayed_triggers.clone(),
         )
         .unwrap();
         assert_eq!(
@@ -9297,6 +9611,8 @@ mod owning_sync_executable_tests {
             objects,
             game.effect_store.continuous_effects.registered_state(),
             game.effect_store.grant_registry.registered_state(),
+            game.turn_store.grant_cast_uses_this_turn.iter().cloned().collect(),
+            game.effect_store.delayed_triggers.clone(),
         )
         .unwrap();
         let peers = peer_bindings(&state);
@@ -9307,6 +9623,8 @@ mod owning_sync_executable_tests {
             "objects",
             "continuous",
             "grants",
+            "usedGrantPermissions",
+            "delayedTriggers",
         ] {
             let mut missing = serde_json::to_value(&state).unwrap();
             missing.as_object_mut().unwrap().remove(field);
@@ -9342,6 +9660,9 @@ mod owning_sync_executable_tests {
         assert!(bad.restore(&peers).is_err());
         let mut bad = state.clone();
         bad.continuous.next_id = u64::MAX;
+        assert!(bad.restore(&peers).is_err());
+        let mut bad = state.clone();
+        bad.used_grant_permissions.push(bad.used_grant_permissions[0].clone());
         assert!(bad.restore(&peers).is_err());
         let mut bad = state.clone();
         bad.grants.next_permission_identity = 0;
@@ -9385,6 +9706,8 @@ mod owning_sync_executable_tests {
             vec![original.clone()],
             game.effect_store.continuous_effects.registered_state(),
             game.effect_store.grant_registry.registered_state(),
+            game.turn_store.grant_cast_uses_this_turn.iter().cloned().collect(),
+            game.effect_store.delayed_triggers.clone(),
         )
         .unwrap();
         assert!(
@@ -9400,6 +9723,8 @@ mod owning_sync_executable_tests {
             vec![placeholder],
             game.effect_store.continuous_effects.registered_state(),
             game.effect_store.grant_registry.registered_state(),
+            game.turn_store.grant_cast_uses_this_turn.iter().cloned().collect(),
+            game.effect_store.delayed_triggers.clone(),
         )
         .unwrap();
         assert_eq!(redacted.graph_card_count, 0);

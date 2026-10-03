@@ -4324,3 +4324,117 @@ mod native_cost_producer_codec_tests {
         }
     }
 }
+
+/// A delayed registration retains its executable program and historical source
+/// snapshots in the owning occurrence graph. No printed-text reconstruction.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(bound(deserialize = "I: serde::Deserialize<'de>"))]
+pub struct RetainedDelayedTrigger<I> {
+    pub trigger: RetainedCardPayload<wire::WireTrigger>,
+    pub effects: RetainedOccurrenceProgram,
+    pub one_shot: bool,
+    #[serde(deserialize_with = "retained_required_option")]
+    pub x_value: Option<u32>,
+    #[serde(deserialize_with = "retained_required_option")]
+    pub not_before_turn: Option<u32>,
+    #[serde(deserialize_with = "retained_required_option")]
+    pub expires_at_turn: Option<u32>,
+    #[serde(deserialize_with = "retained_required_option")]
+    pub expires_before_controller_turn_after: Option<u32>,
+    pub expires_at_end_of_combat: bool,
+    #[serde(deserialize_with = "retained_required_option")]
+    pub bound_extra_turn_index: Option<usize>,
+    #[serde(deserialize_with = "retained_required_option")]
+    pub while_any_tagged_object_in_zone: Option<(crate::tag::TagKey, crate::zone::Zone)>,
+    pub target_objects: Vec<crate::ids::ObjectId>,
+    #[serde(deserialize_with = "retained_required_option")]
+    pub ability_source: Option<crate::ids::ObjectId>,
+    #[serde(deserialize_with = "retained_required_option")]
+    pub ability_source_stable_id: Option<crate::ids::StableId>,
+    #[serde(deserialize_with = "retained_required_option")]
+    pub ability_source_name: Option<String>,
+    #[serde(deserialize_with = "retained_required_option")]
+    pub ability_source_snapshot: Option<RetainedOccurrenceObjectSnapshot<I>>,
+    pub controller: crate::ids::PlayerId,
+    pub choices: Vec<crate::target::ChooseSpec>,
+    pub tagged_objects: std::collections::BTreeMap<crate::tag::TagKey, Vec<RetainedOccurrenceObjectSnapshot<I>>>,
+    pub tagged_players: std::collections::BTreeMap<crate::tag::TagKey, Vec<crate::ids::PlayerId>>,
+    #[serde(deserialize_with = "retained_required_option")]
+    pub prepayment: Option<RetainedDelayedTriggerPayment>,
+    #[serde(deserialize_with = "retained_required_option")]
+    pub prevention_shield: Option<crate::prevention::PreventionShieldId>,
+}
+fn retained_required_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where D: serde::Deserializer<'de>, T: serde::Deserialize<'de> {
+    <Option<T> as serde::Deserialize>::deserialize(deserializer)
+}
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RetainedDelayedTriggerPayment {
+    pub player: crate::ids::PlayerId,
+    pub cost: RetainedOccurrenceTotalCost,
+    pub source: crate::ids::ObjectId,
+}
+impl StaticAbilityOccurrenceEncoder {
+    pub fn encode_delayed_trigger<I: serde::Serialize>(
+        &mut self, value: crate::triggers::DelayedTrigger,
+        mut card: impl FnMut(crate::ids::CardId) -> Result<I, OccurrenceBindingError>,
+    ) -> Result<RetainedDelayedTrigger<I>, OccurrenceBindingError> {
+        self.transaction(|table| {
+            let crate::triggers::DelayedTrigger {
+                trigger, effects, one_shot, x_value, not_before_turn, expires_at_turn, expires_before_controller_turn_after, expires_at_end_of_combat, bound_extra_turn_index, while_any_tagged_object_in_zone, target_objects, ability_source, ability_source_stable_id, ability_source_name, ability_source_snapshot, controller, choices, tagged_objects, tagged_players, prepayment, prevention_shield,
+            } = value;
+            let trigger = table.bind_payload(RetainedCardPayload {
+                card_references: RetainedModelCardReferences::Native,
+                model: encode_runtime_trigger(trigger)?, embedded_definitions: Vec::new(),
+            }, &mut card)?;
+            let effects = table.encode_program_with_card_graph(effects, &mut card)?;
+            let ability_source_snapshot = ability_source_snapshot.map(|snapshot|
+                table.encode_snapshot(snapshot, &mut card)).transpose()?;
+            let mut retained_tagged = std::collections::BTreeMap::new();
+            let tagged_objects: std::collections::BTreeMap<_, _> = tagged_objects.into_iter().collect();
+            for (tag, snapshots) in tagged_objects {
+                retained_tagged.insert(tag, snapshots.into_iter().map(|snapshot|
+                    table.encode_snapshot(snapshot, &mut card)).collect::<Result<Vec<_>, _>>()?);
+            }
+            let tagged_objects = retained_tagged;
+            let tagged_players = tagged_players.into_iter().collect();
+            let prepayment = prepayment.map(|payment| Ok::<_, OccurrenceBindingError>(RetainedDelayedTriggerPayment {
+                player: payment.player, source: payment.source,
+                cost: table.encode_total_cost_with_card_graph(payment.cost, &mut card)?,
+            })).transpose()?;
+            table.bind_shared_models(&mut card)?;
+            Ok(RetainedDelayedTrigger {
+                trigger, effects, one_shot, x_value, not_before_turn, expires_at_turn, expires_before_controller_turn_after, expires_at_end_of_combat, bound_extra_turn_index, while_any_tagged_object_in_zone, target_objects, ability_source, ability_source_stable_id, ability_source_name, ability_source_snapshot, controller, choices, tagged_objects, tagged_players, prepayment, prevention_shield,
+            })
+        })
+    }
+}
+impl StaticAbilityOccurrenceDecoder {
+    pub fn restore_delayed_trigger<I>(
+        &self, value: RetainedDelayedTrigger<I>,
+        mut card: impl FnMut(I) -> Result<crate::ids::CardId, OccurrenceBindingError>,
+    ) -> Result<crate::triggers::DelayedTrigger, OccurrenceBindingError> {
+        let RetainedDelayedTrigger {
+            trigger, effects, one_shot, x_value, not_before_turn, expires_at_turn, expires_before_controller_turn_after, expires_at_end_of_combat, bound_extra_turn_index, while_any_tagged_object_in_zone, target_objects, ability_source, ability_source_stable_id, ability_source_name, ability_source_snapshot, controller, choices, tagged_objects, tagged_players, prepayment, prevention_shield,
+        } = value;
+        let trigger = self.bind_retained_payload_with_definitions(trigger)?;
+        Self::finish_embedded_definitions(&trigger.embedded_definitions)?;
+        let trigger = runtime_trigger_from_core_model(trigger.model)?;
+        let effects = self.restore_program(effects)?;
+        let ability_source_snapshot = ability_source_snapshot.map(|snapshot|
+            self.restore_snapshot(snapshot, &mut card)).transpose()?;
+        let mut native_tagged = std::collections::HashMap::new();
+        for (tag, snapshots) in tagged_objects {
+            native_tagged.insert(tag, snapshots.into_iter().map(|snapshot|
+                self.restore_snapshot(snapshot, &mut card)).collect::<Result<Vec<_>, _>>()?);
+        }
+        let tagged_objects = native_tagged;
+        let tagged_players = tagged_players.into_iter().collect();
+        let prepayment = prepayment.map(|payment| Ok::<_, OccurrenceBindingError>(crate::triggers::PendingDelayedTriggerPayment {
+            player: payment.player, source: payment.source, cost: self.restore_total_cost(payment.cost)?,
+        })).transpose()?;
+        Ok(crate::triggers::DelayedTrigger {
+            trigger, effects, one_shot, x_value, not_before_turn, expires_at_turn, expires_before_controller_turn_after, expires_at_end_of_combat, bound_extra_turn_index, while_any_tagged_object_in_zone, target_objects, ability_source, ability_source_stable_id, ability_source_name, ability_source_snapshot, controller, choices, tagged_objects, tagged_players, prepayment, prevention_shield,
+        })
+    }
+}

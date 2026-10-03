@@ -41,8 +41,10 @@ async function analyze(data) {
     game = new WasmGame();
     game.setDeferredPriorityAnalysis(true);
     for (const [, source] of data.sources) {
-      const result = compileAndRegisterCardSources(game, [source]);
-      if (result.failed?.length) throw new Error(result.failed[0].error);
+      // Fetched sources include rejected cards retained for load diagnostics.
+      // Mirror the command worker: keep successful definitions and let the
+      // checkpoint/operation validate the cards this analysis actually needs.
+      compileAndRegisterCardSources(game, [source]);
       await yieldTask();
     }
     for (const registration of data.registrations || []) {

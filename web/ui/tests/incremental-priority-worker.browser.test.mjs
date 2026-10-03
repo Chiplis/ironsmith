@@ -12,11 +12,14 @@ const refs = actions => actions.map(a => JSON.stringify(a.action_ref)).sort();
 
 test('lands publish before Warp checks finish, full menus agree, and a blocked analysis worker cannot block commands', { timeout: 180000 }, async t => {
   await initEngine({ module_or_path: await readFile(new URL('../../wasm_demo/pkg/engine_bg.wasm', import.meta.url)) });
-  const sources = await Promise.all(['mountain', 'sunbillow-verge', 'nova-hellkite', 'magmatic-hellkite', 'icetill-explorer'].map(async route =>
+  const sources = await Promise.all(['mountain', 'sunbillow-verge', 'nova-hellkite', 'magmatic-hellkite', 'icetill-explorer', 'ornithopter'].map(async route =>
     JSON.parse(await readFile(new URL(`../public/cards/${route}.json`, import.meta.url)))));
+  const rejectedSource = { canonicalName: 'Rejected Analysis Source', group: { kind: 'single',
+    name: 'Rejected Analysis Source', block: 'Type: Creature — Test\nMana Cost: {0}\nPower/Toughness: 1/1\nDo an unsupported test thing.' } };
   const game = new WasmGame();
-  let checkpoint, expected, land, secondLand;
+  let checkpoint, expected, land, secondLand, secondSpell;
   try {
+    assert.ok(JSON.parse(game.registerExternalCardSourcesJson(JSON.stringify([rejectedSource]))).failed.length);
     game.registerExternalCardSourcesJson(JSON.stringify(sources));
     game.resetEmpty(['Alice', 'Bob'], 20);
     for (let i = 0; i < 4; i++) game.addCardToZone(0, 'Nova Hellkite', 'hand', true);
@@ -27,6 +30,7 @@ test('lands publish before Warp checks finish, full menus agree, and a blocked a
     game.addCardToZone(0, 'Icetill Explorer', 'battlefield', true);
     game.addCardToZone(0, 'Mountain', 'graveyard', true);
     secondLand = Number(game.addCardToZone(1, 'Mountain', 'hand', true));
+    secondSpell = Number(game.addCardToZone(1, 'Ornithopter', 'hand', true));
     game.finishPuzzleSetup();
     for (let i = 0; i < 4; i++) {
       const action = game.uiState().decision.actions.find(a => ['keep_opening_hand', 'continue_pregame', 'begin_game'].includes(a.action_ref?.kind));
@@ -62,8 +66,18 @@ test('lands publish before Warp checks finish, full menus agree, and a blocked a
     body = body.replace(marker, `if (!complete && decision.actions.length > 0 && !self.__stalledToken?.has(token)) { (self.__stalledToken ||= new Set()).add(token); const end = performance.now() + 1500; while (performance.now() < end) {} }\n${marker}`);
     await route.fulfill({ response, body });
   });
+  // Reproduce the cache populated by deck/load diagnostics, even when this
+  // WASM build uses the embedded catalog instead of HTTP card assets.
+  await page.route('**/src/workers/wasmGameWorker.js*', async route => {
+    const response = await route.fetch();
+    const marker = '.map(([source, route]) => [route, source]),';
+    const body = await response.text();
+    assert.ok(body.includes(marker));
+    await route.fulfill({ response, body: body.replace(marker,
+      `.map(([source, route]) => [route, source]).concat([['rejected-analysis-source', ${JSON.stringify(rejectedSource)}]]),`) });
+  });
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/analysis-test`);
-  const result = await page.evaluate(async ({ checkpoint, sources, land, secondLand }) => {
+  const result = await page.evaluate(async ({ checkpoint, sources, land, secondLand, secondSpell }) => {
     const { createSnapshotDecoder } = await import('/src/lib/snapshot-channel.js');
     const { serializePriorityCommand } = await import('/src/lib/sync-commands.js');
     const decoder = createSnapshotDecoder(), requests = new Map(), messages = [], waiters = [];
@@ -146,13 +160,29 @@ test('lands publish before Warp checks finish, full menus agree, and a blocked a
       ]);
       const { mergePriorityAnalysis } = await import('/src/lib/priority-analysis-scheduler.js');
       const merged = mergePriorityAnalysis(visible, secondMenu);
-      const secondPlayable = merged.decision.actions.some(a => a.action_ref?.kind === 'play_land' && Number(a.object_id) === secondLand);
+      const guestLand = merged.decision.actions.find(a => a.action_ref?.kind === 'play_land' && Number(a.object_id) === secondLand);
+      const guestSpell = merged.decision.actions.find(a => a.action_ref?.kind === 'cast_spell' && Number(a.object_id) === secondSpell);
+      const secondPlayable = Boolean(guestLand && guestSpell);
+      let guestPlayedLand = false, guestCastSpell = false;
+      if (secondPlayable) {
+        await call('dispatch', [serializePriorityCommand({ type: 'priority_action', action_ref: guestSpell.action_ref }, (await call('uiState')).decision)]);
+        const spellAfter = await call('exportSyncCheckpoint');
+        guestCastSpell = spellAfter.objects.some(o => o.name === 'Ornithopter' && Number(o.owner) === 1 && o.zone === 'stack');
+        // Land and spell are independent actions from the same guest prompt.
+        // Restore it because casting transfers priority to the other seat.
+        await call('importSyncCheckpoint', [second, 1]);
+        await call('dispatch', [serializePriorityCommand({ type: 'priority_action', action_ref: guestLand.action_ref }, (await call('uiState')).decision)]);
+        const landAfter = await call('exportSyncCheckpoint');
+        guestPlayedLand = landAfter.objects.some(o => o.name === 'Mountain' && Number(o.owner) === 1 && o.zone === 'battlefield');
+      }
       await call('releaseRuntimeSavepoint', [branch]);
-      return { secondPlayable, first: first.decision, final: final.decision, commandMs, playMs, coldHighlightMs, warmHighlightMs, staleRejected,
+      return { secondPlayable, guestPlayedLand, guestCastSpell, first: first.decision, final: final.decision, commandMs, playMs, coldHighlightMs, warmHighlightMs, staleRejected,
         played: after.objects.some(o => o.name === 'Sunbillow Verge' && o.zone === 'battlefield'), newRevision: played.__priority_revision !== reset.__priority_revision };
     } finally { worker.terminate(); }
-  }, { checkpoint, sources, land, secondLand });
+  }, { checkpoint, sources, land, secondLand, secondSpell });
   assert.equal(result.secondPlayable, true);
+  assert.equal(result.guestPlayedLand, true);
+  assert.equal(result.guestCastSpell, true);
   assert.equal(result.first.analysis_complete, false);
   assert.equal(result.first.actions.some(a => a.kind === 'cast_spell'), false);
   assert.deepEqual(refs(result.final.actions), expected);
