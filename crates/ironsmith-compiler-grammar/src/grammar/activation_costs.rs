@@ -58,7 +58,7 @@ pub enum ActivationCostSegmentCst {
     Mana(ManaCost),
     Tap,
     TapChosen {
-        count: u32,
+        count: ChoiceCount,
         filter: ObjectFilter,
     },
     Untap,

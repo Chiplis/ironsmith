@@ -707,10 +707,26 @@ pub(super) fn max_x_from_non_mana_costs(
 ) -> Option<u32> {
     let mut max_x: Option<u32> = None;
 
+    let source_is_reserved_for_tap = costs.iter().any(crate::costs::Cost::requires_tap);
     for cost in costs {
         let Some(effect) = cost.effect_ref() else {
             continue;
         };
+        // The source cannot also satisfy an untapped-object choice when a
+        // separate {T} cost already consumes its untapped state. Keep the
+        // printed filter intact and narrow only this hypothetical X bound.
+        let reserved_choice = if source_is_reserved_for_tap {
+            effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+                .filter(|choose| choose.filter.untapped && !choose.filter.other)
+                .map(|choose| {
+                    let mut choose = choose.clone();
+                    choose.filter.other = true;
+                    crate::effect::Effect::new(choose)
+                })
+        } else {
+            None
+        };
+        let effect = reserved_choice.as_ref().unwrap_or(effect);
         if let Some(matching) = effect.max_cost_x(game, source, caster) {
             max_x = Some(max_x.map_or(matching, |prev| prev.min(matching)));
         }

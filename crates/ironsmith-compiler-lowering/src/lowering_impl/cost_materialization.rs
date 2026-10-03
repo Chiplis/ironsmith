@@ -15,7 +15,7 @@ enum MaterializationCost {
     DynamicMana(ironsmith_core::DynamicManaCost),
     Tap,
     TapChosen {
-        count: u32,
+        count: ChoiceCount,
         filter: ObjectFilter,
     },
     Untap,
@@ -512,7 +512,7 @@ fn lower_materialization_costs(
                 tap_tag_id += 1;
                 costs.push(Cost::validated_effect(Effect::choose_objects(
                     filter,
-                    ChoiceCount::exactly(*count as usize),
+                    *count,
                     PlayerFilter::You,
                     tag.clone(),
                 )));

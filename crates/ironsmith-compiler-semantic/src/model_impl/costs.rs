@@ -94,7 +94,10 @@ impl ironsmith_core::CostComponent for CompilerCost {
             Self::DynamicMana(cost) => cost.base.to_oracle(),
             Self::VariableMana { generic } => format!("{{{generic}}}"),
             Self::Tap => "{T}".to_string(),
-            Self::TapChosen { count, .. } => format!("tap {count} chosen permanent(s)"),
+            Self::TapChosen { count, .. } => format!(
+                "tap {} chosen permanent(s)",
+                if count.dynamic_x { "X".to_string() } else { count.min.to_string() },
+            ),
             Self::Untap => "{Q}".to_string(),
             Self::Life(amount) => format!("pay {amount:?} life"),
             Self::Energy(amount) => format!("pay {amount} energy"),
@@ -274,7 +277,7 @@ pub enum CompilerCost {
     },
     Tap,
     TapChosen {
-        count: u32,
+        count: ChoiceCount,
         filter: ObjectFilter,
     },
     Untap,
