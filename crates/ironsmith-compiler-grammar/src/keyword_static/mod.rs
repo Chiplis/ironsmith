@@ -441,6 +441,32 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             vec![StaticAbilityLineHeadHint::Single("enchant")]
         }
         "parse_characteristic_defining_pt_line" => Vec::new(),
+        // These rule names describe semantic operations, not the lexical
+        // subjects accepted by their complete grammars. Deriving a head from
+        // the name silently made already-supported static families unreachable.
+        "parse_creatures_assign_combat_damage_using_toughness_line" => vec![
+            StaticAbilityLineHeadHint::Single("each"),
+            StaticAbilityLineHeadHint::Single("this"),
+        ],
+        "parse_attached_prevent_all_damage_dealt_to_and_by_attached_line"
+        | "parse_attached_prevent_all_damage_dealt_by_attached_line"
+        | "parse_attached_prevent_all_combat_damage_dealt_by_attached_line"
+        | "parse_attached_prevent_all_damage_dealt_to_attached_line" => {
+            vec![StaticAbilityLineHeadHint::Single("prevent")]
+        }
+        "parse_damage_redirect_to_source_line" => {
+            vec![StaticAbilityLineHeadHint::Single("all")]
+        }
+        "parse_damage_redirect_to_source_controller_line" => {
+            vec![StaticAbilityLineHeadHint::Single("if")]
+        }
+        "parse_choose_color_as_becomes_attached_line" => {
+            vec![StaticAbilityLineHeadHint::Single("as")]
+        }
+        // A land-animation subject is an arbitrary object filter, including
+        // subtypes such as "Forests". The complete copular animation grammar
+        // supplies the discriminator; no finite lexical head list is complete.
+        "parse_lands_are_pt_creatures_still_lands_line" => Vec::new(),
         "parse_soulbond_shared_line" => vec![
             StaticAbilityLineHeadHint::Single("as"),
             StaticAbilityLineHeadHint::Pair("as", "long"),
@@ -907,6 +933,9 @@ fn static_ability_rule_head_discriminator(rule_id: RuleId) -> StaticAbilityLineH
         StaticAbilityLineHeadDiscriminator::Lexical(hints)
     }
 }
+
+#[cfg(test)]
+mod repeated_static_head_tests;
 
 #[cfg(test)]
 mod registry_head_hint_tests {

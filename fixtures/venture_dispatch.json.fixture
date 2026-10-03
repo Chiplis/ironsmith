@@ -1,0 +1,269 @@
+[
+  {
+    "name": "Bar the Gate",
+    "oracle_id": "11f55ec5-b9a3-4670-8afb-31d29478fb59",
+    "mana_cost": "{2}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Counter target creature or planeswalker spell. Venture into the dungeon. (Enter the first room or advance to the next room.)"
+  },
+  {
+    "name": "Barrowin of Clan Undurr",
+    "oracle_id": "c16d5daf-4995-4342-815c-a6b29d594f26",
+    "mana_cost": "{2}{W}{B}",
+    "type_line": "Legendary Creature — Dwarf Cleric",
+    "oracle_text": "When Barrowin enters, venture into the dungeon. (Enter the first room or advance to the next room.)\nWhenever Barrowin attacks, return up to one creature card with mana value 3 or less from your graveyard to the battlefield if you've completed a dungeon.",
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "name": "Clattering Skeletons",
+    "oracle_id": "9e107382-f683-44ed-ada1-775d3ac79dd0",
+    "mana_cost": "{3}{B}",
+    "type_line": "Creature — Skeleton",
+    "oracle_text": "When this creature dies, venture into the dungeon. (Enter the first room or advance to the next room.)",
+    "power": "4",
+    "toughness": "3"
+  },
+  {
+    "name": "Cloister Gargoyle",
+    "oracle_id": "e1e84b14-c521-4eb7-92ed-bde1131e8662",
+    "mana_cost": "{2}{W}",
+    "type_line": "Artifact Creature — Gargoyle",
+    "oracle_text": "When this creature enters, venture into the dungeon. (Enter the first room or advance to the next room.)\nAs long as you've completed a dungeon, this creature gets +3/+0 and has flying.",
+    "power": "0",
+    "toughness": "4"
+  },
+  {
+    "name": "Delver's Torch",
+    "oracle_id": "a1c8b833-8c74-4f95-8a47-1dd41ef99361",
+    "mana_cost": "{1}{W}",
+    "type_line": "Artifact — Equipment",
+    "oracle_text": "Equipped creature gets +1/+1.\nWhenever equipped creature attacks, venture into the dungeon. (Enter the first room or advance to the next room.)\nEquip {3} ({3}: Attach to target creature you control. Equip only as a sorcery.)"
+  },
+  {
+    "name": "Displacer Beast",
+    "oracle_id": "7f24c0b7-1d39-48b6-969f-ee97fdf99305",
+    "mana_cost": "{2}{U}",
+    "type_line": "Creature — Cat Beast",
+    "oracle_text": "When this creature enters, venture into the dungeon. (Enter the first room or advance to the next room.)\nDisplacement — {3}{U}: Return this creature to its owner's hand.",
+    "power": "3",
+    "toughness": "2"
+  },
+  {
+    "name": "Eccentric Apprentice",
+    "oracle_id": "27dbe95e-6274-416a-a45b-a2a0a64d5403",
+    "mana_cost": "{2}{U}",
+    "type_line": "Creature — Tiefling Wizard",
+    "oracle_text": "Flying\nWhen this creature enters, venture into the dungeon. (Enter the first room or advance to the next room.)\nAt the beginning of combat on your turn, if you've completed a dungeon, up to one target creature becomes a Bird with base power and toughness 1/1 and flying until end of turn.",
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "name": "Ellywick Tumblestrum",
+    "oracle_id": "d0375311-b0ea-4870-bc2c-4894da088dc3",
+    "mana_cost": "{2}{G}{G}",
+    "type_line": "Legendary Planeswalker — Ellywick",
+    "oracle_text": "+1: Venture into the dungeon. (Enter the first room or advance to the next room.)\n−2: Look at the top six cards of your library. You may reveal a creature card from among them and put it into your hand. If it's legendary, you gain 3 life. Put the rest on the bottom of your library in a random order.\n−7: You get an emblem with \"Creatures you control have trample and haste and get +2/+2 for each differently named dungeon you've completed.\"",
+    "loyalty": "4"
+  },
+  {
+    "name": "Fates' Reversal",
+    "oracle_id": "8cd88e87-6585-437a-bcad-b494fffc0544",
+    "mana_cost": "{1}{B}",
+    "type_line": "Sorcery",
+    "oracle_text": "Return up to one target creature card from your graveyard to your hand. Venture into the dungeon. (Enter the first room or advance to the next room.)"
+  },
+  {
+    "name": "Fifty Feet of Rope",
+    "oracle_id": "66aa6905-86f9-4800-988d-ffebafd4a9dc",
+    "mana_cost": "{1}",
+    "type_line": "Artifact",
+    "oracle_text": "Climb Over — {T}: Target Wall can't block this turn.\nTie Up — {3}, {T}: Target creature doesn't untap during its controller's next untap step.\nRappel Down — {4}, {T}: Venture into the dungeon. Activate only as a sorcery. (Enter the first room or advance to the next room.)"
+  },
+  {
+    "name": "Find the Path",
+    "oracle_id": "860eb9eb-c318-4eae-9b54-088f667115ec",
+    "mana_cost": "{2}{G}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Enchant land\nWhen this Aura enters, venture into the dungeon. (Enter the first room or advance to the next room.)\nEnchanted land has \"{T}: Add {G}{G}.\""
+  },
+  {
+    "name": "Fly",
+    "oracle_id": "da1b633f-82b5-4f3e-884c-58c2fe4fcb0f",
+    "mana_cost": "{U}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Enchant creature\nEnchanted creature has flying and \"Whenever this creature deals combat damage to a player, venture into the dungeon.\" (Enter the first room or advance to the next room.)"
+  },
+  {
+    "name": "Immovable Rod",
+    "oracle_id": "ec664e13-b7c4-4ca3-80d6-55a564d97937",
+    "mana_cost": "{W}",
+    "type_line": "Artifact",
+    "oracle_text": "You may choose not to untap this artifact during your untap step.\nWhenever this artifact becomes untapped, venture into the dungeon.\n{3}{W}, {T}: For as long as this artifact remains tapped, another target permanent loses all abilities and can't attack or block."
+  },
+  {
+    "name": "Kick in the Door",
+    "oracle_id": "d3278ddb-c198-450d-946e-8547e5c96dd1",
+    "mana_cost": "{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Put a +1/+1 counter on target creature. That creature gains haste until end of turn and can't be blocked by Walls this turn. Venture into the dungeon. (Enter the first room or advance to the next room.)"
+  },
+  {
+    "name": "Midnight Pathlighter",
+    "oracle_id": "e49228d6-6488-4cbc-aa53-303afd3a549b",
+    "mana_cost": "{2}{W}{U}",
+    "type_line": "Creature — Human Wizard",
+    "oracle_text": "Creatures you control can't be blocked except by legendary creatures.\nWhenever one or more creatures you control deal combat damage to a player, venture into the dungeon. (Enter the first room or advance to the next room.)",
+    "power": "2",
+    "toughness": "3"
+  },
+  {
+    "name": "Nadaar, Selfless Paladin",
+    "oracle_id": "0e3f9345-d986-4d60-a343-45598ab59aff",
+    "mana_cost": "{2}{W}",
+    "type_line": "Legendary Creature — Dragon Knight",
+    "oracle_text": "Vigilance\nWhenever Nadaar enters or attacks, venture into the dungeon. (Enter the first room or advance to the next room.)\nOther creatures you control get +1/+1 as long as you've completed a dungeon.",
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "name": "Planar Ally",
+    "oracle_id": "9ae30bd5-b638-4647-b59d-ffe08e77c182",
+    "mana_cost": "{3}{W}{W}",
+    "type_line": "Creature — Angel",
+    "oracle_text": "Flying\nWhenever this creature attacks, venture into the dungeon. (Enter the first room or advance to the next room.)",
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "name": "Precipitous Drop",
+    "oracle_id": "d60c8cfe-435c-419e-a44b-b47d49d1afef",
+    "mana_cost": "{2}{B}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Enchant creature\nWhen this Aura enters, venture into the dungeon. (Enter the first room or advance to the next room.)\nEnchanted creature gets -2/-2. It gets -5/-5 instead as long as you've completed a dungeon."
+  },
+  {
+    "name": "Radiant Solar",
+    "oracle_id": "21a86dcd-03e3-409b-b214-5feed07db584",
+    "mana_cost": "{5}{W}",
+    "type_line": "Creature — Angel",
+    "oracle_text": "Flying, lifelink\nWhenever this creature or another nontoken creature you control enters, venture into the dungeon. (Enter the first room or advance to the next room.)\n{W}, Discard this card: Venture into the dungeon and you gain 3 life.",
+    "power": "3",
+    "toughness": "6"
+  },
+  {
+    "name": "Ranger's Hawk",
+    "oracle_id": "44924f1e-edc4-481b-93f3-78606d4fd691",
+    "mana_cost": "{W}",
+    "type_line": "Creature — Bird",
+    "oracle_text": "Flying\n{3}, {T}, Tap another untapped creature you control: Venture into the dungeon. Activate only as a sorcery. (Enter the first room or advance to the next room.)",
+    "power": "1",
+    "toughness": "1"
+  },
+  {
+    "name": "Secret Door",
+    "oracle_id": "a53baf90-8d0c-4900-9f24-893ad31628ec",
+    "mana_cost": "{U}",
+    "type_line": "Artifact Creature — Wall",
+    "oracle_text": "Defender\n{4}{U}: Venture into the dungeon. Activate only as a sorcery. (Enter the first room or advance to the next room.)",
+    "power": "0",
+    "toughness": "4"
+  },
+  {
+    "name": "Sefris of the Hidden Ways",
+    "oracle_id": "9b21e056-57e7-4e39-b2b4-2fdf8719d0d2",
+    "mana_cost": "{W}{U}{B}",
+    "type_line": "Legendary Creature — Human Wizard",
+    "oracle_text": "Whenever one or more creature cards are put into your graveyard from anywhere, venture into the dungeon. This ability triggers only once each turn. (To venture into the dungeon, enter the first room or advance to the next room.)\nCreate Undead — Whenever you complete a dungeon, return target creature card from your graveyard to the battlefield.",
+    "power": "2",
+    "toughness": "3"
+  },
+  {
+    "name": "Shortcut Seeker",
+    "oracle_id": "27cfa916-282d-476c-8ee9-ca7f0d84f551",
+    "mana_cost": "{3}{U}",
+    "type_line": "Creature — Human Rogue",
+    "oracle_text": "Whenever this creature deals combat damage to a player, venture into the dungeon. (Enter the first room or advance to the next room.)",
+    "power": "2",
+    "toughness": "5"
+  },
+  {
+    "name": "Thorough Investigation",
+    "oracle_id": "e7504407-bb72-4baf-be4a-8152e4198e2b",
+    "mana_cost": "{2}{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "Whenever you attack, investigate. (Create a Clue token. It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")\nWhenever you sacrifice a Clue, venture into the dungeon. (Enter the first room or advance to the next room.)"
+  },
+  {
+    "name": "Triumphant Adventurer",
+    "oracle_id": "6aac0ae4-d9a7-4c40-a39e-229186c84d74",
+    "mana_cost": "{W}{B}",
+    "type_line": "Creature — Human Knight",
+    "oracle_text": "Deathtouch\nDuring your turn, this creature has first strike.\nWhenever this creature attacks, venture into the dungeon. (Enter the first room or advance to the next room.)",
+    "power": "1",
+    "toughness": "1"
+  },
+  {
+    "name": "Varis, Silverymoon Ranger",
+    "oracle_id": "bd751b25-9ea7-4ce4-b532-48be281c6da9",
+    "mana_cost": "{1}{G}{G}",
+    "type_line": "Legendary Creature — Human Elf Ranger",
+    "oracle_text": "Reach, ward {1}\nWhenever you cast a creature or planeswalker spell, venture into the dungeon. This ability triggers only once each turn. (To venture into the dungeon, enter the first room or advance to the next room.)\nWhenever you complete a dungeon, create a 2/2 green Wolf creature token.",
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "name": "Veteran Dungeoneer",
+    "oracle_id": "1ce7b966-2a10-4250-8c0d-525e73efe2f4",
+    "mana_cost": "{3}{W}",
+    "type_line": "Creature — Human Warrior",
+    "oracle_text": "When this creature enters, venture into the dungeon. (Enter the first room or advance to the next room.)",
+    "power": "3",
+    "toughness": "4"
+  },
+  {
+    "name": "Wandering Troubadour",
+    "oracle_id": "1a304703-6b48-4f3f-bd41-7f10ce0a751c",
+    "mana_cost": "{3}{G}",
+    "type_line": "Creature — Dragon Bard",
+    "oracle_text": "At the beginning of your end step, if you had a land enter the battlefield under your control this turn, venture into the dungeon. (Enter the first room or advance to the next room.)",
+    "power": "4",
+    "toughness": "2"
+  },
+  {
+    "name": "Yuan-Ti Fang-Blade",
+    "oracle_id": "8ef06396-861d-4599-9976-6e5c04575456",
+    "mana_cost": "{2}{B}",
+    "type_line": "Creature — Snake Rogue",
+    "oracle_text": "Deathtouch\nWhenever this creature deals combat damage to a player, venture into the dungeon. (Enter the first room or advance to the next room.)",
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "name": "Yuan-Ti Malison",
+    "oracle_id": "f0e4dda1-2ffb-4353-a292-dcbc966967b4",
+    "mana_cost": "{1}{U}",
+    "type_line": "Creature — Snake Rogue",
+    "oracle_text": "This creature can't be blocked as long as it's attacking alone.\nWhenever this creature deals combat damage to a player, venture into the dungeon. (Enter the first room or advance to the next room.)",
+    "power": "2",
+    "toughness": "1"
+  },
+  {
+    "name": "Zalto, Fire Giant Duke",
+    "oracle_id": "fb1c507d-ef94-438e-bee5-29eb48dc8e70",
+    "mana_cost": "{3}{R}{R}",
+    "type_line": "Legendary Creature — Giant Barbarian",
+    "oracle_text": "Trample\nWhenever Zalto is dealt damage, venture into the dungeon. (Enter the first room or advance to the next room.)",
+    "power": "7",
+    "toughness": "3"
+  },
+  {
+    "name": "Zombie Ogre",
+    "oracle_id": "0898fb77-d304-496c-8f2e-1cfe50cc5507",
+    "mana_cost": "{3}{B}{B}",
+    "type_line": "Creature — Zombie Ogre",
+    "oracle_text": "At the beginning of your end step, if a creature died this turn, venture into the dungeon. (Enter the first room or advance to the next room.)",
+    "power": "3",
+    "toughness": "5"
+  }
+]

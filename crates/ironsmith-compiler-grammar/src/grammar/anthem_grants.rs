@@ -44,6 +44,7 @@ pub use clause_shapes::{
     parse_word_token_candidates, split_trailing_modifier_maximum,
 };
 pub use compound_shapes::{
+    AnthemReplacementCondition,
     parse_carried_conditional_anthem_grant, parse_carried_subject_type_addition,
     parse_conditional_anthem_otherwise, parse_conditional_anthem_replacement,
 };
