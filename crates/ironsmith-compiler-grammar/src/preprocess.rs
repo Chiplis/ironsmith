@@ -383,7 +383,7 @@ fn replace_names_with_map(
     short_name: &SelfReferenceName,
     preserve_source_surfaces: bool,
     typed_subject: &str,
-    base_offset: usize,
+    base_char_offset: usize,
 ) -> (String, Vec<usize>) {
     fn has_word_boundaries_at(bytes: &[u8], idx: usize, len: usize) -> bool {
         // A byte at or above 0x80 belongs to a multibyte letter: "omer" inside
@@ -900,10 +900,12 @@ fn replace_names_with_map(
         name_len: usize,
     ) {
         let name_len = name_len.max(1);
-        let len = replacement.chars().count().max(1);
+        let len = replacement.chars().count();
         for (j, ch) in replacement.chars().enumerate() {
             out.push(ch);
-            map.push(base + (j * name_len / len).min(name_len - 1));
+            // Retain both endpoints, including when the replacement ends the
+            // line: its final character must still cover the name's suffix.
+            map.push(base + j * (name_len - 1) / len.saturating_sub(1).max(1));
         }
     }
 
@@ -979,6 +981,7 @@ fn replace_names_with_map(
     let mut out = String::new();
     let mut map = Vec::new();
     let mut idx = 0;
+    let mut source_char = base_char_offset;
 
     while idx < bytes.len() {
         let full_typed_override = preserve_source_surfaces
@@ -1001,22 +1004,20 @@ fn replace_names_with_map(
         if let Some(name_len) = attachment_name_len
             && let Some((replacement, labeled)) = quoted_attachment_grant_host(bytes, idx)
         {
+            let name_chars = lower[idx..idx + name_len].chars().count();
             if labeled {
                 // An ability-word line is re-read from its authored tokens;
                 // keep the name so the token-level source normalizer
                 // rewrites it there without shifting the source map.
-                for (offset, ch) in lower[idx..idx + name_len].char_indices() {
+                for (offset, ch) in lower[idx..idx + name_len].chars().enumerate() {
                     out.push(ch);
-                    map.push(base_offset + idx + offset);
+                    map.push(source_char + offset);
                 }
             } else {
-                let replacement_len = replacement.len();
-                for (j, ch) in replacement.chars().enumerate() {
-                    out.push(ch);
-                    map.push(base_offset + idx + (j * name_len / replacement_len));
-                }
+                push_replacement(&mut out, &mut map, replacement, source_char, name_chars);
             }
             idx += name_len;
+            source_char += name_chars;
             continue;
         }
         if !full_bytes.is_empty()
@@ -1049,24 +1050,15 @@ fn replace_names_with_map(
                 full_name,
             )
         {
-            if full_typed_override {
-                push_replacement(
-                    &mut out,
-                    &mut map,
-                    typed_subject,
-                    base_offset + idx,
-                    full_bytes.len(),
-                );
-                idx += full_bytes.len();
-                continue;
-            }
-            let name_len = full_bytes.len().max(1);
-            for j in 0..4 {
-                out.push("this".chars().nth(j).unwrap());
-                let mapped = base_offset + idx + (j * name_len / 4);
-                map.push(mapped);
-            }
+            let name_chars = lower[idx..idx + full_bytes.len()].chars().count();
+            let replacement = if full_typed_override {
+                typed_subject
+            } else {
+                "this"
+            };
+            push_replacement(&mut out, &mut map, replacement, source_char, name_chars);
             idx += full_bytes.len();
+            source_char += name_chars;
             continue;
         }
         if !short_bytes.is_empty()
@@ -1109,30 +1101,22 @@ fn replace_names_with_map(
                 short_name,
             )
         {
-            if short_typed_override {
-                push_replacement(
-                    &mut out,
-                    &mut map,
-                    typed_subject,
-                    base_offset + idx,
-                    short_bytes.len(),
-                );
-                idx += short_bytes.len();
-                continue;
-            }
-            let name_len = short_bytes.len().max(1);
-            for j in 0..4 {
-                out.push("this".chars().nth(j).unwrap());
-                let mapped = base_offset + idx + (j * name_len / 4);
-                map.push(mapped);
-            }
+            let name_chars = lower[idx..idx + short_bytes.len()].chars().count();
+            let replacement = if short_typed_override {
+                typed_subject
+            } else {
+                "this"
+            };
+            push_replacement(&mut out, &mut map, replacement, source_char, name_chars);
             idx += short_bytes.len();
+            source_char += name_chars;
             continue;
         }
         let ch = lower[idx..].chars().next().unwrap();
         out.push(ch);
-        map.push(base_offset + idx);
+        map.push(source_char);
         idx += ch.len_utf8();
+        source_char += 1;
     }
 
     (out, map)
@@ -1196,10 +1180,10 @@ fn strip_resolution_timing_tail_with_map(text: &str, map: &[usize]) -> (String, 
     let kept_tokens = tokens_within(&tokens, 0..surface.tail_start);
     if surface.terminal_period && !preprocess_grammar::parse_terminal_period_tokens(kept_tokens) {
         out.push('.');
-        out_map.push(
-            *map.get(surface.tail_start)
-                .unwrap_or_else(|| map.last().unwrap_or(&0)),
-        );
+        let period_source = tokens
+            .last()
+            .and_then(|token| map.get(text[..token.span.start].chars().count()));
+        out_map.push(*period_source.unwrap_or_else(|| map.last().unwrap_or(&0)));
     }
     (out, out_map)
 }
@@ -1257,7 +1241,7 @@ fn normalize_line_for_parse(
             short_name,
             preserve_source_surfaces,
             typed_subject,
-            wrapped.inner_start,
+            trimmed[..wrapped.inner_start].chars().count(),
         );
         return Some(NormalizedLine::from_char_map(
             trimmed,
@@ -2478,3 +2462,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "preprocess_unicode_tests.rs"]
+mod unicode_tests;

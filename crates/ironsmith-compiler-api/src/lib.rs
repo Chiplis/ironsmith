@@ -4,7 +4,7 @@ pub mod parse_loss;
 
 use std::collections::HashMap;
 
-/// Span of source text within a line-oriented oracle text block.
+/// Half-open UTF-8 byte span within a line-oriented oracle text block.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TextSpan {
     pub line: usize,
