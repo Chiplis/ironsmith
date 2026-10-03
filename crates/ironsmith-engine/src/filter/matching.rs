@@ -149,22 +149,30 @@ pub(super) fn matches_subject(
             || !game
                 .turn_store
                 .turn_history
-                .object_was_put_into_graveyard_from_battlefield_this_turn(subject.stable_id()))
+                .graveyard_incarnation_entered_this_turn(
+                    subject.object_id(),
+                    Some(Zone::Battlefield),
+                ))
     {
         return false;
     }
 
-    if filter.entered_graveyard_from_library_this_turn
-        && (subject.zone() != Zone::Graveyard
-            || !game
-                .turn_store
-                .turn_history
-                .object_was_put_into_graveyard_from_zone_this_turn(
-                    subject.stable_id(),
-                    Zone::Library,
-                ))
-    {
-        return false;
+    if filter.entered_graveyard_from_library_this_turn {
+        let history = &game.turn_store.turn_history;
+        let entered = if subject.is_live() {
+            history.graveyard_incarnation_entered_this_turn(
+                subject.object_id(),
+                Some(Zone::Library),
+            )
+        } else {
+            history.object_was_put_into_graveyard_from_zone_this_turn(
+                subject.stable_id(),
+                Zone::Library,
+            )
+        };
+        if subject.zone() != Zone::Graveyard || !entered {
+            return false;
+        }
     }
 
     if subject.is_live()
@@ -173,7 +181,7 @@ pub(super) fn matches_subject(
             || !game
                 .turn_store
                 .turn_history
-                .object_was_put_into_graveyard_this_turn(subject.stable_id()))
+                .graveyard_incarnation_entered_this_turn(subject.object_id(), None))
     {
         return false;
     }
