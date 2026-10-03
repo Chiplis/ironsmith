@@ -1391,6 +1391,7 @@ version = "0.1.0"
 dependencies = [
  "ironsmith-compiled-artifact",
  "ironsmith-compiler",
+ "ironsmith-core",
  "ironsmith-engine",
  "ironsmith-runtime-catalog",
  "ironsmith-text",
