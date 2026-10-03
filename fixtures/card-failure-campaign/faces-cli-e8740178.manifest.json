@@ -1,0 +1,107 @@
+{
+  "all_face_routes_supported": false,
+  "archive": {
+    "bytes": 944020,
+    "path": "fixtures/card-failure-campaign/faces-cli-e8740178.tar.gz",
+    "sha256": "497dc5e1b807a81e2ecc8bb61be0dc8d47f4ffa53dc9ee6724d4249c9ac953ea"
+  },
+  "artifact_baker_verified": false,
+  "binary_sha256": "751abfee1899db1293fa224f2b6fe6438f65d6dd107e005620204e99599729ec",
+  "complete": true,
+  "engine_commit": "e8740178a7f7367ffa3147e7642607042079237c",
+  "evidence_kind": "frozen_cli_diagnostic_only",
+  "exact_rust_audit_executed": false,
+  "failed_routes_by_face_index": {
+    "0": 60,
+    "1": 48
+  },
+  "failed_routes_by_layout": {
+    "adventure": 9,
+    "flip": 3,
+    "modal_dfc": 14,
+    "prepare": 8,
+    "split": 12,
+    "transform": 62
+  },
+  "finished_at": "2026-10-03T17:11:29.395704+00:00",
+  "gameplay_verified": false,
+  "limitations": [
+    "Resolver membership is source-derived and selected name/Oracle text checked against CLI output; error paths expose name only.",
+    "compare-text does not expose strict/permissive status, parse loss, or unsupported markers; output is not success.",
+    "Name collisions omit exact source-face contexts; no omitted route inherits another route's outcome.",
+    "Gameplay and artifact-baker behavior have not been tested by this diagnostic run."
+  ],
+  "members": {
+    "diagnostics.json": {
+      "bytes": 4768130,
+      "sha256": "b8e3ca07b9b21e99fb98fba050ced8ef0645d6f7a16b4e0caa06900fe65c6a75"
+    },
+    "face-names.txt": {
+      "bytes": 29886,
+      "sha256": "015cb16d89c8ff8e956f07d211dce05a38b85400514b9ce5efe9ba075bbd68fc"
+    },
+    "harness.py": {
+      "bytes": 16505,
+      "sha256": "ede1b376e52e50a9c34203295d483a672531e169b888d8b3c0e4d63818f9f556"
+    },
+    "inventory.json": {
+      "bytes": 2116003,
+      "sha256": "8202aa423f3708e2aa378bd89aca5293bc4f80d5ecffa04ef078e767540a3718"
+    },
+    "run.json": {
+      "bytes": 2165,
+      "sha256": "9e51a084d8ea3ef5caf060f82c0ee15e1b695c1dbe9d4a30a66a13332b970e23"
+    },
+    "stderr.log": {
+      "bytes": 64504,
+      "sha256": "cfc523129d0db6df783e6afd3e5dfaaaca35fe774b9f3b91443c9ea11f795fdf"
+    },
+    "stdout.log": {
+      "bytes": 544831,
+      "sha256": "aeb5c97ee9d5b0ebf409bd2bb691b9ed0221b3e581d6d9e32d8f8a05776e6fa7"
+    }
+  },
+  "schema_version": 1,
+  "source_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
+  "started_at": "2026-10-03T16:58:39.413087+00:00",
+  "strict_supported_face_route_count": null,
+  "summary": {
+    "distinct_face_lookup_name_count": 1752,
+    "exact_face_route_count": 1678,
+    "face_route_count": 1836,
+    "face_route_outcome_counts": {
+      "cli_compiled_unverified": 1570,
+      "failed": 108,
+      "omitted": 158
+    },
+    "face_routes_by_layout": {
+      "adventure": 302,
+      "flip": 40,
+      "modal_dfc": 196,
+      "prepare": 134,
+      "reversible_card": 142,
+      "split": 246,
+      "transform": 776
+    },
+    "failed_face_route_count": 108,
+    "lookup_outcome_counts": {
+      "cli_compiled_unverified": 1639,
+      "failed": 113
+    },
+    "multiface_source_entry_count": 918,
+    "multiface_unique_oracle_card_count": 915,
+    "omitted_face_route_count": 158,
+    "omitted_routes_by_layout": {
+      "prepare": 16,
+      "reversible_card": 142
+    },
+    "selected_canonical_payload_count": 74,
+    "selected_lookup_query_count": 1752,
+    "selected_payload_count": 1752,
+    "source_entry_count": 32209,
+    "strict_supported_face_route_count": null,
+    "unique_failed_oracle_card_count": 95,
+    "unique_failed_source_entry_count": 95,
+    "unique_source_oracle_card_count": 32138
+  }
+}
