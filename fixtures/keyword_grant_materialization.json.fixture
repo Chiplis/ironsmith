@@ -1,0 +1,52 @@
+[
+  {
+    "name": "Adriana, Captain of the Guard",
+    "text": "Mana cost: {3}{R}{W}\nType: Legendary Creature \u2014 Human Knight\nPower/Toughness: 4/4\nMelee (Whenever this creature attacks, it gets +1/+1 until end of turn for each opponent you attacked this combat.)\nOther creatures you control have melee. (If a creature has multiple instances of melee, each triggers separately.)",
+    "source": "https://scryfall.com/card/onc/114/adriana-captain-of-the-guard?utm_source=api"
+  },
+  {
+    "name": "Blade of Selves",
+    "text": "Mana cost: {2}\nType: Artifact \u2014 Equipment\nEquipped creature has myriad. (Whenever it attacks, for each opponent other than defending player, you may create a token copy that's tapped and attacking that player or a planeswalker they control. Exile the tokens at end of combat.)\nEquip {4}",
+    "source": "https://scryfall.com/card/plst/C15-51/blade-of-selves?utm_source=api"
+  },
+  {
+    "name": "Cybermen Squadron",
+    "text": "Mana cost: {7}\nType: Artifact Creature \u2014 Cyberman\nPower/Toughness: 5/5\nNonlegendary artifact creatures you control have myriad. (Whenever a creature with myriad attacks, for each opponent other than defending player, you may create a token copy that's tapped and attacking that player or a planeswalker they control. Exile the tokens at end of combat.)",
+    "source": "https://scryfall.com/card/who/781/cybermen-squadron?utm_source=api"
+  },
+  {
+    "name": "Dagger of the Worthy",
+    "text": "Mana cost: {2}\nType: Artifact \u2014 Equipment\nEquipped creature gets +2/+0 and has afflict 1. (Whenever it becomes blocked, defending player loses 1 life.)\nEquip {2} ({2}: Attach to target creature you control. Equip only as a sorcery.)",
+    "source": "https://scryfall.com/card/hou/160/dagger-of-the-worthy?utm_source=api"
+  },
+  {
+    "name": "Depthshaker Titan",
+    "text": "Mana cost: {5}{R}{R}\nType: Artifact Creature \u2014 Robot\nPower/Toughness: 5/5\nWhen this creature enters, any number of target noncreature artifacts you control become 3/3 artifact creatures. Sacrifice them at the beginning of the next end step.\nEach artifact creature you control has melee, trample, and haste. (Whenever a creature with melee attacks, it gets +1/+1 until end of turn for each opponent you attacked this combat.)",
+    "source": "https://scryfall.com/card/eoc/9/depthshaker-titan?utm_source=api"
+  },
+  {
+    "name": "Drogskol Reinforcements",
+    "text": "Mana cost: {3}{W}\nType: Creature \u2014 Spirit Soldier\nPower/Toughness: 2/2\nMelee (Whenever this creature attacks, it gets +1/+1 until end of turn for each opponent you attacked this combat.)\nOther Spirits you control have melee.\nPrevent all noncombat damage that would be dealt to Spirits you control.",
+    "source": "https://scryfall.com/card/voc/5/drogskol-reinforcements?utm_source=api"
+  },
+  {
+    "name": "Fang of the Pack",
+    "text": "Mana cost: {5}{G}\nType: Creature \u2014 Wolf\nPower/Toughness: 5/3\nMelee (Whenever this creature attacks, it gets +1/+1 until end of turn for each opponent you attacked this combat.)\nAt the beginning of combat on your turn, another target creature you control gains melee until end of turn. (If a creature has multiple instances of melee, each triggers separately.)",
+    "source": "https://scryfall.com/card/cn2/65/fang-of-the-pack?utm_source=api"
+  },
+  {
+    "name": "Legion Loyalty",
+    "text": "Mana cost: {6}{W}{W}\nType: Enchantment\nCreatures you control have myriad. (Whenever a creature with myriad attacks, for each opponent other than defending player, you may create a token copy that's tapped and attacking that player or a planeswalker they control. Exile the tokens at end of combat.)",
+    "source": "https://scryfall.com/card/tdc/122/legion-loyalty?utm_source=api"
+  },
+  {
+    "name": "Skyhunter Strike Force",
+    "text": "Mana cost: {2}{W}\nType: Creature \u2014 Cat Knight\nPower/Toughness: 2/2\nFlying\nMelee (Whenever this creature attacks, it gets +1/+1 until end of turn for each opponent you attacked this combat.)\nLieutenant \u2014 As long as you control your commander, other creatures you control have melee.",
+    "source": "https://scryfall.com/card/plst/ONC-21/skyhunter-strike-force?utm_source=api"
+  },
+  {
+    "name": "Titania, Proud Pummeler",
+    "text": "Mana cost: {3}{R}\nType: Legendary Creature \u2014 Human Villain\nPower/Toughness: 3/3\nFirst strike\nMelee (Whenever this creature attacks, it gets +1/+1 until end of turn for each opponent you attacked this combat.)\nOther creatures you control have melee.",
+    "source": "https://scryfall.com/card/msc/62/titania-proud-pummeler?utm_source=api"
+  }
+]
