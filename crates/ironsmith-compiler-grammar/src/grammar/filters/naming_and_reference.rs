@@ -1633,26 +1633,11 @@ fn find_crewed_by_source_this_turn_phrase(words: &[&str]) -> Option<usize> {
 }
 
 fn find_blocking_or_blocked_by_source_phrase(words: &[&str]) -> Option<usize> {
-    find_any_filter_phrase_start(
-        words,
-        &[
-            &["blocking", "or", "blocked", "by", "this", "creature"],
-            &["blocking", "or", "blocked", "by", "this", "permanent"],
-            &["blocking", "or", "blocked", "by", "this", "source"],
-        ],
-    )
-    .or_else(|| {
-        const BLOCKING_OR_BLOCKED_BY_PHRASE: &[&str] = &["blocking", "or", "blocked", "by"];
-        let mut idx = 0usize;
-        while idx + BLOCKING_OR_BLOCKED_BY_PHRASE.len() <= words.len() {
-            if words_start_with_phrase(&words[idx..], BLOCKING_OR_BLOCKED_BY_PHRASE)
-                && is_source_reference_words(&words[idx + BLOCKING_OR_BLOCKED_BY_PHRASE.len()..])
-            {
-                return Some(idx);
-            }
-            idx += 1;
-        }
-        None
+    const RELATION: &[&str] = &["blocking", "or", "blocked", "by"];
+    words.iter().enumerate().find_map(|(idx, _)| {
+        (words_start_with_phrase(&words[idx..], RELATION)
+            && is_source_reference_words(&words[idx + RELATION.len()..]))
+        .then_some(idx)
     })
 }
 

@@ -667,6 +667,9 @@ pub(in super::super) fn parse_object_filter_inner(
 
     try_apply_could_be_targeted_by_that_spell_clause(&mut filter, &mut all_words);
 
+    // Preserve the direction and time scope before the generic "blocked"
+    // adjective reader can widen it to every blocked attacker.
+    try_apply_directional_source_block_clause(&mut filter, &mut all_words, &mut segment_tokens);
     try_apply_blocked_or_was_blocked_by_this_turn_clause(
         &mut filter,
         &mut all_words,

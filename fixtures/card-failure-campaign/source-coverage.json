@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "3dd2efae7f695ead80d797a23c417201f8b916c2",
+  "source_implementation_commit": "eccca721eabea50b29a8beee4bb6b83e1c345f41",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 163,
-    "additional_proposed_compile_entries": 163,
+    "additional_proposed_unique_cards": 169,
+    "additional_proposed_compile_entries": 169,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true
   },
@@ -316,6 +316,31 @@
       ],
       "implementation_commit": "3dd2efae7f695ead80d797a23c417201f8b916c2",
       "tests": "authored_not_run"
+    },
+    {
+      "id": "end-combat-events-and-directional-bodies",
+      "stage": 18,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/end_combat_triggers.json.fixture",
+      "baseline_entries": [
+        "Dread Wight",
+        "Greater Werewolf",
+        "Joven's Ferrets",
+        "Kjeldoran Frostbeast",
+        "The Wretched",
+        "Wall of Nets"
+      ],
+      "implementation_commit": "eccca721eabea50b29a8beee4bb6b83e1c345f41",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "typed actual end-of-combat step event",
+        "directional versus reciprocal current-combat and whole-turn blocking relations",
+        "source departure and new object incarnation boundaries",
+        "Dread Wight counter then tap and granted counter-removal activation",
+        "Wall of Nets exile and return ownership",
+        "Joven Ferrets next-untap skip",
+        "The Wretched control duration"
+      ]
     }
   ],
   "cards": [
@@ -7635,8 +7660,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "end-combat-events-and-directional-bodies"
+      ]
     },
     {
       "card_name": "Dreadhound",
@@ -11711,8 +11738,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "end-combat-events-and-directional-bodies"
+      ]
     },
     {
       "card_name": "Green Goblin, Revenant",
@@ -14542,8 +14571,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "end-combat-events-and-directional-bodies"
+      ]
     },
     {
       "card_name": "Judgment of Alexander",
@@ -15240,8 +15271,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "end-combat-events-and-directional-bodies"
+      ]
     },
     {
       "card_name": "Kjeldoran Home Guard",
@@ -28610,8 +28643,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "end-combat-events-and-directional-bodies"
+      ]
     },
     {
       "card_name": "Theater of Horrors",
@@ -31200,8 +31235,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "end-combat-events-and-directional-bodies"
+      ]
     },
     {
       "card_name": "Wall of Putrid Flesh",

@@ -2356,6 +2356,18 @@ fn try_parse_while_source_is_attacking_trigger_lexed(
     }))
 }
 
+fn try_parse_simple_end_of_combat_trigger_lexed(
+    raw_tokens: &[OwnedLexToken],
+) -> Option<TriggerSpec> {
+    let tokens = trim_edge_punctuation_tokens(strip_leading_trigger_intro(raw_tokens));
+    let words = crate::lexer::token_word_refs(tokens);
+    crate::word_primitives::parse_any_sequence_complete(
+        &words,
+        &[&["end", "of", "combat"], &["the", "end", "of", "combat"]],
+    )
+    .then_some(TriggerSpec::EndOfCombat)
+}
+
 fn try_parse_simple_beginning_of_combat_trigger_lexed(
     raw_tokens: &[OwnedLexToken],
 ) -> Option<TriggerSpec> {

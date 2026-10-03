@@ -16,6 +16,9 @@ pub struct CreatureBlockedEvent {
     pub blocker: ObjectId,
     /// The creature being blocked
     pub attacker: ObjectId,
+    /// The combat phase in which this declaration happened. Older/manual
+    /// event constructors may omit this; production declarations retain it.
+    pub combat_phase: Option<u32>,
     /// Snapshot of the blocking creature at declaration time.
     pub blocker_snapshot: Option<ObjectSnapshot>,
     /// Snapshot of the attacking creature at declaration time.
@@ -28,9 +31,15 @@ impl CreatureBlockedEvent {
         Self {
             blocker,
             attacker,
+            combat_phase: None,
             blocker_snapshot: None,
             attacker_snapshot: None,
         }
+    }
+
+    pub fn with_combat_phase(mut self, combat_phase: u32) -> Self {
+        self.combat_phase = Some(combat_phase);
+        self
     }
 
     pub fn with_snapshots(
@@ -42,6 +51,7 @@ impl CreatureBlockedEvent {
         Self {
             blocker,
             attacker,
+            combat_phase: None,
             blocker_snapshot: Some(blocker_snapshot),
             attacker_snapshot: Some(attacker_snapshot),
         }

@@ -1,0 +1,38 @@
+[
+  {
+    "name": "Dread Wight",
+    "text": "Mana cost: {3}{B}{B}\nType: Creature \u2014 Zombie\nPower/Toughness: 3/4\nAt end of combat, put a paralyzation counter on each creature blocking or blocked by this creature and tap those creatures. Each of those creatures doesn't untap during its controller's untap step for as long as it has a paralyzation counter on it. Each of those creatures gains \"{4}: Remove a paralyzation counter from this creature.\"",
+    "oracle_id": "f9078d79-3250-44e8-aba1-ab52e0ba4425",
+    "source": "https://scryfall.com/card/ice/122/dread-wight?utm_source=api"
+  },
+  {
+    "name": "Greater Werewolf",
+    "text": "Mana cost: {4}{B}\nType: Creature \u2014 Werewolf\nPower/Toughness: 2/4\nAt end of combat, put a -0/-2 counter on each creature blocking or blocked by this creature.",
+    "oracle_id": "02847b0d-03a1-4e30-902e-60bdf6952c58",
+    "source": "https://scryfall.com/card/5ed/166/greater-werewolf?utm_source=api"
+  },
+  {
+    "name": "Joven's Ferrets",
+    "text": "Mana cost: {G}\nType: Creature \u2014 Ferret\nPower/Toughness: 1/1\nWhenever this creature attacks, it gets +0/+2 until end of turn.\nAt end of combat, tap all creatures that blocked this creature this turn. They don't untap during their controller's next untap step.",
+    "oracle_id": "d2817b5f-f7a2-4254-a00f-e2e45d7a8cc0",
+    "source": "https://scryfall.com/card/hml/89/jovens-ferrets?utm_source=api"
+  },
+  {
+    "name": "Kjeldoran Frostbeast",
+    "text": "Mana cost: {3}{G}{W}\nType: Creature \u2014 Elemental Beast\nPower/Toughness: 2/4\nAt end of combat, destroy all creatures blocking or blocked by this creature.",
+    "oracle_id": "39050823-ccda-43c0-818d-d5db15d82b99",
+    "source": "https://scryfall.com/card/ice/296/kjeldoran-frostbeast?utm_source=api"
+  },
+  {
+    "name": "The Wretched",
+    "text": "Mana cost: {3}{B}{B}\nType: Creature \u2014 Demon\nPower/Toughness: 2/5\nAt end of combat, gain control of all creatures blocking this creature for as long as you control this creature.",
+    "oracle_id": "27af77e5-6680-43d3-9202-40be9b5d14a0",
+    "source": "https://scryfall.com/card/5ed/197/the-wretched?utm_source=api"
+  },
+  {
+    "name": "Wall of Nets",
+    "text": "Mana cost: {1}{W}{W}\nType: Creature \u2014 Wall\nPower/Toughness: 0/7\nDefender (This creature can't attack.)\nAt end of combat, exile all creatures blocked by this creature.\nWhen this creature leaves the battlefield, return all cards exiled with it to the battlefield under their owners' control.",
+    "oracle_id": "cd112962-b297-403c-bede-c8b587f379b3",
+    "source": "https://scryfall.com/card/exo/24/wall-of-nets?utm_source=api"
+  }
+]
