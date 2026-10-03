@@ -871,40 +871,76 @@ pub fn parse_unsupported_play_cast_permission_clause(
 
 fn parse_graveyard_cast_additional_cost_tokens(
     tokens: &[OwnedLexToken],
-) -> Result<Option<crate::model::CompilerCost>, CardTextError> {
+) -> Result<Option<Vec<crate::model::CompilerCost>>, CardTextError> {
+    use crate::model::CompilerCost;
+    use permission_graveyard_facts::GraveyardAdditionalCostFact;
     let Some(fact) = permission_graveyard_facts::parse_graveyard_additional_cost_tokens(tokens)
     else {
         return Ok(None);
     };
-    match fact {
-        permission_graveyard_facts::GraveyardAdditionalCostFact::Sacrifice { filter_tokens } => {
+    let cost = match fact {
+        GraveyardAdditionalCostFact::Discard { count } => CompilerCost::Discard {
+            count,
+            card_types: Vec::new(),
+            supertypes: Vec::new(),
+            filter: None,
+            random: false,
+            name: None,
+            other: false,
+            binding: None,
+        },
+        GraveyardAdditionalCostFact::PayLife {
+            amount,
+            remaining_tokens,
+        } => {
+            let mut costs = vec![CompilerCost::Life(Value::Fixed(amount as i32))];
+            if let Some(remaining_tokens) = remaining_tokens {
+                let Some(remaining) =
+                    parse_graveyard_cast_additional_cost_tokens(remaining_tokens)?
+                else {
+                    return Ok(None);
+                };
+                costs.extend(remaining);
+            }
+            return Ok(Some(costs));
+        }
+        GraveyardAdditionalCostFact::Sacrifice { filter_tokens } => {
             let Some(filter) =
                 permission_subject_facts::parse_permission_subject_filter_tokens(filter_tokens)?
             else {
                 return Ok(None);
             };
-            Ok(Some(crate::model::CompilerCost::Sacrifice {
+            if !matches!(filter.controller, None | Some(PlayerFilter::You))
+                || !matches!(filter.zone, None | Some(Zone::Battlefield))
+            {
+                return Ok(None);
+            }
+            CompilerCost::Sacrifice {
                 count: crate::cards::builders::ChoiceCount::exactly(1),
                 filter: filter.you_control(),
                 all: false,
                 binding: None,
-            }))
+            }
         }
-        permission_graveyard_facts::GraveyardAdditionalCostFact::ExileCards {
+        GraveyardAdditionalCostFact::ExileCards {
             count,
             card_types,
-        } => Ok(Some(crate::model::CompilerCost::ExileChosen {
+            other,
+        } => CompilerCost::ExileChosen {
             count: crate::cards::builders::ChoiceCount::exactly(count as usize),
             filter: ObjectFilter {
                 zone: Some(Zone::Graveyard),
+                owner: Some(PlayerFilter::You),
                 card_types,
+                other,
                 ..ObjectFilter::default()
             },
             top_only: false,
             turn_face_up: false,
             binding: None,
-        })),
-    }
+        },
+    };
+    Ok(Some(vec![cost]))
 }
 
 fn parse_source_graveyard_cast_additional_cost_tokens<'a>(
@@ -943,10 +979,10 @@ fn parse_once_each_turn_graveyard_cast_permission(
     };
 
     let additional_costs = if let Some(cost_tokens) = parsed.cost_tokens {
-        let Some(cost) = parse_graveyard_cast_additional_cost_tokens(cost_tokens)? else {
+        let Some(costs) = parse_graveyard_cast_additional_cost_tokens(cost_tokens)? else {
             return Ok(None);
         };
-        vec![cost]
+        costs
     } else {
         Vec::new()
     };
@@ -959,18 +995,22 @@ fn parse_once_each_turn_graveyard_cast_permission(
 
     let mut spec = crate::model::CompilerGrantSpecCore::new(grantable, filter, Zone::Graveyard);
     if let Some(subject) = parsed.exile_rider_subject_tokens {
-        let Some(rider_filter) = permission_subject_facts::parse_permission_subject_filter_tokens(subject)? else {
+        let Some(rider_filter) =
+            permission_subject_facts::parse_permission_subject_filter_tokens(subject)?
+        else {
             return Ok(None);
         };
         // This permission casts from the caster's own graveyard. Bind the
         // destination to the spell's owner, so changing its controller later
         // cannot rebind the authored "your graveyard" condition.
-        spec = spec.with_cast_this_way_filter(rider_filter).with_cast_this_way_grant(
-            crate::model::CompilerStaticAbilityCore::exile_to_exile_instead_of_graveyard(
-                crate::filter::ObjectFilter::source(),
-                crate::filter::PlayerFilter::OwnerOf(crate::filter::ObjectRef::FilterCandidate),
-            ),
-        );
+        spec = spec
+            .with_cast_this_way_filter(rider_filter)
+            .with_cast_this_way_grant(
+                crate::model::CompilerStaticAbilityCore::exile_to_exile_instead_of_graveyard(
+                    crate::filter::ObjectFilter::source(),
+                    crate::filter::PlayerFilter::OwnerOf(crate::filter::ObjectRef::FilterCandidate),
+                ),
+            );
     }
     Ok(Some(PermissionClauseSpec::GrantBySpec {
         player: PlayerAst::You,
@@ -1330,15 +1370,19 @@ pub fn parse_permission_clause_spec_lexed(
     }
 
     if let Some(parsed) = parse_source_graveyard_cast_additional_cost_tokens(rest_tokens) {
-        let Some(cost) = parse_graveyard_cast_additional_cost_tokens(parsed.cost_tokens)? else {
+        // This reader produces a printed static self-cast permission. Do not
+        // turn an authored temporary permission into an unbounded grant.
+        if prefixed_lifetime.is_some() || allow_land {
+            return Ok(None);
+        }
+        let Some(costs) = parse_graveyard_cast_additional_cost_tokens(parsed.cost_tokens)? else {
             return Ok(None);
         };
         return Ok(Some(PermissionClauseSpec::GrantBySpec {
             player,
             spec: crate::model::CompilerGrantSpecCore::new(
                 crate::model::CompilerGrantableCore::graveyard_cast_from_cards_mana_cost(
-                    vec![cost],
-                    false,
+                    costs, false,
                 ),
                 ObjectFilter::source(),
                 Zone::Graveyard,
@@ -2747,4 +2791,26 @@ pub fn parse_forage_cast_permission(
         PlayerAst::You,
         crate::grant::GrantDuration::UntilEndOfTurn,
     )))
+}
+
+#[cfg(test)]
+mod graveyard_additional_cost_tests {
+    use super::*;
+    use crate::lexer::lex_line;
+
+    #[test]
+    fn graveyard_cost_permission_does_not_swallow_duration_or_partial_payment() {
+        for line in [
+            "Until end of turn, you may cast this card from your graveyard by discarding a card in addition to paying its other costs.",
+            "You may cast this card from your graveyard by paying 3 life and sacrificing two creatures in addition to paying its other costs.",
+            "You may cast this card from your graveyard by paying 3 life and discarding a creature card in addition to paying its other costs.",
+        ] {
+            assert!(
+                parse_permission_clause_spec(&lex_line(line, 0).unwrap())
+                    .unwrap()
+                    .is_none(),
+                "{line}"
+            );
+        }
+    }
 }

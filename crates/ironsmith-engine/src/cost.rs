@@ -48,6 +48,19 @@ impl ironsmith_core::CostComponent for Cost {
         self.is_sacrifice_self()
     }
 
+    fn discard_details(&self) -> Option<(u32, Option<crate::types::CardType>)> {
+        self.discard_details()
+    }
+
+    fn exile_from_graveyard_excludes_source(&self) -> bool {
+        self.effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::ExileEffect>())
+            .is_some_and(|exile| {
+                matches!(exile.spec.base(), ChooseSpec::Object(filter)
+                if filter.zone == Some(crate::zone::Zone::Graveyard) && filter.other)
+            })
+    }
+
     fn exile_from_hand_details(&self) -> Option<(u32, Option<crate::color::ColorSet>)> {
         self.exile_from_hand_details()
     }
@@ -193,7 +206,9 @@ impl std::fmt::Display for CostPaymentError {
             CostPaymentError::InsufficientCardsToReveal => {
                 f.write_str("Not enough cards in hand to reveal")
             }
-            CostPaymentError::ExecutionFailed(error) => write!(f, "Replacement during payment failed: {error}"),
+            CostPaymentError::ExecutionFailed(error) => {
+                write!(f, "Replacement during payment failed: {error}")
+            }
             CostPaymentError::Other(message) => f.write_str(message),
         }
     }
@@ -456,10 +471,7 @@ pub(crate) fn tagged_choice_pair_is_payable(
 /// artifacts/creatures to help pay) pays the branch the caster announced
 /// (`OptionalCostsPaid::branch_choice`), defaulting to its first, all-mana
 /// branch; mana and non-mana steps must read the same branch.
-pub(crate) fn optional_cost_payment_branch(
-    cost: &TotalCost,
-    branch: Option<usize>,
-) -> &TotalCost {
+pub(crate) fn optional_cost_payment_branch(cost: &TotalCost, branch: Option<usize>) -> &TotalCost {
     match cost.kind() {
         ironsmith_core::TotalCostKind::All(_) => cost,
         ironsmith_core::TotalCostKind::OneOf(branches) => branches

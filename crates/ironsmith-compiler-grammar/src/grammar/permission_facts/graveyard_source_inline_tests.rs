@@ -44,12 +44,16 @@ fn parses_typed_graveyard_additional_costs() {
         0,
     )
     .unwrap();
-    let Some(GraveyardAdditionalCostFact::ExileCards { count, card_types }) =
-        parse_graveyard_additional_cost_tokens(&tokens)
+    let Some(GraveyardAdditionalCostFact::ExileCards {
+        count,
+        card_types,
+        other,
+    }) = parse_graveyard_additional_cost_tokens(&tokens)
     else {
         panic!("expected exile cost");
     };
     assert_eq!(count, 4);
+    assert!(!other);
     assert_eq!(card_types, vec![CardType::Instant, CardType::Sorcery]);
 }
 
@@ -119,4 +123,58 @@ fn parses_top_library_shared_type_fact() {
         render_token_slice(parsed.source_reference_tokens),
         "a card exiled with this creature"
     );
+}
+
+#[test]
+fn graveyard_additional_costs_parse_counts_life_and_other_identity() {
+    for (text, expected) in [("discarding a card", 1), ("discarding two cards", 2)] {
+        assert_eq!(
+            parse_graveyard_additional_cost_tokens(&lex_line(text, 0).unwrap()),
+            Some(GraveyardAdditionalCostFact::Discard { count: expected })
+        );
+    }
+    let tokens = lex_line("paying 3 life and discarding a card", 0).unwrap();
+    let Some(GraveyardAdditionalCostFact::PayLife {
+        amount,
+        remaining_tokens: Some(rest),
+    }) = parse_graveyard_additional_cost_tokens(&tokens)
+    else {
+        panic!("life plus discard cost")
+    };
+    assert_eq!(amount, 3);
+    assert_eq!(render_token_slice(rest), "discarding a card");
+    for (text, count, types) in [
+        (
+            "exiling another creature card from your graveyard",
+            1,
+            vec![CardType::Creature],
+        ),
+        ("exiling three other cards from your graveyard", 3, vec![]),
+    ] {
+        assert_eq!(
+            parse_graveyard_additional_cost_tokens(&lex_line(text, 0).unwrap()),
+            Some(GraveyardAdditionalCostFact::ExileCards {
+                count,
+                card_types: types,
+                other: true
+            })
+        );
+    }
+}
+
+#[test]
+fn graveyard_additional_costs_do_not_drop_unsupported_qualifiers() {
+    for text in [
+        "discarding two creature cards",
+        "discarding a card at random",
+        "discarding zero cards",
+        "exiling another creature card from an opponent's graveyard",
+        "exiling three other cards from your graveyard at random",
+        "paying 3 life or discarding a card",
+    ] {
+        assert!(
+            parse_graveyard_additional_cost_tokens(&lex_line(text, 0).unwrap()).is_none(),
+            "{text}"
+        );
+    }
 }
