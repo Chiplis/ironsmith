@@ -2061,6 +2061,7 @@ pub fn queue_block_declaration_events(
             }
             _ => CreatureBlockedEvent::new(*blocker, *attacker),
         };
+        let blocked_event = blocked_event.with_combat_phase(game.turn_store.combat_phases_started_this_turn);
         let event = TriggerEvent::new_with_provenance(blocked_event, event_provenance);
         block_events.push(event);
     }

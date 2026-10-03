@@ -309,6 +309,7 @@ fn parse_granted_composable_event_trigger(
             | TriggerSpec::BeginningOfEndStep(_)
             | TriggerSpec::BeginningOfTheEndStep
             | TriggerSpec::BeginningOfMonarchEndStep
+            | TriggerSpec::EndOfCombat
     ) {
         return Ok(None);
     }

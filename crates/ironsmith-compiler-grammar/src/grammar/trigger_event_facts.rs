@@ -330,6 +330,7 @@ fn triggering_object_cardinality(trigger: &TriggerSpec) -> Option<Cardinality> {
         TriggerSpec::BeginningOfUpkeep(_)
         | TriggerSpec::BeginningOfDrawStep(_)
         | TriggerSpec::BeginningOfCombat(_)
+        | TriggerSpec::EndOfCombat
         | TriggerSpec::BeginningOfEndStep(_)
         | TriggerSpec::BeginningOfTheEndStep
         | TriggerSpec::BeginningOfMonarchEndStep

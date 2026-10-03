@@ -965,14 +965,25 @@ pub(super) fn matches_subject(
         let Some(source_id) = ctx.source else {
             return false;
         };
-        let Some(combat) = &game.combat else {
+        let currently_blocked = game.combat.as_ref().is_some_and(|combat| {
+            combat.blockers.get(&subject.object_id())
+                .is_some_and(|blockers| blockers.contains(&source_id))
+        });
+        let source_left = game.object(source_id)
+            .is_none_or(|source| source.zone != crate::zone::Zone::Battlefield);
+        let blocked_at_source_lki = source_left
+            && game.turn_store.turn_history.creature_was_blocked_by_in_combat(
+                subject.object_id(), source_id, game.turn_store.combat_phases_started_this_turn,
+            );
+        if !currently_blocked && !blocked_at_source_lki {
+            return false;
+        }
+    }
+    if filter.blocked_source_this_turn {
+        let Some(source_id) = ctx.source else {
             return false;
         };
-        if !combat
-            .blockers
-            .get(&subject.object_id())
-            .is_some_and(|blockers| blockers.contains(&source_id))
-        {
+        if !game.creature_was_blocked_by_this_turn(source_id, subject.object_id()) {
             return false;
         }
     }

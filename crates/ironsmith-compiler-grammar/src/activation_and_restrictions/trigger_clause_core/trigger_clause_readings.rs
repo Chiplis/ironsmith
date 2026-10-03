@@ -62,6 +62,12 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(try_parse_player_plays_card_lexed(input.tokens)),
     },
     Reading {
+        id: RuleId::new("simple-end-of-combat"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(Ok(try_parse_simple_end_of_combat_trigger_lexed(input.tokens))),
+    },
+    Reading {
         id: RuleId::new("simple-beginning-of-combat"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
