@@ -5758,6 +5758,12 @@ impl<
             "lethal damage to creatures you control uses power",
         )
     }
+    pub fn planeswalkers_you_control_dont_die_at_zero_loyalty() -> Self {
+        Self::identified(
+            StaticAbilityId::PlaneswalkersYouControlDontDieAtZeroLoyalty,
+            "Planeswalkers you control aren't put into their owners' graveyards for having 0 loyalty",
+        )
+    }
     pub fn players_cant_cycle() -> Self {
         Self {
             id: Some(StaticAbilityId::PlayersCantCycle),

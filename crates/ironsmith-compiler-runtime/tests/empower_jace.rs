@@ -212,7 +212,7 @@ fn empower_jace_complete_candidates_strict_compile_and_round_trip_with_typed_amo
             .iter()
             .filter(|card| card["proposed_coverage"] == "partial")
             .count(),
-        5
+        4
     );
     for card in cards
         .into_iter()
@@ -558,4 +558,103 @@ fn empower_jace_pending_choice_rolls_back_token_creation_and_replays_once() {
         .collect::<Vec<_>>();
     counts.sort();
     assert_eq!(counts, vec![0, 3]);
+}
+
+#[test]
+fn sanctum_lurker_zero_loyalty_exception_tracks_live_control_and_source_departure() {
+    use ironsmith::rules::state_based::{StateBasedAction, check_state_based_actions};
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    for definition in definitions("Sanctum Lurker") {
+        let mut game = game();
+        let lurker = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        game.refresh_continuous_state().unwrap();
+        let zero = CardDefinitionBuilder::new(CardId::new(), "Zero loyalty fixture")
+            .card_types(vec![CardType::Planeswalker])
+            .subtypes(vec![Subtype::Jace])
+            .loyalty(0)
+            .build();
+        let yours = game.create_object_from_definition(&zero, alice, Zone::Battlefield);
+        let theirs = game.create_object_from_definition(&zero, bob, Zone::Battlefield);
+        let owns_but_does_not_control =
+            game.create_object_from_definition(&zero, alice, Zone::Battlefield);
+        game.set_current_controller(owns_but_does_not_control, bob)
+            .unwrap();
+        let deaths = check_state_based_actions(&game);
+        assert!(!deaths.contains(&StateBasedAction::PlaneswalkerDies(yours)));
+        assert!(deaths.contains(&StateBasedAction::PlaneswalkerDies(theirs)));
+        assert!(deaths.contains(&StateBasedAction::PlaneswalkerDies(
+            owns_but_does_not_control
+        )));
+        assert!(
+            game.can_be_destroyed(yours),
+            "the exception does not grant indestructible"
+        );
+        let hybrid = CardDefinitionBuilder::new(CardId::new(), "Zero toughness walker")
+            .card_types(vec![CardType::Planeswalker, CardType::Creature])
+            .power_toughness(PowerToughness::fixed(0, 0))
+            .loyalty(0)
+            .build();
+        let hybrid = game.create_object_from_definition(&hybrid, alice, Zone::Battlefield);
+        assert!(check_state_based_actions(&game).contains(&StateBasedAction::ObjectDies(hybrid)));
+        game.move_object_by_effect(hybrid, Zone::Graveyard).unwrap();
+        // Prime the incremental cache before changing only the rule's source.
+        assert_eq!(check_state_based_actions(&game), deaths);
+        game.set_current_controller(lurker, bob).unwrap();
+        let deaths = check_state_based_actions(&game);
+        assert!(deaths.contains(&StateBasedAction::PlaneswalkerDies(yours)));
+        assert!(!deaths.contains(&StateBasedAction::PlaneswalkerDies(theirs)));
+        game.set_current_controller(lurker, alice).unwrap();
+        assert!(
+            !check_state_based_actions(&game).contains(&StateBasedAction::PlaneswalkerDies(yours))
+        );
+        game.phase_out(lurker);
+        assert!(
+            check_state_based_actions(&game).contains(&StateBasedAction::PlaneswalkerDies(yours))
+        );
+        game.phase_in(lurker);
+        assert!(
+            !check_state_based_actions(&game).contains(&StateBasedAction::PlaneswalkerDies(yours))
+        );
+        let printed_abilities = game.object(lurker).unwrap().abilities.clone();
+        game.object_mut(lurker).unwrap().abilities = Vec::new().into();
+        assert!(
+            check_state_based_actions(&game).contains(&StateBasedAction::PlaneswalkerDies(yours))
+        );
+        game.object_mut(lurker).unwrap().abilities = printed_abilities;
+        assert!(
+            !check_state_based_actions(&game).contains(&StateBasedAction::PlaneswalkerDies(yours))
+        );
+        game.move_object_by_effect(lurker, Zone::Graveyard).unwrap();
+        assert!(
+            check_state_based_actions(&game).contains(&StateBasedAction::PlaneswalkerDies(yours))
+        );
+    }
+}
+
+#[test]
+fn sanctum_lurker_granted_positive_loyalty_ability_can_activate_at_zero() {
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    for definition in definitions("Sanctum Lurker") {
+        let mut game = game();
+        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let mut dm = Choices::default();
+        let mut ctx = EffectContext::new_default(source, alice).with_decision_maker(&mut dm);
+        execute_effect(&mut game, &Effect::new(EmpowerJaceEffect::new(0)), &mut ctx).unwrap();
+        let jace = jaces(&game, alice)[0];
+        ironsmith::rules::state_based::apply_state_based_actions(&mut game).unwrap();
+        assert_eq!(loyalty(&game, jace), 0);
+        // The granted +2 is the only payable loyalty activation at zero.
+        let action = compute_legal_actions(&game, alice).unwrap().into_iter()
+            .find(|action| matches!(action, LegalAction::ActivateAbility { source, .. } if *source == jace))
+            .expect("the full-card granted +2 loyalty ability must be available");
+        announce(&mut game, action, &mut dm);
+        assert_eq!(loyalty(&game, jace), 2);
+        resolve(&mut game, &mut dm);
+        assert_eq!(game.player(alice).unwrap().life, 21);
+        assert_eq!(game.player(bob).unwrap().life, 19);
+        assert!(!compute_legal_actions(&game, alice).unwrap().iter()
+            .any(|action| matches!(action, LegalAction::ActivateAbility { source, .. } if *source == jace)));
+    }
 }

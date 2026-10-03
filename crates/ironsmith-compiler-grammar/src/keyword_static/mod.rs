@@ -507,6 +507,9 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         "parse_activate_abilities_as_though_haste_line" => {
             vec![StaticAbilityLineHeadHint::Single("you")]
         }
+        "parse_zero_loyalty_state_based_exception_line" => {
+            vec![StaticAbilityLineHeadHint::Single("planeswalkers")]
+        }
         "parse_loyalty_abilities_any_time_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Single("as"),
@@ -1422,6 +1425,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_if_you_would_draw_instead_effects_line),
         single_static_ability_ast_rule!(parse_activate_abilities_as_though_haste_line),
         single_static_ability_ast_rule!(parse_loyalty_abilities_any_time_line),
+        single_static_ability_ast_rule!(parse_zero_loyalty_state_based_exception_line),
         single_static_ability_ast_rule!(parse_draw_replacement_double_line),
         single_static_ability_ast_rule!(parse_draw_replacement_skip_empty_library_line),
         single_static_ability_ast_rule!(parse_exile_to_exile_instead_of_graveyard_line),
@@ -6207,6 +6211,20 @@ pub fn parse_lethal_damage_to_creatures_you_control_uses_power_line(
     Ok(None)
 }
 
+/// A rule exception, not an ability granted to the protected permanents.
+pub fn parse_zero_loyalty_state_based_exception_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = parser_token_word_refs(tokens);
+    if words == [
+        "planeswalkers", "you", "control", "arent", "put", "into", "their",
+        "owners", "graveyards", "for", "having", "0", "loyalty",
+    ] {
+        return Ok(Some(StaticAbility::planeswalkers_you_control_dont_die_at_zero_loyalty()));
+    }
+    Ok(None)
+}
+
 pub fn parse_players_cant_cycle_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -6662,6 +6680,33 @@ mod imperative_multiplier_source_scope_tests {
             };
             assert_eq!(source_filter.zone, zone, "{text}");
             assert_eq!(source_filter.card_types, vec![CardType::Creature]);
+        }
+    }
+}
+
+#[cfg(test)]
+mod zero_loyalty_exception_tests {
+    use super::*;
+    #[test]
+    fn zero_loyalty_exception_is_typed_and_preserves_the_controller_scope() {
+        let tokens = crate::lexer::lex_line(
+            "Planeswalkers you control aren't put into their owners' graveyards for having 0 loyalty.", 0,
+        ).unwrap();
+        let ParseOutcome::Match(matched) = recognize_static_ability_ast_line_registry(&tokens)
+        else { panic!("zero-loyalty exception must be claimed by its typed rule"); };
+        let abilities = matched.value;
+        assert!(matches!(&abilities[..], [StaticAbilityAst::Static(ability)]
+            if ability.id() == crate::static_abilities::StaticAbilityId::PlaneswalkersYouControlDontDieAtZeroLoyalty));
+        for text in [
+            "Planeswalkers your opponents control aren't put into their owners' graveyards for having 0 loyalty.",
+            "Planeswalkers you control aren't put into their owners' graveyards for having 1 loyalty.",
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            assert!(
+                parse_zero_loyalty_state_based_exception_line(&tokens)
+                    .unwrap()
+                    .is_none()
+            );
         }
     }
 }
