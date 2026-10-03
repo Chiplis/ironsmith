@@ -28,6 +28,17 @@ impl SequenceEffect {
         }
     }
 
+    /// Keep each child's complete filter and context-sensitive semantics when
+    /// validating this sequence as a cost. Canonical cost conversion can reduce
+    /// some effects to specialized count/color components, which is unsuitable
+    /// for a preflight that must check the exact program execution will use.
+    pub(crate) fn cost_components(&self) -> Result<crate::cost::TotalCost, String> {
+        self.effects.iter().cloned()
+            .map(crate::costs::Cost::try_effect)
+            .collect::<Result<Vec<_>, _>>()
+            .map(crate::cost::TotalCost::from_costs)
+    }
+
     pub fn sentence_leading_then(effects: Vec<Effect>) -> Self {
         Self {
             effects,
@@ -281,10 +292,25 @@ impl CostExecutableEffect for SequenceEffect {
         source: crate::ids::ObjectId,
         controller: crate::ids::PlayerId,
     ) -> Result<(), CostValidationError> {
-        for effect in &self.effects {
-            effect.0.can_execute_as_cost(game, source, controller)?;
-        }
-        Ok(())
+        CostExecutableEffect::can_execute_as_cost_with_reason(
+            self, game, source, controller, crate::costs::PaymentReason::Other,
+        )
+    }
+
+    fn can_execute_as_cost_with_reason(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+        reason: crate::costs::PaymentReason,
+    ) -> Result<(), CostValidationError> {
+        // Preserve dependencies between a choice cost and its tagged consumer.
+        // CostEffect additionally carries existing tags and resolution context
+        // when this sequence is nested in another payment transaction.
+        let total = self.cost_components()
+            .map_err(CostValidationError::Other)?;
+        crate::cost::can_pay_cost_with_reason(game, source, controller, &total, reason)
+            .map_err(|error| CostValidationError::Other(error.to_string()))
     }
 }
 

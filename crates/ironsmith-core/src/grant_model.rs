@@ -10,7 +10,9 @@ pub trait GrantStaticAbility: Clone + PartialEq {
     fn grant_display(&self) -> String;
     fn grant_has_flash(&self) -> bool;
     /// Whether this payload replaces its own owner's graveyard arrival with exile.
-    fn grant_is_source_owner_graveyard_exile(&self) -> bool { false }
+    fn grant_is_source_owner_graveyard_exile(&self) -> bool {
+        false
+    }
 }
 
 /// A granted alternative cast whose exact cost is derived from the granted card.
@@ -914,35 +916,65 @@ where
         }
 
         fn graveyard_cast_cost_text<C: CostComponent>(additional_costs: &[C]) -> String {
-            if let [cost] = additional_costs
-                && let Some(filter) = cost.sacrifice_filter()
-                && let Some(filter_text) = sacrifice_cost_filter_description(filter)
-            {
-                return format!("sacrificing {filter_text} in addition to paying its other costs");
-            }
-
-            if let [cost] = additional_costs
-                && let Some((count, card_types)) = cost.exile_from_graveyard_details()
-            {
-                let count_text = if count == 1 {
-                    "a".to_string()
-                } else {
-                    crate::cardinal_word(count).unwrap_or_else(|| count.to_string())
-                };
-                let type_text = list_card_types_and_or(card_types);
-                let type_prefix = if type_text.is_empty() {
-                    String::new()
-                } else {
-                    format!("{type_text} ")
-                };
-                let card_word = if count == 1 { "card" } else { "cards" };
-                return format!(
-                    "exiling {count_text} {type_prefix}{card_word} from your graveyard in addition to paying its other costs"
-                );
+            fn cost_text<C: CostComponent>(cost: &C) -> Option<String> {
+                if let Some(amount) = cost.life_amount() {
+                    return Some(format!("paying {amount} life"));
+                }
+                if let Some((count, card_type)) = cost.discard_details() {
+                    let count_text = if count == 1 {
+                        "a".to_string()
+                    } else {
+                        crate::cardinal_word(count).unwrap_or_else(|| count.to_string())
+                    };
+                    let type_prefix = card_type
+                        .map(|kind| format!("{} ", kind.to_string().to_ascii_lowercase()))
+                        .unwrap_or_default();
+                    let noun = if count == 1 { "card" } else { "cards" };
+                    return Some(format!("discarding {count_text} {type_prefix}{noun}"));
+                }
+                if let Some(filter) = cost.sacrifice_filter()
+                    && let Some(filter_text) = sacrifice_cost_filter_description(filter)
+                {
+                    return Some(format!("sacrificing {filter_text}"));
+                }
+                if let Some((count, card_types)) = cost.exile_from_graveyard_details() {
+                    let other = cost.exile_from_graveyard_excludes_source();
+                    let count_text = if count == 1 {
+                        if other { "another" } else { "a" }.to_string()
+                    } else {
+                        let number =
+                            crate::cardinal_word(count).unwrap_or_else(|| count.to_string());
+                        if other {
+                            format!("{number} other")
+                        } else {
+                            number
+                        }
+                    };
+                    let type_text = list_card_types_and_or(card_types);
+                    let type_prefix = if type_text.is_empty() {
+                        String::new()
+                    } else {
+                        format!("{type_text} ")
+                    };
+                    let noun = if count == 1 { "card" } else { "cards" };
+                    return Some(format!(
+                        "exiling {count_text} {type_prefix}{noun} from your graveyard"
+                    ));
+                }
+                None
             }
 
             if additional_costs.is_empty() {
                 "paying its mana cost".to_string()
+            } else if let Some(costs) = additional_costs
+                .iter()
+                .map(cost_text)
+                .collect::<Option<Vec<_>>>()
+            {
+                format!(
+                    "{} in addition to paying its other costs",
+                    costs.join(" and ")
+                )
             } else {
                 format!(
                     "paying its mana cost plus {}",
@@ -1363,7 +1395,9 @@ where
                 && self.cast_this_way_grants[0].grant_is_source_owner_graveyard_exile()
             {
                 let spell_text = cast_spell_text();
-                return format!(". If {spell_text} cast this way would be put into your graveyard, exile it instead");
+                return format!(
+                    ". If {spell_text} cast this way would be put into your graveyard, exile it instead"
+                );
             }
             if grants.len() == 1 && grants[0].eq_ignore_ascii_case("haste") {
                 let spell_text = cast_spell_text();
@@ -1657,9 +1691,7 @@ where
                 && !filter.card_types.contains(&CardType::Instant)
                 && !filter.card_types.contains(&CardType::Sorcery);
             if nonland_permanent
-                && let Some(rest) = filter_desc
-                    .strip_prefix("spell card")
-                    .map(str::to_string)
+                && let Some(rest) = filter_desc.strip_prefix("spell card").map(str::to_string)
             {
                 filter_desc = format!("nonland permanent card{rest}");
             }
@@ -1786,7 +1818,11 @@ where
                 cast_filter.owner = None;
             }
             let filter_desc = castable_filter_description(&cast_filter);
-            let filter_desc = if filter_desc == "spell" { "a spell".to_string() } else { filter_desc };
+            let filter_desc = if filter_desc == "spell" {
+                "a spell".to_string()
+            } else {
+                filter_desc
+            };
             let cost_text = graveyard_cast_cost_text(additional_costs);
             if self.filter == ObjectFilter::source() {
                 let mut line = format!("{may_prefix} cast this card from your graveyard");
