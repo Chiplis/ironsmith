@@ -1,0 +1,9 @@
+[
+  {
+    "name": "Precipitous Drop",
+    "oracle_id": "d60c8cfe-435c-419e-a44b-b47d49d1afef",
+    "mana_cost": "{2}{B}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Enchant creature\nWhen this Aura enters, venture into the dungeon. (Enter the first room or advance to the next room.)\nEnchanted creature gets -2/-2. It gets -5/-5 instead as long as you've completed a dungeon."
+  }
+]

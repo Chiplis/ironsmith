@@ -3218,6 +3218,9 @@ impl GameState {
             .entry(player)
             .or_default()
             .push(dungeon_name.into());
+        // Completion is a persistent input to conditional static abilities.
+        // Auxiliary tracking alone does not invalidate their cached snapshot.
+        self.mark_continuous_state_dirty();
     }
 
     /// Returns the names of dungeons the player has completed this game.
