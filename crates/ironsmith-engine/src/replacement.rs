@@ -565,6 +565,8 @@ pub enum ReplacementAction<E = Effect, A = Ability, P = crate::resolution::Resol
         /// Description for the choice prompt.
         description: String,
     },
+    /// General typed damage prevention; append to preserve wire variant ordinals.
+    PreventDamageByRule(ironsmith_core::StaticDamagePreventionAmount),
 }
 
 
@@ -583,6 +585,7 @@ impl<E, A, P, K> ReplacementAction<E, A, P, K> {
             Self::Prevent => ReplacementAction::Prevent,
             Self::PreventDamage => ReplacementAction::PreventDamage,
             Self::PreventDamageAmount(value) => ReplacementAction::PreventDamageAmount(value),
+            Self::PreventDamageByRule(value) => ReplacementAction::PreventDamageByRule(value),
             Self::PreventHalfDamage { round_up } => ReplacementAction::PreventHalfDamage { round_up },
             Self::PreventDamageByRemovingSourceCounters { counter_type } => ReplacementAction::PreventDamageByRemovingSourceCounters { counter_type },
             Self::PreventDamageThen(value) => ReplacementAction::PreventDamageThen(value.into_iter().map(&mut effect).collect::<Result<Vec<_>, _>>()?),

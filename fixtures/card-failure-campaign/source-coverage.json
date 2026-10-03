@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "969635636f2c034a292df1f7acb5b608891030b2",
+  "source_implementation_commit": "8d3d56d25b27eb3cf2444fa787419b836617d335",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 220,
-    "additional_proposed_compile_entries": 220,
+    "additional_proposed_unique_cards": 229,
+    "additional_proposed_compile_entries": 229,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true
   },
@@ -467,6 +467,38 @@
         "self plus other union references",
         "event-time turn qualifications and once-per-turn restrictions",
         "exact self-origin functional zones, preserving existing self-anywhere readers"
+      ]
+    },
+    {
+      "id": "filtered-static-damage-prevention",
+      "stage": 22,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/static_damage_prevention.json.fixture",
+      "baseline_entries": [
+        "Daunting Defender",
+        "Djeru, With Eyes Open",
+        "Shield of the Realm",
+        "Temple Altisaur",
+        "Hyperion, Supreme Hero",
+        "Callous Giant",
+        "Shield of the Avatar",
+        "Hedron-Field Purists",
+        "Rem Karolus, Stalwart Slayer"
+      ],
+      "implementation_commit": "d1acc22c00eeca83b5f6b211cfdb1710af706210",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "fixed and source-context dynamic prevention amounts",
+        "all-but-N excess prevention and inclusive incoming-damage threshold",
+        "player and object recipient filters with live attachments/control",
+        "real prevention events and unpreventable damage preservation",
+        "whole-input optional/follow-up clauses remain unclaimed"
+      ],
+      "review_corrections": [
+        "8d3d56d25b27eb3cf2444fa787419b836617d335"
+      ],
+      "excluded_semantics": [
+        "Cover of Winter requires shared X allocation across simultaneous recipients; and/or and one-or-more recipient shapes stay rejected."
       ]
     }
   ],
@@ -4098,8 +4130,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "filtered-static-damage-prevention"
+      ]
     },
     {
       "card_name": "Camel",
@@ -6558,8 +6592,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "filtered-static-damage-prevention"
+      ]
     },
     {
       "card_name": "Dawn Elemental",
@@ -7367,8 +7403,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "filtered-static-damage-prevention"
+      ]
     },
     {
       "card_name": "Djinn Illuminatus",
@@ -12653,8 +12691,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "filtered-static-damage-prevention"
+      ]
     },
     {
       "card_name": "Heed the Mists",
@@ -13339,8 +13379,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "filtered-static-damage-prevention"
+      ]
     },
     {
       "card_name": "Hypnotic Cloud",
@@ -22631,8 +22673,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "filtered-static-damage-prevention"
+      ]
     },
     {
       "card_name": "Remedy",
@@ -24738,8 +24782,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "filtered-static-damage-prevention"
+      ]
     },
     {
       "card_name": "Shield of the Realm",
@@ -24748,8 +24794,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "filtered-static-damage-prevention"
+      ]
     },
     {
       "card_name": "Shieldmage Advocate",
@@ -27702,8 +27750,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "filtered-static-damage-prevention"
+      ]
     },
     {
       "card_name": "Temporal Isolation",
