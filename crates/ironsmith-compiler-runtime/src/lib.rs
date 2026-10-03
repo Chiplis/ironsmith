@@ -10244,3 +10244,6 @@ mod compiled_surviving_token_group_tests {
         check_compiled_owner("Xorn", "Mana cost: {2}{R}\nType: Creature — Elemental\nPower/Toughness: 3/2\nIf you would create one or more Treasure tokens, instead create those tokens plus an additional Treasure token.");
     }
 }
+
+#[cfg(test)]
+mod keyword_grant_materialization_tests;
