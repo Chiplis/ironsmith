@@ -1,0 +1,193 @@
+{
+  "$defs": {
+    "test": {
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "commit": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "exit_code": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "result": {
+          "enum": [
+            "pending",
+            "passed",
+            "failed",
+            "blocked"
+          ]
+        }
+      },
+      "required": [
+        "command",
+        "commit",
+        "result",
+        "exit_code",
+        "evidence"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "baseline_commit": {
+      "pattern": "^[a-f0-9]{40}$",
+      "type": "string"
+    },
+    "baseline_measurement_status": {
+      "enum": [
+        "pending",
+        "measured"
+      ]
+    },
+    "dataset_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    },
+    "families": {
+      "items": {
+        "properties": {
+          "baseline_cards": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "grammar_tests": {
+            "items": {
+              "$ref": "#/$defs/test"
+            },
+            "type": "array"
+          },
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "implementation_commits": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "review": {
+            "properties": {
+              "evidence": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "pending",
+                  "verified"
+                ]
+              }
+            },
+            "required": [
+              "status",
+              "evidence"
+            ],
+            "type": "object"
+          },
+          "runtime_tests": {
+            "items": {
+              "$ref": "#/$defs/test"
+            },
+            "type": "array"
+          },
+          "semantic_coverage": {
+            "properties": {
+              "cases": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "remaining_gaps": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "status": {
+                "enum": [
+                  "pending",
+                  "partial",
+                  "verified"
+                ]
+              }
+            },
+            "required": [
+              "status",
+              "cases",
+              "remaining_gaps"
+            ],
+            "type": "object"
+          },
+          "stack_pr": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "enum": [
+              "triaged",
+              "implemented",
+              "verified",
+              "blocked"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "baseline_cards",
+          "status",
+          "implementation_commits",
+          "stack_pr",
+          "grammar_tests",
+          "runtime_tests",
+          "semantic_coverage",
+          "review"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "overall_status": {
+      "enum": [
+        "pending",
+        "in_progress",
+        "blocked",
+        "verified"
+      ]
+    },
+    "schema_version": {
+      "const": 1
+    }
+  },
+  "required": [
+    "schema_version",
+    "baseline_commit",
+    "dataset_sha256",
+    "baseline_measurement_status",
+    "overall_status",
+    "families"
+  ],
+  "title": "Card failure campaign family evidence ledger",
+  "type": "object"
+}

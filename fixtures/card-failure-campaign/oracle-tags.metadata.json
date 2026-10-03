@@ -1,0 +1,96 @@
+{
+  "artifacts": [
+    {
+      "bytes": 5232225,
+      "filename": "oracle-tags.by-oracle-id.json",
+      "sha256": "fd6751cfbdbe0a54cae33d5f855630902d6cb19d91187d0385604ae9def82d49"
+    },
+    {
+      "bytes": 2189127,
+      "filename": "oracle-tags.catalog.json",
+      "sha256": "705d2cf59a889bd2e20b2022f1440989ca193b0e93046f82e8470a86af5b9d33"
+    },
+    {
+      "bytes": 18062,
+      "filename": "oracle-tags.selected-functional-categories.json",
+      "sha256": "fd85705c197a2654c38e421b07545e7e1a45af417665a7d37118e60fdb5632e4"
+    },
+    {
+      "bytes": 2540,
+      "filename": "tag_enrichment.py",
+      "sha256": "af580311a7ec65729db016f42a03f34132821c70edf37aa8ce70446efaf98440"
+    }
+  ],
+  "bulk_metadata": {
+    "compressed_size": 5977482,
+    "description": "A JSON file containing all Oracle tags sourced from Tagger, the Scryfall community tagging project.",
+    "id": "bd8df61e-5d0a-47a2-9086-40137a645b98",
+    "jsonl_download_uri": "https://data.scryfall.io/oracle-tags/oracle-tags-20261003090035.jsonl.gz",
+    "name": "Oracle Tags",
+    "object": "bulk_data",
+    "type": "oracle_tags",
+    "updated_at": "2026-10-03T09:00:35.876+00:00",
+    "uri": "https://api.scryfall.com/bulk-data/bd8df61e-5d0a-47a2-9086-40137a645b98"
+  },
+  "counts": {
+    "annotations": 3328,
+    "local_direct_card_tag_pairs": 211079,
+    "local_oracle_ids_with_direct_tags": 31939,
+    "source_rows": 32209,
+    "source_unique_oracle_ids": 32138,
+    "taggings": 235026,
+    "tags": 4560,
+    "weight_values": {
+      "median": 234404,
+      "strong": 1,
+      "very_strong": 621
+    }
+  },
+  "discovery_source": "https://api.scryfall.com/bulk-data",
+  "identity_notes": [
+    "32,138 unique top-level Oracle IDs. 71 additional reversible_card rows lack top-level oracle_id; both faces share one Oracle ID, already present among top-level IDs.",
+    "Join by top-level oracle_id when present; otherwise distinct nonempty card_faces[*].oracle_id. Preserve source row and parser-input identity separately."
+  ],
+  "local_cards_metadata": "/workspace/shared/ironsmith-card-campaign/cards.json.scryfall-bulk-data.json",
+  "raw_file": "oracle-tags-20261003090035.jsonl.gz",
+  "raw_schema": {
+    "record_fields": [
+      "aliases",
+      "child_ids",
+      "description",
+      "id",
+      "label",
+      "object",
+      "parent_ids",
+      "slug",
+      "taggings",
+      "type",
+      "uri"
+    ],
+    "tagging_fields": [
+      "annotation",
+      "oracle_id",
+      "weight"
+    ],
+    "tagging_note": "annotation is optional; weight is a string; direct map preserves only explicitly assigned tag slugs, raw data preserves all fields"
+  },
+  "raw_sha256": "1a6c699e871041a077a7f20f964fb1a9679906fb2184e7941b8bc2ea9c43c6a1",
+  "retrieved_at": "2026-10-03T16:32:11.278799+00:00",
+  "schema_version": 1,
+  "semantic_notes": [
+    "Oracle tags include functional and non-functional/cycle tags; curated categories are heuristic selections.",
+    "Parent tags can have zero direct members; ancestor membership is derived from graph edges and must be labeled separately.",
+    "Tag presence suggests investigation clusters; it does not prove implementation correctness. Tag absence is unknown, not proof of absence.",
+    "Do not mix a failure in one ability with every card-level tag as if each tag caused the failure."
+  ],
+  "validation": {
+    "all_direct_slugs_in_catalog": true,
+    "all_parent_ids_in_catalog": true,
+    "all_source_rows_have_resolvable_oracle_identity": true,
+    "direct_and_ancestor_only_sets_disjoint": true,
+    "parent_child_edges_reciprocal": true,
+    "reversible_identity_and_membership_checked": true,
+    "tag_hierarchy_acyclic": true,
+    "unknown_identity_returns_no_tags": true
+  }
+}

@@ -1,0 +1,461 @@
+{
+  "choices_and_modes": [
+    {
+      "descendant_tag_count": 28,
+      "description": "Spells which give you your choice from two or more distinct functions.",
+      "direct_tagging_count": 573,
+      "local_direct_oracle_ids": 500,
+      "local_including_descendants_oracle_ids": 757,
+      "slug": "modal",
+      "uri": "https://tagger.scryfall.com/tags/card/modal"
+    },
+    {
+      "descendant_tag_count": 4,
+      "description": null,
+      "direct_tagging_count": 106,
+      "local_direct_oracle_ids": 92,
+      "local_including_descendants_oracle_ids": 141,
+      "slug": "opponent-chooses",
+      "uri": "https://tagger.scryfall.com/tags/card/opponent-chooses"
+    },
+    {
+      "descendant_tag_count": 1,
+      "description": "A \"soft counterspell\" gives the other player a chance to buy off the counter, such as with a mana payment.",
+      "direct_tagging_count": 138,
+      "local_direct_oracle_ids": 131,
+      "local_including_descendants_oracle_ids": 135,
+      "slug": "counterspell-soft",
+      "uri": "https://tagger.scryfall.com/tags/card/counterspell-soft"
+    }
+  ],
+  "delayed_and_reflexive": [
+    {
+      "descendant_tag_count": 4,
+      "description": "Create a triggered ability that may trigger later. Similar to a [reflexive trigger](reflexive-trigger).",
+      "direct_tagging_count": 1127,
+      "local_direct_oracle_ids": 1000,
+      "local_including_descendants_oracle_ids": 1173,
+      "slug": "delayed-trigger",
+      "uri": "https://tagger.scryfall.com/tags/card/delayed-trigger"
+    },
+    {
+      "descendant_tag_count": 0,
+      "description": "An ability that triggers based on actions taken earlier during a spell or ability's resolution.",
+      "direct_tagging_count": 311,
+      "local_direct_oracle_ids": 271,
+      "local_including_descendants_oracle_ids": 271,
+      "slug": "reflexive-trigger",
+      "uri": "https://tagger.scryfall.com/tags/card/reflexive-trigger"
+    },
+    {
+      "descendant_tag_count": 0,
+      "description": null,
+      "direct_tagging_count": 1,
+      "local_direct_oracle_ids": 1,
+      "local_including_descendants_oracle_ids": 1,
+      "slug": "trigger-once-each-turn",
+      "uri": "https://tagger.scryfall.com/tags/card/trigger-once-each-turn"
+    },
+    {
+      "descendant_tag_count": 0,
+      "description": "A resolving spell or ability partially or completely replacing one of its own effects.",
+      "direct_tagging_count": 374,
+      "local_direct_oracle_ids": 347,
+      "local_including_descendants_oracle_ids": 347,
+      "slug": "self-replacement-effect",
+      "uri": "https://tagger.scryfall.com/tags/card/self-replacement-effect"
+    },
+    {
+      "descendant_tag_count": 0,
+      "description": null,
+      "direct_tagging_count": 34,
+      "local_direct_oracle_ids": 31,
+      "local_including_descendants_oracle_ids": 31,
+      "slug": "delayed-replacement-effect",
+      "uri": "https://tagger.scryfall.com/tags/card/delayed-replacement-effect"
+    }
+  ],
+  "draw_and_library": [
+    {
+      "descendant_tag_count": 35,
+      "description": "Spells and abilities that textually draw you cards. See also [pure draw](pure-draw).",
+      "direct_tagging_count": 0,
+      "local_direct_oracle_ids": 0,
+      "local_including_descendants_oracle_ids": 4085,
+      "slug": "draw",
+      "uri": "https://tagger.scryfall.com/tags/card/draw"
+    },
+    {
+      "descendant_tag_count": 7,
+      "description": "Spells and abilities that let you draw (a) card(s) without discarding other cards or sacrificing other permanents.",
+      "direct_tagging_count": 1274,
+      "local_direct_oracle_ids": 1168,
+      "local_including_descendants_oracle_ids": 3147,
+      "slug": "pure-draw",
+      "uri": "https://tagger.scryfall.com/tags/card/pure-draw"
+    },
+    {
+      "descendant_tag_count": 4,
+      "description": "Cards which let you cast a card for a limited time off the top of a library (via exile). Use it or lose it. Typically a red card advantage mechanic. See also [impulsive mill](impulsive-mill). For the effect seen on the [card Impulse](/card/vis/34), see the [tag impulse](impulse).",
+      "direct_tagging_count": 31,
+      "local_direct_oracle_ids": 28,
+      "local_including_descendants_oracle_ids": 252,
+      "slug": "impulsive-draw",
+      "uri": "https://tagger.scryfall.com/tags/card/impulsive-draw"
+    },
+    {
+      "descendant_tag_count": 146,
+      "description": "Cards that directly search for a card from your library, and sometimes other locations as well.",
+      "direct_tagging_count": 0,
+      "local_direct_oracle_ids": 0,
+      "local_including_descendants_oracle_ids": 1123,
+      "slug": "tutor",
+      "uri": "https://tagger.scryfall.com/tags/card/tutor"
+    },
+    {
+      "descendant_tag_count": 2,
+      "description": "Cards that tutor cards to the player's hand.",
+      "direct_tagging_count": 572,
+      "local_direct_oracle_ids": 523,
+      "local_including_descendants_oracle_ids": 582,
+      "slug": "tutor-to-hand",
+      "uri": "https://tagger.scryfall.com/tags/card/tutor-to-hand"
+    },
+    {
+      "descendant_tag_count": 10,
+      "description": "Cards that tutor something out of the library and straight onto the battlefield.",
+      "direct_tagging_count": 179,
+      "local_direct_oracle_ids": 165,
+      "local_including_descendants_oracle_ids": 475,
+      "slug": "tutor-to-battlefield",
+      "uri": "https://tagger.scryfall.com/tags/card/tutor-to-battlefield"
+    },
+    {
+      "descendant_tag_count": 12,
+      "description": "A keyword action used in Magic to describe the action of a player taking cards from the top of their library and putting them into their graveyard. ",
+      "direct_tagging_count": 0,
+      "local_direct_oracle_ids": 0,
+      "local_including_descendants_oracle_ids": 1247,
+      "slug": "mill",
+      "uri": "https://tagger.scryfall.com/tags/card/mill"
+    }
+  ],
+  "recursion_and_exile": [
+    {
+      "descendant_tag_count": 96,
+      "description": "Get stuff back from your graveyard to use it again. See: reanimate (to battlefield), regrowth (to hand), and restock (to library).",
+      "direct_tagging_count": 0,
+      "local_direct_oracle_ids": 0,
+      "local_including_descendants_oracle_ids": 2147,
+      "slug": "recursion",
+      "uri": "https://tagger.scryfall.com/tags/card/recursion"
+    },
+    {
+      "descendant_tag_count": 26,
+      "description": "Return permanent cards from the graveyard to the battlefield.",
+      "direct_tagging_count": 12,
+      "local_direct_oracle_ids": 11,
+      "local_including_descendants_oracle_ids": 1001,
+      "slug": "reanimate",
+      "uri": "https://tagger.scryfall.com/tags/card/reanimate"
+    },
+    {
+      "descendant_tag_count": 11,
+      "description": "Exile a card then return it to the battlefield (now or soon).",
+      "direct_tagging_count": 1,
+      "local_direct_oracle_ids": 1,
+      "local_including_descendants_oracle_ids": 182,
+      "slug": "flicker",
+      "uri": "https://tagger.scryfall.com/tags/card/flicker"
+    },
+    {
+      "descendant_tag_count": 5,
+      "description": null,
+      "direct_tagging_count": 452,
+      "local_direct_oracle_ids": 412,
+      "local_including_descendants_oracle_ids": 559,
+      "slug": "removal-exile",
+      "uri": "https://tagger.scryfall.com/tags/card/removal-exile"
+    },
+    {
+      "descendant_tag_count": 1,
+      "description": "Cards that exile themselves once they've finished all their effects. Commonly seen on extra turn cards.",
+      "direct_tagging_count": 114,
+      "local_direct_oracle_ids": 107,
+      "local_including_descendants_oracle_ids": 117,
+      "slug": "exile-on-resolution",
+      "uri": "https://tagger.scryfall.com/tags/card/exile-on-resolution"
+    }
+  ],
+  "replacement_and_damage": [
+    {
+      "descendant_tag_count": 10,
+      "description": null,
+      "direct_tagging_count": 373,
+      "local_direct_oracle_ids": 350,
+      "local_including_descendants_oracle_ids": 578,
+      "slug": "damage-prevention",
+      "uri": "https://tagger.scryfall.com/tags/card/damage-prevention"
+    },
+    {
+      "descendant_tag_count": 1,
+      "description": null,
+      "direct_tagging_count": 51,
+      "local_direct_oracle_ids": 49,
+      "local_including_descendants_oracle_ids": 71,
+      "slug": "damage-redirection",
+      "uri": "https://tagger.scryfall.com/tags/card/damage-redirection"
+    },
+    {
+      "descendant_tag_count": 0,
+      "description": "Things deal double or triple damage. See also [damage increaser](/tags/card/damage-increaser).",
+      "direct_tagging_count": 54,
+      "local_direct_oracle_ids": 46,
+      "local_including_descendants_oracle_ids": 46,
+      "slug": "damage-multiplier",
+      "uri": "https://tagger.scryfall.com/tags/card/damage-multiplier"
+    },
+    {
+      "descendant_tag_count": 0,
+      "description": null,
+      "direct_tagging_count": 62,
+      "local_direct_oracle_ids": 61,
+      "local_including_descendants_oracle_ids": 61,
+      "slug": "counter-doubler",
+      "uri": "https://tagger.scryfall.com/tags/card/counter-doubler"
+    },
+    {
+      "descendant_tag_count": 0,
+      "description": "Cards that increase the mana produced by mana producers, usually lands.",
+      "direct_tagging_count": 64,
+      "local_direct_oracle_ids": 53,
+      "local_including_descendants_oracle_ids": 53,
+      "slug": "mana-increaser",
+      "uri": "https://tagger.scryfall.com/tags/card/mana-increaser"
+    }
+  ],
+  "sacrifice_costs": [
+    {
+      "descendant_tag_count": 22,
+      "description": null,
+      "direct_tagging_count": 12,
+      "local_direct_oracle_ids": 10,
+      "local_including_descendants_oracle_ids": 1434,
+      "slug": "sacrifice-outlet",
+      "uri": "https://tagger.scryfall.com/tags/card/sacrifice-outlet"
+    },
+    {
+      "descendant_tag_count": 6,
+      "description": null,
+      "direct_tagging_count": 893,
+      "local_direct_oracle_ids": 836,
+      "local_including_descendants_oracle_ids": 954,
+      "slug": "sacrifice-outlet-creature",
+      "uri": "https://tagger.scryfall.com/tags/card/sacrifice-outlet-creature"
+    },
+    {
+      "descendant_tag_count": 2,
+      "description": "Repeatedly sacrifice stuff.",
+      "direct_tagging_count": 594,
+      "local_direct_oracle_ids": 571,
+      "local_including_descendants_oracle_ids": 881,
+      "slug": "repeatable-sacrifice-outlet",
+      "uri": "https://tagger.scryfall.com/tags/card/repeatable-sacrifice-outlet"
+    },
+    {
+      "descendant_tag_count": 0,
+      "description": "Ways to sacrifice a permanent repeatedly that require no additional cost.",
+      "direct_tagging_count": 191,
+      "local_direct_oracle_ids": 184,
+      "local_including_descendants_oracle_ids": 184,
+      "slug": "free-sacrifice-outlet",
+      "uri": "https://tagger.scryfall.com/tags/card/free-sacrifice-outlet"
+    },
+    {
+      "descendant_tag_count": 4,
+      "description": "Cards that let you sacrifice permanents to play them for free/a reduced amount of mana",
+      "direct_tagging_count": 35,
+      "local_direct_oracle_ids": 35,
+      "local_including_descendants_oracle_ids": 56,
+      "slug": "alternate-cost-sacrifice",
+      "uri": "https://tagger.scryfall.com/tags/card/alternate-cost-sacrifice"
+    }
+  ],
+  "static_and_costs": [
+    {
+      "descendant_tag_count": 0,
+      "description": "Your entire team gets +N/+N. Possibly limited to creature types or colors.",
+      "direct_tagging_count": 569,
+      "local_direct_oracle_ids": 502,
+      "local_including_descendants_oracle_ids": 502,
+      "slug": "anthem",
+      "uri": "https://tagger.scryfall.com/tags/card/anthem"
+    },
+    {
+      "descendant_tag_count": 24,
+      "description": "Cards that make other spells cost less. (Does not apply to effects that reduce a spell's own cost, like delve.)",
+      "direct_tagging_count": 114,
+      "local_direct_oracle_ids": 83,
+      "local_including_descendants_oracle_ids": 300,
+      "slug": "cost-reducer",
+      "uri": "https://tagger.scryfall.com/tags/card/cost-reducer"
+    },
+    {
+      "descendant_tag_count": 0,
+      "description": null,
+      "direct_tagging_count": 76,
+      "local_direct_oracle_ids": 54,
+      "local_including_descendants_oracle_ids": 54,
+      "slug": "cost-increaser",
+      "uri": "https://tagger.scryfall.com/tags/card/cost-increaser"
+    },
+    {
+      "descendant_tag_count": 7,
+      "description": "Nonland cards that generate mana.",
+      "direct_tagging_count": 126,
+      "local_direct_oracle_ids": 108,
+      "local_including_descendants_oracle_ids": 898,
+      "slug": "mana-producer",
+      "uri": "https://tagger.scryfall.com/tags/card/mana-producer"
+    },
+    {
+      "descendant_tag_count": 9,
+      "description": "Cards that have an ability that define something about it that would normally be found somewhere else on the card. Speicifcally, CDAs set color, types, subtypes, power, and/or toughness.",
+      "direct_tagging_count": 0,
+      "local_direct_oracle_ids": 0,
+      "local_including_descendants_oracle_ids": 429,
+      "slug": "characteristic-defining-ability",
+      "uri": "https://tagger.scryfall.com/tags/card/characteristic-defining-ability"
+    }
+  ],
+  "tokens_and_copy": [
+    {
+      "descendant_tag_count": 1,
+      "description": "Repeatable ways to create creature tokens",
+      "direct_tagging_count": 1483,
+      "local_direct_oracle_ids": 1347,
+      "local_including_descendants_oracle_ids": 1385,
+      "slug": "repeatable-creature-tokens",
+      "uri": "https://tagger.scryfall.com/tags/card/repeatable-creature-tokens"
+    },
+    {
+      "descendant_tag_count": 0,
+      "description": null,
+      "direct_tagging_count": 214,
+      "local_direct_oracle_ids": 198,
+      "local_including_descendants_oracle_ids": 198,
+      "slug": "temporary-token",
+      "uri": "https://tagger.scryfall.com/tags/card/temporary-token"
+    },
+    {
+      "descendant_tag_count": 3,
+      "description": null,
+      "direct_tagging_count": 363,
+      "local_direct_oracle_ids": 297,
+      "local_including_descendants_oracle_ids": 329,
+      "slug": "copy-creature",
+      "uri": "https://tagger.scryfall.com/tags/card/copy-creature"
+    },
+    {
+      "descendant_tag_count": 0,
+      "description": "Effects that copy specifically tokens, like populate.",
+      "direct_tagging_count": 55,
+      "local_direct_oracle_ids": 52,
+      "local_including_descendants_oracle_ids": 52,
+      "slug": "copy-token",
+      "uri": "https://tagger.scryfall.com/tags/card/copy-token"
+    },
+    {
+      "descendant_tag_count": 5,
+      "description": "Make a copy of a spell on the stack.",
+      "direct_tagging_count": 153,
+      "local_direct_oracle_ids": 128,
+      "local_including_descendants_oracle_ids": 179,
+      "slug": "copy-spell",
+      "uri": "https://tagger.scryfall.com/tags/card/copy-spell"
+    },
+    {
+      "descendant_tag_count": 0,
+      "description": null,
+      "direct_tagging_count": 50,
+      "local_direct_oracle_ids": 42,
+      "local_including_descendants_oracle_ids": 42,
+      "slug": "copy-ability",
+      "uri": "https://tagger.scryfall.com/tags/card/copy-ability"
+    },
+    {
+      "descendant_tag_count": 0,
+      "description": "Cards that completely replace the tokens that will be created with other tokens. ",
+      "direct_tagging_count": 10,
+      "local_direct_oracle_ids": 9,
+      "local_including_descendants_oracle_ids": 9,
+      "slug": "token-replacer",
+      "uri": "https://tagger.scryfall.com/tags/card/token-replacer"
+    },
+    {
+      "descendant_tag_count": 0,
+      "description": "If you would make X tokens, twice are made instead. ",
+      "direct_tagging_count": 19,
+      "local_direct_oracle_ids": 16,
+      "local_including_descendants_oracle_ids": 16,
+      "slug": "token-doubler",
+      "uri": "https://tagger.scryfall.com/tags/card/token-doubler"
+    }
+  ],
+  "zone_permissions": [
+    {
+      "descendant_tag_count": 0,
+      "description": "Cards you can cast or access from the graveyard.",
+      "direct_tagging_count": 406,
+      "local_direct_oracle_ids": 396,
+      "local_including_descendants_oracle_ids": 396,
+      "slug": "castable-from-graveyard",
+      "uri": "https://tagger.scryfall.com/tags/card/castable-from-graveyard"
+    },
+    {
+      "descendant_tag_count": 1,
+      "description": "Cards you can cast or access from exile.",
+      "direct_tagging_count": 432,
+      "local_direct_oracle_ids": 406,
+      "local_including_descendants_oracle_ids": 467,
+      "slug": "castable-from-exile",
+      "uri": "https://tagger.scryfall.com/tags/card/castable-from-exile"
+    },
+    {
+      "descendant_tag_count": 7,
+      "description": "Allows you to play other cards from the graveyard.",
+      "direct_tagging_count": 116,
+      "local_direct_oracle_ids": 105,
+      "local_including_descendants_oracle_ids": 140,
+      "slug": "gives-castable-from-graveyard",
+      "uri": "https://tagger.scryfall.com/tags/card/gives-castable-from-graveyard"
+    },
+    {
+      "descendant_tag_count": 15,
+      "description": "Cards that let you cast things from exile.",
+      "direct_tagging_count": 399,
+      "local_direct_oracle_ids": 360,
+      "local_including_descendants_oracle_ids": 709,
+      "slug": "gives-castable-from-exile",
+      "uri": "https://tagger.scryfall.com/tags/card/gives-castable-from-exile"
+    },
+    {
+      "descendant_tag_count": 7,
+      "description": "Spells and abilities that let you cast spells as part of their resolution.",
+      "direct_tagging_count": 403,
+      "local_direct_oracle_ids": 365,
+      "local_including_descendants_oracle_ids": 503,
+      "slug": "cast-on-resolution",
+      "uri": "https://tagger.scryfall.com/tags/card/cast-on-resolution"
+    },
+    {
+      "descendant_tag_count": 16,
+      "description": "Cards that allow you to bypass mana costs. This could be by making the spell free or by setting a static cost that's independent of the original.",
+      "direct_tagging_count": 108,
+      "local_direct_oracle_ids": 100,
+      "local_including_descendants_oracle_ids": 888,
+      "slug": "cost-ignorer",
+      "uri": "https://tagger.scryfall.com/tags/card/cost-ignorer"
+    }
+  ]
+}
