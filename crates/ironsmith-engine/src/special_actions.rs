@@ -3170,12 +3170,18 @@ fn preflight_tagged_choice_in_context(
     filter_ctx.players_in_range = payer_filter_ctx.players_in_range;
     filter_ctx.your_commanders = payer_filter_ctx.your_commanders;
 
+    let untaps_chosen = consumer_component.effect_ref().is_some_and(|effect| {
+        let mut effect = effect;
+        while let Some(inner) = effect.transparent_child_effect() { effect = inner; }
+        effect.downcast_ref::<crate::effects::UntapEffect>().is_some()
+    });
     let mut candidates = Vec::new();
     let mut visit = |id: ObjectId| {
         if !candidates.contains(&id)
             && game.object(id).is_some_and(|object| {
                 (!choice.filter.other || id != source)
                     && choice.filter.matches(object, &filter_ctx, game)
+                    && (!untaps_chosen || game.can_untap(id))
             })
         {
             candidates.push(id);

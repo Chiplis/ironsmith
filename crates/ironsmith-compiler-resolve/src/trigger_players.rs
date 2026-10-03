@@ -81,6 +81,7 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
                 Some(copier.clone())
             }
         }
+        TriggerSpec::PlayerChangesTapState { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerLosesLife(_) | TriggerSpec::PlayersLoseLifeOneOrMore(_) => {
             Some(PlayerFilter::IteratedPlayer)
         }

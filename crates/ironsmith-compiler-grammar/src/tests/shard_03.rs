@@ -4166,3 +4166,15 @@ fn owned_exile_origin_union_preserves_owner_and_batch_count() {
         assert!(super::super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(&tokens).is_err(), "{origin}");
     }
 }
+
+#[test]
+pub(super) fn grouped_decimal_counter_state_trigger_retains_threshold_and_both_instructions() {
+    let tokens = lex_line("When there are 1,000 or more time counters on this artifact, sacrifice it and each opponent loses 1,000 life.", 0).unwrap();
+    let parsed = super::super::clause_support::parse_triggered_line_lexed(&tokens).unwrap();
+    let crate::cards::builders::LineAst::Triggered { trigger, effects, .. } = parsed else { panic!("expected state trigger") };
+    let trigger_debug = format!("{trigger:?}");
+    let effects_debug = format!("{effects:?}");
+    assert!(matches!(trigger, crate::cards::builders::TriggerSpec::StateBased { .. }));
+    assert!(trigger_debug.contains("SourceHasCounterAtLeast") && trigger_debug.contains("count: 1000") && trigger_debug.to_ascii_lowercase().contains("time"), "{trigger_debug}");
+    assert!(effects_debug.contains("Sacrifice") && effects_debug.contains("LoseLife") && effects_debug.contains("1000"), "{effects_debug}");
+}

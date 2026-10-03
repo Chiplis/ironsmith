@@ -1,0 +1,42 @@
+[
+  {
+    "name": "Deeproot Pilgrimage",
+    "text": "Mana cost: {1}{U}\nType: Enchantment\nWhenever one or more nontoken Merfolk you control become tapped, create a 1/1 blue Merfolk creature token with hexproof.",
+    "oracle_id": "188656d8-4ea8-4e58-88da-b010a16eb6f2",
+    "source": "https://scryfall.com/card/plci/52s/deeproot-pilgrimage?utm_source=api",
+    "baseline_content_hash": "fab4c4af223d8f0905c6b44bcea587f4fd3409cd9101f7c1a23310679aee0143",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever one or more nontoken Merfolk you control become tapped, create a 1/1 blue Merfolk creature token with hexproof.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever one or more nontoken Merfolk you control become tapped, create a 1/1 blue Merfolk creature token with hexproof.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Rewrite History",
+    "text": "Mana cost: {2}{U}\nType: Enchantment \u2014 Plan\nWhenever one or more creatures you control become tapped, draw a card, then discard a card and put a plan counter on this enchantment.\nWhen the fourth plan counter is put on this enchantment, sacrifice it. When you do, return up to two target instant and/or sorcery cards from your graveyard to your hand.",
+    "oracle_id": "f91c860e-3feb-4a5a-b7ef-4e7d38d61c75",
+    "source": "https://scryfall.com/card/msh/71/rewrite-history?utm_source=api",
+    "baseline_content_hash": "ed8e96d691e92b29a160b2a03806ca291e6a87a330e96627d3fa3fe6fd5ce9d6",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever one or more creatures you control become tapped, draw a card, then discard a card and put a plan counter on this enchantment.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever one or more creatures you control become tapped, draw a card, then discard a card and put a plan counter on this enchantment.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Mesmeric Orb",
+    "text": "Mana cost: {2}\nType: Artifact\nWhenever a permanent becomes untapped, that permanent's controller mills a card.",
+    "oracle_id": "03efb4f3-b8e2-4441-824f-886dc40712c4",
+    "source": "https://scryfall.com/card/sld/2457/mesmeric-orb?utm_source=api",
+    "baseline_content_hash": "d59636f5ff451cf22b791b4bd2163617ff55607f9fb70f333f5d25203d165657",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever a permanent becomes untapped, that permanent's controller mills a card.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever a permanent becomes untapped, that permanent's controller mills a card.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Wake Thrasher",
+    "text": "Mana cost: {2}{U}\nType: Creature \u2014 Merfolk Soldier\nPower/Toughness: 1/1\nWhenever a permanent you control becomes untapped, this creature gets +1/+1 until end of turn.",
+    "oracle_id": "f2d1e991-e13a-43c7-85aa-d53dd14822e6",
+    "source": "https://scryfall.com/card/plst/DDT-24/wake-thrasher?utm_source=api",
+    "baseline_content_hash": "c24cd8ebb29de68f2e479a591c1ea3124bdaba8ca590af6a12a63508596a7b35",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever a permanent you control becomes untapped, this creature gets +1/+1 until end of turn.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever a permanent you control becomes untapped, this creature gets +1/+1 until end of turn.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Tui and La, Moon and Ocean",
+    "text": "Mana cost: {3}{U}\nType: Legendary Creature \u2014 Fish Spirit\nPower/Toughness: 3/3\nWhenever Tui and La become tapped, draw a card.\nWhenever Tui and La become untapped, put a +1/+1 counter on them.",
+    "oracle_id": "781c9391-0322-40ad-8050-07151e2e6fc7",
+    "source": "https://scryfall.com/card/tle/96/tui-and-la-moon-and-ocean?utm_source=api",
+    "baseline_content_hash": "b1e0f6724c4ce09c42c558c1e42cc079787497f8cb92f62eee666fec1b05eef0",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever Tui and La become tapped, draw a card.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever Tui and La become tapped, draw a card.' [rule-path=statement-line > triggered-line]"
+  }
+]

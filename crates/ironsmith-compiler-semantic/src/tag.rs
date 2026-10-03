@@ -49,6 +49,7 @@ pub fn generated_result_tag(purpose: &str, ordinal: u32) -> TagRef {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CompilerCostObjectTag {
     Tap,
+    Untap,
     Discard,
     Sacrifice,
     Unattach,
@@ -78,6 +79,7 @@ impl CompilerCostObjectTag {
     const fn stem(self) -> &'static str {
         match self {
             Self::Tap => "tap_cost",
+            Self::Untap => "untap_cost",
             Self::Discard => "discard_cost",
             Self::Sacrifice => "sacrifice_cost",
             Self::Unattach => "unattach_cost",

@@ -758,6 +758,8 @@ fn execute_untap_step_inner(
     // permanents have been under their controller continuously since that
     // player's most recent turn began; off-turn Seedborn-style untaps do not
     // cure summoning sickness (CR 302.6).
+    let before = crate::events::other::before_tap_state_snapshots(game);
+    let mut untap_events = Vec::new();
     for id in permanents {
         // Only untap if the permanent doesn't have DoesntUntap
         if should_untap.contains(&id) {
@@ -766,14 +768,14 @@ fn execute_untap_step_inner(
             // CR 502.3 / 603.2: the permanent "becomes untapped" (Inspired).
             // No player gets priority in the untap step, so the event waits
             // for the upkeep trigger drain (CR 502.4).
-            let outcome =
-                crate::events::processing::process_untap(game, id, &mut *decision_maker)?;
+            let actor = before.get(&id).map(|snapshot| snapshot.controller)
+                .unwrap_or(game.turn.active_player);
+            let mut ctx = crate::effects::ExecutionContext::new(id, actor, &mut *decision_maker);
+            let outcome = crate::events::processing::process_untap_with_execution_context(game, id, &mut ctx)?;
             if decision_maker.awaiting_choice() {
                 return Ok(());
             }
-            for event in outcome.events {
-                game.queue_trigger_event(event.provenance(), event);
-            }
+            untap_events.extend(outcome.events);
         }
         if game
             .current_controller(id)
@@ -782,6 +784,10 @@ fn execute_untap_step_inner(
             game.remove_summoning_sickness(id);
         }
     }
+
+    crate::events::other::bind_before_tap_state_snapshots(&mut untap_events, &before);
+    crate::events::other::group_tap_state_events(game, &mut untap_events, Default::default());
+    for event in untap_events { game.queue_trigger_event(event.provenance(), event); }
 
     for effect in &mut game.effect_store.restriction_effects {
         if matches!(effect.duration, Until::ControllersNextUntapStep)

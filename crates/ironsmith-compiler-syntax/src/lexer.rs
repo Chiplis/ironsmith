@@ -34,6 +34,9 @@ fn parser_text_for_token(kind: TokenKind, slice: &str) -> String {
     match kind {
         TokenKind::Tilde => "this".to_string(),
         TokenKind::Half => "1/2".to_string(),
+        // Thousands separators belong to the number, never to a clause.
+        // Keep the literal token and its source span intact for rendering.
+        TokenKind::Number => slice.replace(',', ""),
         _ => normalize_parser_fragment(slice),
     }
 }
@@ -87,6 +90,7 @@ pub enum TokenKind {
     #[regex(r"\{[^}\r\n]+\}")]
     ManaGroup,
     #[regex(r"[0-9]+", priority = 3)]
+    #[regex(r"[0-9]{1,3}(,[0-9]{3})+", priority = 4)]
     Number,
     #[token("∞")]
     #[token("&")]
@@ -235,7 +239,11 @@ fn build_token_word_pieces(
 ) -> Box<[TokenWordPiece]> {
     let mut pieces = Vec::new();
     match kind {
-        TokenKind::Word | TokenKind::Number => {
+        TokenKind::Number => pieces.push(TokenWordPiece {
+            text: parser_text.to_string(),
+            span,
+        }),
+        TokenKind::Word => {
             push_normalized_token_words(parser_text, span, false, &mut pieces);
         }
         TokenKind::Tilde => pieces.push(TokenWordPiece {
@@ -1375,6 +1383,43 @@ pub fn lex_line(line: &str, line_index: usize) -> Result<Vec<OwnedLexToken>, Car
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn grouped_decimal_numbers_preserve_literal_spans_and_normalized_values() {
+        let line = "When there are 1,000 counters, each opponent loses 1,000,000 life.";
+        let tokens = lex_line(line, 7).unwrap();
+        let numbers = tokens
+            .iter()
+            .filter(|token| token.kind == TokenKind::Number)
+            .collect::<Vec<_>>();
+        assert_eq!(numbers.len(), 2);
+        for (number, literal, normalized) in [
+            (numbers[0], "1,000", "1000"),
+            (numbers[1], "1,000,000", "1000000"),
+        ] {
+            assert_eq!(number.literal_surface(), literal);
+            assert_eq!(number.parser_text(), normalized);
+            assert_eq!(&line[number.span.start..number.span.end], literal);
+            assert_eq!(
+                number.parser_word_pieces(),
+                &[TokenWordPiece {
+                    text: normalized.into(),
+                    span: number.span
+                }]
+            );
+        }
+        assert_eq!(tokens.iter().filter(|token| token.is_comma()).count(), 1);
+        assert_eq!(render_token_slice(&tokens), line);
+        for list in ["1, 000", "1, 2, 3", "1,00", "12,34"] {
+            assert!(
+                lex_line(list, 0)
+                    .unwrap()
+                    .iter()
+                    .any(|token| token.is_comma()),
+                "list or malformed grouping: {list}"
+            );
+        }
+    }
 
     #[test]
     fn lex_line_normalizes_tilde_and_curly_punctuation() {

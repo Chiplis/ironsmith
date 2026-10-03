@@ -164,6 +164,8 @@ pub const COMBAT_DAMAGE_GROUP_TAG: &str = "__combat_damage_group__";
 /// values in the triggered ability remain stable after those objects leave
 /// their original zone.
 pub const ZONE_CHANGE_GROUP_TAG: &str = "__zone_change_group__";
+/// Matched objects in one simultaneous tap/untap instruction.
+pub const TAP_STATE_GROUP_TAG: &str = "__tap_state_group__";
 
 /// The player who currently holds the initiative designation.
 ///
@@ -210,6 +212,7 @@ pub const WELL_KNOWN_TAGS: &[&str] = &[
     ATTACKING_GROUP_TAG,
     COMBAT_DAMAGE_GROUP_TAG,
     ZONE_CHANGE_GROUP_TAG,
+    TAP_STATE_GROUP_TAG,
     INITIATIVE_HOLDER_TAG,
     PREVIOUS_ITERATED_OBJECTS_TAG,
     CAST_MODIFIED_CREATURES_TAG,

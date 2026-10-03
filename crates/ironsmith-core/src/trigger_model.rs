@@ -281,6 +281,8 @@ pub enum TriggerKind {
     BecomesTapped,
     PermanentBecomesTapped {
         filter: ObjectFilter,
+        #[cfg_attr(feature = "serde", serde(default))]
+        one_or_more: bool,
     },
     BecomesUntapped,
     ThisIsTurnedFaceUp,
@@ -686,6 +688,18 @@ pub enum TriggerKind {
     CounterRemovedFrom(CounterRemovedFromTrigger),
     PlayerRollsToVisitAttractions {
         player: PlayerFilter,
+    },
+    PermanentBecomesUntapped {
+        filter: ObjectFilter,
+        #[cfg_attr(feature = "serde", serde(default))]
+        one_or_more: bool,
+    },
+    PlayerChangesTapState {
+        player: PlayerFilter,
+        filter: ObjectFilter,
+        tapped: bool,
+        one_or_more: bool,
+        during_untap_step: Option<PlayerFilter>,
     },
 }
 
@@ -1107,17 +1121,40 @@ impl Trigger {
             TriggerKind::ClassBecomesLevel { level },
         )
     }
+    pub fn player_changes_tap_state(
+        player: PlayerFilter, filter: ObjectFilter, tapped: bool, one_or_more: bool,
+        during_untap_step: Option<PlayerFilter>,
+    ) -> Self {
+        Self::typed("player_changes_tap_state", TriggerKind::PlayerChangesTapState {
+            player, filter, tapped, one_or_more, during_untap_step,
+        })
+    }
     pub fn becomes_tapped() -> Self {
         Self::typed("becomes_tapped", TriggerKind::BecomesTapped)
     }
     pub fn permanent_becomes_tapped(filter: ObjectFilter) -> Self {
         Self::typed(
             "permanent_becomes_tapped",
-            TriggerKind::PermanentBecomesTapped { filter },
+            TriggerKind::PermanentBecomesTapped {
+                filter,
+                one_or_more: false,
+            },
         )
     }
     pub fn becomes_untapped() -> Self {
         Self::typed("becomes_untapped", TriggerKind::BecomesUntapped)
+    }
+    pub fn permanent_becomes_tapped_one_or_more(filter: ObjectFilter) -> Self {
+        Self::typed(
+            "permanent_becomes_tapped",
+            TriggerKind::PermanentBecomesTapped { filter, one_or_more: true },
+        )
+    }
+    pub fn permanent_becomes_untapped(filter: ObjectFilter, one_or_more: bool) -> Self {
+        Self::typed(
+            "permanent_becomes_untapped",
+            TriggerKind::PermanentBecomesUntapped { filter, one_or_more },
+        )
     }
     pub fn this_is_turned_face_up() -> Self {
         Self::typed("this_is_turned_face_up", TriggerKind::ThisIsTurnedFaceUp)

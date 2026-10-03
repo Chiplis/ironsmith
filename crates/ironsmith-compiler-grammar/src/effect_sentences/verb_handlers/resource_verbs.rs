@@ -114,7 +114,14 @@ pub fn parse_effect_with_verb(
         Verb::Investigate => parse_investigate(tokens, subject),
         Verb::Incubate => parse_incubate(tokens, subject),
         Verb::Proliferate => parse_proliferate(tokens),
-        Verb::Tap => parse_tap(tokens),
+        Verb::Tap => {
+            let player = extract_subject_player(subject);
+            let mut effect = parse_tap(tokens)?;
+            if let Some(player) = player {
+                super::bind_implicit_player_context(&mut effect, player);
+            }
+            Ok(effect)
+        }
         Verb::Attach => {
             let player = extract_subject_player(subject);
             let mut effect = parse_attach(tokens)?;
@@ -124,7 +131,14 @@ pub fn parse_effect_with_verb(
             Ok(effect)
         }
         Verb::Unattach => parse_unattach(tokens),
-        Verb::Untap => parse_untap(tokens),
+        Verb::Untap => {
+            let player = extract_subject_player(subject);
+            let mut effect = parse_untap(tokens)?;
+            if let Some(player) = player {
+                super::bind_implicit_player_context(&mut effect, player);
+            }
+            Ok(effect)
+        }
         Verb::Unlock => parse_unlock_room_door(tokens, subject),
         Verb::Scry => parse_scry(tokens, subject),
         Verb::Discard => parse_discard(tokens, subject),

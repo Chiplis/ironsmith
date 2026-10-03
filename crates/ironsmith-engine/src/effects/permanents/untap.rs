@@ -31,7 +31,9 @@ impl EffectExecutor for UntapEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         game.clear_pending_decision_controllers();
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
@@ -51,6 +53,13 @@ impl EffectExecutor for UntapEffect {
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
             }
+            let actor = self
+                .actor
+                .as_ref()
+                .map(|actor| crate::effects::helpers::resolve_player_filter(game, actor, ctx))
+                .transpose()?
+                .unwrap_or(ctx.controller);
+            let before = crate::events::other::before_tap_state_snapshots(game);
             let selected_count = objects.len();
             let mut outcomes = Vec::new();
             for object in objects {
@@ -66,6 +75,18 @@ impl EffectExecutor for UntapEffect {
             let count = outcomes.iter().map(EffectOutcome::count_or_zero).sum();
             let mut outcome = EffectOutcome::aggregate_summing_counts(outcomes);
             outcome.set_value(crate::effect::OutcomeValue::Count(count));
+            for event in &mut outcome.events {
+                if event.simultaneous_batch().is_some() {
+                    continue;
+                }
+                if let Some(untapped) = event.downcast::<crate::events::PermanentUntappedEvent>() {
+                    let mut untapped = untapped.clone();
+                    untapped.actor = Some(actor);
+                    *event = event.with_inner_event(untapped);
+                }
+            }
+            crate::events::other::bind_before_tap_state_snapshots(&mut outcome.events, &before);
+            crate::events::other::group_tap_state_events(game, &mut outcome.events, ctx.provenance);
             if self.target.is_target() && self.target.is_single() {
                 // A legal target resolves even when no untap happens. Preserve
                 // the complete payload while retaining that target policy.
@@ -80,7 +101,10 @@ impl EffectExecutor for UntapEffect {
             Ok(outcome)
         })();
         if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
+            game.restore_execution_checkpoint(
+                checkpoint,
+                result.is_ok() && ctx.decision_maker.awaiting_choice(),
+            );
             context_checkpoint.restore(ctx);
         }
         result
@@ -1095,5 +1119,4 @@ mod resolved_event_tests {
             }
         }
     }
-
 }

@@ -217,6 +217,9 @@ fn watched_permanent(trigger: &TriggerSpec) -> Option<WatchedPermanent> {
         | TriggerSpec::ThisIsDealtDamage
         | TriggerSpec::ThisIsDealtCombatDamage => return Some(WatchedPermanent::Source),
         TriggerSpec::PermanentBecomesTapped(filter)
+        | TriggerSpec::PermanentBecomesTappedOneOrMore(filter)
+        | TriggerSpec::PermanentBecomesUntapped { filter, .. }
+        | TriggerSpec::PlayerChangesTapState { filter, .. }
         | TriggerSpec::Attacks(filter)
         | TriggerSpec::Blocks(filter)
         | TriggerSpec::IsDealtDamage(filter)

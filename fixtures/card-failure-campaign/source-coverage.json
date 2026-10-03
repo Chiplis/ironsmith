@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "f1cc0985981c85dc8ccfe0eddc4ffc3cfcca8ba3",
+  "source_implementation_commit": "1850943fb662aa93edb777b5dba4ec1c5c047385",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 250,
-    "additional_proposed_compile_entries": 250,
+    "additional_proposed_unique_cards": 266,
+    "additional_proposed_compile_entries": 266,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true
   },
@@ -573,6 +573,80 @@
         "incremental candidates revisited after last source leaves, phases, changes control or loses abilities",
         "other state-based death rules and actual granted loyalty activation preserved"
       ]
+    },
+    {
+      "id": "passive-filtered-tap-state-triggers",
+      "stage": 26,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/passive_tap_state_triggers.json.fixture",
+      "baseline_entries": [
+        "Deeproot Pilgrimage",
+        "Rewrite History",
+        "Mesmeric Orb",
+        "Wake Thrasher",
+        "Tui and La, Moon and Ocean"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "1850943fb662aa93edb777b5dba4ec1c5c047385",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Transition snapshots, explicit grouping, actual per-instruction producers and current/exact-departure controller references."
+      ]
+    },
+    {
+      "id": "chosen-tap-untap-cost-selectors",
+      "stage": 26,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/tap_state_cost_selectors.json.fixture",
+      "baseline_entries": [
+        "Benthic Explorers",
+        "Crackleburr",
+        "Halo Fountain",
+        "Earthlore",
+        "Nature's Chosen",
+        "Tourach's Gate",
+        "Krovikan Plague"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "Veteran's Voice",
+          "remaining_blocker": "Target announcement precedes payment, so exclusion of the creature tapped for this cost still needs prospective deterministic cost-object identity binding."
+        },
+        {
+          "card_name": "Fishing Pole",
+          "remaining_blocker": "Grantor identity is typed in the cost; activation legality still needs granted-ability tag context for chosen-object preflight."
+        }
+      ],
+      "implementation_commit": "49303ebd24458d524389514061ef2cca73a204bd",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Typed chosen untap and anchored tap costs, exact state/identity validation, distinct tags and source reservations for T/Q."
+      ]
+    },
+    {
+      "id": "actor-and-untap-step-triggers",
+      "stage": 26,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/actor_tap_step_triggers.json.fixture",
+      "baseline_entries": [
+        "Icewrought Sentry",
+        "Solitary Sanctuary",
+        "Sharae of Numbing Depths",
+        "The Millennium Calendar"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "Agent Maria Hill",
+          "remaining_blocker": "Teamwork cost provenance remains separate."
+        }
+      ],
+      "implementation_commit": "1850943fb662aa93edb777b5dba4ec1c5c047385",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Explicit actor distinct from recipient/controller; shared complete pre/post instruction snapshots.",
+        "Actual turn untaps and convoke/improvise payment producers; separate cost instructions remain separate groups.",
+        "Comma-grouped numbers preserve literal spans; Calendar state threshold uses existing nonintervening state-trigger machinery."
+      ]
     }
   ],
   "cards": [
@@ -1127,7 +1201,7 @@
       "source_families": []
     },
     {
-      "card_name": "Altaïr Ibn-La'Ahad",
+      "card_name": "Alta\u00efr Ibn-La'Ahad",
       "oracle_ids": [
         "43dc4b0c-e437-4abc-a3fb-48bd3098de88"
       ],
@@ -1329,7 +1403,7 @@
       "source_families": []
     },
     {
-      "card_name": "Andúril, Flame of the West",
+      "card_name": "And\u00faril, Flame of the West",
       "oracle_ids": [
         "e6521404-8474-4727-b2d0-537d15d8a63f"
       ],
@@ -1845,7 +1919,7 @@
       "source_families": []
     },
     {
-      "card_name": "Arna Kennerüd, Skycaptain",
+      "card_name": "Arna Kenner\u00fcd, Skycaptain",
       "oracle_ids": [
         "436e7548-f8d5-43af-947d-b382da0d19b3"
       ],
@@ -3029,8 +3103,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "chosen-tap-untap-cost-selectors"
+      ]
     },
     {
       "card_name": "Berserker's Frenzy",
@@ -4027,7 +4103,7 @@
       "source_families": []
     },
     {
-      "card_name": "Bösium Strip",
+      "card_name": "B\u00f6sium Strip",
       "oracle_ids": [
         "2fa6f1b1-00af-433f-b8e1-36db99cd9bba"
       ],
@@ -5937,8 +6013,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "chosen-tap-untap-cost-selectors"
+      ]
     },
     {
       "card_name": "Crackling Emergence",
@@ -6495,7 +6573,7 @@
       "source_families": []
     },
     {
-      "card_name": "Círdan the Shipwright",
+      "card_name": "C\u00edrdan the Shipwright",
       "oracle_ids": [
         "063e05b0-554f-4b55-9feb-e11f3927f3a6"
       ],
@@ -6838,8 +6916,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "passive-filtered-tap-state-triggers"
+      ]
     },
     {
       "card_name": "Deepway Navigator",
@@ -8178,7 +8258,7 @@
       "source_families": []
     },
     {
-      "card_name": "Dúnedain Rangers",
+      "card_name": "D\u00fanedain Rangers",
       "oracle_ids": [
         "7de2a364-4383-437a-b6d6-55e4721a0141"
       ],
@@ -8214,8 +8294,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "chosen-tap-untap-cost-selectors"
+      ]
     },
     {
       "card_name": "Earthshape",
@@ -10190,8 +10272,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "chosen-tap-untap-cost-selectors"
+      ]
     },
     {
       "card_name": "Flamerush Rider",
@@ -10828,7 +10913,7 @@
       "source_families": []
     },
     {
-      "card_name": "Galadriel of Lothlórien",
+      "card_name": "Galadriel of Lothl\u00f3rien",
       "oracle_ids": [
         "8d3c9646-2b6b-4315-939d-5a920efc0a60"
       ],
@@ -12462,8 +12547,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "chosen-tap-untap-cost-selectors"
+      ]
     },
     {
       "card_name": "Halsin, Emerald Archdruid",
@@ -13546,8 +13633,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "actor-and-untap-step-triggers"
+      ]
     },
     {
       "card_name": "Ichor Elixir",
@@ -14916,7 +15005,7 @@
       "source_families": []
     },
     {
-      "card_name": "Jötun Grunt",
+      "card_name": "J\u00f6tun Grunt",
       "oracle_ids": [
         "43fbfeec-bcaf-48b8-befe-b7346fec5a3a"
       ],
@@ -15436,7 +15525,7 @@
       "source_families": []
     },
     {
-      "card_name": "Khârn the Betrayer",
+      "card_name": "Kh\u00e2rn the Betrayer",
       "oracle_ids": [
         "3246eff5-8739-469f-a401-e5de927dd6bb"
       ],
@@ -15936,8 +16025,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "chosen-tap-untap-cost-selectors"
+      ]
     },
     {
       "card_name": "Krovikan Sorcerer",
@@ -16604,7 +16695,7 @@
       "source_families": []
     },
     {
-      "card_name": "Lim-Dûl's Vault",
+      "card_name": "Lim-D\u00fbl's Vault",
       "oracle_ids": [
         "3f8e7a45-4c6e-4ee6-93d0-b7de9715ec97"
       ],
@@ -16850,7 +16941,7 @@
       "source_families": []
     },
     {
-      "card_name": "Lord of the Nazgûl",
+      "card_name": "Lord of the Nazg\u00fbl",
       "oracle_ids": [
         "2e94bfb2-9f7d-43af-8995-6cd5ffb15b21"
       ],
@@ -17840,8 +17931,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "passive-filtered-tap-state-triggers"
+      ]
     },
     {
       "card_name": "Metamorphic Alteration",
@@ -19020,8 +19113,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "chosen-tap-untap-cost-selectors"
+      ]
     },
     {
       "card_name": "Nature's Revolt",
@@ -19046,7 +19141,7 @@
       "source_families": []
     },
     {
-      "card_name": "Nazgûl",
+      "card_name": "Nazg\u00fbl",
       "oracle_ids": [
         "48a62778-7c11-486f-a0e1-020c283a7ef9"
       ],
@@ -19738,7 +19833,7 @@
       "source_families": []
     },
     {
-      "card_name": "Oath of Lim-Dûl",
+      "card_name": "Oath of Lim-D\u00fbl",
       "oracle_ids": [
         "64e163c2-2378-4e4c-aefe-5e0d2fd19988"
       ],
@@ -22416,7 +22511,7 @@
       "source_families": []
     },
     {
-      "card_name": "Ratonhnhaké꞉ton",
+      "card_name": "Ratonhnhak\u00e9\ua789ton",
       "oracle_ids": [
         "a37f8381-83a4-4b6b-8176-c90f6a61da74"
       ],
@@ -23022,8 +23117,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "passive-filtered-tap-state-triggers"
+      ]
     },
     {
       "card_name": "Rewrite Regrets",
@@ -23158,7 +23255,7 @@
       "source_families": []
     },
     {
-      "card_name": "Ring of Ma'rûf",
+      "card_name": "Ring of Ma'r\u00fbf",
       "oracle_ids": [
         "c79b9187-cbfe-43a0-bdc8-4f7e0d215607"
       ],
@@ -24754,8 +24851,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "actor-and-untap-step-triggers"
+      ]
     },
     {
       "card_name": "Share the Spoils",
@@ -25832,8 +25931,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "actor-and-untap-step-triggers"
+      ]
     },
     {
       "card_name": "Soltari Guerrillas",
@@ -28662,8 +28763,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "actor-and-untap-step-triggers"
+      ]
     },
     {
       "card_name": "The Mindskinner",
@@ -29697,8 +29800,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "chosen-tap-untap-cost-selectors"
+      ]
     },
     {
       "card_name": "Tovolar, Dire Overlord // Tovolar, the Midnight Scourge",
@@ -30009,8 +30114,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "passive-filtered-tap-state-triggers"
+      ]
     },
     {
       "card_name": "Tundra Fumarole",
@@ -30967,8 +31074,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "chosen-tap-untap-cost-selectors"
+      ]
     },
     {
       "card_name": "Vexing Arcanix",
@@ -31502,8 +31612,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "passive-filtered-tap-state-triggers"
+      ]
     },
     {
       "card_name": "Waking the Trolls",
@@ -33463,7 +33575,7 @@
       "source_families": []
     },
     {
-      "card_name": "Éowyn, Lady of Rohan",
+      "card_name": "\u00c9owyn, Lady of Rohan",
       "oracle_ids": [
         "1ee3753c-3b6e-4182-9305-2ab757f485f0"
       ],

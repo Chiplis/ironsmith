@@ -62,6 +62,10 @@ pub enum ActivationCostSegmentCst {
         filter: ObjectFilter,
     },
     Untap,
+    UntapChosen {
+        count: ChoiceCount,
+        filter: ObjectFilter,
+    },
     Forage,
     Life(Value),
     Energy(u32),
@@ -185,6 +189,7 @@ pub enum ActivationCostSegmentKind {
     Sacrifice,
     Unattach,
     TapChosen,
+    UntapChosen,
     Behold,
     Blight,
     Forage,
@@ -229,22 +234,11 @@ pub fn parse_activation_cost_segment_kind_lexed<'a>(
         "exert" => ActivationCostSegmentKind::Exert,
         "put" => ActivationCostSegmentKind::PutCounter,
         "remove" => ActivationCostSegmentKind::RemoveCounter,
-        "tap" if token_words_include(&tokens, "untapped") => ActivationCostSegmentKind::TapChosen,
+        "tap" if tokens.len() > 1 => ActivationCostSegmentKind::TapChosen,
+        "untap" if tokens.len() > 1 => ActivationCostSegmentKind::UntapChosen,
         _ => ActivationCostSegmentKind::BareSymbol,
     };
     Ok(kind)
-}
-
-fn token_words_include(tokens: &[&OwnedLexToken], expected: &str) -> bool {
-    for token in tokens {
-        if token
-            .as_word()
-            .is_some_and(|word| word.eq_ignore_ascii_case(expected))
-        {
-            return true;
-        }
-    }
-    false
 }
 
 #[cfg(test)]

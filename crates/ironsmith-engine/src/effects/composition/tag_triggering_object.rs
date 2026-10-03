@@ -138,6 +138,8 @@ impl EffectExecutor for TagTriggeringObjectEffect {
             .is_some()
         {
             Some(ironsmith_core::ATTACKING_GROUP_TAG)
+        } else if matches!(event.kind(), crate::events::EventKind::PermanentTapped | crate::events::EventKind::PermanentUntapped) {
+            Some(ironsmith_core::TAP_STATE_GROUP_TAG)
         } else if event
             .downcast::<crate::events::other::CardDiscardedEvent>()
             .is_some()

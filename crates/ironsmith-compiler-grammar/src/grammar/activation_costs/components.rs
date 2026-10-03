@@ -141,6 +141,7 @@ fn parse_activation_cost_segment_tokens(
             }))
         }
         ActivationCostSegmentKind::TapChosen => Some(parse_tap_chosen_segment_tokens(tokens)),
+        ActivationCostSegmentKind::UntapChosen => Some(parse_untap_chosen_segment_tokens(tokens)),
         ActivationCostSegmentKind::Behold => Some(parse_behold_segment_tokens(tokens)),
         ActivationCostSegmentKind::Blight => Some(parse_blight_segment_tokens(tokens)),
         ActivationCostSegmentKind::Forage => Some(parse_forage_segment_tokens(tokens)),

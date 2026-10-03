@@ -510,8 +510,28 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::ThisMutates => Trigger::this_mutates(),
         TriggerSpec::ThisBecomesMonstrous => Trigger::this_becomes_monstrous(),
         TriggerSpec::ThisClassBecomesLevel(level) => Trigger::class_becomes_level(level),
+        TriggerSpec::PlayerChangesTapState { player, filter, tapped, one_or_more, during_untap_step } => {
+            Trigger::player_changes_tap_state(player, filter, tapped, one_or_more, during_untap_step)
+        }
         TriggerSpec::ThisBecomesTapped => Trigger::becomes_tapped(),
         TriggerSpec::PermanentBecomesTapped(filter) => Trigger::permanent_becomes_tapped(filter),
+        TriggerSpec::PermanentBecomesTappedOneOrMore(filter) => {
+            let display = format!(
+                "Whenever {} become tapped", one_or_more_subject_description(&filter),
+            );
+            Trigger::permanent_becomes_tapped_one_or_more(filter).with_display_label(display)
+        }
+        TriggerSpec::PermanentBecomesUntapped { filter, one_or_more } => {
+            let display = one_or_more.then(|| format!(
+                "Whenever {} become untapped", one_or_more_subject_description(&filter),
+            ));
+            let trigger = Trigger::permanent_becomes_untapped(filter, one_or_more);
+            if let Some(display) = display {
+                trigger.with_display_label(display)
+            } else {
+                trigger
+            }
+        }
         TriggerSpec::ThisBecomesUntapped => Trigger::becomes_untapped(),
         TriggerSpec::ThisTurnedFaceUp => Trigger::this_is_turned_face_up(),
         TriggerSpec::TurnedFaceUp(filter) => Trigger::turned_face_up(filter),
@@ -1539,6 +1559,7 @@ pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec
             | TriggerSpec::CounterRemovedFrom { .. }
             | TriggerSpec::TokensCreated { .. }
             | TriggerSpec::EntersBattlefieldOneOrMore { .. } => true,
+            TriggerSpec::PlayerChangesTapState { .. } => matches!(spec, EventValueSpec::Amount),
             TriggerSpec::PutIntoExileFromZones { one_or_more, .. } => *one_or_more,
             TriggerSpec::PlayerDiscardsCard { one_or_more, .. } => *one_or_more,
             TriggerSpec::StateBased { .. } => false,

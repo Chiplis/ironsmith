@@ -1390,34 +1390,47 @@ impl TargetOnlyEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct TapEffect {
     pub target: ChooseSpec,
+    /// Explicit actor of the instruction. Absent means the effect controller
+    /// (or cost payer); it is independent from the recipient's controller.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub actor: Option<PlayerFilter>,
 }
 
 impl TapEffect {
+    pub fn with_actor(mut self, actor: Option<PlayerFilter>) -> Self {
+        self.actor = actor;
+        self
+    }
+
     pub fn with_spec(target: ChooseSpec) -> Self {
-        Self { target }
+        Self { target, actor: None }
     }
 
     pub fn target(target: ChooseSpec) -> Self {
         Self {
             target: ChooseSpec::target(target),
+            actor: None,
         }
     }
 
     pub fn targets(target: ChooseSpec, count: ChoiceCount) -> Self {
         Self {
             target: ChooseSpec::target(target).with_count(count),
+            actor: None,
         }
     }
 
     pub fn all(filter: ObjectFilter) -> Self {
         Self {
             target: ChooseSpec::all(filter),
+            actor: None,
         }
     }
 
     pub fn source() -> Self {
         Self {
             target: ChooseSpec::Source,
+            actor: None,
         }
     }
 }
@@ -1426,28 +1439,40 @@ impl TapEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct UntapEffect {
     pub target: ChooseSpec,
+    /// Explicit actor of the instruction. Absent means the effect controller
+    /// (or cost payer); it is independent from the recipient's controller.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub actor: Option<PlayerFilter>,
 }
 
 impl UntapEffect {
+    pub fn with_actor(mut self, actor: Option<PlayerFilter>) -> Self {
+        self.actor = actor;
+        self
+    }
+
     pub fn with_spec(target: ChooseSpec) -> Self {
-        Self { target }
+        Self { target, actor: None }
     }
 
     pub fn target(target: ChooseSpec) -> Self {
         Self {
             target: ChooseSpec::target(target),
+            actor: None,
         }
     }
 
     pub fn targets(target: ChooseSpec, count: ChoiceCount) -> Self {
         Self {
             target: ChooseSpec::target(target).with_count(count),
+            actor: None,
         }
     }
 
     pub fn all(filter: ObjectFilter) -> Self {
         Self {
             target: ChooseSpec::all(filter),
+            actor: None,
         }
     }
 }

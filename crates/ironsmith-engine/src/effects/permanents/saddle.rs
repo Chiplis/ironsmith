@@ -230,13 +230,14 @@ impl EffectExecutor for SaddleCostEffect {
             ));
         }
 
+        let before = crate::events::other::before_tap_state_snapshots(game);
         let mut events = Vec::new();
         let saddle_count = chosen.len();
         for id in &chosen {
             if game.object(*id).is_some() && !game.is_tapped(*id) {
                 game.tap(*id);
                 events.push(TriggerEvent::new_with_provenance(
-                    PermanentTappedEvent::new(*id),
+                    PermanentTappedEvent::capture(game, *id, Some(ctx.controller)),
                     ctx.provenance,
                 ));
                 events.push(keyword_saddle_event(
@@ -249,6 +250,9 @@ impl EffectExecutor for SaddleCostEffect {
                 ));
             }
         }
+
+        crate::events::other::bind_before_tap_state_snapshots(&mut events, &before);
+        crate::events::other::group_tap_state_events(game, &mut events, ctx.provenance);
 
         // Record saddle contributors for "saddled it this turn" references.
         let entry = game

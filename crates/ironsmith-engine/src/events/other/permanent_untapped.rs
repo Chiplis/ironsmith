@@ -14,12 +14,62 @@ use crate::snapshot::ObjectSnapshot;
 pub struct PermanentUntappedEvent {
     /// The permanent that became untapped
     pub permanent: ObjectId,
+    /// Characteristics when the state transition completed.
+    pub snapshot: Option<ObjectSnapshot>,
+    /// Player performing the action, if the producer explicitly knows it.
+    pub actor: Option<PlayerId>,
+    /// Recipient before the action; active "you tap an untapped creature"
+    /// clauses qualify this state, while passive clauses use `snapshot`.
+    pub before_snapshot: Option<ObjectSnapshot>,
+    /// Empty outside an untap step; shared team turns retain all step players.
+    pub untap_step_players: Vec<PlayerId>,
 }
 
 impl PermanentUntappedEvent {
     /// Create a new permanent untapped event.
     pub fn new(permanent: ObjectId) -> Self {
-        Self { permanent }
+        Self {
+            permanent,
+            snapshot: None,
+            actor: None,
+            before_snapshot: None,
+            untap_step_players: Vec::new(),
+        }
+    }
+
+    /// Capture a completed transition at its producer, before later effects
+    /// can change its characteristics or controller.
+    pub fn capture(game: &GameState, permanent: ObjectId, actor: Option<PlayerId>) -> Self {
+        Self {
+            permanent,
+            snapshot: game.object(permanent).map(|object| {
+                ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
+            }),
+            actor,
+            before_snapshot: None,
+            untap_step_players: if game.turn.phase == crate::game_state::Phase::Beginning
+                && game.turn.step == Some(crate::game_state::Step::Untap)
+            {
+                game.turn_players()
+            } else {
+                Vec::new()
+            },
+        }
+    }
+
+    pub fn with_before_snapshot(mut self, snapshot: ObjectSnapshot) -> Self {
+        self.before_snapshot = Some(snapshot);
+        self
+    }
+
+    pub fn with_snapshot(mut self, snapshot: ObjectSnapshot) -> Self {
+        self.snapshot = Some(snapshot);
+        self
+    }
+
+    pub fn with_actor(mut self, actor: PlayerId) -> Self {
+        self.actor = Some(actor);
+        self
     }
 }
 
@@ -51,7 +101,7 @@ impl GameEventType for PermanentUntappedEvent {
     }
 
     fn player(&self) -> Option<PlayerId> {
-        None
+        self.actor
     }
 
     fn controller(&self) -> Option<PlayerId> {
@@ -59,7 +109,7 @@ impl GameEventType for PermanentUntappedEvent {
     }
 
     fn snapshot(&self) -> Option<&ObjectSnapshot> {
-        None
+        self.snapshot.as_ref()
     }
 }
 

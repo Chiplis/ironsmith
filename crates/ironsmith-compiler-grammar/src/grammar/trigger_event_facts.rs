@@ -211,6 +211,8 @@ fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
         | TriggerSpec::BecomesBlocked(filter)
         | TriggerSpec::ThisBecomesBlockedByObject(filter)
         | TriggerSpec::PermanentBecomesTapped(filter)
+        | TriggerSpec::PermanentBecomesTappedOneOrMore(filter)
+        | TriggerSpec::PermanentBecomesUntapped { filter, .. }
         | TriggerSpec::TurnedFaceUp(filter)
         | TriggerSpec::BecomesTargeted(filter)
         | TriggerSpec::ThisBecomesTargetedBySpell(filter)
@@ -240,6 +242,7 @@ fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
             filter: Some(filter),
             ..
         }
+        | TriggerSpec::PlayerChangesTapState { filter, .. }
         | TriggerSpec::EntersBattlefield { filter, .. }
         | TriggerSpec::EntersBattlefieldOneOrMore { filter, .. }
         | TriggerSpec::EntersBattlefieldFromZone { filter, .. }
@@ -358,6 +361,9 @@ fn triggering_object_cardinality(trigger: &TriggerSpec) -> Option<Cardinality> {
         | TriggerSpec::YouDrawCard
         | TriggerSpec::DayNightChanged
         | TriggerSpec::StateBased { .. } => None,
+        TriggerSpec::PlayerChangesTapState { one_or_more: true, .. }
+        | TriggerSpec::PermanentBecomesTappedOneOrMore(_)
+        | TriggerSpec::PermanentBecomesUntapped { one_or_more: true, .. } => Some(Cardinality::OneOrMore),
         TriggerSpec::AttacksOneOrMore(_)
         | TriggerSpec::AttacksOneOrMoreWithMinTotal { .. }
         | TriggerSpec::AttacksOneOrMoreWithExactTotal { .. }

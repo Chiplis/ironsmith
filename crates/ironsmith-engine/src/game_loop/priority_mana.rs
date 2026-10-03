@@ -338,6 +338,8 @@ fn execute_planned_keyword_payments(
     // CR 702.66a / 603.2c: the cards exiled with delve leave the graveyard
     // together, as one event ("whenever one or more cards leave your
     // graveyard").
+    let before = crate::events::other::before_tap_state_snapshots(game);
+    let mut tapped_events = Vec::new();
     let opened_batch = game.open_simultaneous_action();
     let result = (|| -> Result<(), GameLoopError> {
         for allocation in &payment.plan.allocations {
@@ -378,7 +380,9 @@ fn execute_planned_keyword_payments(
                     "planned {effect:?} permanent {permanent_id:?} is no longer available"
                 )));
             }
-            tap_permanent_with_trigger(game, trigger_queue, permanent_id);
+            if let Some(event) = tap_permanent_with_trigger(game, permanent_id, pending.caster) {
+                tapped_events.push(event);
+            }
             let event_provenance = game
                 .provenance_graph_mut()
                 .alloc_root_event(crate::events::EventKind::KeywordAction);
@@ -404,6 +408,11 @@ fn execute_planned_keyword_payments(
         }
         Ok(())
     })();
+    if result.is_ok() {
+        crate::events::other::bind_before_tap_state_snapshots(&mut tapped_events, &before);
+        crate::events::other::group_tap_state_events(game, &mut tapped_events, pending.provenance);
+        for event in tapped_events { game.queue_trigger_event(event.provenance(), event); }
+    }
     game.close_simultaneous_action(opened_batch);
     result?;
     drain_pending_trigger_events(game, trigger_queue);

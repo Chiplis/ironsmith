@@ -1,0 +1,34 @@
+[
+  {
+    "name": "Icewrought Sentry",
+    "text": "Mana cost: {2}{U}\nType: Creature \u2014 Elemental Soldier\nPower/Toughness: 2/3\nVigilance\nWhenever this creature attacks, you may pay {1}{U}. When you do, tap target creature an opponent controls.\nWhenever you tap an untapped creature an opponent controls, this creature gets +2/+1 until end of turn.",
+    "oracle_id": "0828d891-f7c3-4e51-b42e-6ce88d48ac8b",
+    "source": "https://scryfall.com/card/woe/55/icewrought-sentry?utm_source=api",
+    "baseline_content_hash": "53a36acda4bd763b9a7fd57f042cd552a5116ce85addd5f37a8f7d18b9235f71",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever you tap an untapped creature an opponent controls, this creature gets +2/+1 until end of turn.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever you tap an untapped creature an opponent controls, this creature gets +2/+1 until end of turn.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Solitary Sanctuary",
+    "text": "Mana cost: {2}{W}\nType: Enchantment\nWhen this enchantment enters, tap target creature an opponent controls and put a stun counter on it. (If a permanent with a stun counter would become untapped, remove one from it instead.)\nWhenever you tap an untapped creature an opponent controls, put a +1/+1 counter on target creature you control.",
+    "oracle_id": "4c0a8eed-f2e2-4821-8011-6e6ad2081936",
+    "source": "https://scryfall.com/card/woe/30/solitary-sanctuary?utm_source=api",
+    "baseline_content_hash": "824fb5ba9ec4572a590439532711a3d261ce1f91930b3d6e6c2e351b519e7507",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever you tap an untapped creature an opponent controls, put a +1/+1 counter on target creature you control.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever you tap an untapped creature an opponent controls, put a +1/+1 counter on target creature you control.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Sharae of Numbing Depths",
+    "text": "Mana cost: {2}{W}{U}\nType: Legendary Creature \u2014 Merfolk Wizard\nPower/Toughness: 2/3\nWhen Sharae enters, tap target creature an opponent controls and put a stun counter on it. (If a permanent with a stun counter would become untapped, remove one from it instead.)\nWhenever you tap one or more untapped creatures your opponents control, draw a card. This ability triggers only once each turn.",
+    "oracle_id": "c736935a-e006-4a67-b942-e8ccf1cd9abb",
+    "source": "https://scryfall.com/card/woe/213/sharae-of-numbing-depths?utm_source=api",
+    "baseline_content_hash": "cb33bfdabb5720e39473930567a3c1925e5ee3b3cda26d7d8c57fb4a75d638a8",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever you tap one or more untapped creatures your opponents control, draw a card. This ability triggers only once each turn.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever you tap one or more untapped creatures your opponents control, draw a card. This ability triggers only once each turn.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "The Millennium Calendar",
+    "text": "Mana cost: {1}\nType: Legendary Artifact\nWhenever you untap one or more permanents during your untap step, put that many time counters on The Millennium Calendar.\n{2}, {T}: Double the number of time counters on The Millennium Calendar.\nWhen there are 1,000 or more time counters on The Millennium Calendar, sacrifice it and each opponent loses 1,000 life.",
+    "oracle_id": "1f250443-8d5e-46c9-920e-8e9373780e32",
+    "source": "https://scryfall.com/card/plci/257s/the-millennium-calendar?utm_source=api",
+    "baseline_content_hash": "93e82fee0a1ddc5d54a2053968d715159e2361f03c827392c3c30cbd5460d11e",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever you untap one or more permanents during your untap step, put that many time counters on The Millennium Calendar.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever you untap one or more permanents during your untap step, put that many time counters on The Millennium Calendar.' [rule-path=statement-line > triggered-line]"
+  }
+]

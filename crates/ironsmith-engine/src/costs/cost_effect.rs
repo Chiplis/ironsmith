@@ -303,6 +303,37 @@ fn tagged_choice_consumer_cost_precheck(
     }
 }
 
+/// A written tap/untap cost needs an actual state change on each selected
+/// current object. The choice handles its count and filter; it does not impose
+/// the source-symbol summoning-sickness rule on these chosen permanents.
+fn tagged_tap_state_cost_precheck(
+    effect: &Effect,
+    game: &GameState,
+    ctx: &CostContext,
+) -> Option<Result<(), CostPaymentError>> {
+    let effect = transparent_cost_effect(effect);
+    let (spec, tapped_after) = if let Some(tap) = effect.downcast_ref::<crate::effects::TapEffect>() {
+        (&tap.target, true)
+    } else if let Some(untap) = effect.downcast_ref::<crate::effects::UntapEffect>() {
+        (&untap.target, false)
+    } else { return None; };
+    let crate::target::ChooseSpec::Tagged(tag) = spec.base() else { return None; };
+    let Some(selected) = ctx.tagged_objects.get(tag.as_str()) else {
+        return Some(Err(CostPaymentError::Other("tap-state cost has no chosen objects".into())));
+    };
+    let valid = selected.iter().all(|snapshot| {
+        game.object(snapshot.object_id).is_some_and(|object| {
+            object.zone == crate::zone::Zone::Battlefield
+                && !game.is_phased_out(object.id)
+                && game.is_tapped(object.id) != tapped_after
+                && (tapped_after || game.can_untap(object.id))
+        })
+    });
+    Some(if valid { Ok(()) } else {
+        Err(CostPaymentError::Other("chosen objects cannot pay the tap-state cost".into()))
+    })
+}
+
 fn dynamic_counter_removal_cost_precheck(
     effect: &Effect,
     game: &GameState,
@@ -431,6 +462,9 @@ impl CostPayer for CostEffect {
         if let Some(result) = tagged_unattach_cost_precheck(&self.effect, game, ctx) {
             return result;
         }
+        if let Some(result) = tagged_tap_state_cost_precheck(&self.effect, game, ctx) {
+            return result;
+        }
         if let Some(result) = tagged_choice_consumer_cost_precheck(&self.effect, game, ctx) {
             return result;
         }
@@ -476,6 +510,8 @@ impl CostPayer for CostEffect {
         } else if let Some(result) = tagged_exile_cost_precheck(&self.effect, game, ctx) {
             result?;
         } else if let Some(result) = tagged_unattach_cost_precheck(&self.effect, game, ctx) {
+            result?;
+        } else if let Some(result) = tagged_tap_state_cost_precheck(&self.effect, game, ctx) {
             result?;
         } else if let Some(result) = tagged_choice_consumer_cost_precheck(&self.effect, game, ctx) {
             result?;

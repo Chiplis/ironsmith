@@ -1162,7 +1162,13 @@ pub fn bind_implicit_player_context(effect: &mut EffectAst, player: PlayerAst) {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             subject,
             action: SubjectVerbActionAst::Stack(StackActionAst::RetargetStackObject { .. })
-                | SubjectVerbActionAst::Control(ControlActionAst::GainControl { .. }),
+                | SubjectVerbActionAst::Control(ControlActionAst::GainControl { .. })
+                | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap { .. })
+                | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapAll { .. })
+                | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapOrUntap { .. })
+                | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapOrUntapAll { .. })
+                | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Untap { .. })
+                | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::UntapAll { .. }),
         }) => {
             if matches!(subject.player, PlayerAst::Implicit) {
                 subject.player = player;

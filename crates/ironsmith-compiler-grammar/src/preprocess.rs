@@ -945,8 +945,9 @@ fn replace_names_with_map(
         };
         // "{T}, Sacrifice Blazing Torch:" also names the granting attachment:
         // the equipped creature is the ability's source, and the cost
-        // sacrifices the Equipment.
-        if verb == b"sacrifice" {
+        // sacrifices the Equipment. Written tap/untap costs name that same
+        // granting object, while {T}/{Q} still refer to the ability's source.
+        if matches!(verb, b"sacrifice" | b"tap" | b"untap") {
             return true;
         }
         let rest = &bytes[idx + len..];

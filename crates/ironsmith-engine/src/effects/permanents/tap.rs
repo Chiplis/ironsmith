@@ -33,6 +33,13 @@ impl EffectExecutor for TapEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let actor = self
+            .actor
+            .as_ref()
+            .map(|actor| crate::effects::helpers::resolve_player_filter(game, actor, ctx))
+            .transpose()?
+            .unwrap_or(ctx.controller);
+        let before = crate::events::other::before_tap_state_snapshots(game);
         let mut events = Vec::new();
         let mut tapped_objects = Vec::new();
         let mut tapped_object_memory = Vec::new();
@@ -60,7 +67,7 @@ impl EffectExecutor for TapEffect {
                         tapped_object_memory.push(memory);
                     }
                     events.push(TriggerEvent::new_with_provenance(
-                        PermanentTappedEvent::new(object_id),
+                        PermanentTappedEvent::capture(game, object_id, Some(actor)),
                         provenance,
                     ));
                     Ok(true)
@@ -70,6 +77,8 @@ impl EffectExecutor for TapEffect {
             },
         )?;
 
+        crate::events::other::bind_before_tap_state_snapshots(&mut events, &before);
+        crate::events::other::group_tap_state_events(game, &mut events, provenance);
         let mut outcome = apply_result.outcome.with_events(events);
         if !tapped_objects.is_empty() {
             outcome = outcome

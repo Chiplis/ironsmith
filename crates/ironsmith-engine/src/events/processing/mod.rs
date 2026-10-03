@@ -2852,10 +2852,15 @@ fn commit_resolved_untap_event(
                 if !game.is_tapped(untap.permanent) {
                     return Ok(EffectOutcome::count(0));
                 }
+                let before = game.object(untap.permanent).map(|object| {
+                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
+                });
                 game.untap(untap.permanent);
+                let mut notification = crate::events::PermanentUntappedEvent::capture(game, untap.permanent, Some(ctx.controller));
+                notification.before_snapshot = before;
                 Ok(EffectOutcome::count(1).with_event(
                     crate::triggers::TriggerEvent::new_with_provenance(
-                        crate::events::PermanentUntappedEvent::new(untap.permanent),
+                        notification,
                         event.provenance(),
                     ),
                 ))

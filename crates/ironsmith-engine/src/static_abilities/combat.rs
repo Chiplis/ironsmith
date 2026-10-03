@@ -863,7 +863,8 @@ impl StaticAbilityKind for EnlistAttack {
             .provenance_graph_mut()
             .alloc_root_event(EventKind::PermanentTapped);
         let tap_event = TriggerEvent::new_with_provenance(
-            crate::events::PermanentTappedEvent::new(enlisted),
+            crate::events::PermanentTappedEvent::capture(game, enlisted, Some(controller))
+                .with_before_snapshot(enlisted_snapshot.clone()),
             provenance,
         );
         game.queue_trigger_event(provenance, tap_event.clone());
