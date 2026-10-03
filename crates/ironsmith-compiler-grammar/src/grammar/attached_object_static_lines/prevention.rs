@@ -40,12 +40,14 @@ pub struct RemoveCounterPreventionSpec<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PutCounterPreventionSpec<'a> {
     General {
+        prevents_damage: bool,
         condition_tokens: Option<&'a [OwnedLexToken]>,
         display_prefix_tokens: &'a [OwnedLexToken],
         effect_tokens: &'a [OwnedLexToken],
     },
     Noncombat,
     CreatureCombat,
+    PerPreventedAmount { counter_type: CounterType },
 }
 
 pub fn parse_remove_counter_prevention_tokens(
@@ -67,6 +69,7 @@ pub fn parse_put_counter_prevention_tokens(
             parse_general_put_counter_prevention_lexed,
             parse_noncombat_put_counter_prevention_lexed,
             parse_creature_combat_put_counter_prevention_lexed,
+            parse_per_prevented_amount_counter_prevention_lexed,
         )),
         "put-counter damage prevention",
     )
@@ -85,8 +88,11 @@ fn parse_remove_counter_prevention_lexed<'a>(
 fn parse_standard_remove_counter_prevention_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<RemoveCounterPreventionSpec<'a>> {
-    semantic_phrase(&["if", "damage", "would", "be", "dealt", "to"]).parse_next(input)?;
-    parse_this_source(input)?;
+    alt((
+        (semantic_phrase(&["if", "damage", "would", "be", "dealt", "to"]), parse_this_source).void(),
+        (semantic_kw("if"), parse_this_source,
+            semantic_phrase(&["would", "be", "dealt", "damage"])).void(),
+    )).parse_next(input)?;
     let condition_tokens = if peek(semantic_kw("while")).parse_next(input).is_ok() {
         semantic_kw("while").parse_next(input)?;
         let condition_tokens =
@@ -274,5 +280,5 @@ use counter_programs::parse_counter_destination;
 mod combat_programs;
 use combat_programs::{
     parse_creature_combat_put_counter_prevention_lexed, parse_general_put_counter_prevention_lexed,
-    parse_noncombat_put_counter_prevention_lexed,
+    parse_noncombat_put_counter_prevention_lexed, parse_per_prevented_amount_counter_prevention_lexed,
 };

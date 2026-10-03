@@ -144,6 +144,7 @@ pub(super) fn apply_trait_replacement(
                 },
                 damage.with_amount(prevented),
                 event.provenance(),
+                event.source_snapshot(),
             );
             if prevented > 0 {
                 TraitApplyResult::Modified(event.rewrap(damage.reduced(prevented)))
@@ -152,7 +153,8 @@ pub(super) fn apply_trait_replacement(
             }
         }
 
-        ReplacementAction::PreventDamageThen(effects) => {
+        ReplacementAction::PreventDamageThen(effects)
+        | ReplacementAction::PreventDamageThenFromProposedAmount(effects) => {
             let Some(damage) =
                 crate::events::downcast_event::<crate::events::DamageEvent>(event.inner()).cloned()
             else {
@@ -175,8 +177,11 @@ pub(super) fn apply_trait_replacement(
                     targets: Vec::new(),
                     target_assignments: Vec::new(),
                 },
-                damage.with_amount(prevented),
+                damage.with_amount(if matches!(&effect.replacement,
+                    ReplacementAction::PreventDamageThenFromProposedAmount(_))
+                { damage.amount } else { prevented }),
                 event.provenance(),
+                event.source_snapshot(),
             );
             if prevented > 0 {
                 TraitApplyResult::Prevented
@@ -206,6 +211,7 @@ pub(super) fn apply_trait_replacement(
                     follow_up,
                     follow_up_damage,
                     event.provenance(),
+                    event.source_snapshot(),
                 );
             }
             let prevented = damage.amount.saturating_sub(result.remaining);
@@ -2056,13 +2062,19 @@ fn queue_prevention_follow_up(
     follow_up: crate::prevention::PreventionFollowUp,
     damage: crate::events::DamageEvent,
     provenance: crate::provenance::ProvNodeId,
+    event_source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
 ) {
+    let damage_source_snapshot = game.object(damage.source)
+        .filter(|_| !game.is_phased_out(damage.source))
+        .map(|object| crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
+        .or_else(|| event_source_snapshot.filter(|snapshot| snapshot.object_id == damage.source).cloned())
+        .or_else(|| game.turn_store.turn_history.departed_object_snapshot(damage.source).cloned());
     let source_snapshot = game.object(follow_up.source)
         .filter(|_| !game.is_phased_out(follow_up.source))
         .map(|object| crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
         .or_else(|| game.turn_store.turn_history.departed_object_snapshot(follow_up.source).cloned());
-    game.effect_store.prevention_effects.queue_follow_up_with_source_snapshot(
-        follow_up, damage, provenance, source_snapshot,
+    game.effect_store.prevention_effects.queue_follow_up_with_snapshots(
+        follow_up, damage, provenance, source_snapshot, damage_source_snapshot,
     );
 }
 

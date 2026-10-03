@@ -228,7 +228,7 @@ pub use static_ability_model::{
     GrantObjectAbilityForFilter, GraveyardCountMetric, IntrinsicStartingCounter, LandwalkKind, OptionalLifeAdditionalCost,
     PowerToughnessChoiceOption, PregameActionKind, PregameBeginOnBattlefieldSpec,
     PregameRevealFromOpeningHandSpec, PreventAllDamageToSelfFromSourcesMatchingSpec,
-    PreventMatchingDamageSpec, StaticDamagePreventionAmount,
+    PreventMatchingDamageSpec, StaticDamagePreventionAmount, StaticDamagePreventionFollowUp, PreventionFollowUpAmount,
     RemoveCardTypesForFilter, SetColorsForFilter, SpliceQuality, SpliceSpec, StaticAbility,
     StaticAbilityPayload, StaticAbilityVariantSelector, StaticDamageSourceRelation,
     ThisSpellCastRestrictionKind, ThisSpellCostReduction, ThisSpellCostReductionManaCost,

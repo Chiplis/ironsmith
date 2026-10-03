@@ -684,6 +684,8 @@ pub struct FilteredDamagePreventionShape<'a> {
     pub combat_only: bool,
     pub noncombat_only: bool,
     pub maximum_damage: Option<u32>,
+    /// An explicitly repeated "that spell ... to that [recipient]" tail.
+    pub repeated_spell_target_tokens: Option<&'a [OwnedLexToken]>,
     pub amount: FilteredPreventionAmountShape<'a>,
 }
 
@@ -715,6 +717,7 @@ fn parse_filtered_damage_prevention_lexed<'a>(
     ).map(|((), _)| ()).take().parse_next(input)?;
     primitives::comma().parse_next(input)?;
     primitives::kw("prevent").parse_next(input)?;
+    let mut repeated_spell_target_tokens = None;
     let amount = if opt(primitives::phrase(&["all", "but"]))
         .parse_next(input)?.is_some()
     {
@@ -741,8 +744,22 @@ fn parse_filtered_damage_prevention_lexed<'a>(
         FilteredPreventionAmountShape::Dynamic(value_tokens)
     } else {
         let amount = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
-        primitives::phrase(&["of", "that", "damage"]).parse_next(input)?;
-        primitives::sentence_end().parse_next(input)?;
+        if opt(primitives::phrase(&["of", "that", "damage"]))
+            .parse_next(input)?.is_some()
+        {
+            primitives::sentence_end().parse_next(input)?;
+        } else {
+            primitives::phrase(&["damage", "that", "spell", "would", "deal", "to", "that"])
+                .parse_next(input)?;
+            let repeated: &'a [OwnedLexToken] = winnow::token::rest.parse_next(input)?;
+            let repeated = if repeated.last().is_some_and(|token|
+                token.kind == crate::lexer::TokenKind::Period)
+            { &repeated[..repeated.len() - 1] } else { repeated };
+            if repeated.is_empty() {
+                return Err(primitives::backtrack_err("prevention recipient", "complete repeated recipient"));
+            }
+            repeated_spell_target_tokens = Some(repeated);
+        }
         FilteredPreventionAmountShape::Fixed(amount)
     };
     Ok(FilteredDamagePreventionShape {
@@ -751,6 +768,42 @@ fn parse_filtered_damage_prevention_lexed<'a>(
         combat_only: damage_kind == Some(true),
         noncombat_only: damage_kind == Some(false),
         maximum_damage,
+        repeated_spell_target_tokens,
         amount,
+    })
+}
+
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PassiveDamagePreventionHead<'a> {
+    pub damaged_tokens: &'a [OwnedLexToken],
+    pub combat_only: bool,
+    pub noncombat_only: bool,
+}
+
+pub fn parse_passive_damage_prevention_head(
+    tokens: &[OwnedLexToken],
+) -> Option<PassiveDamagePreventionHead<'_>> {
+    primitives::probe_all(tokens, parse_passive_damage_prevention_head_lexed,
+        "passive damage prevention event")
+}
+
+fn parse_passive_damage_prevention_head_lexed<'a>(input: &mut LexStream<'a>)
+    -> WResult<PassiveDamagePreventionHead<'a>>
+{
+    primitives::kw("if").parse_next(input)?;
+    let kind = opt(alt((primitives::kw("combat").value(true),
+        primitives::kw("noncombat").value(false)))).parse_next(input)?;
+    primitives::phrase(&["damage", "would", "be", "dealt", "to"]).parse_next(input)?;
+    let damaged_tokens = repeat_till::<_, _, (), _, _, _, _>(
+        1.., any.void(), peek((primitives::comma(), primitives::kw("prevent"))),
+    ).map(|((), _)| ()).take().parse_next(input)?;
+    primitives::comma().parse_next(input)?;
+    primitives::phrase(&["prevent", "that", "damage"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(PassiveDamagePreventionHead {
+        damaged_tokens,
+        combat_only: kind == Some(true),
+        noncombat_only: kind == Some(false),
     })
 }

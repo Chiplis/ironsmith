@@ -567,6 +567,9 @@ pub enum ReplacementAction<E = Effect, A = Ability, P = crate::resolution::Resol
     },
     /// General typed damage prevention; append to preserve wire variant ordinals.
     PreventDamageByRule(ironsmith_core::StaticDamagePreventionAmount),
+    /// Additional actions refer to the proposed damage even when prevention is
+    /// prohibited. Append rather than reinterpreting existing actual-amount actions.
+    PreventDamageThenFromProposedAmount(Vec<E>),
 }
 
 
@@ -588,6 +591,7 @@ impl<E, A, P, K> ReplacementAction<E, A, P, K> {
             Self::PreventDamageByRule(value) => ReplacementAction::PreventDamageByRule(value),
             Self::PreventHalfDamage { round_up } => ReplacementAction::PreventHalfDamage { round_up },
             Self::PreventDamageByRemovingSourceCounters { counter_type } => ReplacementAction::PreventDamageByRemovingSourceCounters { counter_type },
+            Self::PreventDamageThenFromProposedAmount(value) => ReplacementAction::PreventDamageThenFromProposedAmount(value.into_iter().map(&mut effect).collect::<Result<Vec<_>, _>>()?),
             Self::PreventDamageThen(value) => ReplacementAction::PreventDamageThen(value.into_iter().map(&mut effect).collect::<Result<Vec<_>, _>>()?),
             Self::PreventWithShield { shield_id, max_amount } => ReplacementAction::PreventWithShield { shield_id, max_amount },
             Self::Modify(value) => ReplacementAction::Modify(value),
@@ -1603,6 +1607,9 @@ mod tests {
         ).unwrap();
         assert_eq!(converted, Action::Instead(vec![13, 13, 17]));
         assert_eq!(calls.get(), 3, "equal occurrences are independent");
+        let proposed = Action::PreventDamageThenFromProposedAmount(vec![2, 2, 5])
+            .try_map_payloads(|value| Ok::<_, u8>(value + 1), Ok, Ok, Ok).unwrap();
+        assert_eq!(proposed, Action::PreventDamageThenFromProposedAmount(vec![3, 3, 6]));
         let calls = Cell::new(0);
         let failed = Action::PreventDamageThen(vec![3, 7, 9]).try_map_payloads(
             |value| { calls.set(calls.get() + 1); if value == 7 { Err(value) } else { Ok(value) } },

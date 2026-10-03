@@ -224,7 +224,13 @@ fn hand_count_preserves_authored_that_player_possessive() {
 fn parses_triggering_cast_mana_and_excess_damage_values() {
     assert_eq!(
         parse_value_expr_words(&["the", "excess"]),
-        Some((Value::EventValue(EventValueSpec::Amount), 2))
+        Some((
+            Value::PendingEffectMetric {
+                source: ironsmith_core::EffectMetricSource::Outcome,
+                metric: ironsmith_core::EffectMetric::ExcessDamage,
+            },
+            2
+        ))
     );
     assert_eq!(
         parse_value_expr_words(&[
@@ -242,10 +248,13 @@ fn parses_triggering_cast_mana_and_excess_damage_values() {
             "the", "excess", "damage", "dealt", "to", "that", "creature", "this", "way",
         ]),
         Some((
-            Value::PendingEffectMetric {
-                source: ironsmith_core::EffectMetricSource::Outcome,
-                metric: ironsmith_core::EffectMetric::ExcessDamage,
-            },
+            Value::PendingPriorEffectMetric(
+                ironsmith_core::PriorEffectMetricQuery::new(
+                    ironsmith_core::EffectMetricSource::Outcome,
+                    ironsmith_core::EffectMetric::ExcessDamage,
+                )
+                .with_action(ironsmith_core::PriorEffectAction::DealtDamage)
+            ),
             9,
         ))
     );
@@ -660,4 +669,38 @@ fn whichever_is_greater_builds_an_executable_maximum() {
                         if matches!(minimum.as_ref(), Value::Min(_, _))
                 )
     ));
+}
+
+#[test]
+fn excess_damage_phrases_preserve_explicit_producer_binding() {
+    for text in [
+        "the amount of excess damage dealt to that creature this way",
+        "the amount of excess damage dealt this way",
+        "excess damage dealt to that permanent this way",
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let (value, used) = parse_value_expr_tokens(&tokens).unwrap();
+        assert_eq!(used, tokens.len(), "{text}");
+        assert!(
+            matches!(value.unhinted(), Value::PendingPriorEffectMetric(query)
+            if query.action == Some(ironsmith_core::PriorEffectAction::DealtDamage)
+                && query.metric == ironsmith_core::EffectMetric::ExcessDamage)
+        );
+    }
+    for text in [
+        "that excess damage",
+        "that amount of excess damage",
+        "that much excess damage",
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let (value, used) = parse_value_expr_tokens(&tokens).unwrap();
+        assert_eq!(used, tokens.len());
+        assert!(matches!(
+            value.unhinted(),
+            Value::PendingEffectMetric {
+                source: ironsmith_core::EffectMetricSource::Outcome,
+                metric: ironsmith_core::EffectMetric::ExcessDamage,
+            }
+        ));
+    }
 }
