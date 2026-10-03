@@ -29,6 +29,9 @@ pub struct CreatureAttackedEvent {
     /// holds creatures put onto the battlefield attacking (CR 508.4) and, when
     /// this event is replayed from turn history, a later combat's attackers.
     pub declared_attackers: Option<std::sync::Arc<[crate::combat_state::AttackerInfo]>>,
+    /// The turn-local combat phase in which this attack was declared. The
+    /// history must not mistake an earlier combat's attack for this combat.
+    pub combat_phase: Option<u32>,
 }
 
 impl CreatureAttackedEvent {
@@ -39,6 +42,7 @@ impl CreatureAttackedEvent {
             target,
             total_attackers: 1,
             declared_attackers: None,
+            combat_phase: None,
         }
     }
 
@@ -53,7 +57,14 @@ impl CreatureAttackedEvent {
             target,
             total_attackers,
             declared_attackers: None,
+            combat_phase: None,
         }
+    }
+
+    /// Identify the combat phase that owns this historical declaration.
+    pub fn with_combat_phase(mut self, combat_phase: u32) -> Self {
+        self.combat_phase = Some(combat_phase);
+        self
     }
 
     /// Attach the full attack declaration this event belongs to.

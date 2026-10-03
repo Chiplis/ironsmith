@@ -2051,6 +2051,11 @@ pub enum Condition {
     Not(Box<Condition>),
     And(Box<Condition>, Box<Condition>),
     Or(Box<Condition>, Box<Condition>),
+    /// The controller declared attackers with at least this total power in
+    /// this combat. Power and controller are historical declaration-time
+    /// facts, not the current characteristics of surviving attackers.
+    /// Appended to preserve existing serialized condition discriminants.
+    AttackedWithTotalPowerAtLeastThisCombat(u32),
 }
 
 #[cfg(test)]

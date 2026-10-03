@@ -9,6 +9,9 @@ use crate::filter::StackObjectKind;
 #[path = "advanced/phase_step_gates.rs"]
 mod phase_step_gates;
 
+#[path = "advanced/attack_power.rs"]
+mod attack_power;
+
 fn turn_history_player_subject(clause: LexedClause<'_>) -> Option<PlayerAst> {
     if surface::exact_any(clause, &[&["you've"], &["youve"]]) {
         return Some(PlayerAst::You);
@@ -2402,6 +2405,7 @@ pub(super) fn parse_combat_turn_predicate(tokens: &[OwnedLexToken]) -> Option<Pr
     parse_negative_attack_history_shape(tokens)
         .or_else(|| parse_you_attacked_this_turn_shape(tokens))
         .or_else(|| parse_triggering_object_had_to_attack_this_combat_shape(tokens))
+        .or_else(|| attack_power::parse_attacked_with_total_power(tokens))
         .or_else(|| parse_you_attacked_with_n_or_more_creatures_shape(tokens))
         .or_else(|| parse_you_attacked_with_exactly_other_creatures_shape(tokens))
         .or_else(|| parse_source_attacked_or_blocked_this_turn_shape(tokens))

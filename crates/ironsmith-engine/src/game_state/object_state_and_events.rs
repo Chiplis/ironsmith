@@ -3453,6 +3453,15 @@ impl GameState {
             })
             .or_else(|| event.snapshot().cloned())
             .or_else(|| {
+                // Attack-history characteristics are fixed after attackers
+                // are declared, including static bonuses for attacking.
+                // Raw object P/T omits those layer-7 modifications.
+                event
+                    .downcast::<crate::events::combat::CreatureAttackedEvent>()
+                    .and_then(|attack| self.object(attack.attacker))
+                    .map(|object| self.cached_object_snapshot_with_calculated_characteristics(object))
+            })
+            .or_else(|| {
                 event.object_id().and_then(|id| {
                     self.object(id)
                         .map(|obj| crate::snapshot::ObjectSnapshot::from_object(obj, self))
