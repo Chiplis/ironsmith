@@ -112,6 +112,7 @@ impl StaticAbility {
             Some(StaticAbilityId::CantBeCountered) => Self::cant_be_countered_ability(),
             Some(StaticAbilityId::CanBlockFlying) => Self::can_block_flying(),
             Some(StaticAbilityId::CanBlockOnlyFlying) => Self::can_block_only_flying(),
+            Some(StaticAbilityId::CanBlockAnyNumber) => Self::can_block_any_number(),
             Some(StaticAbilityId::MustAttack) => Self::must_attack(),
             Some(StaticAbilityId::AllCreaturesAttackAttachedControllerEachCombatIfAble) => {
                 Self::all_creatures_attack_attached_controller_each_combat_if_able()

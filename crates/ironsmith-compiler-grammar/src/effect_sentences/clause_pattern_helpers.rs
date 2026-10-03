@@ -1752,6 +1752,27 @@ pub fn parse_redirect_next_damage_sentence(
     };
     Ok(Some(vec![effect]))
 }
+pub fn parse_can_block_any_number_this_turn_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let Some(shape) = crate::grammar::blocking_permissions::parse_can_block_any_number(tokens) else {
+        return Ok(None);
+    };
+    if !shape.this_turn { return Ok(None); }
+    let target = if shape.subject_tokens.is_empty() {
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), Some(TextSpan::synthetic()))
+    } else {
+        parse_target_phrase(shape.subject_tokens)?
+    };
+    Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
+        target,
+        vec![GrantedAbilityAst::StaticAbility(Box::new(
+            crate::cards::builders::StaticAbilityAst::Static(crate::static_abilities::StaticAbility::can_block_any_number()),
+        ))],
+        Until::EndOfTurn,
+    )))
+}
+
 pub fn parse_can_block_additional_creature_this_turn_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {

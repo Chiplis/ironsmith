@@ -3189,6 +3189,16 @@ pub(crate) fn describe_apply_continuous_effect(
         && effect.runtime_modifications.is_empty()
         && effect.until == Until::EndOfTurn
         && let Some(crate::continuous::Modification::AddAbility(ability)) = &effect.modification
+        && ability.id() == crate::static_abilities::StaticAbilityId::CanBlockAnyNumber
+    {
+        let (target, _) = describe_apply_continuous_target(effect);
+        return Some(format!("{target} can block any number of creatures this turn"));
+    }
+    if effect.condition.is_none()
+        && effect.additional_modifications.is_empty()
+        && effect.runtime_modifications.is_empty()
+        && effect.until == Until::EndOfTurn
+        && let Some(crate::continuous::Modification::AddAbility(ability)) = &effect.modification
         && ability.id() == crate::static_abilities::StaticAbilityId::CanAttackAsThoughNoDefender
     {
         let (target, plural) = describe_apply_continuous_target(effect);

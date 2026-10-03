@@ -6,6 +6,7 @@ pub mod activation_helpers;
 pub mod activation_restrictions;
 pub mod anthem_grants;
 pub mod attached_object_static_lines;
+pub mod blocking_permissions;
 pub mod choices;
 pub mod clause_support;
 pub mod conditions;

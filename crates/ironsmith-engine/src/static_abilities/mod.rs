@@ -2761,6 +2761,10 @@ impl StaticAbility {
         Self::new(TargetingAsThoughNoAbility { spec })
     }
 
+    pub fn can_block_any_number() -> Self {
+        Self::new(CanBlockAnyNumber)
+    }
+
     pub fn can_block_additional_creature_each_combat(additional: usize) -> Self {
         Self::new(CanBlockAdditionalCreatureEachCombat::new(additional))
     }
