@@ -646,6 +646,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction {
                 ..
             })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmpowerJace { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Bolster { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Support { .. })
