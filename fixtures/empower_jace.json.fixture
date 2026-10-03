@@ -112,8 +112,7 @@
     "name": "Sanctum Lurker",
     "oracle_id": "3ebd64d2-c178-45a2-a51f-9869754baa0f",
     "text": "Mana cost: {2}{B}\nType: Creature — Horror\nPower/Toughness: 3/2\nWhen this creature enters, empower Jace 1.\nPlaneswalkers you control aren't put into their owners' graveyards for having 0 loyalty.\nPlaneswalkers you control have \"[+2]: This planeswalker deals 1 damage to each opponent and you gain 1 life.\"",
-    "proposed_coverage": "partial",
-    "remaining_blocker": "Separate static zero-loyalty state-based-action exception has no runtime model."
+    "proposed_coverage": "complete"
   },
   {
     "name": "Solve for Disappointment",

@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "8ff32cfc00a2d09d35b0329ebbb9cf119a306261",
+  "source_implementation_commit": "f1cc0985981c85dc8ccfe0eddc4ffc3cfcca8ba3",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 249,
-    "additional_proposed_compile_entries": 249,
+    "additional_proposed_unique_cards": 250,
+    "additional_proposed_compile_entries": 250,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true
   },
@@ -414,10 +414,6 @@
           "remaining_blocker": "Separate temporary loyalty timing permission with any-player-turn wording."
         },
         {
-          "card_name": "Sanctum Lurker",
-          "remaining_blocker": "Separate static zero-loyalty state-based-action exception has no runtime model."
-        },
-        {
           "card_name": "Theorist's Sanctum",
           "remaining_blocker": "Separate optional behold-as-entry replacement is the frozen first diagnostic."
         },
@@ -439,6 +435,13 @@
         "selection among existing or copied eligible tokens",
         "atomic pending-choice rollback and one keyword-action event",
         "where-X and source-name-safe subtype operand"
+      ],
+      "partial_closures": [
+        {
+          "card_name": "Sanctum Lurker",
+          "family": "controller-scoped-zero-loyalty-exception",
+          "stage": 25
+        }
       ]
     },
     {
@@ -553,6 +556,22 @@
         "one-or-more batches, owner and turn guards",
         "look-back source behavior limited to supported battlefield/graveyard origins",
         "actual mill, return, sacrifice and library producer scenarios authored"
+      ]
+    },
+    {
+      "id": "controller-scoped-zero-loyalty-exception",
+      "stage": 25,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/empower_jace.json.fixture",
+      "baseline_entries": [
+        "Sanctum Lurker"
+      ],
+      "implementation_commit": "f1cc0985981c85dc8ccfe0eddc4ffc3cfcca8ba3",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "live current-controller scoped zero-loyalty SBA exception",
+        "incremental candidates revisited after last source leaves, phases, changes control or loses abilities",
+        "other state-based death rules and actual granted loyalty activation preserved"
       ]
     }
   ],
@@ -23867,10 +23886,9 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
-      "source_families": [],
-      "partial_source_families": [
-        "empower-jace-action"
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "controller-scoped-zero-loyalty-exception"
       ]
     },
     {

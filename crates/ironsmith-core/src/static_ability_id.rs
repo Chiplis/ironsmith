@@ -374,6 +374,8 @@ pub enum StaticAbilityId {
     CanBlockAdditionalForEach,
     /// Filtered, amount-based damage prevention. Appended for wire compatibility.
     PreventMatchingDamage,
+    /// A controller-scoped exception to CR 704.5i.
+    PlaneswalkersYouControlDontDieAtZeroLoyalty,
 }
 
 impl StaticAbilityId {
@@ -580,6 +582,7 @@ impl StaticAbilityId {
             | FirstEquipCostAlternative
             | EquipAbilitiesAnyTime
             | LoyaltyAbilitiesAnyTime
+            | PlaneswalkersYouControlDontDieAtZeroLoyalty
             | ExhaustAbilitiesAsThoughUnactivatedThisTurn
             | VoteAdditionalTimeWhileVoting
             | VoteAdditionalVoteWhileVoting
