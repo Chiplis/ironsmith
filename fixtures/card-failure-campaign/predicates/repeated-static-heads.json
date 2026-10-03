@@ -1,0 +1,235 @@
+[
+  {
+    "name": "Ancient Adamantoise",
+    "oracle_text": "Vigilance, ward {3}\nDamage isn't removed from this creature during cleanup steps.\nAll damage that would be dealt to you and other permanents you control is dealt to this creature instead.\nWhen this creature dies, exile it and create ten tapped Treasure tokens.",
+    "tags": [
+      "alliteration",
+      "damage-prevention-permanent",
+      "damage-prevention-you",
+      "damage-stays",
+      "death-trigger-self",
+      "graveyard-fuel-self",
+      "pariah",
+      "ramp",
+      "rhystic",
+      "unique-p-t",
+      "ward"
+    ]
+  },
+  {
+    "name": "Assault Formation",
+    "oracle_text": "Each creature you control assigns combat damage equal to its toughness rather than its power.\n{G}: Target creature with defender can attack this turn as though it didn't have defender.\n{2}{G}: Creatures you control get +0/+1 until end of turn.",
+    "tags": [
+      "activated-ability",
+      "armoring",
+      "bottomless-mana-sink",
+      "buttstrike",
+      "synergy-defender",
+      "toughness-boost-to-all",
+      "turns-off-defender"
+    ]
+  },
+  {
+    "name": "Belligerent Brontodon",
+    "oracle_text": "Each creature you control assigns combat damage equal to its toughness rather than its power.",
+    "tags": [
+      "alliteration",
+      "buttstrike",
+      "cycle-xln-draft-signpost"
+    ]
+  },
+  {
+    "name": "Candletrap",
+    "oracle_text": "Enchant creature\nEnchanted creature has defender.\nPrevent all combat damage that would be dealt by enchanted creature.\nCoven — {2}{W}, Sacrifice this Aura: Exile enchanted creature. Activate only if you control three or more creatures with different powers.",
+    "tags": [
+      "activated-ability",
+      "damage-prevention",
+      "gives-defender",
+      "pacifism",
+      "portmanteau",
+      "power-matters",
+      "removal-exile",
+      "sacrifice-self",
+      "spot-removal"
+    ]
+  },
+  {
+    "name": "Defang",
+    "oracle_text": "Enchant creature\nPrevent all damage that would be dealt by enchanted creature.",
+    "tags": [
+      "damage-prevention",
+      "removal-creature",
+      "single-english-word-name"
+    ]
+  },
+  {
+    "name": "Demonic Torment",
+    "oracle_text": "Enchant creature\nEnchanted creature can't attack.\nPrevent all combat damage that would be dealt by enchanted creature.",
+    "tags": [
+      "damage-prevention",
+      "pacifism",
+      "prevent-attack"
+    ]
+  },
+  {
+    "name": "Doran, the Siege Tower",
+    "oracle_text": "Each creature assigns combat damage equal to its toughness rather than its power.",
+    "tags": [
+      "buttstrike",
+      "cycle-lrw-typal-legend"
+    ]
+  },
+  {
+    "name": "Felothar the Steadfast",
+    "oracle_text": "Each creature you control assigns combat damage equal to its toughness rather than its power.\nCreatures you control can attack as though they didn't have defender.\n{3}, {T}, Sacrifice another creature: Draw cards equal to the sacrificed creature's toughness, then discard cards equal to its power.",
+    "tags": [
+      "activated-ability",
+      "burst-draw",
+      "buttstrike",
+      "cycle-tdc-face-commander",
+      "draw-engine",
+      "mana-sink",
+      "power-matters",
+      "repeatable-loot",
+      "repeatable-plunder",
+      "sacrifice-outlet-creature",
+      "turns-off-defender"
+    ]
+  },
+  {
+    "name": "Heart of Light",
+    "oracle_text": "Enchant creature\nPrevent all damage that would be dealt to and dealt by enchanted creature.",
+    "tags": [
+      "damage-prevention"
+    ]
+  },
+  {
+    "name": "High Alert",
+    "oracle_text": "Each creature you control assigns combat damage equal to its toughness rather than its power.\nCreatures you control can attack as though they didn't have defender.\n{2}{W}{U}: Untap target creature.",
+    "tags": [
+      "activated-ability",
+      "bottomless-mana-sink",
+      "buttstrike",
+      "repeatable-crime",
+      "synergy-defender",
+      "turns-off-defender",
+      "untapper-creature"
+    ]
+  },
+  {
+    "name": "Huatli, the Sun's Heart",
+    "oracle_text": "Each creature you control assigns combat damage equal to its toughness rather than its power.\n−3: You gain life equal to the greatest toughness among creatures you control.",
+    "tags": [
+      "activated-ability",
+      "alliteration",
+      "buttstrike",
+      "cycle-war-hybrid-planeswalker",
+      "lifegain",
+      "passive-ability"
+    ]
+  },
+  {
+    "name": "Inviolability",
+    "oracle_text": "Enchant creature\nPrevent all damage that would be dealt to enchanted creature.",
+    "tags": [
+      "damage-prevention",
+      "damage-prevention-creature",
+      "single-english-word-name"
+    ]
+  },
+  {
+    "name": "Living Lands",
+    "oracle_text": "All Forests are 1/1 creatures that are still lands.",
+    "tags": [
+      "alliteration",
+      "animate-land",
+      "symmetrical",
+      "synergy-forest",
+      "universal-type-change"
+    ]
+  },
+  {
+    "name": "Living Plane",
+    "oracle_text": "All lands are 1/1 creatures that are still lands.",
+    "tags": [
+      "animate-land",
+      "symmetrical",
+      "universal-type-change"
+    ]
+  },
+  {
+    "name": "Muzzle",
+    "oracle_text": "Enchant creature\nPrevent all damage that would be dealt by enchanted creature.",
+    "tags": [
+      "damage-prevention",
+      "single-english-word-name"
+    ]
+  },
+  {
+    "name": "Nature's Revolt",
+    "oracle_text": "All lands are 2/2 creatures that are still lands.",
+    "tags": [
+      "animate-land",
+      "symmetrical",
+      "universal-type-change"
+    ]
+  },
+  {
+    "name": "Palisade Giant",
+    "oracle_text": "All damage that would be dealt to you and other permanents you control is dealt to this creature instead.",
+    "tags": [
+      "damage-prevention-creature",
+      "damage-prevention-planeswalker",
+      "damage-prevention-you",
+      "pariah"
+    ]
+  },
+  {
+    "name": "Rasaad yn Bashir",
+    "oracle_text": "Each creature you control assigns combat damage equal to its toughness rather than its power.\nWhenever Rasaad yn Bashir attacks, if you have the initiative, double the toughness of each creature you control until end of turn.\nChoose a Background",
+    "tags": [
+      "attack-trigger",
+      "attacking-matters-self",
+      "buttstrike",
+      "cycle-clb-back-enemy-legend",
+      "dnd-character",
+      "intervening-if-clause",
+      "pair-commander",
+      "synergy-initiative",
+      "unique-doubler"
+    ]
+  },
+  {
+    "name": "Sanctuary Blade",
+    "oracle_text": "As this Equipment becomes attached to a creature, choose a color.\nEquipped creature gets +2/+0 and has protection from the last chosen color.\nEquip {3}",
+    "tags": [
+      "activated-ability",
+      "gives-protection",
+      "hate-color-choose"
+    ]
+  },
+  {
+    "name": "Streetwise Negotiator",
+    "oracle_text": "Backup 1\nThis creature assigns combat damage equal to its toughness rather than its power.",
+    "tags": [
+      "bear-with-set-s-mechanic",
+      "buttstrike",
+      "gives-pp-counters",
+      "triggered-ability"
+    ]
+  },
+  {
+    "name": "Temporal Isolation",
+    "oracle_text": "Flash\nEnchant creature\nEnchanted creature has shadow.\nPrevent all damage that would be dealt by enchanted creature.",
+    "tags": [
+      "combat-trick",
+      "cycle-tsp-flash-aura",
+      "damage-prevention",
+      "gives-shadow",
+      "pacifism",
+      "prevent-blocker",
+      "spot-removal",
+      "staple-with-set-s-mechanic"
+    ]
+  }
+]

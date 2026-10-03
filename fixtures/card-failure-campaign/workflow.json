@@ -1,0 +1,16 @@
+{
+  "effective_at": "2026-10-03T21:19:53Z",
+  "mode": "implementation_first_validation_deferred",
+  "user_instruction": "Let's change the worflow to defer building/compilation/test running until all cards are covered. Then we can compile and build once the 3k card changes are ready, look for regressions and fix whatever's needed. Build times shouldn't be a concern until we have reason to believe all or at least the majority of the 3k cards have been covered by our code changes.",
+  "builds_compilation_tests": "deferred_until_source_plausibly_covers_all_or_majority",
+  "draft_pr_state": "UNVALIDATED",
+  "threshold_denominator_unique_remaining": 3193,
+  "majority_minimum_unique_remaining": 1597,
+  "placeholder_reject_noop_counts_as_coverage": false,
+  "stopped_build": {
+    "source": "657aa12ddf4f6d92d4fe718c7034286cddcf02ca",
+    "exit_code": 130,
+    "cache_preserved": true,
+    "log": "reports/card-failure-campaign/stack-14/validation-logs.tar.gz#release-build-final.log"
+  }
+}

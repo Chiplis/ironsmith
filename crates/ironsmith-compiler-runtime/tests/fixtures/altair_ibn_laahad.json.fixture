@@ -1,0 +1,16 @@
+{
+  "id": "358026de-ab7c-4a17-8cac-cfbee391b127",
+  "oracle_id": "43dc4b0c-e437-4abc-a3fb-48bd3098de88",
+  "name": "Altaïr Ibn-La'Ahad",
+  "mana_cost": "{R}{W}{B}",
+  "type_line": "Legendary Creature — Human Assassin",
+  "oracle_text": "First strike\nWhenever Altaïr attacks, exile up to one target Assassin creature card from your graveyard with a memory counter on it. Then for each creature card you own in exile with a memory counter on it, create a tapped and attacking token that's a copy of it. Exile those tokens at end of combat.",
+  "power": "3",
+  "toughness": "3",
+  "colors": [
+    "B",
+    "R",
+    "W"
+  ],
+  "baseline_content_hash": "d6d5ed0f499f7a1fd6d2de49089f44a6b26a272c25bac7d966171a62373cd924"
+}

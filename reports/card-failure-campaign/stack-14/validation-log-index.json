@@ -1,0 +1,42 @@
+{
+  "runtime-full-final.log": {
+    "bytes": 63022,
+    "sha256": "fb7ad8854d2d934d034a7b50dc77fbb976dfb9a309aab5de65cf7cf478401907"
+  },
+  "grammar-full-final.log": {
+    "bytes": 994018,
+    "sha256": "d2f97a3909329e34136bdd482be0ed5fd8818b3e58136388fbd4e62b4db29fff"
+  },
+  "grammar-suite-comparison-final.json": {
+    "bytes": 4332,
+    "sha256": "c8efac042129dfff9aafab24978a468bddd53357a682012fda83d2443de55b02"
+  },
+  "core-lowering-source-final.log": {
+    "bytes": 24234,
+    "sha256": "6fd2e741f3af2b16d217b8b2a58b1da7681e0db6e63d27c3f32018b15db30ffa"
+  },
+  "python-final.log": {
+    "bytes": 1935,
+    "sha256": "2e774fb9d16eec367d3d83e8c7c1f38fa0daf20c97e1a0e32f529b08371343c1"
+  },
+  "tools-payloads.log": {
+    "bytes": 32783,
+    "sha256": "ab5d919ea0df19f62f41eb5a86a5d31e9c020d1864adb174ee18691b52f4fc9c"
+  },
+  "tools-payload-harness-final.log": {
+    "bytes": 37306,
+    "sha256": "4dff37afe9a22815a81e8c09e1c2e30c1737732a313a420ead6add51d30f0e09"
+  },
+  "release-build-final.log": {
+    "bytes": 27032,
+    "sha256": "127147dff1c148ed86523848d9a48c5c5dcf2fc17324f8221e78bb4ec3462c19"
+  },
+  "run-runtime-tests.sh": {
+    "bytes": 818,
+    "sha256": "d40ef058d466be7c21ac63b2223be68580a6d3be74ad8837af3b187d115f4200"
+  },
+  "final-executable-cache-cleanup.json": {
+    "bytes": 5869,
+    "sha256": "a6bf9d879d4895f631134b5124f128a9919b244fb84d9d83ad12a4e04bb22d66"
+  }
+}
