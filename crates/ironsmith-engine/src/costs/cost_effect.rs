@@ -431,6 +431,25 @@ impl CostPayer for CostEffect {
             );
         }
 
+        if let Some(evidence) = transparent_cost_effect(&self.effect)
+            .downcast_ref::<crate::effects::CollectEvidenceEffect>()
+        {
+            let mut exec = ExecutionContext::new_default(ctx.source, ctx.payer)
+                .with_tagged_objects(ctx.tagged_objects.clone());
+            exec.source_snapshot = ctx.source_snapshot.clone();
+            exec.replacement = ctx.replacement.clone();
+            exec.x_value = ctx.x_value;
+            exec.effect_outcomes = ctx.effect_outcomes.clone();
+            exec.announced_targets = Some(ctx.announced_targets.iter().map(|target| match target {
+                crate::game_state::Target::Object(id) => crate::effects::ResolvedTarget::Object(*id),
+                crate::game_state::Target::Player(player) => crate::effects::ResolvedTarget::Player(*player),
+            }).collect());
+            let required = crate::effects::composition::collect_evidence::evidence_requirement(evidence, game, &exec)
+                .map_err(CostPaymentError::ExecutionFailed)?;
+            let exclude = matches!(ctx.reason, crate::costs::PaymentReason::CastSpell).then_some(ctx.source);
+            return (crate::effects::composition::collect_evidence::evidence_capacity(game, ctx.payer, exclude) >= required)
+                .then_some(()).ok_or_else(|| CostPaymentError::Other("not enough mana value to collect evidence".into()));
+        }
         if let Some(life) =
             transparent_cost_effect(&self.effect).downcast_ref::<crate::effects::PayLifeEffect>()
         {
@@ -630,6 +649,15 @@ impl CostPayer for CostEffect {
                 .tagged_objects
                 .entry(choose.tag.clone())
                 .or_default();
+        }
+
+        // A resolving collect-evidence cost may announce X inside its own
+        // action. Keep that announced value for the enclosing cost/reflexive
+        // continuation; overpayment never supplies a different X.
+        if ctx.x_value.is_none()
+            && transparent_cost_effect(&self.effect).downcast_ref::<crate::effects::CollectEvidenceEffect>().is_some()
+        {
+            ctx.x_value = exec_ctx.x_value;
         }
 
         // Copy any new tags back to CostContext for subsequent costs

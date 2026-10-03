@@ -3761,6 +3761,13 @@ impl EffectAst {
         )
     }
 
+    pub fn subject_verb_collect_evidence(amount: Value) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::CollectEvidence { amount }),
+        )
+    }
+
     pub fn subject_verb_empower_jace(amount: Value) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,

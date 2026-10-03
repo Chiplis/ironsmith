@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Lamplight Phoenix",
+    "oracle_id": "c6f7efad-381c-45ba-9976-159b7e78f7ed",
+    "text": "Mana cost: {1}{R}{R}\nType: Creature — Phoenix\nPower/Toughness: 3/3\nFlying\nWhen this creature dies, you may exile it and collect evidence 4. If you do, return this card to the battlefield tapped. (To collect evidence 4, exile cards with total mana value 4 or greater from your graveyard.)"
+  },
+  {
+    "name": "Vitu-Ghazi Inspector",
+    "oracle_id": "22a33139-a730-4792-9dd5-2c0f99f96855",
+    "text": "Mana cost: {1}{G}\nType: Creature — Elf Detective\nPower/Toughness: 1/3\nAs an additional cost to cast this spell, you may collect evidence 6. (Exile cards with total mana value 6 or greater from your graveyard.)\nReach\nWhen this creature enters, if evidence was collected, put a +1/+1 counter on target creature and you gain 2 life."
+  }
+]

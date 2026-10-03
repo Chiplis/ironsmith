@@ -1,0 +1,103 @@
+[
+  {
+    "name": "Behind the Mask",
+    "oracle_id": "85ac3efc-5e19-4661-b52f-116f57e39581",
+    "text": "Mana cost: {U}\nType: Instant\nAs an additional cost to cast this spell, you may collect evidence 6. (Exile cards with total mana value 6 or greater from your graveyard.)\nUntil end of turn, target artifact or creature becomes an artifact creature with base power and toughness 4/3. If evidence was collected, it has base power and toughness 1/1 until end of turn instead.",
+    "proposed_coverage": "partial",
+    "mechanic_root": false,
+    "remaining_blocker": "Independent conditional base-power/toughness replacement tail remains unimplemented by this family."
+  },
+  {
+    "name": "Conspiracy Unraveler",
+    "oracle_id": "e4541d02-2860-46ef-b630-1d6307b60766",
+    "text": "Mana cost: {5}{U}{U}\nType: Creature — Sphinx Detective\nPower/Toughness: 6/6\nFlying\nYou may collect evidence 10 rather than pay the mana cost for spells you cast. (To collect evidence 10, exile cards with total mana value 10 or greater from your graveyard.)",
+    "proposed_coverage": "partial",
+    "mechanic_root": true,
+    "remaining_blocker": "An all-origin alternative-cost modifier must not grant new zone casting permissions or combine with another alternative cost."
+  },
+  {
+    "name": "Cryptex",
+    "oracle_id": "8186a992-9065-4a7f-bb00-1c20e01e8fb6",
+    "text": "Mana cost: {2}\nType: Artifact\n{T}, Collect evidence 3: Add one mana of any color. Put an unlock counter on this artifact. (To collect evidence 3, exile cards with total mana value 3 or greater from your graveyard.)\nSacrifice this artifact: Surveil 3, then draw three cards. Activate only if this artifact has five or more unlock counters on it.",
+    "proposed_coverage": "complete",
+    "mechanic_root": true
+  },
+  {
+    "name": "Evidence Examiner",
+    "oracle_id": "a3468804-26ad-4919-b030-a1906a7029e8",
+    "text": "Mana cost: {G}{U}\nType: Creature — Merfolk Detective\nPower/Toughness: 2/2\nAt the beginning of combat on your turn, you may collect evidence 4. (Exile cards with total mana value 4 or greater from your graveyard.)\nWhenever you collect evidence, investigate. (Create a Clue token. It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")",
+    "proposed_coverage": "complete",
+    "mechanic_root": true
+  },
+  {
+    "name": "Forensic Researcher",
+    "oracle_id": "75e7f7c7-fa98-497b-bf5e-8f74571e190c",
+    "text": "Mana cost: {2}{U}\nType: Creature — Merfolk Detective\nPower/Toughness: 1/3\n{T}: Untap another target permanent you control.\n{T}, Collect evidence 3: Tap target creature you don't control. (To collect evidence 3, exile cards with total mana value 3 or greater from your graveyard.)",
+    "proposed_coverage": "complete",
+    "mechanic_root": true
+  },
+  {
+    "name": "Hedge Whisperer",
+    "oracle_id": "923b2a1b-d7b6-439d-9681-c7ba88165c31",
+    "text": "Mana cost: {G}\nType: Creature — Elf Druid Detective\nPower/Toughness: 0/3\nYou may choose not to untap this creature during your untap step.\n{3}{G}, {T}, Collect evidence 4: Target land you control becomes a 5/5 green Plant Boar creature with haste for as long as this creature remains tapped. It's still a land. Activate only as a sorcery. (To collect evidence 4, exile cards with total mana value 4 or greater from your graveyard.)",
+    "proposed_coverage": "complete",
+    "mechanic_root": true
+  },
+  {
+    "name": "Incinerator of the Guilty",
+    "oracle_id": "9b7d037f-3269-4e3b-9744-a977acb69c67",
+    "text": "Mana cost: {4}{R}{R}\nType: Creature — Dragon\nPower/Toughness: 6/6\nFlying, trample\nWhenever this creature deals combat damage to a player, you may collect evidence X. When you do, this creature deals X damage to each creature and planeswalker that player controls. (To collect evidence X, exile cards with total mana value X or greater from your graveyard.)",
+    "proposed_coverage": "complete",
+    "mechanic_root": true
+  },
+  {
+    "name": "Izoni, Center of the Web",
+    "oracle_id": "8074afbf-190b-4a24-b939-cc559bdffe38",
+    "text": "Mana cost: {4}{B}{G}\nType: Legendary Creature — Elf Detective\nPower/Toughness: 5/4\nMenace\nWhenever Izoni enters or attacks, you may collect evidence 4. If you do, create two 2/1 black and green Spider creature tokens with reach and menace.\nSacrifice four tokens: Surveil 2, then draw two cards. You gain 2 life.",
+    "proposed_coverage": "complete",
+    "mechanic_root": true
+  },
+  {
+    "name": "Kylox's Voltstrider",
+    "oracle_id": "e7b746c8-1b32-42ed-8328-4e16274209d8",
+    "text": "Mana cost: {1}{U}{R}\nType: Artifact — Vehicle\nPower/Toughness: 4/4\nCollect evidence 6: This Vehicle becomes an artifact creature until end of turn.\nWhenever this Vehicle attacks, you may cast an instant or sorcery spell from among cards exiled with it. If that spell would be put into a graveyard, put it on the bottom of its owner's library instead.\nCrew 2",
+    "proposed_coverage": "partial",
+    "mechanic_root": true,
+    "remaining_blocker": "Its attack permission additionally replaces the cast spell’s graveyard move with owner-library-bottom; that linked cast-destination rider is outside the typed evidence action."
+  },
+  {
+    "name": "Memory Vampire",
+    "oracle_id": "6031d854-10a8-43da-b5c4-b561194bcd4e",
+    "text": "Mana cost: {4}{U}{B}\nType: Creature — Vampire Detective\nPower/Toughness: 4/4\nFlying\nWhenever this creature deals combat damage to a player, any number of target players each mill that many cards. Then you may collect evidence 9. When you do, you may cast target nonland card from defending player's graveyard without paying its mana cost.",
+    "proposed_coverage": "complete",
+    "mechanic_root": true
+  },
+  {
+    "name": "Polygraph Orb",
+    "oracle_id": "bb039957-9e88-48cf-b41c-38d42eb87251",
+    "text": "Mana cost: {4}{B}\nType: Artifact\nWhen this artifact enters, look at the top four cards of your library. Put two of them into your hand and the rest into your graveyard. You lose 2 life.\n{2}, {T}, Collect evidence 3: Each opponent loses 3 life unless they discard a card or sacrifice a creature. (To collect evidence 3, exile cards with total mana value 3 or greater from your graveyard.)",
+    "proposed_coverage": "complete",
+    "mechanic_root": true
+  },
+  {
+    "name": "Sample Collector",
+    "oracle_id": "566b65bb-fa5d-4da6-a766-b08128ee0049",
+    "text": "Mana cost: {2}{G}\nType: Creature — Troll Detective\nPower/Toughness: 2/3\nWhenever this creature attacks, you may collect evidence 3. When you do, put a +1/+1 counter on target creature you control. (To collect evidence 3, exile cards with total mana value 3 or greater from your graveyard.)",
+    "proposed_coverage": "complete",
+    "mechanic_root": true
+  },
+  {
+    "name": "Surveillance Monitor",
+    "oracle_id": "9be5a350-c38e-425f-9d6a-8eb111132a89",
+    "text": "Mana cost: {3}{U}\nType: Creature — Vedalken Detective\nPower/Toughness: 3/3\nWhen this creature enters, you may collect evidence 4. (Exile cards with total mana value 4 or greater from your graveyard.)\nWhenever you collect evidence, create a 1/1 colorless Thopter artifact creature token with flying.",
+    "proposed_coverage": "complete",
+    "mechanic_root": true
+  },
+  {
+    "name": "Tenth District Hero",
+    "oracle_id": "0953772c-9374-4616-9c04-5838aaf626c9",
+    "text": "Mana cost: {1}{W}\nType: Creature — Human\nPower/Toughness: 2/3\n{1}{W}, Collect evidence 2: This creature becomes a Human Detective with base power and toughness 4/4 and gains vigilance.\n{2}{W}, Collect evidence 4: If this creature is a Detective, it becomes a legendary creature named Mileva, the Stalwart, it has base power and toughness 5/5, and it gains \"Other creatures you control have indestructible.\"",
+    "proposed_coverage": "complete",
+    "mechanic_root": true
+  }
+]

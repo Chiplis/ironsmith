@@ -23,6 +23,7 @@ mod choose_mode_runtime;
 pub(crate) mod choose_objects;
 pub(crate) mod choose_objects_runtime;
 mod choose_spell_cast_history;
+pub(crate) mod collect_evidence;
 mod conditional;
 mod cumulative_upkeep;
 mod emit_gift_given;
@@ -123,4 +124,5 @@ pub use villainous_choice::VillainousChoiceEffect;
 pub use vote::{
     VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG, VoteChoice, VoteEffect, VoteOption, VoteResult,
 };
+pub use collect_evidence::CollectEvidenceEffect;
 pub use with_id::WithIdEffect;

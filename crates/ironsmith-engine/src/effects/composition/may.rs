@@ -457,6 +457,14 @@ impl MayEffect {
             )
             .is_err());
         }
+        if let Some(evidence) = self.effects.first().and_then(|effect| {
+            let mut effect = effect;
+            while let Some(child) = effect.transparent_child_effect() { effect = child; }
+            effect.downcast_ref::<crate::effects::CollectEvidenceEffect>()
+        }) {
+            let required = super::collect_evidence::evidence_requirement(evidence, game, ctx)?;
+            return Ok(super::collect_evidence::evidence_capacity(game, ctx.controller, None) < required);
+        }
         if self.effects.len() != 1 {
             return Ok(false);
         }

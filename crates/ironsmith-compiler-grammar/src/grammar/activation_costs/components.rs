@@ -145,6 +145,7 @@ fn parse_activation_cost_segment_tokens(
         ActivationCostSegmentKind::Behold => Some(parse_behold_segment_tokens(tokens)),
         ActivationCostSegmentKind::Blight => Some(parse_blight_segment_tokens(tokens)),
         ActivationCostSegmentKind::Forage => Some(parse_forage_segment_tokens(tokens)),
+        ActivationCostSegmentKind::CollectEvidence => Some(parse_collect_evidence_segment_tokens(tokens)),
         ActivationCostSegmentKind::Exile => {
             Some(parse_typed_exile_segment_tokens(tokens, |words| {
                 is_source_reference_words(words) || named_source(words).is_some()
@@ -299,6 +300,7 @@ fn parse_activation_cost_segment_head_lexed<'a>(input: &mut LexStream<'a>) -> WR
         .void(),
         alt((
             alt((
+                primitives::kw("collect"),
                 primitives::kw("tap"),
                 primitives::kw("t"),
                 primitives::kw("untap"),

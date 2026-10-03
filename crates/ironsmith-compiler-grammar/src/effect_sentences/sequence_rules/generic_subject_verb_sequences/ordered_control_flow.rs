@@ -251,7 +251,8 @@ fn is_payment_effect(effect: &EffectAst) -> bool {
     matches!(
         effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Mana(ManaActionAst::PayMana { .. })
+            action: SubjectVerbActionAst::KeywordActions(crate::cards::builders::KeywordActionAst::CollectEvidence { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::PayMana { .. })
                 | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayEnergy { .. })
                 | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayAnyEnergy { .. })
                 | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayAnyLife { .. })

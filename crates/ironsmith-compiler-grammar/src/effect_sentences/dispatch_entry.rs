@@ -12042,6 +12042,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Investigate {
                 count: amount,
             })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CollectEvidence { amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmpowerJace { amount })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { amount, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { amount })

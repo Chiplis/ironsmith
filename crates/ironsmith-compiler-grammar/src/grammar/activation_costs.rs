@@ -67,6 +67,7 @@ pub enum ActivationCostSegmentCst {
         filter: ObjectFilter,
     },
     Forage,
+    CollectEvidence { amount: Value },
     Life(Value),
     Energy(u32),
     DiscardSource,
@@ -193,6 +194,7 @@ pub enum ActivationCostSegmentKind {
     Behold,
     Blight,
     Forage,
+    CollectEvidence,
     Exile,
     Reveal,
     Return,
@@ -228,6 +230,7 @@ pub fn parse_activation_cost_segment_kind_lexed<'a>(
         "behold" => ActivationCostSegmentKind::Behold,
         "blight" => ActivationCostSegmentKind::Blight,
         "forage" => ActivationCostSegmentKind::Forage,
+        "collect" => ActivationCostSegmentKind::CollectEvidence,
         "exile" => ActivationCostSegmentKind::Exile,
         "reveal" => ActivationCostSegmentKind::Reveal,
         "return" => ActivationCostSegmentKind::Return,
@@ -260,5 +263,20 @@ mod tests {
             let tokens = lex_line(raw, 0).unwrap();
             assert_eq!(parse_activation_cost_segment_kind_tokens(&tokens), expected);
         }
+    }
+}
+
+
+#[test]
+fn collect_evidence_cost_components_preserve_comma_boundaries_and_thresholds() {
+    use crate::lexer::lex_line;
+    for text in ["{T}, Collect evidence 3", "{1}{W}, Collect evidence 2", "Collect evidence X"] {
+        let parsed = parse_activation_cost_tokens(&lex_line(text, 0).unwrap()).unwrap();
+        let last = parsed.segments.last().unwrap();
+        assert!(matches!(last, ActivationCostSegmentCst::CollectEvidence { amount }
+            if matches!(amount, Value::Fixed(2 | 3) | Value::X)));
+    }
+    for text in ["Collect evidence", "Collect evidence three cards", "Collect clues 3"] {
+        assert!(parse_activation_cost_tokens(&lex_line(text, 0).unwrap()).is_err());
     }
 }

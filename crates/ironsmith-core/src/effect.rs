@@ -3780,6 +3780,15 @@ impl EmpowerJaceEffect {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct CollectEvidenceEffect {
+    pub amount: Value,
+}
+impl CollectEvidenceEffect {
+    pub fn new(amount: impl Into<Value>) -> Self { Self { amount: amount.into() } }
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct AmassEffect {
     pub subtype: Option<crate::types::Subtype>,
     pub amount: Value,

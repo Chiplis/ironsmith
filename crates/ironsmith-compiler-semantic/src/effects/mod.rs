@@ -2,7 +2,7 @@ use crate::effect::Effect;
 pub use ironsmith_core::{
     AdaptEffect, AddManaEffect, AddManaFromCommanderColorIdentityEffect, AddManaOfAnyColorEffect,
     AddManaOfAnyOneColorEffect, AddManaOfLandProducedTypesEffect, AddManaOfNotedTypeEffect,
-    AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, AmassEffect, EmpowerJaceEffect, AmplifyEffect,
+    AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, AmassEffect, EmpowerJaceEffect, CollectEvidenceEffect, AmplifyEffect,
     AssignNoCombatDamageEffect, AttachObjectsEffect, AttachToEffect, AuraSwapEffect, BackupEffect,
     BattlefieldController, BecomeBasicLandTypeChoiceEffect, BecomeColorChoiceEffect,
     BecomeCreatureTypeChoiceEffect, BecomeMonarchEffect, BecomePlottedEffect,

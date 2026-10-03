@@ -8,6 +8,7 @@ pub(super) fn parse_keyword_mechanic_lexed<'a>(
     alt((
         parse_amass,
         parse_empower_jace,
+        parse_collect_evidence,
         parse_forage,
         parse_harness,
         parse_roll_d6,
