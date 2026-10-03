@@ -4094,6 +4094,10 @@ impl StaticAbility {
         ))
     }
 
+    pub fn prevent_matching_damage(spec: ironsmith_core::PreventMatchingDamageSpec) -> Self {
+        Self::new(PreventMatchingDamage { spec })
+    }
+
     pub fn prevent_half_damage_replacement(
         source_filter: crate::target::ObjectFilter,
         target_player_filter: Option<crate::target::PlayerFilter>,

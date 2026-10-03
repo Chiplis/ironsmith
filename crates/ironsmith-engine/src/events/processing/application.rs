@@ -50,6 +50,44 @@ pub(super) fn apply_trait_replacement(
             }
         }
 
+        ReplacementAction::PreventDamageByRule(rule) => {
+            let Some(damage) =
+                crate::events::downcast_event::<crate::events::DamageEvent>(event.inner()).cloned()
+            else {
+                return Ok(TraitApplyResult::Unchanged(event));
+            };
+            // CR 615: a prevention cap is not SetTo. Unpreventable damage is
+            // unchanged, and prevention events describe only actual prevention.
+            let prevented = if damage.is_unpreventable || damage.amount == 0 {
+                0
+            } else {
+                match rule {
+                    ironsmith_core::StaticDamagePreventionAmount::All => damage.amount,
+                    ironsmith_core::StaticDamagePreventionAmount::AllBut(remaining) =>
+                        damage.amount.saturating_sub(*remaining),
+                    ironsmith_core::StaticDamagePreventionAmount::Amount(amount) => {
+                        let mut dm = crate::decision::SelectFirstDecisionMaker;
+                        let mut ctx = crate::effects::ExecutionContext::new(
+                            effect.source, effect.controller, &mut dm,
+                        );
+                        if let Some(source) = game.object(effect.source) {
+                            ctx.optional_costs_paid = source.optional_costs_paid.clone();
+                            ctx.x_value = source.own_entry_x_value();
+                            ctx = ctx.with_tagged_objects(source.cast_tagged_objects.clone());
+                        }
+                        let amount = crate::effects::helpers::resolve_value(game, amount, &ctx)?;
+                        damage.amount.min(amount.max(0) as u32)
+                    }
+                }
+            };
+            if prevented == 0 {
+                TraitApplyResult::Unchanged(event)
+            } else {
+                queue_damage_prevented_event(game, &event, effect, &damage, prevented);
+                TraitApplyResult::Modified(event.rewrap(damage.reduced(prevented)))
+            }
+        }
+
         ReplacementAction::PreventHalfDamage { round_up } => {
             let Some(damage) =
                 crate::events::downcast_event::<crate::events::DamageEvent>(event.inner()).cloned()

@@ -1797,6 +1797,9 @@ impl StaticAbilityModelInterpreter {
                 replacement_effects.clone(),
                 display.clone(),
             ),
+            ironsmith_core::StaticAbilityPayload::PreventMatchingDamage(spec) => {
+                StaticAbility::prevent_matching_damage(spec.clone())
+            }
             ironsmith_core::StaticAbilityPayload::PreventHalfDamageReplacement {
                 source_filter,
                 target_player_filter,
