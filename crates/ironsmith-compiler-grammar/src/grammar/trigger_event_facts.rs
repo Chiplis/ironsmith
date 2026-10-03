@@ -192,6 +192,12 @@ fn trigger_kind(full_tokens: &[OwnedLexToken], trigger: &TriggerSpec) -> Trigger
 
 fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
     match core_semantics(trigger) {
+        TriggerSpec::ZoneChange(event) if event.this => TriggerSubjectAst::Source,
+        TriggerSpec::ZoneChange(event) => event
+            .filter
+            .as_ref()
+            .map(|filter| TriggerSubjectAst::Object(filter.clone()))
+            .unwrap_or(TriggerSubjectAst::Source),
         TriggerSpec::Attacks(filter)
         | TriggerSpec::AttacksAndIsntBlocked(filter)
         | TriggerSpec::AttacksAndIsntBlockedOneOrMore(filter)
@@ -265,6 +271,10 @@ fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
 
 fn trigger_zone_transition(trigger: &TriggerSpec) -> Option<TriggerZoneTransitionAst> {
     match core_semantics(trigger) {
+        TriggerSpec::ZoneChange(event) => Some(TriggerZoneTransitionAst {
+            from: event.from,
+            to: event.to,
+        }),
         TriggerSpec::ThisDies
         | TriggerSpec::Dies(_)
         | TriggerSpec::DiesOneOrMore(_)
@@ -327,6 +337,13 @@ fn trigger_zone_transition(trigger: &TriggerSpec) -> Option<TriggerZoneTransitio
 
 fn triggering_object_cardinality(trigger: &TriggerSpec) -> Option<Cardinality> {
     match core_semantics(trigger) {
+        TriggerSpec::ZoneChange(event) => {
+            Some(if event.count == ironsmith_core::CountMode::OneOrMore {
+                Cardinality::OneOrMore
+            } else {
+                Cardinality::ExactlyOne
+            })
+        }
         TriggerSpec::BeginningOfUpkeep(_)
         | TriggerSpec::BeginningOfDrawStep(_)
         | TriggerSpec::BeginningOfCombat(_)

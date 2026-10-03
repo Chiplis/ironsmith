@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "d7436701a1a646ea70bbd13e534c5fbcc668df76",
+  "source_implementation_commit": "969635636f2c034a292df1f7acb5b608891030b2",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 210,
-    "additional_proposed_compile_entries": 210,
+    "additional_proposed_unique_cards": 220,
+    "additional_proposed_compile_entries": 220,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true
   },
@@ -440,6 +440,34 @@
         "atomic pending-choice rollback and one keyword-action event",
         "where-X and source-name-safe subtype operand"
       ]
+    },
+    {
+      "id": "permanent-zone-movement-triggers",
+      "stage": 21,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/permanent_zone_change_triggers.json.fixture",
+      "baseline_entries": [
+        "Aetherworks Marvel",
+        "Patron of the Nezumi",
+        "Liability",
+        "Azorius Aethermage",
+        "Justice, Vance Astrovik",
+        "Stormfront Riders",
+        "Tameshi, Reality Architect",
+        "Warped Devotion",
+        "Oni-Cult Anvil",
+        "Suki, Courageous Rescuer"
+      ],
+      "implementation_commit": "969635636f2c034a292df1f7acb5b608891030b2",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "battlefield-only permanent movement with private-zone owner endpoints",
+        "pre-move controller versus destination owner",
+        "singular versus simultaneous one-or-more grouping",
+        "self plus other union references",
+        "event-time turn qualifications and once-per-turn restrictions",
+        "exact self-origin functional zones, preserving existing self-anywhere readers"
+      ]
     }
   ],
   "cards": [
@@ -694,8 +722,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "permanent-zone-movement-triggers"
+      ]
     },
     {
       "card_name": "Aettir and Priwen",
@@ -2258,8 +2288,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "permanent-zone-movement-triggers"
+      ]
     },
     {
       "card_name": "Azorius Ploy",
@@ -14731,8 +14763,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "permanent-zone-movement-triggers"
+      ]
     },
     {
       "card_name": "Juxtapose",
@@ -16131,8 +16165,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "permanent-zone-movement-triggers"
+      ]
     },
     {
       "card_name": "Liar's Pendulum",
@@ -19865,8 +19901,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "permanent-zone-movement-triggers"
+      ]
     },
     {
       "card_name": "Ooze Flux",
@@ -20445,8 +20483,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "permanent-zone-movement-triggers"
+      ]
     },
     {
       "card_name": "Pay No Heed",
@@ -26538,8 +26578,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "permanent-zone-movement-triggers"
+      ]
     },
     {
       "card_name": "Stormtide Leviathan",
@@ -26760,8 +26802,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "permanent-zone-movement-triggers"
+      ]
     },
     {
       "card_name": "Sulam Djinn",
@@ -27392,8 +27436,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "permanent-zone-movement-triggers"
+      ]
     },
     {
       "card_name": "Tamiyo Meets the Story Circle",
@@ -31636,8 +31682,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "permanent-zone-movement-triggers"
+      ]
     },
     {
       "card_name": "Warped Tusker",

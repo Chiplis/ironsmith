@@ -327,6 +327,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::WithIntro { .. } => {
             unreachable!("leading trigger intro surfaces are removed before lowering")
         }
+        TriggerSpec::ZoneChange(event) => Trigger::new(event),
         TriggerSpec::StateBased { display, .. } => Trigger::state_based(display),
         TriggerSpec::AnyOf(branches) => {
             let play_description = match branches.as_slice() {
@@ -1370,6 +1371,11 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
 pub fn ensure_concrete_trigger_spec(trigger: &TriggerSpec) -> Result<(), CardTextError> {
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => ensure_concrete_trigger_spec(trigger),
+        TriggerSpec::ZoneChange(event) if event.this && event.from.is_none() => {
+            Err(CardTextError::ParseError(
+                "source zone-change trigger requires a bounded origin".into(),
+            ))
+        }
         TriggerSpec::Either(left, right) => {
             ensure_concrete_trigger_spec(left)?;
             ensure_concrete_trigger_spec(right)?;

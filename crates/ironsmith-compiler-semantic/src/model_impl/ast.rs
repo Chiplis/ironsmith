@@ -170,6 +170,9 @@ pub enum TriggerSpec {
         condition: PredicateAst,
         surface: String,
     },
+    /// A complete zone-change event, including origin, destination, owner,
+    /// controller, quantifier, and event-time turn restrictions.
+    ZoneChange(ironsmith_core::trigger_model::ZoneChangeTrigger),
     ThisPhasesOut,
     StateBased {
         condition: PredicateAst,
