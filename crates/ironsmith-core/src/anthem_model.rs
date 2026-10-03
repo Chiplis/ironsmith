@@ -196,3 +196,92 @@ mod tests {
         );
     }
 }
+
+/// Numeric bindings whose meaning is independent of whether the evaluator's
+/// object anchor is the ability source or the affected permanent. Shared by
+/// compiler admission and runtime Dynamic-to-layer conversion. This is a
+/// bounded capability check, not a general continuous-value validator.
+pub fn supports_controller_state_anthem_value(value: &Value) -> bool {
+    if !crate::tag::tag_keys_of(value).is_empty() { return false; }
+    match value.unhinted() {
+        Value::Fixed(_) => true,
+        Value::LifeTotal(PlayerFilter::You)
+        | Value::CardsInHand(PlayerFilter::You)
+        | Value::CardsInLibrary(PlayerFilter::You)
+        | Value::CardsInGraveyard(PlayerFilter::You)
+        | Value::LifeLostThisTurn(PlayerFilter::You)
+        | Value::LifeGainedThisTurn(PlayerFilter::You) => true,
+        Value::TurnHistoryCount(crate::TurnHistoryCount::CardsDrawn(PlayerFilter::You)) => true,
+        Value::TurnHistoryCount(crate::TurnHistoryCount::EnteredBattlefield(filter))
+        | Value::GreatestPower(filter)
+        | Value::GreatestToughness(filter)
+        | Value::LeastPower(filter)
+        | Value::LeastToughness(filter)
+        | Value::TotalPower(filter)
+        | Value::TotalToughness(filter) => controller_state_filter(filter),
+        Value::Scaled(inner, _) | Value::HalfRoundedDown(inner) => supports_controller_state_anthem_value(inner),
+        Value::DividedRoundedDown(inner, divisor) => *divisor != 0 && supports_controller_state_anthem_value(inner),
+        Value::Add(left, right) | Value::Min(left, right) => supports_controller_state_anthem_value(left) && supports_controller_state_anthem_value(right),
+        _ => false,
+    }
+}
+
+fn controller_state_filter(filter: &ObjectFilter) -> bool {
+    let player = |value: &Option<PlayerFilter>| value.as_ref().filter(|player| matches!(player, PlayerFilter::You | PlayerFilter::Opponent | PlayerFilter::Any)).cloned();
+    // A positive projection fails closed for every unlisted semantic field,
+    // including future fields. In particular, `other`, chosen characteristics,
+    // source/target relations and nested filters are not accidentally admitted.
+    // Presentation-only surfaces have semantic PartialEq and need no rewriting.
+    let independent = ObjectFilter {
+        zone: filter.zone,
+        controller: player(&filter.controller),
+        owner: player(&filter.owner),
+        card_types: filter.card_types.clone(),
+        all_card_types: filter.all_card_types.clone(),
+        excluded_card_types: filter.excluded_card_types.clone(),
+        subtypes: filter.subtypes.clone(),
+        all_subtypes: filter.all_subtypes.clone(),
+        excluded_subtypes: filter.excluded_subtypes.clone(),
+        supertypes: filter.supertypes.clone(),
+        excluded_supertypes: filter.excluded_supertypes.clone(),
+        colors: filter.colors,
+        required_colors: filter.required_colors,
+        excluded_colors: filter.excluded_colors,
+        colorless: filter.colorless,
+        multicolored: filter.multicolored,
+        monocolored: filter.monocolored,
+        token: filter.token,
+        nontoken: filter.nontoken,
+        entered_battlefield_this_turn: filter.entered_battlefield_this_turn,
+        entered_battlefield_controller: player(&filter.entered_battlefield_controller),
+        ..ObjectFilter::default()
+    };
+    filter == &independent
+}
+
+#[cfg(test)]
+mod controller_state_anthem_value_tests {
+    use super::*;
+
+    #[test]
+    fn layer_capability_keeps_object_and_resolution_relative_values_on_the_legacy_path() {
+        assert!(supports_controller_state_anthem_value(&Value::LifeTotal(PlayerFilter::You)));
+        let mut grave = ObjectFilter::creature();
+        grave.zone = Some(crate::Zone::Graveyard);
+        grave.owner = Some(PlayerFilter::You);
+        grave.set_explicit_card_noun(true);
+        assert!(supports_controller_state_anthem_value(&Value::GreatestPower(grave.clone())));
+        grave.other = true;
+        assert!(!supports_controller_state_anthem_value(&Value::GreatestPower(grave)));
+        for value in [
+            Value::SourcePower,
+            Value::PartySize(PlayerFilter::You),
+            Value::ManaValueOf(Box::new(crate::ChooseSpec::Source)),
+            Value::ManaValueOf(Box::new(crate::ChooseSpec::Tagged("it".into()))),
+            Value::CountersOnSource(CounterType::PlusOnePlusOne),
+            Value::EventValue(crate::EventValueSpec::Amount),
+        ] {
+            assert!(!supports_controller_state_anthem_value(&value), "{value:?}");
+        }
+    }
+}

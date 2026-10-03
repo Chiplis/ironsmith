@@ -3634,3 +3634,19 @@ fn copied_static_variants_preserve_payloads_scope_and_rules_behavior() {
         &game,
     ));
 }
+
+#[test]
+fn dynamic_anthem_layer_conversion_preserves_legacy_source_relative_evaluation_paths() {
+    assert!(matches!(
+        super::anthem_value_as_layer_value(&AnthemValue::Dynamic(Value::LifeTotal(PlayerFilter::You))),
+        Some(Value::LifeTotal(PlayerFilter::You))
+    ));
+    for value in [
+        Value::SourcePower,
+        Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Source)),
+        Value::CountersOnSource(crate::object::CounterType::PlusOnePlusOne),
+        Value::PartySize(PlayerFilter::You),
+    ] {
+        assert!(super::anthem_value_as_layer_value(&AnthemValue::Dynamic(value)).is_none());
+    }
+}
