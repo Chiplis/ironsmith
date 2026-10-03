@@ -12,7 +12,7 @@ fn unlimited_blocking_subset_uses_full_metadata_without_oracle_fallback() {
     let mut failures = Vec::new();
     for fixture in fixtures
         .iter()
-        .filter(|fixture| fixture["repair_group"] == "unlimited_capacity")
+        .filter(|fixture| fixture["repair_group"] != "pending_compound_or_conditional")
     {
         let mut metadata_lines = vec![
             format!("Mana cost: {}", fixture["mana_cost"].as_str().unwrap()),
@@ -43,6 +43,6 @@ fn unlimited_blocking_subset_uses_full_metadata_without_oracle_fallback() {
         }
         checked += 1;
     }
-    assert_eq!(checked, 7);
+    assert_eq!(checked, 18);
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

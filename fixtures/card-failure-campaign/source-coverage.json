@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "eccca721eabea50b29a8beee4bb6b83e1c345f41",
+  "source_implementation_commit": "3844170c59e2a8cc3e0967b65027cd16e70e5649",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 169,
-    "additional_proposed_compile_entries": 169,
+    "additional_proposed_unique_cards": 180,
+    "additional_proposed_compile_entries": 180,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true
   },
@@ -341,6 +341,35 @@
         "Joven Ferrets next-untap skip",
         "The Wretched control duration"
       ]
+    },
+    {
+      "id": "conditional-counted-and-compound-block-capacity",
+      "stage": 19,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/multiblock_permissions.json.fixture",
+      "baseline_entries": [
+        "Act of Heroism",
+        "Blaze of Glory",
+        "Echo Circlet",
+        "Entourage of Trest",
+        "Foriysian Totem",
+        "Give No Ground",
+        "Guardian of the Gateless",
+        "Hundred-Handed One",
+        "Iona's Blessing",
+        "Kemba's Legion",
+        "Vanguard's Shield"
+      ],
+      "implementation_commit": "3844170c59e2a8cc3e0967b65027cd16e70e5649",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "fixed additive capacity and unlimited permissions remain distinct",
+        "conditional monarch and monstrous gates",
+        "attached and filtered grants with controller and duration scope",
+        "full multi-block current combat edges for referenced creatures",
+        "dynamic Equipment attachment counts evaluated at declaration",
+        "forced-all legal block requirements composed with unlimited permission"
+      ]
     }
   ],
   "cards": [
@@ -431,8 +460,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "conditional-counted-and-compound-block-capacity"
+      ]
     },
     {
       "card_name": "Addle",
@@ -3017,8 +3048,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "conditional-counted-and-compound-block-capacity"
+      ]
     },
     {
       "card_name": "Blazing Effigy",
@@ -8004,8 +8037,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "conditional-counted-and-compound-block-capacity"
+      ]
     },
     {
       "card_name": "Ecological Appreciation",
@@ -8528,8 +8563,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "conditional-counted-and-compound-block-capacity"
+      ]
     },
     {
       "card_name": "Eon Frolicker",
@@ -10202,8 +10239,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "conditional-counted-and-compound-block-capacity"
+      ]
     },
     {
       "card_name": "Fork in the Road",
@@ -11134,8 +11173,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "conditional-counted-and-compound-block-capacity"
+      ]
     },
     {
       "card_name": "Gix, Yawgmoth Praetor",
@@ -11992,8 +12033,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "conditional-counted-and-compound-block-capacity"
+      ]
     },
     {
       "card_name": "Guardian of the Guildpact",
@@ -13088,8 +13131,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "conditional-counted-and-compound-block-capacity"
+      ]
     },
     {
       "card_name": "Hungering Puppetbeast",
@@ -14025,8 +14070,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "conditional-counted-and-compound-block-capacity"
+      ]
     },
     {
       "card_name": "Iona, Shield of Emeria",
@@ -15025,8 +15072,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "conditional-counted-and-compound-block-capacity"
+      ]
     },
     {
       "card_name": "Kenessos, Priest of Thassa",
@@ -30305,8 +30354,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "conditional-counted-and-compound-block-capacity"
+      ]
     },
     {
       "card_name": "Vanish into Memory",

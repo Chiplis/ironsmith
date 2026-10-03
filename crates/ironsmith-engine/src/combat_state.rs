@@ -1045,8 +1045,8 @@ fn max_attackers_this_blocker_can_block(
     }
     let extra = abilities
         .iter()
-        .filter_map(|ability| ability.additional_blockable_attackers())
-        .sum::<usize>();
+        .filter_map(|ability| ability.additional_blockable_attackers_for_source(game, blocker_id))
+        .fold(0usize, usize::saturating_add);
     1usize.saturating_add(extra)
 }
 

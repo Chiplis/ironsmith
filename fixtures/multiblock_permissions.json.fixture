@@ -7,7 +7,7 @@
     "type_line": "Instant",
     "oracle_text": "Untap target creature. It gets +2/+2 until end of turn and can block an additional creature this turn.",
     "stack07_error": "could not find verb in effect clause (clause: 'can block an additional creature this turn'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end) [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: could not find verb in effect clause (clause: 'can block an additional creature this turn'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end) [rule-path=statement-line > statement-probe]",
-    "repair_group": "pending_compound_or_conditional"
+    "repair_group": "finite_conditional_or_compound"
   },
   {
     "name": "Avatar of Hope",
@@ -29,7 +29,7 @@
     "type_line": "Instant",
     "oracle_text": "Cast this spell only during combat before blockers are declared.\nTarget creature defending player controls can block any number of creatures this turn. It blocks each attacking creature this turn if able.",
     "stack07_error": "parser does not yet support line family: 'Target creature defending player controls can block any number of creatures this turn. It blocks each attacking creature this turn if able.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Target creature defending player controls can block any number of creatures this turn. It blocks each attacking creature this turn if able.' [rule-path=unsupported-line-family]",
-    "repair_group": "pending_compound_or_conditional"
+    "repair_group": "forced_all_attackers"
   },
   {
     "name": "Echo Circlet",
@@ -39,7 +39,7 @@
     "type_line": "Artifact — Equipment",
     "oracle_text": "Equipped creature can block an additional creature each combat.\nEquip {1}",
     "stack07_error": "parser does not yet support line family: 'Equipped creature can block an additional creature each combat.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Equipped creature can block an additional creature each combat.' [rule-path=unsupported-line-family]",
-    "repair_group": "pending_compound_or_conditional"
+    "repair_group": "finite_conditional_or_compound"
   },
   {
     "name": "Entangler",
@@ -61,7 +61,7 @@
     "power": "4",
     "toughness": "4",
     "stack07_error": "parser does not yet support line family: 'This creature can block an additional creature each combat as long as you're the monarch.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'This creature can block an additional creature each combat as long as you're the monarch.' [rule-path=unsupported-line-family]",
-    "repair_group": "pending_compound_or_conditional"
+    "repair_group": "finite_conditional_or_compound"
   },
   {
     "name": "Foriysian Totem",
@@ -71,7 +71,7 @@
     "type_line": "Artifact",
     "oracle_text": "{T}: Add {R}.\n{4}{R}: This artifact becomes a 4/4 red Giant artifact creature with trample until end of turn.\nAs long as this artifact is a creature, it can block an additional creature each combat.",
     "stack07_error": "parser does not yet support line family: 'As long as this artifact is a creature, it can block an additional creature each combat.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'As long as this artifact is a creature, it can block an additional creature each combat.' [rule-path=unsupported-line-family]",
-    "repair_group": "pending_compound_or_conditional"
+    "repair_group": "finite_conditional_or_compound"
   },
   {
     "name": "Give No Ground",
@@ -81,7 +81,7 @@
     "type_line": "Instant",
     "oracle_text": "Target creature gets +2/+6 until end of turn and can block any number of creatures this turn.",
     "stack07_error": "unsupported trailing gets clause (clause: '+2/+6 until end of turn and can block any number of creatures this turn') [rule-path=complete-get-pump > document-reading] [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: unsupported trailing gets clause (clause: '+2/+6 until end of turn and can block any number of creatures this turn') [rule-path=complete-get-pump > document-reading] [rule-path=statement-line > statement-probe]",
-    "repair_group": "pending_compound_or_conditional"
+    "repair_group": "finite_conditional_or_compound"
   },
   {
     "name": "Guardian of the Gateless",
@@ -93,7 +93,7 @@
     "power": "3",
     "toughness": "3",
     "stack07_error": "parser does not yet support line family: 'This creature can block any number of creatures.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'This creature can block any number of creatures.' [rule-path=unsupported-line-family]",
-    "repair_group": "pending_compound_or_conditional"
+    "repair_group": "current_combat_count"
   },
   {
     "name": "Hundred-Handed One",
@@ -105,7 +105,7 @@
     "power": "3",
     "toughness": "5",
     "stack07_error": "parser does not yet support line family: 'As long as this creature is monstrous, it has reach and can block an additional ninety-nine creatures each combat.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'As long as this creature is monstrous, it has reach and can block an additional ninety-nine creatures each combat.' [rule-path=unsupported-line-family]",
-    "repair_group": "pending_compound_or_conditional"
+    "repair_group": "finite_conditional_or_compound"
   },
   {
     "name": "Iona's Blessing",
@@ -115,7 +115,7 @@
     "type_line": "Enchantment — Aura",
     "oracle_text": "Enchant creature\nEnchanted creature gets +2/+2, has vigilance, and can block an additional creature each combat.",
     "stack07_error": "parser does not yet support line family: 'Enchanted creature gets +2/+2, has vigilance, and can block an additional creature each combat.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Enchanted creature gets +2/+2, has vigilance, and can block an additional creature each combat.' [rule-path=unsupported-line-family]",
-    "repair_group": "pending_compound_or_conditional"
+    "repair_group": "finite_conditional_or_compound"
   },
   {
     "name": "Ironfist Crusher",
@@ -139,7 +139,7 @@
     "power": "4",
     "toughness": "6",
     "stack07_error": "parser does not yet support line family: 'This creature can block an additional creature each combat for each Equipment attached to this creature.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'This creature can block an additional creature each combat for each Equipment attached to this creature.' [rule-path=unsupported-line-family]",
-    "repair_group": "pending_compound_or_conditional"
+    "repair_group": "dynamic_attachment_capacity"
   },
   {
     "name": "Palace Guard",
@@ -183,7 +183,7 @@
     "type_line": "Artifact — Equipment",
     "oracle_text": "Equipped creature gets +0/+3 and can block an additional creature each combat.\nEquip {3} ({3}: Attach to target creature you control. Equip only as a sorcery.)",
     "stack07_error": "unsupported trailing anthem clause (clause: 'equipped creature gets +0/+3 and can block an additional creature each combat') [rule-path=parse_anthem_line] [rule-path=static-line]; oracle-only fallback also failed: unsupported trailing anthem clause (clause: 'equipped creature gets +0/+3 and can block an additional creature each combat') [rule-path=parse_anthem_line] [rule-path=static-line]",
-    "repair_group": "pending_compound_or_conditional"
+    "repair_group": "finite_conditional_or_compound"
   },
   {
     "name": "Wall of Glare",

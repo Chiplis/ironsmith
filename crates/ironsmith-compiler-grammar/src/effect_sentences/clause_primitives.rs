@@ -489,9 +489,9 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
             parse_can_attack_as_though_no_defender_clause,
         ),
         specific_primitive!(
-            "block-any-number-clause",
-            &["it", "they", "target", "this"],
-            parse_can_block_any_number_this_turn_clause,
+            "blocking-capacity-clause",
+            &["it", "they", "target", "this", "can"],
+            parse_blocking_capacity_this_turn_clause,
         ),
         specific_primitive!(
             "block-additional-creature-clause",

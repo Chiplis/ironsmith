@@ -502,7 +502,7 @@ impl GrantObjectAbilityForFilter {
                 "{subject} can attack as though {} didn't have defender",
                 if singular_subject { "it" } else { "they" }
             ),
-            StaticAbilityId::CanBlockAnyNumber => format!("{subject} can block any number of creatures"),
+            StaticAbilityId::CanBlockAnyNumber | StaticAbilityId::CanBlockAdditionalCreatureEachCombat | StaticAbilityId::CanBlockAdditionalForEach => format!("{subject} {ability_text_lower}"),
             StaticAbilityId::Unblockable => format!("{subject} can't be blocked"),
             StaticAbilityId::CantAttack => format!("{subject} can't attack"),
             StaticAbilityId::CantBlock => format!("{subject} can't block"),
