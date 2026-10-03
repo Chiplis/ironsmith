@@ -1362,6 +1362,13 @@ impl StaticAbilityKind for CantBeBlockedExceptByNOrMore {
     }
 }
 
+// This permission changes capacity, not individual blocking restrictions.
+define_combat_ability!(
+    CanBlockAnyNumber,
+    CanBlockAnyNumber,
+    "Can block any number of creatures"
+);
+
 // Can attack as though it didn't have defender.
 define_combat_ability!(
     CanAttackAsThoughNoDefender,

@@ -2614,12 +2614,13 @@ fn modeled_filter_static_grant(
 fn is_can_block_additional_each_combat_rule(
     ability: &crate::static_abilities::StaticAbility,
 ) -> bool {
-    ability.compiled_model().is_some_and(|model| {
-        matches!(
-            model.payload,
-            ironsmith_core::StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(_)
-        )
-    })
+    ability.id() == crate::static_abilities::StaticAbilityId::CanBlockAnyNumber
+        || ability.compiled_model().is_some_and(|model| {
+            matches!(
+                model.payload,
+                ironsmith_core::StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(_)
+            )
+        })
 }
 
 /// Rejoin the two independently executable Cascade grants produced by an
