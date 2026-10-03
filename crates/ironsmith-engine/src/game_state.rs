@@ -5265,6 +5265,18 @@ impl GameState {
         sensitive
     }
 
+    /// History is staged after an instruction's physical mutations. A query
+    /// made during those mutations may already have warmed characteristics, so
+    /// invalidate history-reading numeric modifiers at publication as well.
+    fn invalidate_continuous_history_modifiers(&self) {
+        if !self.runtime_cache.continuous_state_dirty.get()
+            && self.cached_continuous_effects_snapshot_arc().iter()
+                .any(|effect| Self::modification_is_turn_context_sensitive(&effect.modification))
+        {
+            self.mark_continuous_state_dirty();
+        }
+    }
+
     fn continuous_effect_is_turn_context_sensitive(effect: &ContinuousEffect) -> bool {
         !matches!(effect.duration, Until::Forever)
             || effect.condition.is_some()
@@ -5286,7 +5298,8 @@ impl GameState {
             }
             Modification::SetPowerToughness {
                 power, toughness, ..
-            } => {
+            }
+            | Modification::ModifyPowerToughnessValue { power, toughness } => {
                 Self::value_is_turn_context_sensitive(power)
                     || Self::value_is_turn_context_sensitive(toughness)
             }
@@ -5339,7 +5352,8 @@ impl GameState {
                 Self::player_filter_is_turn_context_sensitive(players)
                     || Self::object_filter_is_turn_context_sensitive(filter)
             }
-            crate::effect::Value::CreaturesDiedThisTurn
+            crate::effect::Value::TurnHistoryCount(_)
+            | crate::effect::Value::CreaturesDiedThisTurn
             | crate::effect::Value::CreaturesDiedThisTurnControlledBy(_)
             | crate::effect::Value::PlayersBeingAttacked
             | crate::effect::Value::LifeTotalAsTurnBegan(_)
