@@ -1412,8 +1412,17 @@ impl TriggerMatcher for ZoneChangeTrigger {
             return false;
         }
 
-        // For "this object" triggers, check if any object is the source
-        if self.this_object && !zc.objects.contains(&ctx.source_id) {
+        // Most nonbattlefield producers name the destination identity. An
+        // explicit-origin source trigger (such as graveyard -> hand) is also
+        // checked against its origin-zone LKI source, so retain that exact old
+        // identity. Never equate later objects merely by their stable card id.
+        if self.this_object
+            && !zc.objects.contains(&ctx.source_id)
+            && !(self.uses_snapshot()
+                && zc.snapshots().iter().any(|snapshot| {
+                    snapshot.object_id == ctx.source_id && snapshot.zone == zc.from
+                }))
+        {
             return false;
         }
 
@@ -1784,6 +1793,36 @@ mod tests {
                 crate::events::cause::CauseFilter::effect_like()
                     .with_controller(crate::events::cause::ControllerFilter::ContextController),
             ))
+    }
+
+    #[test]
+    fn explicit_origin_source_uses_exact_pre_move_id_not_a_later_card_identity() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let original = create_creature_in_zone(&mut game, alice, Zone::Graveyard);
+        let hand = game.move_object_by_effect(original, Zone::Hand).unwrap();
+        assert_ne!(original, hand);
+        let event = game
+            .take_pending_trigger_events()
+            .into_iter()
+            .find(|event| event.kind() == EventKind::ZoneChange)
+            .unwrap();
+        let moved = event.downcast::<ZoneChangeEvent>().unwrap();
+        assert_eq!(moved.objects, vec![hand]);
+        assert_eq!(moved.snapshots()[0].object_id, original);
+        let trigger = ZoneChangeTrigger::new()
+            .from(Zone::Graveyard)
+            .to(Zone::Hand)
+            .this();
+        assert!(trigger.matches(&event, &TriggerContext::for_source(original, alice, &game)));
+        let later = game.move_object_by_effect(hand, Zone::Graveyard).unwrap();
+        assert_ne!(later, original);
+        assert!(
+            !trigger.matches(&event, &TriggerContext::for_source(later, alice, &game)),
+            "returning the same physical card cannot make its new graveyard identity the old event source"
+        );
+        let unrelated = create_creature_in_zone(&mut game, alice, Zone::Graveyard);
+        assert!(!trigger.matches(&event, &TriggerContext::for_source(unrelated, alice, &game)));
     }
 
     #[test]

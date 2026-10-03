@@ -1,0 +1,90 @@
+[
+  {
+    "name": "Erebos's Titan",
+    "text": "Mana cost: {1}{B}{B}{B}\nType: Creature \u2014 Giant\nPower/Toughness: 5/5\nAs long as your opponents control no creatures, this creature has indestructible. (Damage and effects that say \"destroy\" don't destroy it.)\nWhenever a creature card leaves an opponent's graveyard, you may discard a card. If you do, return this card from your graveyard to your hand.",
+    "oracle_id": "1341b64e-1f8f-4613-abea-a337cd0169de",
+    "source": "https://scryfall.com/card/ori/94/ereboss-titan?utm_source=api",
+    "baseline_content_hash": "e767ff27dd4214977a7937e09facea15aa9dd1c8ad61f68ca47bdd948f7d41c9",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever a creature card leaves an opponent's graveyard, you may discard a card. If you do, return this card from your graveyard to your hand.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever a creature card leaves an opponent's graveyard, you may discard a card. If you do, return this card from your graveyard to your hand.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Disa the Restless",
+    "text": "Mana cost: {2}{B}{R}{G}\nType: Legendary Creature \u2014 Human Scout\nPower/Toughness: 5/6\nWhenever a Lhurgoyf permanent card is put into your graveyard from anywhere other than the battlefield, put it onto the battlefield.\nWhenever one or more creatures you control deal combat damage to a player, create a Tarmogoyf token.",
+    "oracle_id": "283bfc53-afd3-4d21-b7d5-5baba4232422",
+    "source": "https://scryfall.com/card/m3c/28/disa-the-restless?utm_source=api",
+    "baseline_content_hash": "c84352d3df8d7f2b43ff4ada4dfa9b28954349fc60581c71ba9d2148111c29e3",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever a Lhurgoyf permanent card is put into your graveyard from anywhere other than the battlefield, put it onto the battlefield.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever a Lhurgoyf permanent card is put into your graveyard from anywhere other than the battlefield, put it onto the battlefield.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Ultron the Annihilator",
+    "text": "Mana cost: {3}{B}{B}\nType: Legendary Artifact Creature \u2014 Robot Villain\nPower/Toughness: 3/4\nFlying\nWhenever Ultron enters or attacks, create a 2/2 colorless Robot Villain artifact creature token.\nWhenever another artifact is put into your graveyard from the battlefield or an artifact card is put into your graveyard from anywhere other than the battlefield, each opponent loses 1 life.",
+    "oracle_id": "33f2c6cb-f864-4bee-b365-aedf33fbedf5",
+    "source": "https://scryfall.com/card/msc/668/ultron-the-annihilator?utm_source=api",
+    "baseline_content_hash": "e7ae552a13992d0946c25fbaa96c9d5380243a6a0d793eae911d96792889a0fb",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever another artifact is put into your graveyard from the battlefield or an artifact card is put into your graveyard from anywhere other than the battlefield, each opponent loses 1 life.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever another artifact is put into your graveyard from the battlefield or an artifact card is put into your graveyard from anywhere other than the battlefield, each opponent loses 1 life.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Ultron's Auxiliary",
+    "text": "Mana cost: {1}{B}\nType: Artifact Creature \u2014 Robot Villain\nPower/Toughness: 1/1\nMenace\nWhenever another artifact is put into your graveyard from the battlefield or an artifact card is put into your graveyard from anywhere other than the battlefield, put a +1/+1 counter on this creature.",
+    "oracle_id": "ff1ddf25-df25-4733-b9f1-236ad5a08782",
+    "source": "https://scryfall.com/card/msc/669/ultrons-auxiliary?utm_source=api",
+    "baseline_content_hash": "e98f90862b65a4948acee1bf211319ef9b7e25b2db9e6b4ace2a62ce9635b833",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever another artifact is put into your graveyard from the battlefield or an artifact card is put into your graveyard from anywhere other than the battlefield, put a +1/+1 counter on this creature.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever another artifact is put into your graveyard from the battlefield or an artifact card is put into your graveyard from anywhere other than the battlefield, put a +1/+1 counter on this creature.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Crawling Infestation",
+    "text": "Mana cost: {2}{G}\nType: Enchantment\nAt the beginning of your upkeep, you may mill two cards. (You may put the top two cards of your library into your graveyard.)\nWhenever one or more creature cards are put into your graveyard from anywhere during your turn, create a 1/1 green Insect creature token. This ability triggers only once each turn.",
+    "oracle_id": "a42262b8-8a26-4570-a6ee-24b239d095fc",
+    "source": "https://scryfall.com/card/cmm/281/crawling-infestation?utm_source=api",
+    "baseline_content_hash": "62ef84309e4c78c89e2d54a9a0abdb2383adffb68bbf8f95d64b35454826d939",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever one or more creature cards are put into your graveyard from anywhere during your turn, create a 1/1 green Insect creature token. This ability triggers only once each turn.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever one or more creature cards are put into your graveyard from anywhere during your turn, create a 1/1 green Insect creature token. This ability triggers only once each turn.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Golgari Brownscale",
+    "text": "Mana cost: {1}{G}{G}\nType: Creature \u2014 Lizard\nPower/Toughness: 2/3\nWhen this card is put into your hand from your graveyard, you gain 2 life.\nDredge 2 (If you would draw a card, you may mill two cards instead. If you do, return this card from your graveyard to your hand.)",
+    "oracle_id": "34242c44-a987-412c-9652-5242b9b5200c",
+    "source": "https://scryfall.com/card/uma/166/golgari-brownscale?utm_source=api",
+    "baseline_content_hash": "732e29ce4784e280856788d13d98f9fdfeeee18f91d940cd8c9c0174089700ae",
+    "baseline_diagnostic": "unsupported triggered line: 'When this card is put into your hand from your graveyard, you gain 2 life.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'When this card is put into your hand from your graveyard, you gain 2 life.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Urza's Sylex",
+    "text": "Mana cost: {3}\nType: Legendary Artifact\n{2}{W}{W}, {T}, Exile Urza's Sylex: Each player chooses six lands they control. Destroy all other permanents. Activate only as a sorcery.\nWhen Urza's Sylex is put into exile from the battlefield, you may pay {2}. If you do, search your library for a planeswalker card, reveal it, put it into your hand, then shuffle.",
+    "oracle_id": "fb4d99c2-daec-430a-9ca2-5a178a96618b",
+    "source": "https://scryfall.com/card/pbro/40s/urzas-sylex?utm_source=api",
+    "baseline_content_hash": "e88efc46e20c2edd776d7ac12f5face2003c251505e5b7e5afac71ab3f089fba",
+    "baseline_diagnostic": "unsupported triggered line: 'When Urza's Sylex is put into exile from the battlefield, you may pay {2}. If you do, search your library for a planeswalker card, reveal it, put it into your hand, then shuffle.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'When Urza's Sylex is put into exile from the battlefield, you may pay {2}. If you do, search your library for a planeswalker card, reveal it, put it into your hand, then shuffle.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Dutiful Knowledge Seeker",
+    "text": "Mana cost: {2}{U}\nType: Creature \u2014 Fox Spirit\nPower/Toughness: 2/2\nWhenever one or more cards are put into a library from anywhere, put a +1/+1 counter on this creature.\n{3}: Put target card from a graveyard on the bottom of its owner's library.",
+    "oracle_id": "b58a70e2-3609-441a-993a-dccb9a2cf242",
+    "source": "https://scryfall.com/card/tle/92/dutiful-knowledge-seeker?utm_source=api",
+    "baseline_content_hash": "02215700472c4b055ebf6456bdd221f0473c1bc348d2ef91537a35c60cb2a283",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever one or more cards are put into a library from anywhere, put a +1/+1 counter on this creature.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever one or more cards are put into a library from anywhere, put a +1/+1 counter on this creature.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Wan Shi Tong, All-Knowing",
+    "text": "Mana cost: {3}{U}{U}\nType: Legendary Creature \u2014 Bird Spirit\nPower/Toughness: 4/4\nFlying\nWhen Wan Shi Tong enters, target nonland permanent's owner puts it into their library second from the top or on the bottom.\nWhenever one or more cards are put into a library from anywhere, create two 1/1 colorless Spirit creature tokens with \"This token can't block or be blocked by non-Spirit creatures.\"",
+    "oracle_id": "6927bd2e-cb05-487a-af86-89ede6e8dabd",
+    "source": "https://scryfall.com/card/tle/98/wan-shi-tong-all-knowing?utm_source=api",
+    "baseline_content_hash": "7e668aef0022a2908ca075a03532a06f1418468388f9fd5e1871524958328f66",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever one or more cards are put into a library from anywhere, create two 1/1 colorless Spirit creature tokens with \"This token can't block or be blocked by non-Spirit creatures.\"' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever one or more cards are put into a library from anywhere, create two 1/1 colorless Spirit creature tokens with \"This token can't block or be blocked by non-Spirit creatures.\"' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Dreadhound",
+    "text": "Mana cost: {4}{B}{B}\nType: Creature \u2014 Demon Dog\nPower/Toughness: 6/6\nWhen this creature enters, mill three cards. (Put the top three cards of your library into your graveyard.)\nWhenever a creature dies or a creature card is put into a graveyard from a library, each opponent loses 1 life.",
+    "oracle_id": "5ed533a7-82b0-4a71-a9e9-4dffe9d18851",
+    "source": "https://scryfall.com/card/j25/427/dreadhound?utm_source=api",
+    "baseline_content_hash": "dbb1d9e8d575c41adb9300b2483dd9073e3b343f0812bd5a94f34e0d8249f212",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever a creature dies or a creature card is put into a graveyard from a library, each opponent loses 1 life.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever a creature dies or a creature card is put into a graveyard from a library, each opponent loses 1 life.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Desert Warfare",
+    "text": "Mana cost: {3}{G}\nType: Enchantment\nWhenever you sacrifice a Desert and whenever a Desert card is put into your graveyard from your hand or library, put that card onto the battlefield under your control at the beginning of your next end step.\nAt the beginning of combat on your turn, if you control five or more Deserts, create that many 1/1 red, green, and white Sand Warrior creature tokens. They gain haste.",
+    "oracle_id": "de301ef8-8ba0-423d-9117-a8492a58d01b",
+    "source": "https://scryfall.com/card/m3c/64/desert-warfare?utm_source=api",
+    "baseline_content_hash": "31c62d09c05661c77876f15d6f73403ca4de2591e9ad4c668c5f3046d5fe2d45",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever you sacrifice a Desert and whenever a Desert card is put into your graveyard from your hand or library, put that card onto the battlefield under your control at the beginning of your next end step.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever you sacrifice a Desert and whenever a Desert card is put into your graveyard from your hand or library, put that card onto the battlefield under your control at the beginning of your next end step.' [rule-path=statement-line > triggered-line]"
+  }
+]
