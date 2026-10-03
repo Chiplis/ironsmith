@@ -62,11 +62,6 @@ const COLOR_CHOICES: &[&[&str]] = &[
     &["color", "or", "colors", "of", "your", "choice"],
     &["colors", "of", "your", "choice"],
 ];
-const SOURCE_POWER_TOUGHNESS: &[&[&str]] = &[
-    &["this", "power", "and", "toughness"],
-    &["thiss", "power", "and", "toughness"],
-    &["source", "power", "and", "toughness"],
-];
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BecomeCopyExceptionShape {

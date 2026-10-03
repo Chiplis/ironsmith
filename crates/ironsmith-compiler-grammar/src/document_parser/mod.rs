@@ -1701,6 +1701,13 @@ fn source_alias_occurrence_is_typed_subtype_noun_lexed(
         return true;
     }
 
+    // A color or other adjective may sit between the determiner and the
+    // subtype (`a green Lizard creature`). The following creature noun
+    // proves this is characteristic data, even when Lizard is a source alias.
+    if matches!(next_word, Some("creature" | "creatures")) {
+        return true;
+    }
+
     previous_word == Some("target")
         || (matches!(previous_word, Some("a" | "an"))
             && matches!(
@@ -2383,6 +2390,9 @@ fn try_parse_triggered_line_with_named_source_rewrite(
     let Some(rewritten) = normalize_named_source_trigger_tokens(card, &semantic) else {
         return Ok(None);
     };
+    // Recovering the authored name must not undo preprocessing's he/she → it
+    // normalization in the effect body (for example, a named source conniving).
+    let rewritten = crate::preprocess::rewrite_personal_pronouns_tokens(&rewritten);
 
     for candidate in this_permanent_candidates(rewritten) {
         let rewritten_line = rewrite_line_tokens(line, &candidate);
@@ -2679,12 +2689,14 @@ fn try_parse_labeled_line_dispatch(
             authored_trigger = probe_triggered_line(&body_line);
         }
         if authored_trigger.is_none() && looks_like_ability_word_label(label_tokens, false) {
-            let authored_body = authored_tokens_for_normalized_slice(line, body_tokens)
-                .unwrap_or_else(|| body_tokens.to_vec());
+            // This body was split from `source_tokens`, so its spans already
+            // name the authored line. Applying the normalized-to-source map
+            // again shifts the start past `when`/`whenever`/`at` whenever the
+            // ability-word prefix or a source name was shortened.
             authored_trigger = try_parse_triggered_line_with_named_source_rewrite(
                 &preprocessed.card,
                 line,
-                &authored_body,
+                body_tokens,
             )?;
         }
         if authored_trigger.is_none()
@@ -2735,9 +2747,17 @@ fn try_parse_labeled_line_dispatch(
             && !split_activation_text_tokens_lexed(&body_line.tokens)
                 .is_some_and(|(cost, _)| looks_like_activation_cost_prefix(&cost))
         {
-            let builder_aware_static = authored_tokens_for_normalized_slice(line, body_tokens)
-                .and_then(|body| normalize_named_source_sentence_tokens(&preprocessed.card, &body))
-                .map(|body| rewrite_line_tokens(line, &body))
+            // `body_tokens` is already a slice of the authored stream above;
+            // mapping it as normalized coordinates can truncate the label's
+            // body when self-reference replacement changed token widths.
+            let builder_aware_static =
+                normalize_named_source_tokens_for_builder(&preprocessed.card, body_tokens)
+                .map(|mut body| {
+                    for token in &mut body {
+                        token.lowercase_word();
+                    }
+                    rewrite_line_tokens(line, &body)
+                })
                 .map(|body_line| recognize_static_line(&body_line))
                 .transpose()?
                 .flatten();
@@ -3854,7 +3874,7 @@ fn dispatch_remaining_preprocessed_line(
         }));
         return Ok(idx + 1);
     }
-    if try_push_complete_typed_statement(line, lines)? {
+    if try_push_complete_typed_statement(&preprocessed.card, line, lines)? {
         return Ok(idx + 1);
     }
     if let Some(next_idx) = try_push_named_source_dispatch(
@@ -4423,6 +4443,7 @@ fn try_push_complete_typed_quoted_gain_statement(
 }
 
 fn try_push_complete_typed_statement(
+    card: &crate::card::CardBuilder,
     line: &PreprocessedLine,
     lines: &mut Vec<RecognizedLine>,
 ) -> Result<bool, CardTextError> {
@@ -4448,30 +4469,42 @@ fn try_push_complete_typed_statement(
     // static-vs-statement registry.  A composable effect parser can also
     // understand permanent anthem text, but that must remain a battlefield
     // static ability rather than a one-shot resolution program.
+    // This is only a static-vs-statement ownership probe. Bind the card's
+    // identity first so a proper-name subject (Nicol Bolas) cannot be
+    // misread as a suffix subtype (Bolas) before contextual dispatch runs.
+    let contextual_static_line = normalize_named_source_tokens_for_builder(card, &line.tokens)
+        .map(|tokens| rewrite_line_tokens(line, &tokens));
+    let static_probe_line = contextual_static_line.as_ref().unwrap_or(line);
     let typed_persistent_anthem =
-        crate::keyword_static::parse_enchanted_land_is_chosen_type_line(&line.tokens)?.is_some()
-            || crate::keyword_static::parse_source_land_is_chosen_type_line(&line.tokens)?
+        crate::keyword_static::parse_enchanted_land_is_chosen_type_line(&static_probe_line.tokens)?
+            .is_some()
+            || crate::keyword_static::parse_source_land_is_chosen_type_line(
+                &static_probe_line.tokens,
+            )?
+            .is_some()
+            || crate::keyword_static::parse_enchanted_creature_has_line(&static_probe_line.tokens)?
                 .is_some()
-            || crate::keyword_static::parse_enchanted_creature_has_line(&line.tokens)?.is_some()
-            || (line
+            || (static_probe_line
                 .tokens
                 .iter()
                 .take_while(|token| token.kind != TokenKind::Quote)
                 .any(|token| token.is_any_word(&["has", "have"]))
-                && matches!(recognize_static_line(line), Ok(Some(_))))
+                && matches!(recognize_static_line(static_probe_line), Ok(Some(_))))
             || crate::keyword_static::parse_attacked_player_can_attack_as_though_no_defender_line(
-                &line.tokens,
+                &static_probe_line.tokens,
             )?
             .is_some()
             || crate::keyword_static::parse_plain_can_attack_as_though_no_defender_line(
-                &line.tokens,
+                &static_probe_line.tokens,
             )?
             .is_some()
-            || crate::keyword_static::parse_anthem_with_trailing_segments_line(&line.tokens)?
-                .is_some()
-            || super::grammar::anthem_grants::parse_anthem_modifier_head(&line.tokens)
+            || crate::keyword_static::parse_anthem_with_trailing_segments_line(
+                &static_probe_line.tokens,
+            )?
+            .is_some()
+            || super::grammar::anthem_grants::parse_anthem_modifier_head(&static_probe_line.tokens)
                 .is_some_and(|head| !head.has_target && !head.temporary);
-    if typed_persistent_anthem && matches!(recognize_static_line(line), Ok(Some(_))) {
+    if typed_persistent_anthem && matches!(recognize_static_line(static_probe_line), Ok(Some(_))) {
         return Ok(false);
     }
     let authored_sentence_count = split_lexed_sentences(&line.tokens).len();
@@ -4968,7 +5001,14 @@ fn try_push_named_source_dispatch(
     {
         return Ok(None);
     }
-    let Some(rewritten) = normalize_named_source_sentence_tokens(&preprocessed.card, &line.tokens)
+    // This branch already has the card's identity and has proved that the
+    // line mentions it. The presentation-preserving sentence rewrite leaves
+    // operands such as `counters on Kangee` and `Rubinia ... untap` untouched,
+    // but context-free static/statement readers cannot bind those names.
+    // Use the contextual self-reference view, retaining the authored stream
+    // in LineInfo for surfaces and quoted-ability ownership.
+    let Some(rewritten) =
+        normalize_named_source_tokens_for_builder(&preprocessed.card, &line.tokens)
     else {
         return Ok(None);
     };
@@ -7627,6 +7667,24 @@ mod tests {
     }
 
     #[test]
+    fn statement_ownership_probe_binds_a_named_planeswalker_before_static_reading() {
+        let card = CardBuilder::new(CardId::from_raw(1), "Nicol Bolas, Dragon-God")
+            .card_types(vec![CardType::Planeswalker]);
+        let text = "Nicol Bolas has all loyalty abilities of all other planeswalkers on the battlefield.";
+        let preprocessed = preprocess_document(card, text).unwrap();
+        let Some(PreprocessedItem::Line(line)) = preprocessed.items.first() else {
+            panic!("expected a static line");
+        };
+        let mut lines = Vec::new();
+        let (claimed, loss) = crate::parse_loss::capture(|| {
+            super::try_push_complete_typed_statement(&preprocessed.card, line, &mut lines)
+        });
+        assert!(!claimed.unwrap());
+        assert!(lines.is_empty());
+        assert!(!loss.is_lossy(), "{}", loss.reasons_text());
+    }
+
+    #[test]
     fn power_damage_leaf_does_not_claim_a_multi_sentence_target_program() {
         let card = CardBuilder::new(CardId::from_raw(1), "Power Fanout Probe")
             .card_types(vec![CardType::Sorcery]);
@@ -7637,7 +7695,7 @@ mod tests {
         };
         let mut lines = Vec::new();
         assert!(
-            !super::try_push_complete_typed_statement(line, &mut lines)
+            !super::try_push_complete_typed_statement(&preprocessed.card, line, &mut lines)
                 .expect("typed statement front door should not error"),
             "the sentence compositor owns the complete target/fanout/conditional program"
         );
@@ -7699,7 +7757,7 @@ mod tests {
         };
         let mut early_lines = Vec::new();
         assert!(
-            !super::try_push_complete_typed_statement(line, &mut early_lines)
+            !super::try_push_complete_typed_statement(&preprocessed.card, line, &mut early_lines)
                 .expect("typed statement front door should not error"),
             "the sentence compositor owns the create plus paid-label followup"
         );
@@ -8029,6 +8087,22 @@ mod tests {
             "the player to your right gains control of this artifact.",
             "explicit source normalization must also preserve the gain-control rules term",
         );
+    }
+
+    #[test]
+    fn named_source_trigger_keeps_colored_subtype_descriptors() {
+        for (name, subtype, color) in [
+            ("Lizard, Connors's Curse", "Lizard", "green"),
+            ("Goblin, Expert Transmuter", "Goblin", "red"),
+        ] {
+            let card = CardBuilder::new(CardId::from_raw(1), name)
+                .card_types(vec![CardType::Creature]);
+            let text = format!("When {name} enters, target creature becomes a {color} {subtype} creature with base power and toughness 4/4.");
+            let rewritten = normalize_named_source_trigger_for_builder(&card, &text).unwrap();
+            assert!(rewritten.starts_with("when this creature enters,"), "{rewritten}");
+            assert!(rewritten.contains(&format!("a {color} {} creature", subtype.to_ascii_lowercase())), "{rewritten}");
+            assert!(!rewritten.contains(&format!("a {color} this")), "{rewritten}");
+        }
     }
 
     #[test]

@@ -1081,6 +1081,20 @@ fn granted_protection_source_filter(ability: &StaticAbilityAst) -> Option<Object
 pub fn parse_granted_keyword_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    // A complete attack-permission effect owns its hypothetical `have`.
+    // In particular, `this turn` belongs to the duration, not to a subject
+    // that may be recovered as the suffix `it didn't`. Do not let either
+    // broad grant reader reinterpret that comparison as granting defender.
+    if crate::grammar::effects::clause_pattern_shapes::parse_can_attack_no_defender_subject_tokens(tokens)
+        .is_some_and(|subject| {
+            // A preceding real grant still owns a compound tail, e.g.
+            // `it has trample and can attack as though ...`. Only a
+            // hypothetical `have` without such a grant is inapplicable.
+            !subject.iter().any(|token| token.is_any_word(&["has", "have"]))
+        })
+    {
+        return Ok(None);
+    }
     // A "where X is ..." inside a quoted granted ability belongs to that
     // ability (Archery Training), not to this grant's own X threshold.
     let mut inside_quotes = false;

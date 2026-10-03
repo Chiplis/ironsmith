@@ -424,9 +424,19 @@ pub fn parse_become_body_surface_shape(tokens: &[OwnedLexToken]) -> BecomeBodySu
     let equal_to_source_power_toughness =
         primitives::parse_prefix(body_tokens, primitives::phrase(&["equal", "to"]).void())
             .is_some_and(|(_, rhs)| {
-                SOURCE_POWER_TOUGHNESS
-                    .iter()
-                    .any(|expected| permission_shapes::exact_tokens(rhs, expected))
+                // Keep the apostrophe until the shared possessive parser
+                // consumes it; parser words collapse `permanent's` to
+                // `permanents`, which is no longer a singular source noun.
+                let words = crate::lexer::token_word_refs(rhs);
+                let Some(source_len) = words.len().checked_sub(3) else {
+                    return false;
+                };
+                words[source_len..] == ["power", "and", "toughness"]
+                    && (words[..source_len] == ["source"]
+                        || crate::util::source_reference_surface_for_possessive_words(
+                            &words[..source_len],
+                        )
+                        .is_some())
             });
 
     BecomeBodySurfaceShape {
