@@ -557,3 +557,9 @@ use value_expr_reference_programs::parse_source_controller_graveyard_filter;
 
 #[path = "value_expr/referenced_object_quantities.rs"]
 mod referenced_object_quantities;
+
+#[path = "value_expr/scalar_counter_quantities.rs"]
+mod scalar_counter_quantities;
+
+#[path = "value_expr/opponent_history_quantities.rs"]
+mod opponent_history_quantities;

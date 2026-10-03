@@ -240,12 +240,24 @@ pub fn parse_elided_shared_domain_union(
             let Some(leading_scope) = leading_scope.as_ref() else {
                 continue;
             };
-            let Some(flattened) =
-                flatten_elided_shared_characteristic_selector(leading_scope, outer)
-            else {
-                continue;
-            };
-            outer = flattened;
+            if let Some(flattened) =
+                flatten_elided_shared_characteristic_selector(leading_scope, outer.clone())
+            {
+                outer = flattened;
+            } else {
+                // A characteristic disjunction such as subtype OR exact name
+                // cannot use the compact type/subtype-union representation.
+                // Keep it nested under each location instead. Any authored
+                // location in that selector stays outside this inferred-domain
+                // correction rather than being silently erased.
+                if tokens[after_second..]
+                    .iter()
+                    .any(|token| token.is_any_word(&["in", "on", "from"]))
+                    || !clear_inferred_selector_domains(&mut outer)
+                {
+                    continue;
+                }
+            }
         }
         if outer.owner.is_none() {
             let leading_words = TokenWordView::new(&tokens[..first_in]).word_refs();
@@ -285,8 +297,35 @@ pub fn parse_elided_shared_domain_union(
         let mut second_branch = ObjectFilter::default();
         second_branch.zone = Some(second_zone);
         second_branch.owner = second_owner.filter(|owner| outer.owner.as_ref() != Some(owner));
-        outer.any_of = vec![first_branch, second_branch];
+        if outer.any_of.is_empty() {
+            outer.any_of = vec![first_branch, second_branch];
+        } else {
+            let mut first = outer.clone();
+            first.zone = first_branch.zone;
+            first.owner = first.owner.or(first_branch.owner);
+            let mut second = outer;
+            second.zone = second_branch.zone;
+            second.owner = second.owner.or(second_branch.owner);
+            outer = ObjectFilter {
+                any_of: vec![first, second],
+                ..Default::default()
+            };
+        }
         return Some(outer);
     }
     None
+}
+
+/// These selectors were parsed without the surrounding zones. Only their
+/// ordinary inferred battlefield defaults may be removed; an independently
+/// scoped off-battlefield branch must retain its own domain through its reader.
+fn clear_inferred_selector_domains(filter: &mut ObjectFilter) -> bool {
+    if !matches!(filter.zone, None | Some(Zone::Battlefield)) {
+        return false;
+    }
+    filter.zone = None;
+    filter
+        .any_of
+        .iter_mut()
+        .all(clear_inferred_selector_domains)
 }

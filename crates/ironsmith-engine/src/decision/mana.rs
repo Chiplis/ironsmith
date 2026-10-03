@@ -402,7 +402,50 @@ pub(crate) fn calculate_effective_activation_total_cost_with_view(
             .collect()
     }
 
-    let mut adjusted = cost.clone();
+    // CR 601.2f / 602.2b: determine state-dependent payment amounts before
+    // combining/increasing/reducing the total, then keep that determined cost
+    // during payment. Unannounced X or unresolved object references remain
+    // dynamic and must still pass the later context-aware payment check.
+    let mut amount_context =
+        crate::effects::ExecutionContext::new_default(ability_source, activator);
+    amount_context.announced_targets = Some(
+        chosen_targets
+            .iter()
+            .map(|target| match target {
+                Target::Object(id) => crate::effects::ResolvedTarget::Object(*id),
+                Target::Player(player) => crate::effects::ResolvedTarget::Player(*player),
+            })
+            .collect(),
+    );
+    let resolved = cost
+        .costs()
+        .iter()
+        .map(|component| {
+            if let Some(dynamic) = component.dynamic_mana_cost_ref()
+                && dynamic.source_mana_cost_reduction_condition.is_none()
+                && let Ok(mana) = crate::special_actions::resolve_dynamic_mana_cost(
+                    game,
+                    dynamic,
+                    &mut amount_context,
+                )
+            {
+                return crate::costs::Cost::mana(mana);
+            }
+            if let Some(life) = component
+                .effect_ref()
+                .and_then(|effect| effect.downcast_ref::<crate::effects::PayLifeEffect>())
+                && !matches!(life.amount.unhinted(), crate::effect::Value::Fixed(_))
+                && let Ok(amount) =
+                    crate::effects::helpers::resolve_value(game, &life.amount, &amount_context)
+            {
+                return crate::costs::Cost::validated_effect(crate::effect::Effect::new(
+                    crate::effects::PayLifeEffect::new(amount.max(0), life.player.clone()),
+                ));
+            }
+            component.clone()
+        })
+        .collect();
+    let mut adjusted = crate::cost::TotalCost::from_costs(resolved);
     let Some(ability_source_object) = game.object(ability_source) else {
         return adjusted;
     };

@@ -149,6 +149,8 @@ fn parse_pay_segment_lexed<'a>(input: &mut LexStream<'a>) -> WResult<ActivationC
     primitives::kw("pay").parse_next(input)?;
     alt((
         parse_life_payment,
+        parse_half_life_payment,
+        parse_mana_per_count_payment,
         parse_life_equal_payment,
         parse_counted_energy_payment,
         parse_energy_payment,
@@ -165,25 +167,93 @@ fn parse_exert_segment_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> {
 }
 
 fn parse_life_payment<'a>(input: &mut LexStream<'a>) -> WResult<ActivationCostSegmentCst> {
-    let amount = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+    let amount = alt((
+        primitives::kw("x").value(Value::X),
+        leaf::parse_leaf_number_prefix_lexed.map(|n| Value::Fixed(n as i32)),
+    ))
+    .parse_next(input)?;
     alt((primitives::kw("life"), primitives::kw("lives"))).parse_next(input)?;
-    let per_card_in_hand = opt(primitives::phrase(&[
-        "for", "each", "card", "in", "your", "hand",
-    ]))
-    .parse_next(input)?
-    .is_some();
+    let suffix: &[OwnedLexToken] = repeat::<_, _, (), _, _>(0.., any.void())
+        .take()
+        .parse_next(input)?;
     eof.parse_next(input)?;
-    let value = if per_card_in_hand {
-        let cards = Value::CardsInHand(PlayerFilter::You);
-        if amount == 1 {
-            cards
-        } else {
-            Value::Scaled(Box::new(cards), amount as i32)
-        }
+    if suffix.is_empty() {
+        return Ok(ActivationCostSegmentCst::Life(amount));
+    }
+    let words = crate::lexer::parser_token_word_refs(suffix);
+    let per = if words == ["for", "each", "card", "in", "your", "hand"] {
+        // Preserve the existing fixed-card-count payload shape.
+        Value::CardsInHand(PlayerFilter::You)
     } else {
-        Value::Fixed(amount as i32)
+        complete_payment_multiplier(suffix)?
     };
+    let Value::Fixed(scale) = amount else {
+        return Err(primitives::backtrack_err(
+            "life payment",
+            "fixed multiplier before a counted amount",
+        ));
+    };
+    Ok(ActivationCostSegmentCst::Life(if scale == 1 {
+        per
+    } else {
+        Value::Scaled(Box::new(per), scale)
+    }))
+}
+
+fn complete_payment_multiplier(tokens: &[OwnedLexToken]) -> WResult<Value> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let (value, used) = crate::util::parse_for_each_count_value_words(&words)
+        .ok_or_else(|| primitives::backtrack_err("payment multiplier", "typed for-each amount"))?;
+    if used != words.len() {
+        return Err(primitives::backtrack_err(
+            "payment multiplier",
+            "complete for-each amount",
+        ));
+    }
+    Ok(value)
+}
+
+fn parse_half_life_payment<'a>(input: &mut LexStream<'a>) -> WResult<ActivationCostSegmentCst> {
+    primitives::phrase(&["half", "your", "life"]).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::kw("rounded").parse_next(input)?;
+    let value = alt((
+        primitives::kw("up").value(Value::HalfLifeTotalRoundedUp(PlayerFilter::You)),
+        primitives::kw("down").value(Value::HalfLifeTotalRoundedDown(PlayerFilter::You)),
+    ))
+    .parse_next(input)?;
+    eof.parse_next(input)?;
     Ok(ActivationCostSegmentCst::Life(value))
+}
+
+fn parse_mana_per_count_payment<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<ActivationCostSegmentCst> {
+    let tokens: &[OwnedLexToken] = repeat::<_, _, (), _, _>(1.., any.void())
+        .take()
+        .parse_next(input)?;
+    let for_index = tokens
+        .iter()
+        .position(|token| token.is_word("for"))
+        .ok_or_else(|| primitives::backtrack_err("mana payment", "for-each multiplier"))?;
+    let Some(ActivationCostSegmentCst::Mana(base)) =
+        parse_bare_symbol_segment_tokens(&tokens[..for_index])
+    else {
+        return Err(primitives::backtrack_err(
+            "mana payment",
+            "mana symbols before multiplier",
+        ));
+    };
+    let multiplier = complete_payment_multiplier(&tokens[for_index..])?;
+    Ok(ActivationCostSegmentCst::DynamicMana(
+        ironsmith_core::DynamicManaCost::new(
+            base,
+            None,
+            None,
+            Some(multiplier),
+            ironsmith_core::DynamicManaDisplayHint::Default,
+        ),
+    ))
 }
 
 /// "Pay life equal to <value>" (War Room: "the number of colors in your
@@ -234,10 +304,17 @@ fn parse_life_equal_payment<'a>(input: &mut LexStream<'a>) -> WResult<Activation
 fn parse_counted_energy_payment<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<ActivationCostSegmentCst> {
-    let amount = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+    let amount = alt((
+        primitives::kw("x").value(Value::X),
+        leaf::parse_leaf_number_prefix_lexed.map(|n| Value::Fixed(n as i32)),
+    ))
+    .parse_next(input)?;
     parse_energy_symbol.parse_next(input)?;
     eof.parse_next(input)?;
-    Ok(ActivationCostSegmentCst::Energy(amount))
+    Ok(match amount {
+        Value::Fixed(amount) => ActivationCostSegmentCst::Energy(amount as u32),
+        other => ActivationCostSegmentCst::EnergyValue(other),
+    })
 }
 
 fn parse_energy_payment<'a>(input: &mut LexStream<'a>) -> WResult<ActivationCostSegmentCst> {
@@ -379,5 +456,56 @@ mod tests {
             parse("blight 2"),
             ActivationCostSegmentCst::Blight { count: 2 }
         );
+    }
+    #[test]
+    fn variable_resource_costs_reuse_existing_typed_amounts() {
+        assert_eq!(
+            parse("pay x {e}"),
+            ActivationCostSegmentCst::EnergyValue(Value::X)
+        );
+        assert_eq!(
+            parse("pay x life"),
+            ActivationCostSegmentCst::Life(Value::X)
+        );
+        assert_eq!(parse("pay 3 {e}"), ActivationCostSegmentCst::Energy(3));
+        assert_eq!(
+            parse("pay half your life, rounded up"),
+            ActivationCostSegmentCst::Life(Value::HalfLifeTotalRoundedUp(PlayerFilter::You))
+        );
+        assert_eq!(
+            parse("pay half your life rounded down"),
+            ActivationCostSegmentCst::Life(Value::HalfLifeTotalRoundedDown(PlayerFilter::You))
+        );
+        let ActivationCostSegmentCst::Life(Value::Scaled(count, 3)) =
+            parse("pay 3 life for each velocity counter on this enchantment")
+        else {
+            panic!("expected a typed three-times counter amount");
+        };
+        assert!(matches!(count.unhinted(), Value::CountersOn(_, Some(kind))
+            if *kind == crate::object::CounterType::Velocity));
+        let ActivationCostSegmentCst::DynamicMana(cost) =
+            parse("pay {1} for each +1/+1 counter on this creature")
+        else {
+            panic!("expected dynamic mana, not a textual or fixed cost");
+        };
+        assert_eq!(cost.base.generic_mana_total(), 1);
+        assert!(matches!(
+            cost.multiplier.as_ref().unwrap().unhinted(),
+            Value::CountersOn(_, Some(crate::object::CounterType::PlusOnePlusOne))
+        ));
+        for malformed in [
+            "pay x",
+            "pay x energy",
+            "pay half your life",
+            "pay half your life rounded sideways",
+            "pay 3 life for each velocity counter on this enchantment or draw a card",
+            "pay {1} for each",
+            "pay {1} for each +1/+1 counter on this creature then draw a card",
+        ] {
+            assert!(
+                parse_pay_segment_tokens(&lex_line(malformed, 0).unwrap()).is_err(),
+                "{malformed}"
+            );
+        }
     }
 }

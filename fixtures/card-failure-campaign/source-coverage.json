@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "0a205e390e05ab76f124378518f2278698dc2dcf",
+  "source_implementation_commit": "526ff45fedeee8b6be525b0ac03e95178666961c",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 301,
-    "additional_proposed_compile_entries": 301,
+    "additional_proposed_unique_cards": 316,
+    "additional_proposed_compile_entries": 316,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true
   },
@@ -750,6 +750,73 @@
         "One typed action for effects and real costs; aggregate graveyard mana value with normal zone replacements.",
         "Zero performs one action and observer event; announced X independent of overpayment.",
         "Cost preflight excludes casting source; unavailable optional actions and interrupted choices preserve rollback."
+      ]
+    },
+    {
+      "id": "scalar-source-and-player-counter-quantities",
+      "stage": 30,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/scalar_counter_quantities.json.fixture",
+      "baseline_entries": [
+        "Nissa, Ascended Animist",
+        "Rootwire Amalgam",
+        "Razorfield Ripper",
+        "Vault 12: The Necropolis"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "Toph, Greatest Earthbender",
+          "remaining_blocker": "Earthbend action stores a fixed u32 counter amount; needs real dynamic action semantics, not only source-pronoun recognition."
+        }
+      ],
+      "implementation_commit": "526ff45fedeee8b6be525b0ac03e95178666961c",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Typed source loyalty/scaling, controller energy and player-set rad totals."
+      ]
+    },
+    {
+      "id": "owned-zone-and-opponent-history-quantities",
+      "stage": 30,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/zone_history_quantities.json.fixture",
+      "baseline_entries": [
+        "Florian, Voldaren Scion",
+        "Notorious Throng",
+        "Serpentine Curve",
+        "Slime Against Humanity"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "526ff45fedeee8b6be525b0ac03e95178666961c",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Distinct opponent life-loss and damage histories; scoped owned-zone subtype/name unions without double counting."
+      ]
+    },
+    {
+      "id": "value-driven-activation-payments",
+      "stage": 30,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/value_driven_payments.json.fixture",
+      "baseline_entries": [
+        "Chthonian Nightmare",
+        "HELIOS One",
+        "Sphinx of the Revelation",
+        "Krumar Initiate",
+        "Lurking Evil",
+        "Murderous Betrayal",
+        "Tornado"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "Skeleton Scavengers",
+          "remaining_blocker": "The when-it-regenerates-this-way rider creates a delayed triggered ability. Existing immediate replacement follow-ups do not represent its stack timing."
+        }
+      ],
+      "implementation_commit": "526ff45fedeee8b6be525b0ac03e95178666961c",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "X energy/life bounds, rounded half-life and per-counter values; actual activation total-cost determination before modifiers."
       ]
     }
   ],
@@ -5163,8 +5230,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "value-driven-activation-payments"
+      ]
     },
     {
       "card_name": "Cinder Cloud",
@@ -10487,8 +10556,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "owned-zone-and-opponent-history-quantities"
+      ]
     },
     {
       "card_name": "Flourishing Bloom-Kin",
@@ -12583,8 +12654,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "value-driven-activation-payments"
+      ]
     },
     {
       "card_name": "Haakon, Stromgald Scourge",
@@ -16185,8 +16258,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "value-driven-activation-payments"
+      ]
     },
     {
       "card_name": "Kruphix, God of Horizons",
@@ -17275,8 +17350,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "value-driven-activation-payments"
+      ]
     },
     {
       "card_name": "Luxior, Giada's Gift",
@@ -18917,8 +18994,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "value-driven-activation-payments"
+      ]
     },
     {
       "card_name": "Musician",
@@ -19715,8 +19794,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scalar-source-and-player-counter-quantities"
+      ]
     },
     {
       "card_name": "Nissa, Worldsoul Speaker",
@@ -19891,8 +19972,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "owned-zone-and-opponent-history-quantities"
+      ]
     },
     {
       "card_name": "Nova Pentacle",
@@ -22755,8 +22838,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scalar-source-and-player-counter-quantities"
+      ]
     },
     {
       "card_name": "Razorgrass Screen",
@@ -23709,8 +23794,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scalar-source-and-player-counter-quantities"
+      ]
     },
     {
       "card_name": "Rope",
@@ -24809,8 +24896,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "owned-zone-and-opponent-history-quantities"
+      ]
     },
     {
       "card_name": "Serra Avenger",
@@ -25849,8 +25938,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "owned-zone-and-opponent-history-quantities"
+      ]
     },
     {
       "card_name": "Slingbow Trap",
@@ -26443,8 +26534,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "value-driven-activation-payments"
+      ]
     },
     {
       "card_name": "Sphinx of the Second Sun",
@@ -29946,8 +30039,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "value-driven-activation-payments"
+      ]
     },
     {
       "card_name": "Torrent of Lava",
@@ -31018,8 +31113,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scalar-source-and-player-counter-quantities"
+      ]
     },
     {
       "card_name": "Vaultbreaker",
