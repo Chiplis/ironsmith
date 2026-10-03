@@ -22,10 +22,13 @@ use crate::replacement::ReplacementEffect;
 /// replacement effects are properly registered.
 pub fn generate_replacement_effects_from_abilities(game: &GameState)
     -> Result<Vec<ReplacementEffect>, crate::static_ability_processor::StaticEffectDiscoveryError> {
-    let continuous = game.try_all_continuous_effects()?;
+    // Validate discovery before allowing the shared layer cache to serve any
+    // object. Every zone remains in scope, including hidden-zone replacements.
+    game.try_all_continuous_effects()?;
     let mut effects = Vec::new();
 
     let object_ids = game.object_ids_in_deterministic_order();
+    game.prewarm_calculated_characteristics(&object_ids);
 
     // Iterate over all objects and apply static abilities only in zones where they function.
     for object_id in object_ids {
@@ -33,7 +36,7 @@ pub fn generate_replacement_effects_from_abilities(game: &GameState)
             if object.zone == crate::zone::Zone::Battlefield && game.is_phased_out(object_id) {
                 continue;
             }
-            let Some(chars) = game.try_current_characteristics_with_effects(object_id, &continuous)? else { continue; };
+            let Some(chars) = game.try_current_characteristics(object_id)? else { continue; };
             let controller = chars.controller;
             let zone = object.zone;
 
@@ -183,6 +186,10 @@ mod tests {
             ))
             .build();
         let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        game.refresh_continuous_state().unwrap();
+        // Exercise the validated shared cache, then invalidate it with counter
+        // changes; a cached ability must neither survive nor miss its condition.
+        game.prewarm_calculated_characteristics(&[source]);
 
         assert!(
             generate_replacement_effects_from_abilities(&game).unwrap()
@@ -192,6 +199,7 @@ mod tests {
         );
 
         game.add_counters(source, CounterType::PlusOnePlusOne, 1);
+        game.refresh_continuous_state().unwrap();
         let replacements = generate_replacement_effects_from_abilities(&game).unwrap();
         let replacement = replacements
             .iter()
@@ -203,6 +211,7 @@ mod tests {
         ));
 
         game.remove_counters(source, CounterType::PlusOnePlusOne, 1, None, None);
+        game.refresh_continuous_state().unwrap();
         assert!(
             generate_replacement_effects_from_abilities(&game).unwrap()
                 .iter()

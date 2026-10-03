@@ -1044,6 +1044,8 @@ pub struct PendingManaAbility {
     pub undo_locked_by_mana: bool,
     /// Authoritative payment for this mana ability's own mana activation cost.
     pub pending_mana_payment: Option<crate::mana_payment::PendingManaPayment>,
+    /// This activation's announced exhaust contribution, removed on child cancellation.
+    pub exhaust_announcement: Option<crate::game_state::ExhaustActivationAnnouncement>,
     /// X announced for an {X} in the activation cost (CR 601.2f via 602.2b);
     /// `mana_cost` already has that X locked in.
     pub x_value: Option<u32>,
@@ -1070,6 +1072,8 @@ pub struct PriorityLoopState {
     pub pending_method_selection: Option<PendingMethodSelection>,
     /// A pending mana ability activation waiting for mana payment.
     pub pending_mana_ability: Option<PendingManaAbility>,
+    /// Enclosing mana activations, oldest first. The active child owns the live payment.
+    pub pending_mana_parents: Vec<PendingManaAbility>,
     /// A suspended live priority response waiting for a nested decision answer.
     pub pending_continuation: Option<PendingPriorityContinuation>,
     /// Checkpoint of game state saved when starting an action chain.
@@ -1087,6 +1091,7 @@ impl PriorityLoopState {
             pending_activation: None,
             pending_method_selection: None,
             pending_mana_ability: None,
+            pending_mana_parents: Vec::new(),
             pending_continuation: None,
             checkpoint: None,
         }
@@ -1114,6 +1119,7 @@ impl PriorityLoopState {
         self.pending_activation = None;
         self.pending_method_selection = None;
         self.pending_mana_ability = None;
+        self.pending_mana_parents.clear();
         self.pending_continuation = None;
         true
     }
@@ -1124,6 +1130,7 @@ impl PriorityLoopState {
             || self.pending_activation.is_some()
             || self.pending_method_selection.is_some()
             || self.pending_mana_ability.is_some()
+            || !self.pending_mana_parents.is_empty()
             || self.pending_continuation.is_some()
     }
 

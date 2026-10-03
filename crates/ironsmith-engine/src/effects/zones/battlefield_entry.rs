@@ -514,7 +514,8 @@ fn move_to_battlefield_batch_with_options_inner(
         };
         let entering_controller = match options.controller {
             BattlefieldEntryController::Specific(controller) => Some(controller),
-            BattlefieldEntryController::Preserve | BattlefieldEntryController::Owner => None,
+            BattlefieldEntryController::Owner => working.object(*object).map(|object| object.owner),
+            BattlefieldEntryController::Preserve => None,
         };
         let (mut scope, scoped_additional, lookback, programs) = match zone_proposals.remove(object) {
             Some(proposal) => proposal.into_entry_scope(),
@@ -573,7 +574,8 @@ fn move_to_battlefield_batch_with_options_inner(
         let (object, options) = &requests[index];
         let entering_controller = match options.controller {
             BattlefieldEntryController::Specific(controller) => Some(controller),
-            BattlefieldEntryController::Preserve | BattlefieldEntryController::Owner => None,
+            BattlefieldEntryController::Owner => working.object(*object).map(|object| object.owner),
+            BattlefieldEntryController::Preserve => None,
         };
         let Some(mut prepared) = working.prepare_etb_entry_with_controller_and_dm(
             *object,
@@ -619,7 +621,8 @@ fn move_to_battlefield_batch_with_options_inner(
         };
         let entering_controller = match options.controller {
             BattlefieldEntryController::Specific(controller) => Some(controller),
-            BattlefieldEntryController::Preserve | BattlefieldEntryController::Owner => None,
+            BattlefieldEntryController::Owner => working.object(*object).map(|object| object.owner),
+            BattlefieldEntryController::Preserve => None,
         };
         let committed = working.commit_prepared_etb_with_cause_and_options_and_dm(
             *object,

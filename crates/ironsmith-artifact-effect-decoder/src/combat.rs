@@ -71,3 +71,101 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         _ => Ok(None),
     }
 }
+
+pub(super) fn map_card_ids(
+    kind: &str,
+    payload: Value,
+    context: &super::card_graph::Context<'_>,
+) -> Result<Option<Value>, String> {
+    match kind {
+        "AssignNoCombatDamageEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::AssignNoCombatDamageEffect,
+        >(payload, context)
+        .map(Some),
+        "DealDamageEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::DealDamageEffect>(payload, context)
+                .map(Some)
+        }
+        "DealDistributedDamageEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::DealDistributedDamageEffect,
+        >(payload, context)
+        .map(Some),
+        "ExchangeValuesEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ExchangeValuesEffect,
+        >(payload, context)
+        .map(Some),
+        "FightEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::FightEffect>(payload, context)
+                .map(Some)
+        }
+        "GoadEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::GoadEffect>(payload, context)
+                .map(Some)
+        }
+        "ClearGoadEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::ClearGoadEffect>(payload, context)
+                .map(Some)
+        }
+        "GrantAbilitiesTargetEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::GrantAbilitiesTargetEffect<wire::WireStaticAbility>,
+        >(payload, context)
+        .map(Some),
+        "HealDamageEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::HealDamageEffect>(payload, context)
+                .map(Some)
+        }
+        "ModifyPowerToughnessEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ModifyPowerToughnessEffect,
+        >(payload, context)
+        .map(Some),
+        "ModifyPowerToughnessForEachEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ModifyPowerToughnessForEachEffect,
+        >(payload, context)
+        .map(Some),
+        "PreventAllCombatDamageEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::PreventAllCombatDamageEffect,
+        >(payload, context)
+        .map(Some),
+        "PreventAllDamageEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::PreventAllDamageEffect,
+        >(payload, context)
+        .map(Some),
+        "PreventAllDamageToTargetEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::PreventAllDamageToTargetEffect<wire::WireEffect>,
+        >(payload, context)
+        .map(Some),
+        "PreventDamageEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::PreventDamageEffect<wire::WireEffect>,
+        >(payload, context)
+        .map(Some),
+        "PreventNextTimeDamageEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::PreventNextTimeDamageEffect<wire::WireEffect>,
+        >(payload, context)
+        .map(Some),
+        "RedirectAllDamageThisTurnToTargetEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::RedirectAllDamageThisTurnToTargetEffect,
+        >(payload, context)
+        .map(Some),
+        "RedirectNextDamageToTargetEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::RedirectNextDamageToTargetEffect,
+        >(payload, context)
+        .map(Some),
+        "RedirectNextTimeDamageToSourceEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::RedirectNextTimeDamageToSourceEffect,
+        >(payload, context)
+        .map(Some),
+        "RemoveFromCombatEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::RemoveFromCombatEffect,
+        >(payload, context)
+        .map(Some),
+        "ReplaceNextDamageToTargetEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ReplaceNextDamageToTargetEffect<wire::WireEffect>,
+        >(payload, context)
+        .map(Some),
+        "SetBasePowerToughnessEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::SetBasePowerToughnessEffect,
+        >(payload, context)
+        .map(Some),
+        _ => Ok(None),
+    }
+}

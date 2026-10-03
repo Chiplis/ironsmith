@@ -837,6 +837,16 @@ impl StaticAbilityKind for Megamorph {
 pub struct DoesntUntap;
 
 impl StaticAbilityKind for DoesntUntap {
+    fn compiled_model(&self) -> Option<&super::CompiledStaticAbility> {
+        static MODEL: std::sync::LazyLock<super::CompiledStaticAbility> =
+            std::sync::LazyLock::new(|| super::CompiledStaticAbility {
+                id: Some(StaticAbilityId::DoesntUntap),
+                label: "Doesn't untap during your untap step".to_owned(),
+                payload: ironsmith_core::StaticAbilityPayload::None,
+            });
+        Some(&MODEL)
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::DoesntUntap
     }
@@ -1309,6 +1319,10 @@ impl StaticAbilityKind for EntersUnderChosenControl {
 pub struct EntersTapped;
 
 impl StaticAbilityKind for EntersTapped {
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::EntersTapped
     }
@@ -1340,6 +1354,10 @@ impl StaticAbilityKind for EntersTapped {
 pub struct EntersTappedUnlessControlTwoOrMoreOtherLands;
 
 impl StaticAbilityKind for EntersTappedUnlessControlTwoOrMoreOtherLands {
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::EntersTappedUnlessControlTwoOrMoreOtherLands
     }
@@ -1474,6 +1492,10 @@ impl StaticAbilityKind for EntersTappedUnlessTwoOrMoreOpponents {
 struct ThisWouldEnterTappedUnlessControlTwoOrMoreOtherLandsMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrMoreOtherLandsMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::ZoneChange | crate::events::EventKind::EnterBattlefield)
+    }
+
     fn applies_from_entering_source(&self) -> bool {
         true
     }
@@ -1944,6 +1966,29 @@ impl StaticAbilityKind for Tribute {
                 paid_label: "Tribute".to_string(),
             },
         ))
+    }
+}
+
+/// A rule-derived entry ability. It retains a complete typed model and uses
+/// ordinary replacement discovery/application, just like printed entry abilities.
+#[derive(Debug, Clone)]
+pub struct IntrinsicStartingCounters {
+    rule: ironsmith_core::IntrinsicStartingCounter,
+    model: super::CompiledStaticAbility,
+}
+impl IntrinsicStartingCounters {
+    pub fn new(rule: ironsmith_core::IntrinsicStartingCounter) -> Self {
+        Self { rule, model: super::CompiledStaticAbility::intrinsic_starting_counters(rule) }
+    }
+}
+impl StaticAbilityKind for IntrinsicStartingCounters {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::EnterWithCounters }
+    fn display(&self) -> String { self.model.label.clone() }
+    fn compiled_model(&self) -> Option<&super::CompiledStaticAbility> { Some(&self.model) }
+    fn intrinsic_starting_counter_rule(&self) -> Option<ironsmith_core::IntrinsicStartingCounter> { Some(self.rule) }
+    fn generate_replacement_effect(&self, source: ObjectId, controller: PlayerId) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(source, controller, ThisWouldEnterBattlefieldMatcher,
+            ReplacementAction::EnterWithIntrinsicStartingCounters(self.rule)))
     }
 }
 
@@ -2422,6 +2467,10 @@ impl ManaSpendPermissionAbility {
 }
 
 impl StaticAbilityKind for ManaSpendPermissionAbility {
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::ManaSpendPermission
     }

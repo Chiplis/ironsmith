@@ -47,7 +47,7 @@ impl ReplacementMatcher for WouldCreateTokensUnderControlMatcher {
             return false;
         };
 
-        if create_tokens.count == 0
+        if create_tokens.total_count() == 0
             || !self
                 .controller_filter
                 .matches_player(create_tokens.controller, &ctx.filter_ctx)
@@ -63,10 +63,9 @@ impl ReplacementMatcher for WouldCreateTokensUnderControlMatcher {
         if let Some(token_filter) = &self.token_filter {
             // Tokens an earlier replacement added are part of the event too
             // (CR 616.1), so any matching group makes this apply.
-            return create_tokens
-                .token
-                .as_ref()
-                .is_some_and(|token| token_filter.matches(token, &ctx.filter_ctx, ctx.game))
+            return (create_tokens.count > 0
+                && create_tokens.token.as_ref()
+                    .is_some_and(|token| token_filter.matches(token, &ctx.filter_ctx, ctx.game)))
                 || create_tokens.additional_tokens.iter().any(|(kind, count)| {
                     *count > 0
                         && token_filter.matches(

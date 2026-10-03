@@ -1,131 +1,21 @@
-import { createAdaptiveWorkBudget } from './adaptive-work-budget.js';
-/** Cooperative background work on the engine's immutable priority snapshot.
- * Every slice is a separate task, so queued game commands run between slices.
- */
-export function createPriorityAnalysisScheduler({ game, busy, enqueue, publish, fail,
-  schedule = (fn) => setTimeout(fn, 0), cancel = clearTimeout, budget = 4096,
-  deadlineMs = 2000,
-  now = () => performance.now(), reportSlice = () => {}, reportStage = () => {},
-  runSetup = (_metadata, operation) => operation() }) {
-  const priorityBudget = createAdaptiveWorkBudget({ initial: Math.min(8, budget), max: budget, now, report: reportSlice });
-  const inspectorBudget = createAdaptiveWorkBudget({ initial: 1, max: 64, now, report: reportSlice });
-  // Nodes the last slice actually spent, so the budget controller can tell the
-  // fixed cost of rebuilding the menu apart from the cost of searching.
-  const sliceNodes = () => {
-    const value = game()?.lastAnalysisSliceNodes?.();
-    return Number.isFinite(value) ? value : 0;
-  };
-  let revision = 0;
-  const previews = new Map();
-  const queue = [];
-  let activePreview = null;
-  let timer = null;
-  let running = false;
-  const stop = () => {
-    if (timer !== null) cancel(timer);
-    timer = null;
-    running = false;
-  };
-  const invalidate = () => {
-    stop();
-    for (const entry of previews.values()) entry.resolve([]);
-    previews.clear();
-    queue.length = 0;
-    activePreview = null;
-    revision += 1;
-    game()?.cancelPriorityAnalysis?.();
-  };
-  const start = (viewRevision = revision) => {
-    if (running || typeof game()?.beginPriorityAnalysis !== "function") return;
-    const token = String(revision);
-    if (!runSetup({ kind: 'priority_analysis_setup' }, () => game().beginPriorityAnalysis(token))) { startPreview(); return; }
-    running = true;
-    // A job that has already run this long is not going to feel interactive by
-    // being cut into more pieces; each extra slice only re-pays its fixed cost.
-    const startedAt = now();
-    const tick = () => {
-      timer = null;
-      if (token !== String(revision)) return;
-      if (busy()) { timer = schedule(tick); return; }
-      enqueue(() => {
-        if (token !== String(revision)) return;
-        const overdue = now() - startedAt > deadlineMs;
-        const step = units => {
-          reportStage('priority_analysis', { nodeBudget: units });
-          return game().stepPriorityAnalysis(token, units);
-        };
-        const sliceStartedAt = now();
-        const decision = overdue ? step(budget) : priorityBudget.run(step, sliceNodes);
-        reportStage('priority_analysis_complete', { spentNodes: sliceNodes() });
-        if (overdue) reportSlice({ budget, elapsedMs: now() - sliceStartedAt, spentUnits: sliceNodes(), overdue: true });
-        if (decision === false) { stop(); start(); return; }
-        if (decision) {
-          stop();
-          publish({ revision: viewRevision, decision });
-          startPreview();
-        } else {
-          timer = schedule(tick);
-        }
-      }, { kind: 'priority_analysis' }).catch((error) => {
-        if (token !== String(revision)) return;
-        stop();
-        fail({ revision, error });
-        startPreview();
-      });
-    };
-    timer = schedule(tick);
-  };
-  const startPreview = () => {
-    if (running || activePreview || !queue.length) return;
-    const entry = queue.shift();
-    activePreview = entry;
-    running = true;
-    const token = String(revision);
-    let begun = false;
-    const finish = (result) => {
-      stop(); activePreview = null; entry.resolve(result); startPreview();
-    };
-    const tick = () => {
-      timer = null;
-      if (token !== String(revision)) return;
-      if (busy()) { timer = schedule(tick); return; }
-      enqueue(() => {
-        if (token !== String(revision)) return;
-        if (!begun) {
-          reportStage('inspector_setup');
-          game().beginInspectorAnalysis(token, ...entry.args);
-          begun = true;
-        }
-        const result = inspectorBudget.run(units => {
-          reportStage('inspector_analysis', { nodeBudget: units });
-          return game().stepInspectorAnalysis(token, units);
-        }, sliceNodes);
-        reportStage('inspector_analysis_complete', { spentNodes: sliceNodes() });
-        if (result === null) timer = schedule(tick);
-        else finish(result === false ? [] : result);
-      }, { kind: 'inspector_analysis' }).catch(() => {
-        if (token === String(revision)) finish([]);
-      });
-    };
-    timer = schedule(tick);
-  };
-  const inspector = (...args) => {
-    const key = args.map(String).join(":");
-    if (previews.has(key)) return previews.get(key).promise;
-    let resolve;
-    const promise = new Promise(done => { resolve = done; });
-    const entry = { args, resolve, promise };
-    previews.set(key, entry); queue.push(entry);
-    start();
-    return promise;
-  };
-  return { invalidate, start, inspector, revision: () => revision, dispose: invalidate };
-}
-
+/** Merge cumulative, confirmed actions without accepting an obsolete snapshot. */
 export function mergePriorityAnalysis(state, analysis) {
   if (!state || !analysis || state.__priority_revision !== analysis.revision
-      || state.decision?.kind !== "priority"
+      || state.decision?.kind !== 'priority'
       || state.decision.analysis_complete !== false
-      || state.decision.player !== analysis.decision?.player) return state;
-  return { ...state, decision: analysis.decision };
+      || state.decision.player !== analysis.decision?.player
+      || state.decision === analysis.decision
+      || (analysis.sequence !== undefined && state.decision.__priority_analysis_sequence === analysis.sequence)
+      || (state.__priority_analysis_sequence ?? -1) > (analysis.sequence ?? 0)) return state;
+  // Undo belongs to the live continuation, which is intentionally absent from
+  // the analysis checkpoint. Keep that authoritative control in the menu.
+  const undo = (state.decision.actions || []).filter(action => action.action_ref?.kind === 'untap_land');
+  const decision = undo.length ? { ...analysis.decision, actions: [
+    ...(analysis.decision.actions || []).filter(action => action.action_ref?.kind !== 'untap_land'),
+    ...undo,
+  ].map((action, index) => ({ ...action, index })) } : analysis.decision;
+  return { ...state,
+    decision: analysis.sequence === undefined ? decision : { ...decision, __priority_analysis_sequence: analysis.sequence },
+    __priority_analysis_sequence: analysis.sequence ?? 0,
+  };
 }

@@ -237,10 +237,20 @@ impl TriggerIntroSurface {
     }
 }
 
-#[derive(Debug)]
 pub struct Trigger {
     matcher: Arc<dyn TriggerMatcher>,
     intro_surface: Option<TriggerIntroSurface>,
+    retained_model: Option<Arc<ironsmith_core::trigger_model::Trigger>>,
+}
+
+impl std::fmt::Debug for Trigger {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Trigger")
+            .field("matcher", &self.matcher)
+            .field("intro_surface", &self.intro_surface)
+            .finish()
+    }
 }
 
 impl Clone for Trigger {
@@ -248,6 +258,7 @@ impl Clone for Trigger {
         Self {
             matcher: Arc::clone(&self.matcher),
             intro_surface: self.intro_surface,
+            retained_model: self.retained_model.clone(),
         }
     }
 }
@@ -259,17 +270,41 @@ impl PartialEq for Trigger {
 }
 
 impl Trigger {
+    /// Process-local identity for immutable runtime cache eligibility. This is
+    /// never a checkpoint reference or a substitute for a retained wire model.
+    pub(crate) fn runtime_matcher_identity(&self) -> usize {
+        Arc::as_ptr(&self.matcher) as *const () as usize
+    }
+
     /// Create a new Trigger wrapping a TriggerMatcher implementation.
     pub fn new<T: TriggerMatcher + 'static>(matcher: T) -> Self {
         Self {
             matcher: Arc::new(matcher),
             intro_surface: None,
+            retained_model: None,
         }
     }
 
     pub fn with_intro_surface(mut self, intro: TriggerIntroSurface) -> Self {
         self.intro_surface = Some(intro);
+        if let Some(model) = &mut self.retained_model {
+            Arc::make_mut(model).intro_surface = Some(match intro {
+                TriggerIntroSurface::When => {
+                    ironsmith_core::trigger_model::TriggerIntroSurface::When
+                }
+                TriggerIntroSurface::Whenever => {
+                    ironsmith_core::trigger_model::TriggerIntroSurface::Whenever
+                }
+                TriggerIntroSurface::At => ironsmith_core::trigger_model::TriggerIntroSurface::At,
+            });
+        }
         self
+    }
+
+    /// The complete shared trigger vocabulary captured during model lowering.
+    /// Presentation intro metadata remains separately available to the codec.
+    pub fn compiled_model(&self) -> Option<&ironsmith_core::trigger_model::Trigger> {
+        self.retained_model.as_deref()
     }
 
     pub fn intro_surface(&self) -> Option<TriggerIntroSurface> {
@@ -314,8 +349,12 @@ impl Trigger {
     }
 
     pub fn downcast_mut<T: TriggerMatcher + 'static>(&mut self) -> Option<&mut T> {
-        Arc::get_mut(&mut self.matcher)
-            .and_then(|matcher| (matcher as &mut dyn std::any::Any).downcast_mut::<T>())
+        let matcher = Arc::get_mut(&mut self.matcher)
+            .and_then(|matcher| (matcher as &mut dyn std::any::Any).downcast_mut::<T>())?;
+        // Only successful mutable access invalidates the model. Failed type or
+        // shared-ownership checks cannot discard otherwise valid transport data.
+        self.retained_model = None;
+        Some(matcher)
     }
 
     /// Whether this trigger uses snapshot-based matching.
@@ -1937,5 +1976,70 @@ mod tests {
     fn test_trigger_as_trait_object() {
         let trigger: Box<dyn TriggerMatcher> = Box::new(Trigger::this_enters_battlefield());
         assert!(trigger.display().contains("enters"));
+    }
+}
+
+
+#[cfg(test)]
+mod retained_trigger_model_tests {
+    use super::*;
+
+    #[test]
+    fn retained_trigger_model_preserves_failed_access_and_invalidates_mutable_matcher() {
+        let model = ironsmith_core::trigger_model::Trigger::this_enters_battlefield();
+        let mut trigger = Trigger::from_model(model.clone()).expect("trigger model lowers");
+        assert_eq!(trigger.compiled_model(), Some(&model));
+        assert_eq!(
+            format!("{trigger:?}"),
+            format!("{:?}", Trigger::this_enters_battlefield())
+        );
+        let cloned = trigger.clone();
+        assert!(
+            trigger.downcast_mut::<ZoneChangeTrigger>().is_none(),
+            "shared matcher cannot be mutated"
+        );
+        assert_eq!(
+            trigger.compiled_model(),
+            Some(&model),
+            "failed access cannot lose retained data"
+        );
+        assert_eq!(cloned.compiled_model(), Some(&model));
+        drop(cloned);
+        assert!(
+            trigger.downcast_mut::<ZoneChangeTrigger>().is_some(),
+            "ordinary unique matcher mutation remains available"
+        );
+        assert!(
+            trigger.compiled_model().is_none(),
+            "mutable access invalidates the old model"
+        );
+    }
+
+    #[test]
+    fn retained_trigger_model_preserves_intro_mutation_and_clone_isolation() {
+        let model = ironsmith_core::trigger_model::Trigger::this_enters_battlefield();
+        let original = Trigger::from_model(model.clone()).expect("complete trigger model lowers");
+        for (native, core) in [
+            (
+                TriggerIntroSurface::When,
+                ironsmith_core::trigger_model::TriggerIntroSurface::When,
+            ),
+            (
+                TriggerIntroSurface::Whenever,
+                ironsmith_core::trigger_model::TriggerIntroSurface::Whenever,
+            ),
+            (
+                TriggerIntroSurface::At,
+                ironsmith_core::trigger_model::TriggerIntroSurface::At,
+            ),
+        ] {
+            let changed = original.clone().with_intro_surface(native);
+            let mut expected = model.clone();
+            expected.intro_surface = Some(core);
+            assert_eq!(changed.compiled_model(), Some(&expected));
+            assert_eq!(changed.intro_surface(), Some(native));
+            assert_eq!(original.compiled_model(), Some(&model));
+            assert_eq!(original.intro_surface(), None);
+        }
     }
 }

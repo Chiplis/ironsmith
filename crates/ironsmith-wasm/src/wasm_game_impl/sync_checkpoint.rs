@@ -9,7 +9,9 @@ use ironsmith::turn_runner::{TurnRunner, TurnState as RunnerTurnState};
 use ironsmith::types::Subtype;
 use sha2::{Digest, Sha256};
 
-const SYNC_CHECKPOINT_VERSION: u32 = 1;
+// Version 1 conflated effective control with an initial-controller assignment.
+// That information cannot be recovered losslessly from its object snapshots.
+const SYNC_CHECKPOINT_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -193,6 +195,7 @@ struct SyncObject {
     id: u64,
     stable_id: u64,
     owner: u8,
+    initial_controller: u8,
     controller: u8,
     zone: String,
     name: String,
@@ -318,6 +321,7 @@ struct PublicAuditObject {
     id: u64,
     stable_id: u64,
     owner: u8,
+    initial_controller: u8,
     controller: u8,
     zone: String,
     identity: Option<PublicAuditObjectIdentity>,
@@ -509,6 +513,205 @@ impl SyncContinuousTimestamps {
             counters,
             attachments: self.attachments.into_iter().map(|(object, time)|
                 (ObjectId::from_raw(object), time)).collect(),
+        })
+    }
+}
+
+/// Complete native executable roots for the owning checkpoint. This carrier is
+/// staged separately from publication until perspective reachability is wired.
+/// Graph slots are sorted by source CardId and receiver IDs must preserve that
+/// order: current linked-face semantics still give allocation order meaning.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncExecutableState {
+    graph_card_count: u32,
+    occurrences: ironsmith_runtime_catalog::artifact_materializer::RetainedStaticAbilityTable,
+    definitions: Vec<(
+        u32,
+        ironsmith_runtime_catalog::artifact_materializer::RetainedOccurrenceCardDefinition<u32>,
+    )>,
+    objects:
+        Vec<ironsmith_runtime_catalog::artifact_materializer::RetainedOccurrenceLiveObject<u32>>,
+    continuous: ironsmith_runtime_catalog::artifact_materializer::RetainedGraphRegisteredState<u32>,
+}
+
+struct RestoredSyncExecutableState {
+    definitions: Vec<CardDefinition>,
+    objects: Vec<Object>,
+    continuous: ironsmith::continuous::RegisteredContinuousEffectState,
+}
+
+impl SyncExecutableState {
+    /// The caller supplies already approved native object roots. Identity-only
+    /// graph nodes (for embedded templates and departed origins) carry no
+    /// catalog text. Full linked families are retained for physical/live faces.
+    fn retain(
+        game: &GameState,
+        registry: &ironsmith::cards::CardRegistry,
+        objects: Vec<Object>,
+        continuous: ironsmith::continuous::RegisteredContinuousEffectState,
+    ) -> Result<Self, String> {
+        use ironsmith_runtime_catalog::artifact_materializer::{
+            OccurrenceBindingError, StaticAbilityOccurrenceEncoder,
+        };
+        let mut object_ids = std::collections::BTreeSet::new();
+        let mut pending = std::collections::BTreeSet::new();
+        for object in &objects {
+            if !object_ids.insert(object.id) {
+                return Err("duplicate executable object root".into());
+            }
+            pending.extend(object.card.map(|id| id.0));
+            pending.extend(object.other_face.map(|id| id.0));
+        }
+        let mut definitions = std::collections::BTreeMap::new();
+        while let Some(raw_id) = pending.pop_first() {
+            let id = ironsmith::CardId::from_raw(raw_id);
+            if definitions.contains_key(&raw_id) {
+                continue;
+            }
+            let definition = game
+                .retained_card_definition(id).cloned()
+                .or_else(|| registry.get_by_id(id).cloned())
+                .ok_or_else(|| format!("missing executable definition for live face {}", id.0))?;
+            if definition.card.id != id {
+                return Err("catalog returned wrong executable face identity".into());
+            }
+            pending.extend(definition.card.other_face.map(|id| id.0));
+            definitions.insert(raw_id, definition);
+        }
+        // Discover every typed CardId through the same exhaustive codec that
+        // will publish it. Probe bindings are local and never leave this method.
+        let mut graph = std::collections::BTreeSet::new();
+        let mut probe = StaticAbilityOccurrenceEncoder::default();
+        let mut discover = |id: ironsmith::CardId| {
+            graph.insert(id.0);
+            Ok::<_, OccurrenceBindingError>(id.0)
+        };
+        for definition in definitions.values() {
+            probe
+                .encode_card_definition(definition.clone(), &mut discover)
+                .map_err(|e| e.to_string())?;
+        }
+        for object in &objects {
+            probe
+                .encode_live_object(object.clone(), &mut discover)
+                .map_err(|e| e.to_string())?;
+        }
+        probe
+            .encode_registered_state_with_card_graph(continuous.clone(), &mut discover)
+            .map_err(|e| e.to_string())?;
+        drop(discover);
+        let graph: Vec<_> = graph.into_iter().collect();
+        let graph_card_count =
+            u32::try_from(graph.len()).map_err(|_| "too many executable graph nodes")?;
+        let bind = |id: ironsmith::CardId| {
+            graph
+                .binary_search(&id.0)
+                .map(|index| index as u32)
+                .map_err(|_| OccurrenceBindingError::InvalidModel {
+                    detail: "undiscovered executable graph node".into(),
+                })
+        };
+        let mut encoder = StaticAbilityOccurrenceEncoder::default();
+        let definitions = definitions
+            .into_iter()
+            .map(|(id, definition)| {
+                let index = bind(ironsmith::CardId::from_raw(id)).map_err(|e| e.to_string())?;
+                let definition = encoder
+                    .encode_card_definition(definition, bind)
+                    .map_err(|e| e.to_string())?;
+                Ok::<_, String>((index, definition))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let objects = objects
+            .into_iter()
+            .map(|object| {
+                encoder
+                    .encode_live_object(object, bind)
+                    .map_err(|e| e.to_string())
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let continuous = encoder
+            .encode_registered_state_with_card_graph(continuous, bind)
+            .map_err(|e| e.to_string())?;
+        Ok(Self {
+            graph_card_count,
+            occurrences: encoder.into_table(),
+            definitions,
+            objects,
+            continuous,
+        })
+    }
+
+    /// All roots decode before the caller publishes any object or manager.
+    /// Allocate receiver graph IDs in the surrounding runtime transaction.
+    fn restore(&self, graph: &[ironsmith::CardId]) -> Result<RestoredSyncExecutableState, String> {
+        use ironsmith_runtime_catalog::artifact_materializer::{
+            OccurrenceBindingError, StaticAbilityOccurrenceDecoder,
+        };
+        if graph.len() != self.graph_card_count as usize
+            || graph.windows(2).any(|pair| pair[0].0 >= pair[1].0)
+        {
+            return Err(
+                "executable graph requires exact ordered injective receiver bindings".into(),
+            );
+        }
+        let bind = |index: u32| {
+            graph
+                .get(index as usize)
+                .copied()
+                .ok_or_else(|| OccurrenceBindingError::InvalidModel {
+                    detail: "unknown executable graph reference".into(),
+                })
+        };
+        let decoder = StaticAbilityOccurrenceDecoder::restore_with_card_graph::<u32>(
+            self.occurrences.clone(),
+            bind,
+        )
+        .map_err(|e| e.to_string())?;
+        let mut definition_slots = std::collections::BTreeSet::new();
+        let definitions = self
+            .definitions
+            .iter()
+            .map(|(index, definition)| {
+                if !definition_slots.insert(*index) {
+                    return Err("duplicate executable definition slot".into());
+                }
+                let expected = bind(*index).map_err(|e| e.to_string())?;
+                let definition = decoder
+                    .restore_card_definition(definition.clone(), bind)
+                    .map_err(|e| e.to_string())?;
+                if definition.card.id != expected {
+                    return Err("executable definition contradicts its graph slot".into());
+                }
+                Ok(definition)
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        let mut object_ids = std::collections::BTreeSet::new();
+        let objects = self
+            .objects
+            .iter()
+            .map(|object| {
+                let object = decoder
+                    .restore_live_object(object.clone(), bind)
+                    .map_err(|e| e.to_string())?;
+                if !object_ids.insert(object.id) {
+                    return Err("duplicate executable object root".into());
+                }
+                Ok(object)
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        let continuous = decoder
+            .restore_registered_state_with_card_graph(self.continuous.clone(), bind)
+            .map_err(|e| e.to_string())?;
+        // Validate descriptor identity, allocators, chronology and latches now,
+        // rather than leaving a partially decoded world for the owner to reject.
+        let mut manager = ironsmith::continuous::ContinuousEffectManager::new();
+        manager.restore_registered_state(continuous.clone())?;
+        Ok(RestoredSyncExecutableState {
+            definitions,
+            objects,
+            continuous,
         })
     }
 }
@@ -2664,6 +2867,7 @@ impl WasmGame {
                     id: object.id.0,
                     stable_id: object.stable_id.0.0,
                     owner: object.owner.0,
+                    initial_controller: object.initial_controller.0,
                     controller: self.game.controller_of(object).0,
                     zone: sync_zone_name(object.zone).to_string(),
                     name: object.name.to_string(),
@@ -3553,6 +3757,7 @@ impl WasmGame {
                     id: object.id.0,
                     stable_id: object.stable_id.0.0,
                     owner: object.owner.0,
+                    initial_controller: object.initial_controller.0,
                     controller: self.game.controller_of(object).0,
                     zone: sync_zone_name(object.zone).to_string(),
                     identity: self.public_audit_object_identity(id, object),
@@ -4050,6 +4255,7 @@ impl WasmGame {
         }
 
         restored.zone = zone;
+        restored.initial_controller = PlayerId::from_index(object.initial_controller);
         restored.stable_id = StableId::from_raw(object.stable_id);
         restored.hand_modifier = object.hand_modifier;
         restored.life_modifier = object.life_modifier;
@@ -4091,6 +4297,23 @@ impl WasmGame {
             return Err("checkpoint has no players".to_string());
         }
 
+        // Runtime construction assigns consecutive IDs in this exact order.
+        // Validate that the wire refers to those same seats, before any reset.
+        for (seat, player) in checkpoint.players.iter().enumerate() {
+            if usize::from(player.id) != seat {
+                return Err(format!("invalid checkpoint player seat {seat}: declared id {}", player.id));
+            }
+        }
+        let player_ids: std::collections::HashSet<_> = checkpoint.players.iter()
+            .map(|player| player.id).collect();
+        for object in &checkpoint.objects {
+            for (role, player) in [("owner", object.owner),
+                ("initial controller", object.initial_controller), ("controller", object.controller)] {
+                if !player_ids.contains(&player) {
+                    return Err(format!("object {} has invalid {role} {player}", object.id));
+                }
+            }
+        }
         self.reset_runtime_for_sync_checkpoint(&checkpoint);
 
         for object in checkpoint.objects.iter() {
@@ -4533,10 +4756,8 @@ impl WasmGame {
             if object.commander {
                 self.game.set_commander(id);
             }
-            let controller = PlayerId::from_index(object.controller);
-            if controller != PlayerId::from_index(object.owner) {
-                self.game.stage_controller_change_for_assembly(id, controller);
-            }
+            // Initial control was restored as an object fact. Effective control
+            // must come from actual effects, never a reconstructed assignment.
         }
 
         if let Some(timestamps) = checkpoint.continuous_timestamps {
@@ -4555,6 +4776,13 @@ impl WasmGame {
             .set_next_stack_ability_id_counter(checkpoint.id_counters.stack_ability);
         self.game = self.game.continuous_query_snapshot()
             .map_err(|error| format!("imported checkpoint continuous discovery failed: {error}"))?;
+        for object in &checkpoint.objects {
+            let restored = self.game.current_controller(ObjectId::from_raw(object.id));
+            if restored != Some(PlayerId::from_index(object.controller)) {
+                return Err(format!("checkpoint cannot restore effective controller for object {}: recorded {}, restored {:?}; actual control effects are required",
+                    object.id, object.controller, restored));
+            }
+        }
         self.pending_decision = self.game.turn.priority_player.map(|player| {
             ironsmith::game_loop::priority_context(&self.game, player).map(DecisionContext::Priority)
         }).transpose().map_err(|error| format!("priority action analysis failed: {error}"))?;
@@ -7358,6 +7586,202 @@ mod sync_checkpoint_tests {
         );
     }
     #[test]
+    fn sync_checkpoint_rebuilds_static_control_without_freezing_its_result() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let recipient = CardDefinition::new(ironsmith::CardBuilder::new(CardId::new(), "Static control checkpoint recipient")
+            .card_types(vec![CardType::Artifact]).build());
+        let mut control = CardDefinition::new(ironsmith::CardBuilder::new(CardId::new(), "Static control checkpoint aura")
+            .card_types(vec![CardType::Enchantment]).subtypes(vec![ironsmith::types::Subtype::Aura]).build());
+        control.abilities.push(ironsmith::Ability::static_ability(ironsmith::static_abilities::StaticAbility::enchant(
+            ironsmith::object::AuraAttachmentFilter::Object(ironsmith::target::ObjectFilter::permanent()))));
+        control.abilities.push(ironsmith::Ability::static_ability(ironsmith::static_abilities::StaticAbility::control_attached_permanent(
+            "You control enchanted permanent".into())));
+        host.registry.register(recipient.clone());
+        host.registry.register(control.clone());
+        let permanent = host.game.create_object_from_definition(&recipient, alice, Zone::Battlefield);
+        host.game.stage_initial_controller_for_assembly(permanent, bob);
+        let aura = host.game.create_object_from_definition(&control, alice, Zone::Battlefield);
+        host.game.object_mut(aura).unwrap().attached_to = Some(ironsmith::object::AttachmentTarget::Object(permanent));
+        host.game.object_mut(permanent).unwrap().attachments.push(aura);
+        host.game.refresh_continuous_state().expect("static control completes");
+        assert_eq!(host.game.current_controller(permanent), Some(alice));
+        let checkpoint = host.build_sync_checkpoint();
+        let audit = host.build_public_audit_checkpoint();
+        assert_eq!(audit.objects.iter().find(|object| object.id == permanent.0).unwrap().initial_controller, bob.0);
+        let mut guest = WasmGame::new();
+        guest.registry.register(recipient);
+        guest.registry.register(control);
+        guest.apply_sync_checkpoint(checkpoint).expect("static control checkpoint imports");
+        assert_eq!(guest.game.object(permanent).unwrap().initial_controller, bob);
+        assert_eq!(guest.game.current_controller(permanent), Some(alice));
+        assert!(guest.game.effect_store.continuous_effects.effects().is_empty());
+        guest.game.move_object(aura, Zone::Graveyard,
+            ironsmith::events::cause::EventCause::from_effect(aura, alice)).expect("control aura leaves");
+        guest.game.refresh_continuous_state().expect("source loss completes");
+        assert_eq!(guest.game.current_controller(permanent), Some(bob),
+            "removing the actual control source reveals initial control, not a frozen imported assignment");
+        assert_eq!(guest.game.object(permanent).unwrap().owner, alice);
+    }
+
+    #[test]
+    fn sync_checkpoint_rejects_declared_player_ids_that_do_not_match_runtime_seats() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let definition = CardDefinition::new(ironsmith::CardBuilder::new(CardId::new(), "Checkpoint declared player fixture")
+            .card_types(vec![CardType::Artifact]).build());
+        host.registry.register(definition.clone());
+        host.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let valid = host.build_sync_checkpoint();
+        for sparse in [false, true] {
+            let mut malformed = valid.clone();
+            if sparse {
+                malformed.players[0].id = 255;
+                for object in &mut malformed.objects {
+                    object.owner = 255;
+                    object.initial_controller = 255;
+                    object.controller = 255;
+                }
+            } else {
+                malformed.players[1].id = 0;
+            }
+            let mut guest = WasmGame::new();
+            guest.initialize_empty_match(vec!["Carol".into(), "Dan".into()], 20, 2);
+            guest.registry.register(definition.clone());
+            let error = guest.apply_sync_checkpoint(malformed)
+                .expect_err("declared IDs must name actual imported engine seats");
+            assert!(error.contains("player seat"), "sparse={sparse}: {error}");
+            assert_eq!(guest.game.players[0].name, "Carol");
+            assert_eq!(guest.game.players[1].name, "Dan");
+            assert!(guest.game.object_ids_in_deterministic_order().is_empty());
+            assert!(guest.game.effect_store.continuous_effects.effects().is_empty());
+        }
+    }
+
+    #[test]
+    fn sync_checkpoint_requires_initial_control_and_rejects_invalid_player_roles() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let definition = CardDefinition::new(ironsmith::CardBuilder::new(CardId::new(), "Checkpoint controller validation fixture")
+            .card_types(vec![CardType::Artifact]).build());
+        host.registry.register(definition.clone());
+        host.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let checkpoint = host.build_sync_checkpoint();
+        assert_eq!(checkpoint.version, 2);
+        let mut missing = serde_json::to_value(&checkpoint).unwrap();
+        missing["objects"][0].as_object_mut().unwrap().remove("initialController");
+        assert!(serde_json::from_value::<SyncCheckpoint>(missing).unwrap_err().to_string().contains("initialController"));
+        let mut guest = WasmGame::new();
+        guest.initialize_empty_match(vec!["Carol".into(), "Dan".into()], 20, 2);
+        guest.registry.register(definition);
+        let before = guest.game.object_ids_in_deterministic_order();
+        let mut legacy = checkpoint.clone();
+        legacy.version = 1;
+        assert!(guest.apply_sync_checkpoint(legacy).unwrap_err().contains("unsupported checkpoint version"));
+        let mut invalid = checkpoint;
+        invalid.objects[0].initial_controller = 255;
+        assert!(guest.apply_sync_checkpoint(invalid).unwrap_err().contains("invalid initial controller"));
+        assert_eq!(guest.game.players[0].name, "Carol");
+        assert_eq!(guest.game.object_ids_in_deterministic_order(), before);
+    }
+
+    #[test]
+    fn sync_checkpoint_preserves_registered_color_effect_and_its_turn_anchor() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let definition = CardDefinition::new(ironsmith::CardBuilder::new(CardId::new(), "Registered color checkpoint fixture")
+            .card_types(vec![CardType::Artifact]).build());
+        host.registry.register(definition.clone());
+        let permanent = host.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        host.game.effect_store.continuous_effects.add_effect(ironsmith::continuous::ContinuousEffect::from_resolution(
+            permanent, alice, vec![permanent], ironsmith::continuous::Modification::SetColors(ColorSet::RED))
+            .until(ironsmith::effect::Until::EndOfTurn)
+            .with_expires_end_of_turn(host.game.turn.turn_number));
+        host.game.refresh_continuous_state().expect("registered color completes");
+        assert_eq!(host.game.current_colors(permanent), Some(ColorSet::RED));
+        let expected_effects = host.game.effect_store.continuous_effects.registered_state();
+        let checkpoint = host.build_sync_checkpoint();
+        let mut guest = WasmGame::new();
+        guest.registry.register(definition);
+        guest.apply_sync_checkpoint(checkpoint).expect("color effect checkpoint imports");
+        assert_eq!(guest.game.current_colors(permanent), Some(ColorSet::RED),
+            "successful import cannot silently discard a registered characteristic effect");
+        assert_eq!(guest.game.effect_store.continuous_effects.registered_state(), expected_effects,
+            "effect payload, identity, captured controller and duration must survive import");
+        for peer in [&mut host, &mut guest] {
+            peer.game.effect_store.continuous_effects.remove_effect(expected_effects.effects[0].id);
+            peer.game.refresh_continuous_state().expect("effect removal completes");
+            assert_eq!(peer.game.current_colors(permanent), Some(ColorSet::COLORLESS));
+        }
+    }
+
+    #[test]
+    fn sync_checkpoint_rejects_unencoded_control_effect_instead_of_inventing_assignment() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let definition = CardDefinition::new(ironsmith::CardBuilder::new(CardId::new(), "Unencoded control checkpoint fixture")
+            .card_types(vec![CardType::Artifact]).build());
+        host.registry.register(definition.clone());
+        let permanent = host.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        host.game.stage_initial_controller_for_assembly(permanent, bob);
+        host.game.effect_store.continuous_effects.add_effect(ironsmith::continuous::ContinuousEffect::gain_control(
+            permanent, alice, permanent, alice));
+        host.game.refresh_continuous_state().expect("captured control completes");
+        assert_eq!(host.game.current_controller(permanent), Some(alice));
+        let checkpoint = host.build_sync_checkpoint();
+        let mut guest = WasmGame::new();
+        guest.initialize_empty_match(vec!["Carol".into(), "Dan".into()], 20, 2);
+        guest.registry.register(definition);
+        let error = guest.apply_sync_checkpoint(checkpoint).expect_err("missing actual effect cannot be inferred from controller");
+        assert!(error.contains("actual control effects are required"), "{error}");
+        assert_eq!(guest.game.players[0].name, "Carol");
+        assert!(guest.game.object_ids_in_deterministic_order().is_empty());
+        assert!(guest.game.effect_store.continuous_effects.effects().is_empty());
+    }
+
+    #[test]
+    fn sync_checkpoint_preserves_initial_control_without_inventing_control_effects() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let definition = CardDefinition::new(
+            ironsmith::CardBuilder::new(CardId::new(), "Initial control checkpoint fixture")
+                .card_types(vec![CardType::Artifact]).build());
+        host.registry.register(definition.clone());
+        let permanent = host.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        host.game.stage_initial_controller_for_assembly(permanent, bob);
+        host.game.refresh_continuous_state().expect("initial-control graph is finite");
+        assert_eq!(host.game.current_controller(permanent), Some(bob));
+        assert_eq!(host.game.object(permanent).unwrap().initial_controller, bob);
+        assert!(host.game.effect_store.continuous_effects.effects().is_empty());
+        let checkpoint = host.build_sync_checkpoint();
+        let mut guest = WasmGame::new();
+        guest.registry.register(definition);
+        guest.apply_sync_checkpoint(checkpoint).expect("initial-control checkpoint imports");
+        assert_eq!(guest.game.object(permanent).unwrap().owner, alice);
+        assert_eq!(guest.game.current_controller(permanent), Some(bob));
+        assert_eq!(guest.game.object(permanent).unwrap().initial_controller, bob,
+            "checkpoint preserves initial control as a fact, independently of ownership");
+        assert!(guest.game.effect_store.continuous_effects.effects().is_empty(),
+            "initial control cannot be reconstructed as an ordinary control modification");
+        assert_eq!(guest.game.object(permanent).unwrap().zone, Zone::Battlefield);
+    }
+
+    #[test]
     fn sync_checkpoint_preserves_zero_counter_saga_entry_completion() {
         let _id_counter_guard = crate::test_id_counter_guard();
         let alice = PlayerId::from_index(0);
@@ -8292,4 +8716,412 @@ fn sync_checkpoint_accepts_legacy_canonical_ordinary_counter_counts_and_chronolo
     );
 }
 
+}
+
+#[cfg(test)]
+mod owning_sync_executable_tests {
+    use super::*;
+    use ironsmith::ability::{Ability, AbilityKind};
+    use ironsmith::continuous::{ContinuousEffect, Modification};
+    use ironsmith::effect::Effect;
+    use ironsmith::static_abilities::StaticAbility;
+    fn fixture(compiled: bool) -> (GameState, ironsmith::cards::CardRegistry, Vec<Object>) {
+        let alice = PlayerId::from_index(0);
+        let mut flying = StaticAbility::flying();
+        let token = ironsmith::cards::builders::CardDefinitionBuilder::new(
+            CardId::new(),
+            "Shared template",
+        )
+        .token()
+        .card_types(vec![CardType::Creature])
+        .power_toughness(ironsmith::card::PowerToughness::fixed(1, 1))
+        .with_ability(Ability::static_ability(flying.clone()))
+        .build();
+        let mut definition = ironsmith::cards::builders::CardDefinitionBuilder::new(
+            CardId::new(),
+            "Saved owning program",
+        )
+        .card_types(vec![CardType::Sorcery])
+        .with_ability(Ability::static_ability(flying.clone()))
+        .with_spell_effect(vec![Effect::new(
+            ironsmith::effects::CreateTokenEffect::new(
+                token,
+                1,
+                ironsmith::target::PlayerFilter::You,
+            ),
+        )])
+        .build();
+
+        if compiled {
+            definition = ironsmith_registry_test::compile_to_runtime_definition(
+                "Saved owning program",
+                "Type: Sorcery\nCreate a 1/1 white Soldier creature token with flying.",
+                false,
+            )
+            .unwrap();
+            let mut effect = definition.spell_effect.as_ref().unwrap().all_effects()[0];
+            while let Some(child) = effect.transparent_child_effect() {
+                effect = child;
+            }
+            let template = &effect
+                .downcast_ref::<ironsmith::effects::CreateTokenEffect>()
+                .unwrap()
+                .token;
+            flying = template
+                .abilities
+                .iter()
+                .find_map(|ability| match &ability.kind {
+                    AbilityKind::Static(value) => Some(value.clone()),
+                    _ => None,
+                })
+                .unwrap();
+            definition
+                .abilities
+                .push(Ability::static_ability(flying.clone()));
+            definition.ability_labels.push("Flying".into());
+            definition.canonical_text.push_str("\nFlying");
+        }
+        let active = if compiled {
+            ironsmith_registry_test::compile_to_runtime_definition(
+                "Active owning program",
+                "Type: Sorcery\nYou gain 7 life.",
+                false,
+            )
+            .unwrap()
+            .spell_effect
+            .unwrap()
+            .all_effects()[0]
+                .clone()
+        } else {
+            Effect::gain_life(7)
+        };
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let spell = game.create_object_from_definition(&definition, alice, Zone::Stack);
+        let raw_card = ironsmith::CardBuilder::new(CardId::new(), "Raw physical artifact")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let artifact = game.create_object_from_card(&raw_card, alice, Zone::Battlefield);
+        assert!(
+            game.retained_card_definition(raw_card.id)
+                .is_some_and(|definition| definition.card == raw_card),
+            "raw creation retains original definition"
+        );
+        let object = game.object_mut(spell).unwrap();
+        object.begin_stack_program_overlay();
+        object.spell_effect = Some(
+            ironsmith::resolution::ResolutionProgram::from_effects(vec![active.clone()]).into(),
+        );
+        object.cast_alternative_method = Some(Box::new(
+            ironsmith::alternative_cast::AlternativeCastingMethod::Overload {
+                cost: ironsmith::mana::ManaCost::new(),
+                effects: vec![active.clone()],
+            },
+        ));
+        game.effect_store.continuous_effects.add_effect(
+            ContinuousEffect::from_resolution(
+                artifact,
+                alice,
+                vec![artifact],
+                Modification::SetColors(ColorSet::RED),
+            )
+            .until(ironsmith::effect::Until::EndOfTurn)
+            .with_expires_end_of_turn(game.turn.turn_number),
+        );
+        game.effect_store
+            .continuous_effects
+            .add_effect(ContinuousEffect::from_resolution(
+                artifact,
+                alice,
+                vec![spell],
+                Modification::AddAbility(flying),
+            ));
+        game.refresh_continuous_state().unwrap();
+        assert_eq!(game.current_colors(artifact), Some(ColorSet::RED));
+        let objects = vec![
+            game.object(artifact).unwrap().clone(),
+            game.object(spell).unwrap().clone(),
+        ];
+        let mut registry = ironsmith::cards::CardRegistry::new();
+        registry.register(definition);
+        (game, registry, objects)
+    }
+    fn peer_bindings(state: &SyncExecutableState) -> Vec<CardId> {
+        (0..state.graph_card_count).map(|_| CardId::new()).collect()
+    }
+    fn check_restore(compiled: bool) {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let (game, registry, objects) = fixture(compiled);
+        let alice = PlayerId::from_index(0);
+        let artifact = objects[0].id;
+        let spell = objects[1].id;
+        let encoded = SyncExecutableState::retain(
+            &game,
+            &registry,
+            objects,
+            game.effect_store.continuous_effects.registered_state(),
+        )
+        .unwrap();
+        let json = serde_json::to_value(&encoded).unwrap();
+        let wire: SyncExecutableState = serde_json::from_value(json.clone()).unwrap();
+        let peers = peer_bindings(&wire);
+        let restored = wire.restore(&peers).unwrap();
+        assert_eq!(
+            restored.definitions.len(),
+            2,
+            "embedded template identity has its own explicit snapshot, not a guessed catalog definition"
+        );
+        let object = restored
+            .objects
+            .iter()
+            .find(|object| object.id == spell)
+            .unwrap();
+        let AbilityKind::Static(flying) = &object.abilities[0].kind else {
+            panic!("native static ability")
+        };
+        let grant = restored
+            .continuous
+            .effects
+            .iter()
+            .find_map(|effect| match &effect.modification {
+                Modification::AddAbility(value) => Some(value),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(
+            grant.instance_id(),
+            flying.instance_id(),
+            "object and registered descriptor share receiver occurrence"
+        );
+        let definition = restored
+            .definitions
+            .iter()
+            .find(|definition| definition.card.name == "Saved owning program")
+            .unwrap();
+        let AbilityKind::Static(printed) = &definition.abilities[0].kind else {
+            panic!("printed static")
+        };
+        assert_eq!(printed.instance_id(), flying.instance_id());
+        let flying = flying.instance_id();
+        let mut peer = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let mut peer_registry = ironsmith::cards::CardRegistry::new();
+        for definition in &restored.definitions {
+            peer_registry.register(definition.clone());
+            peer.register_linked_face_definition(definition);
+        }
+        for object in &restored.objects {
+            peer.add_object(object.clone());
+        }
+        peer.effect_store
+            .continuous_effects
+            .restore_registered_state(restored.continuous.clone())
+            .unwrap();
+        peer.refresh_continuous_state().unwrap();
+        assert_eq!(peer.current_colors(artifact), Some(ColorSet::RED));
+        let reencoded = SyncExecutableState::retain(
+            &peer,
+            &peer_registry,
+            restored.objects,
+            restored.continuous.clone(),
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(reencoded).unwrap(),
+            json,
+            "whole owning executable graph canonical reencoding"
+        );
+        let program = peer.object(spell).unwrap().spell_effect_owned().unwrap();
+        let mut context = ironsmith::effects::EffectContext::new_default(spell, alice);
+        for effect in program.all_effects() {
+            ironsmith::effects::execute_effect(&mut peer, effect, &mut context).unwrap();
+        }
+        assert_eq!(
+            peer.player(alice).unwrap().life,
+            27,
+            "restored active overlay executes"
+        );
+
+        let destination = peer
+            .move_object(
+                spell,
+                Zone::Graveyard,
+                ironsmith::events::cause::EventCause::effect(),
+            )
+            .unwrap();
+        assert!(
+            peer.object(destination)
+                .unwrap()
+                .splice_cast_state
+                .is_none()
+        );
+        let program = peer
+            .object(destination)
+            .unwrap()
+            .spell_effect_owned()
+            .unwrap();
+        let mut context = ironsmith::effects::EffectContext::new_default(destination, alice);
+        for effect in program.all_effects() {
+            ironsmith::effects::execute_effect(&mut peer, effect, &mut context).unwrap();
+        }
+        assert_eq!(peer.player(alice).unwrap().life, 27);
+        let token = peer
+            .battlefield
+            .iter()
+            .filter_map(|id| peer.object(*id))
+            .find(|object| object.kind == ironsmith::object::ObjectKind::Token)
+            .unwrap();
+        assert!(token.abilities.iter().any(|ability|matches!(&ability.kind,AbilityKind::Static(value) if value.instance_id()==flying)),"saved original template uses same native receiver occurrence");
+        let color = restored
+            .continuous
+            .effects
+            .iter()
+            .find(|effect| matches!(effect.modification, Modification::SetColors(_)))
+            .unwrap()
+            .id;
+        peer.effect_store.continuous_effects.remove_effect(color);
+        peer.refresh_continuous_state().unwrap();
+        assert_eq!(peer.current_colors(artifact), Some(ColorSet::COLORLESS));
+    }
+    fn check_rejections(compiled: bool) {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let (game, registry, objects) = fixture(compiled);
+        let state = SyncExecutableState::retain(
+            &game,
+            &registry,
+            objects,
+            game.effect_store.continuous_effects.registered_state(),
+        )
+        .unwrap();
+        let peers = peer_bindings(&state);
+        for field in [
+            "graphCardCount",
+            "occurrences",
+            "definitions",
+            "objects",
+            "continuous",
+        ] {
+            let mut missing = serde_json::to_value(&state).unwrap();
+            missing.as_object_mut().unwrap().remove(field);
+            assert!(
+                serde_json::from_value::<SyncExecutableState>(missing).is_err(),
+                "required owner field {field}"
+            );
+        }
+        assert!(state.restore(&peers[..peers.len() - 1]).is_err());
+        let mut duplicate_binding = peers.clone();
+        duplicate_binding[1] = duplicate_binding[0];
+        assert!(state.restore(&duplicate_binding).is_err());
+        let mut reversed = peers.clone();
+        reversed.reverse();
+        assert!(
+            state.restore(&reversed).is_err(),
+            "allocation-order face semantics cannot silently invert"
+        );
+        let mut bad = state.clone();
+        bad.definitions.push(bad.definitions[0].clone());
+        assert!(bad.restore(&peers).is_err());
+        let mut bad = state.clone();
+        bad.definitions[0].0 = u32::MAX;
+        assert!(bad.restore(&peers).is_err());
+        let mut bad = state.clone();
+        bad.definitions[0].0 = (bad.definitions[0].0 + 1) % bad.graph_card_count;
+        assert!(bad.restore(&peers).is_err());
+        let mut bad = state.clone();
+        bad.objects.push(bad.objects[0].clone());
+        assert!(bad.restore(&peers).is_err());
+        let mut bad = state.clone();
+        bad.occurrences.model_card_references.clear();
+        assert!(bad.restore(&peers).is_err());
+        let mut bad = state.clone();
+        bad.continuous.next_id = u64::MAX;
+        assert!(bad.restore(&peers).is_err());
+        assert!(
+            state.restore(&peers).is_ok(),
+            "valid immutable state remains usable after every rejection"
+        );
+    }
+    fn check_approved_hidden_root(compiled: bool) {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let definition = if compiled {
+            ironsmith_registry_test::compile_to_runtime_definition(
+                "Private executable root",
+                "Type: Sorcery\nYou gain 7777 life.",
+                false,
+            )
+            .unwrap()
+        } else {
+            ironsmith::cards::builders::CardDefinitionBuilder::new(
+                CardId::new(),
+                "Private executable root",
+            )
+            .card_types(vec![CardType::Sorcery])
+            .with_spell_effect(vec![Effect::gain_life(7777)])
+            .build()
+        };
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let id = game.create_object_from_definition(&definition, alice, Zone::Library);
+        let original = game.object(id).unwrap();
+        let mut registry = ironsmith::cards::CardRegistry::new();
+        registry.register(definition);
+        let full = SyncExecutableState::retain(
+            &game,
+            &registry,
+            vec![original.clone()],
+            game.effect_store.continuous_effects.registered_state(),
+        )
+        .unwrap();
+        assert!(
+            serde_json::to_string(&full)
+                .unwrap()
+                .contains("Private executable root")
+        );
+        let mut placeholder = Object::new_hidden_card(id, alice, Zone::Library);
+        placeholder.stable_id = original.stable_id;
+        let redacted = SyncExecutableState::retain(
+            &game,
+            &registry,
+            vec![placeholder],
+            game.effect_store.continuous_effects.registered_state(),
+        )
+        .unwrap();
+        assert_eq!(redacted.graph_card_count, 0);
+        assert!(redacted.definitions.is_empty());
+        assert!(redacted.occurrences.models.is_empty());
+        let json = serde_json::to_string(&redacted).unwrap();
+        assert!(!json.contains("Private executable root"));
+        assert!(!json.contains("7777"));
+        assert!(
+            redacted.restore(&[]).unwrap().objects[0]
+                .spell_effect
+                .is_none()
+        );
+        // This tests approved root closure, not the complete perspective/privacy
+        // projection of captured costs, historical sources or descriptors.
+    }
+    #[test]
+    fn owning_sync_executable_restores_live_programs_shared_aliases_and_registered_effects() {
+        check_restore(false);
+    }
+    #[test]
+    fn owning_sync_executable_rejects_missing_fields_duplicate_roots_and_bad_bindings() {
+        check_rejections(false);
+    }
+    #[test]
+    fn owning_sync_executable_approved_hidden_placeholder_does_not_enroll_private_program() {
+        check_approved_hidden_root(false);
+    }
+    #[test]
+    fn owning_sync_executable_compiled_restores_live_programs_shared_aliases_and_registered_effects()
+     {
+        check_restore(true);
+    }
+    #[test]
+    fn owning_sync_executable_compiled_rejects_missing_fields_duplicate_roots_and_bad_bindings() {
+        check_rejections(true);
+    }
+    #[test]
+    fn owning_sync_executable_compiled_approved_hidden_placeholder_does_not_enroll_private_program()
+    {
+        check_approved_hidden_root(true);
+    }
 }

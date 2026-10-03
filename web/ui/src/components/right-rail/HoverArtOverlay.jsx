@@ -2500,7 +2500,7 @@ export default function HoverArtOverlay({
                 <span className="interactive-card-frame__zone">{ui(displayZoneLine)}</span>
               )}
               {displayStatsText && !printedStatsAtRules && (
-                <div className="interactive-card-frame__art-stats">{displayStatsText}</div>
+                <div className="interactive-card-frame__art-stats"><CardFrameSingleLine className="interactive-card-frame__stats-text">{displayStatsText}</CardFrameSingleLine></div>
               )}
             </div>
 

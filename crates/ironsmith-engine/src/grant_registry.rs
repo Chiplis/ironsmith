@@ -534,8 +534,11 @@ pub struct GrantedPlayFrom {
 /// ordinary granted ability, because they apply only when that exact
 /// permission is used.
 #[derive(Debug, Clone, Default, PartialEq)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 pub struct PlayFromConstraints {
+    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_permission_reference"))]
     pub spell_cost_increase: Option<crate::mana::ManaCost>,
+    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_permission_reference"))]
     pub spell_cost_reduction: Option<crate::mana::ManaCost>,
     pub lands_enter_tapped: bool,
 }
@@ -2249,5 +2252,228 @@ mod tests {
             player, Grantable::PlayFrom, source, 1);
         assert_ne!(registry.grants[1].permission_identity.as_ref(), Some(&before[0]));
         assert_ne!(registry.grants[1].permission_identity.as_ref(), Some(&before[1]));
+    }
+}
+
+/// Complete portable permission key. Native origin/card allocations must pass
+/// through the owning checkpoint's occurrence and card-definition tables.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
+#[cfg_attr(
+    feature = "serialization",
+    serde(bound(deserialize = "O: serde::Deserialize<'de>, C: serde::Deserialize<'de>"))
+)]
+pub enum RetainedGrantPermissionIdentity<O, C> {
+    Static {
+        source: ObjectId,
+        origin: O,
+        #[cfg_attr(
+            feature = "serialization",
+            serde(deserialize_with = "deserialize_present_permission_reference")
+        )]
+        printed_face: Option<C>,
+    },
+    LinkedFace {
+        source: ObjectId,
+        face: C,
+        slot: usize,
+    },
+    Stored(u64),
+}
+impl From<GrantPermissionIdentity>
+    for RetainedGrantPermissionIdentity<crate::continuous::AbilityOrigin, crate::ids::CardId>
+{
+    fn from(value: GrantPermissionIdentity) -> Self {
+        match value {
+            GrantPermissionIdentity::Static {
+                source,
+                origin,
+                printed_face,
+            } => Self::Static {
+                source,
+                origin,
+                printed_face,
+            },
+            GrantPermissionIdentity::LinkedFace { source, face, slot } => {
+                Self::LinkedFace { source, face, slot }
+            }
+            GrantPermissionIdentity::Stored(id) => Self::Stored(id),
+        }
+    }
+}
+impl From<RetainedGrantPermissionIdentity<crate::continuous::AbilityOrigin, crate::ids::CardId>>
+    for GrantPermissionIdentity
+{
+    fn from(
+        value: RetainedGrantPermissionIdentity<
+            crate::continuous::AbilityOrigin,
+            crate::ids::CardId,
+        >,
+    ) -> Self {
+        match value {
+            RetainedGrantPermissionIdentity::Static {
+                source,
+                origin,
+                printed_face,
+            } => Self::Static {
+                source,
+                origin,
+                printed_face,
+            },
+            RetainedGrantPermissionIdentity::LinkedFace { source, face, slot } => {
+                Self::LinkedFace { source, face, slot }
+            }
+            RetainedGrantPermissionIdentity::Stored(id) => Self::Stored(id),
+        }
+    }
+}
+impl<O, C> RetainedGrantPermissionIdentity<O, C> {
+    pub fn try_map_payloads<P, D, Error>(
+        self,
+        mut origin: impl FnMut(O) -> Result<P, Error>,
+        mut card: impl FnMut(C) -> Result<D, Error>,
+    ) -> Result<RetainedGrantPermissionIdentity<P, D>, Error> {
+        Ok(match self {
+            Self::Static {
+                source,
+                origin: value,
+                printed_face,
+            } => RetainedGrantPermissionIdentity::Static {
+                source,
+                origin: origin(value)?,
+                printed_face: printed_face.map(&mut card).transpose()?,
+            },
+            Self::LinkedFace { source, face, slot } => {
+                RetainedGrantPermissionIdentity::LinkedFace {
+                    source,
+                    face: card(face)?,
+                    slot,
+                }
+            }
+            Self::Stored(id) => RetainedGrantPermissionIdentity::Stored(id),
+        })
+    }
+}
+#[cfg(feature = "serialization")]
+fn deserialize_present_permission_reference<
+    'de,
+    T: serde::Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+>(
+    deserializer: D,
+) -> Result<Option<T>, D::Error> {
+    <Option<T> as serde::Deserialize<'de>>::deserialize(deserializer)
+}
+#[cfg(test)]
+mod retained_grant_permission_tests {
+    use super::*;
+    #[test]
+    fn retained_grant_permission_preserves_once_turn_budget_after_provider_departure() {
+        let mut game = crate::game_state::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id;
+        let card =
+            crate::card::CardBuilder::new(crate::ids::CardId::new(), "Captured provider").build();
+        let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        for key in [
+            GrantPermissionIdentity::Static {
+                source,
+                origin: crate::continuous::AbilityOrigin::Printed(3),
+                printed_face: Some(card.id),
+            },
+            GrantPermissionIdentity::LinkedFace {
+                source,
+                face: card.id,
+                slot: 4,
+            },
+            GrantPermissionIdentity::Stored(5),
+        ] {
+            let restored: GrantPermissionIdentity =
+                RetainedGrantPermissionIdentity::from(key.clone())
+                    .try_map_payloads(Ok::<_, &'static str>, Ok::<_, &'static str>)
+                    .unwrap()
+                    .into();
+            assert_eq!(restored, key);
+            assert!(grant_usage_limit_allows(
+                &game,
+                alice,
+                Some(&key),
+                Some(GrantUsageLimit::OnceEachTurn)
+            ));
+            game.turn_store
+                .grant_cast_uses_this_turn
+                .insert((alice, restored));
+            assert!(!grant_usage_limit_allows(
+                &game,
+                alice,
+                Some(&key),
+                Some(GrantUsageLimit::OnceEachTurn)
+            ));
+        }
+        game.move_object(
+            source,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::effect(),
+        )
+        .unwrap();
+        assert!(game.object(source).is_none());
+        let key = GrantPermissionIdentity::Static {
+            source,
+            origin: crate::continuous::AbilityOrigin::Printed(3),
+            printed_face: Some(card.id),
+        };
+        assert!(!grant_usage_limit_allows(
+            &game,
+            alice,
+            Some(&key),
+            Some(GrantUsageLimit::OnceEachTurn)
+        ));
+        let independent = GrantPermissionIdentity::Static {
+            source,
+            origin: crate::continuous::AbilityOrigin::Printed(6),
+            printed_face: Some(card.id),
+        };
+        assert!(grant_usage_limit_allows(
+            &game,
+            alice,
+            Some(&independent),
+            Some(GrantUsageLimit::OnceEachTurn)
+        ));
+    }
+    #[cfg(feature = "serialization")]
+    #[test]
+    fn retained_grant_permission_and_constraints_require_explicit_fields() {
+        type Wire = RetainedGrantPermissionIdentity<u8, u8>;
+        let wire = Wire::Static {
+            source: ObjectId::from_raw(7),
+            origin: 8,
+            printed_face: None,
+        };
+        let json = serde_json::to_value(wire).unwrap();
+        let _: Wire = serde_json::from_value(json.clone()).unwrap();
+        for field in ["source", "origin", "printed_face"] {
+            let mut bad = json.clone();
+            bad["Static"].as_object_mut().unwrap().remove(field);
+            assert!(serde_json::from_value::<Wire>(bad).is_err());
+        }
+        let constraints = PlayFromConstraints {
+            lands_enter_tapped: true,
+            ..Default::default()
+        };
+        let json = serde_json::to_value(constraints).unwrap();
+        let restored: PlayFromConstraints = serde_json::from_value(json.clone()).unwrap();
+        assert!(restored.lands_enter_tapped);
+        assert!(restored.spell_cost_increase.is_none());
+        for field in [
+            "spell_cost_increase",
+            "spell_cost_reduction",
+            "lands_enter_tapped",
+        ] {
+            let mut bad = json.clone();
+            bad.as_object_mut().unwrap().remove(field);
+            assert!(serde_json::from_value::<PlayFromConstraints>(bad).is_err());
+        }
     }
 }

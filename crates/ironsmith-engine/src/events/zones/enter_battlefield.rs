@@ -257,11 +257,9 @@ impl EnterBattlefieldEvent {
     /// Return a new event with additional abilities granted as it enters.
     pub fn with_added_abilities(&self, abilities: &[Ability]) -> Self {
         let mut added_abilities = self.added_abilities.clone();
-        for ability in abilities {
-            if !added_abilities.contains(ability) {
-                added_abilities.push(ability.clone());
-            }
-        }
+        // Ability instances are ordered occurrences (CR 113.2c), even when
+        // their text and executable payloads compare equal.
+        added_abilities.extend_from_slice(abilities);
         Self {
             added_abilities,
             ..self.clone()
@@ -332,6 +330,11 @@ impl EnterBattlefieldEvent {
                     object.card_types.push(*card_type);
                 }
             }
+            if self.removes_other_card_types {
+                crate::continuous::replace_card_types_and_prune_subtypes(
+                    &mut object.card_types, &mut object.subtypes, &self.added_card_types,
+                );
+            }
             object
                 .supertypes
                 .retain(|supertype| !self.removed_supertypes.contains(supertype));
@@ -345,11 +348,7 @@ impl EnterBattlefieldEvent {
                     object.subtypes.push(*subtype);
                 }
             }
-            for ability in &self.added_abilities {
-                if !object.abilities.contains(ability) {
-                    object.abilities_mut().push(ability.clone());
-                }
-            }
+            object.abilities_mut().extend(self.added_abilities.iter().cloned());
             if let Some((power, toughness)) = self.set_base_power_toughness {
                 object.base_power = Some(crate::card::PtValue::Fixed(power));
                 object.base_toughness = Some(crate::card::PtValue::Fixed(toughness));
@@ -365,7 +364,7 @@ impl EnterBattlefieldEvent {
             prospective.battlefield.push(self.object);
         }
         if let Some(controller) = self.controller_override {
-            prospective.stage_controller_change_for_assembly(self.object, controller);
+            prospective.stage_initial_controller_for_assembly(self.object, controller);
         }
         if let Some(choices) = &self.prepared_choices {
             if let Some(object) = prospective.object_mut(self.object) {
@@ -400,9 +399,7 @@ impl EnterBattlefieldEvent {
                     object.base_toughness = Some(crate::card::PtValue::Fixed(*toughness));
                     for granted in granted_abilities {
                         let ability = Ability::static_ability(granted.clone());
-                        if !object.abilities.contains(&ability) {
-                            object.abilities_mut().push(ability);
-                        }
+                        object.abilities_mut().push(ability);
                     }
                 }
             }
@@ -423,27 +420,11 @@ impl EnterBattlefieldEvent {
         // Copy values must be read from a complete original world, before the
         // entrant's own changes are applied in the separate prospective world.
         let original = game.continuous_query_snapshot()?;
-        // Assemble every entry field before evaluating the final world. The
-        // public controller setter performs game procedures; speculative
-        // construction must only stage the same control modification.
-        let mut entry = self.clone();
-        entry.controller_override = None;
-        let Some(mut prospective) = entry.prospective_game_state(&original) else {
+        // Assemble every entry field, including the initial controller, before
+        // evaluating the complete world. Initial control is below layer two.
+        let Some(prospective) = self.prospective_game_state(&original) else {
             return Ok(None);
         };
-        if let Some(controller) = self.controller_override
-            && original.current_controller(self.object) != Some(controller)
-        {
-            prospective.set_summoning_sick(self.object);
-            prospective.effect_store.continuous_effects.add_effect(
-                crate::continuous::ContinuousEffect::new(
-                    self.object,
-                    controller,
-                    crate::continuous::EffectTarget::Specific(self.object),
-                    crate::continuous::Modification::ChangeController(controller),
-                ).until(crate::effect::Until::Forever),
-            );
-        }
         // Completeness does not carry across the zone, copy, control, counter,
         // ability and prepared-choice modifications.
         prospective.continuous_query_snapshot().map(Some)
@@ -576,5 +557,648 @@ mod tests {
             with_counters.display(),
             "Enter the battlefield with counters"
         );
+    }
+}
+
+#[cfg(test)]
+mod entry_granted_occurrence_tests {
+    use super::*;
+    use crate::ability::AbilityKind;
+    use crate::static_abilities::{StaticAbility, StaticAbilityInstanceId};
+
+    fn independent_grants() -> Vec<Ability> {
+        let first = StaticAbility::enters_with_counters(CounterType::PlusOnePlusOne, 1);
+        let second = StaticAbility::enters_with_counters(CounterType::PlusOnePlusOne, 1);
+        assert_eq!(first, second, "semantic equality is deliberately not occurrence identity");
+        assert_ne!(first.instance_id(), second.instance_id());
+        vec![Ability::static_ability(first), Ability::static_ability(second)]
+    }
+    fn ids(abilities: &[Ability]) -> Vec<StaticAbilityInstanceId> {
+        abilities.iter().filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(value) if value.id() == crate::static_abilities::StaticAbilityId::EnterWithCounters => Some(value.instance_id()),
+            _ => None,
+        }).collect()
+    }
+    fn setup() -> (GameState, ObjectId) {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Independent entry abilities")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+            .with_ability(Ability::static_ability(StaticAbility::enters_with_counters(CounterType::PlusOnePlusOne, 1)))
+            .build();
+        let entrant = game.create_object_from_definition(&definition, alice, Zone::Hand);
+        game.take_pending_trigger_events();
+        (game, entrant)
+    }
+
+    #[test]
+    fn entry_granted_occurrences_survive_event_composition() {
+        let grants = independent_grants();
+        let event = EnterBattlefieldEvent::new(ObjectId::from_raw(10), Zone::Hand)
+            .with_added_abilities(&grants[..1]).with_added_abilities(&grants[1..]);
+        assert_eq!(event.added_abilities.len(), 2);
+        assert_eq!(ids(&event.added_abilities), ids(&grants));
+    }
+
+    #[test]
+    fn entry_granted_occurrences_survive_prospective_world_with_equal_printed_ability() {
+        let (game, entrant) = setup();
+        let grants = independent_grants();
+        let expected: Vec<_> = ids(&game.object(entrant).unwrap().abilities).into_iter()
+            .chain(ids(&grants)).collect();
+        let mut event = EnterBattlefieldEvent::new(entrant, Zone::Hand);
+        // Construct the carrier directly to isolate prospective-world assembly
+        // from the independent event-composition regression.
+        event.added_abilities = grants;
+        let prospective = event.try_prospective_game_state(&game).unwrap().unwrap();
+        assert_eq!(ids(&prospective.object(entrant).unwrap().abilities), expected);
+        assert_eq!(game.object(entrant).unwrap().zone, Zone::Hand);
+        assert_eq!(ids(&game.object(entrant).unwrap().abilities).len(), 1);
+    }
+
+    #[test]
+    fn entry_granted_occurrences_apply_independently_and_survive_public_movement() {
+        let (mut game, entrant) = setup();
+        let grants = independent_grants();
+        let alice = PlayerId::from_index(0);
+        game.effect_store.replacement_effects.add_resolution_effect(crate::replacement::ReplacementEffect::with_matcher(
+            entrant, alice, crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+            crate::replacement::ReplacementAction::EnterWithCounters {
+                counter_type: CounterType::PlusOnePlusOne, count: crate::effect::Value::Fixed(0),
+                count_condition: None, otherwise_count: None, added_subtypes: Vec::new(), added_abilities: grants,
+            },
+        ));
+        let receipt = game.move_object_with_etb_processing(entrant, Zone::Battlefield).unwrap();
+        assert!(!receipt.pending && receipt.programs.is_empty());
+        let crate::events::processing::EventOutcome::Proceed(result) = receipt.original else { panic!("original entry completes"); };
+        let object = game.object(result.new_id).unwrap();
+        assert_eq!(object.zone, Zone::Battlefield);
+        assert_eq!(ids(&object.abilities).len(), 3, "printed ability plus two independent grants survive commit");
+        assert_eq!(object.counters.get(&CounterType::PlusOnePlusOne).copied(), Some(3),
+            "all three independently applicable entry replacements apply once");
+    }
+    #[test]
+    fn entry_granted_occurrences_survive_permanent_and_temporary_copy_commit() {
+        for duration in [None, Some(crate::effect::Until::EndOfTurn)] {
+            let (mut game, copy_source) = setup();
+            let receipt = game.move_object_with_etb_processing(copy_source, Zone::Battlefield).unwrap();
+            assert!(!receipt.pending && receipt.programs.is_empty());
+            let crate::events::processing::EventOutcome::Proceed(source) = receipt.original else { panic!("copy source enters"); };
+            let alice = PlayerId::from_index(0);
+            let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Copy entrant")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(crate::card::PowerToughness::fixed(2, 2)).build();
+            let entrant = game.create_object_from_definition(&definition, alice, Zone::Hand);
+            game.effect_store.replacement_effects.add_resolution_effect(crate::replacement::ReplacementEffect::with_matcher(
+                entrant, alice, crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+                crate::replacement::ReplacementAction::EnterAsCopy {
+                    source: source.new_id, enters_tapped: false, copy_duration: duration.clone(),
+                    linked_exile_objects: Vec::new(), additional_counters: Vec::new(), name_override: None,
+                    added_colors: ColorSet::new(), added_card_types: Vec::new(), removes_other_card_types: false,
+                    added_supertypes: Vec::new(), removed_supertypes: Vec::new(), added_subtypes: Vec::new(),
+                    added_abilities: independent_grants(), set_base_power_toughness: None, copy_followups: Vec::new(),
+                },
+            ));
+            let receipt = game.move_object_with_etb_processing(entrant, Zone::Battlefield).unwrap();
+            assert!(!receipt.pending && receipt.programs.is_empty());
+            let crate::events::processing::EventOutcome::Proceed(result) = receipt.original else { panic!("copy entry completes"); };
+            let instances = ids(&game.current_abilities(result.new_id).unwrap());
+            assert_eq!(instances.len(), 3, "copy and both independent grants survive: {duration:?}");
+            assert_eq!(instances.iter().copied().collect::<std::collections::HashSet<_>>().len(), 3);
+            assert_eq!(game.object(result.new_id).unwrap().counters.get(&CounterType::PlusOnePlusOne).copied(), Some(3),
+                "copied and granted replacements each apply once: {duration:?}");
+        }
+    }
+
+    #[test]
+    fn entry_granted_occurrences_survive_prepared_power_toughness_choice_commit() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Characteristic choice entrant")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+            .with_ability(Ability::static_ability(StaticAbility::toxic(1)))
+            .with_ability(Ability::static_ability(StaticAbility::choose_power_toughness_options_as_enters_or_turns_face_up(
+                vec![crate::static_abilities::PowerToughnessChoiceOption::with_abilities(4, 5,
+                    vec![StaticAbility::toxic(1), StaticAbility::toxic(1)])], "choose characteristics".into(),
+            ))).build();
+        let entrant = game.create_object_from_definition(&definition, alice, Zone::Hand);
+        let receipt = game.move_object_with_etb_processing(entrant, Zone::Battlefield).unwrap();
+        assert!(!receipt.pending && receipt.programs.is_empty());
+        let crate::events::processing::EventOutcome::Proceed(result) = receipt.original else { panic!("choice entry completes"); };
+        let toxic: Vec<_> = crate::ability::extract_static_abilities(&game.current_abilities(result.new_id).unwrap())
+            .into_iter().filter_map(|ability| ability.toxic_amount()).collect();
+        assert_eq!(toxic, vec![1, 1, 1], "printed occurrence and both selected occurrences survive");
+        assert_eq!(game.calculated_power(result.new_id), Some(4));
+        assert_eq!(game.calculated_toughness(result.new_id), Some(5));
+    }
+}
+
+#[cfg(test)]
+mod entry_type_projection_tests {
+    use super::*;
+    use crate::target::ObjectFilter;
+    fn setup(kindred: bool) -> (GameState, ObjectId, ObjectId) {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let mut types = vec![CardType::Artifact, CardType::Creature];
+        if kindred { types.push(CardType::Kindred); }
+        let source_definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Copy type source")
+            .card_types(types).subtypes(vec![Subtype::Elf, Subtype::Equipment])
+            .supertypes(vec![Supertype::Legendary])
+            .power_toughness(crate::card::PowerToughness::fixed(3, 4)).build();
+        let source = game.create_object_from_definition(&source_definition, alice, Zone::Battlefield);
+        let entrant_definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Copy type entrant")
+            .card_types(vec![CardType::Artifact]).build();
+        let entrant = game.create_object_from_definition(&entrant_definition, alice, Zone::Hand);
+        game.take_pending_trigger_events();
+        (game, entrant, source)
+    }
+    fn copy_action(source: ObjectId, remove: bool, duration: Option<crate::effect::Until>) -> crate::replacement::ReplacementAction {
+        crate::replacement::ReplacementAction::EnterAsCopy {
+            source, enters_tapped: false, copy_duration: duration,
+            linked_exile_objects: Vec::new(), additional_counters: Vec::new(), name_override: None,
+            added_colors: ColorSet::new(), added_card_types: vec![CardType::Artifact], removes_other_card_types: remove,
+            added_supertypes: Vec::new(), removed_supertypes: Vec::new(), added_subtypes: vec![Subtype::Vehicle],
+            added_abilities: Vec::new(), set_base_power_toughness: None, copy_followups: Vec::new(),
+        }
+    }
+    fn enter(game: &mut GameState, entrant: ObjectId, source: ObjectId, remove: bool, duration: Option<crate::effect::Until>) -> ObjectId {
+        game.effect_store.replacement_effects.add_resolution_effect(crate::replacement::ReplacementEffect::with_matcher(
+            entrant, PlayerId::from_index(0), crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+            copy_action(source, remove, duration),
+        ));
+        let receipt = game.move_object_with_etb_processing(entrant, Zone::Battlefield).unwrap();
+        assert!(!receipt.pending && receipt.programs.is_empty());
+        let crate::events::processing::EventOutcome::Proceed(result) = receipt.original else { panic!("copy enters"); };
+        result.new_id
+    }
+    #[test]
+    fn entry_type_projection_replaces_types_and_prunes_only_unsupported_subtype_families() {
+        let (game, entrant, source) = setup(false);
+        let event = EnterBattlefieldEvent::new(entrant, Zone::Hand).with_copy_of(source)
+            .with_added_card_types(&[CardType::Artifact]).with_removes_other_card_types(true)
+            .with_added_subtypes(&[Subtype::Vehicle]);
+        let prospective = event.try_prospective_game_state(&game).unwrap().unwrap();
+        let object = prospective.object(entrant).unwrap();
+        assert_eq!(object.card_types.as_slice(), &[CardType::Artifact]);
+        assert_eq!(object.subtypes.as_slice(), &[Subtype::Equipment, Subtype::Vehicle]);
+        assert_eq!(object.supertypes.as_slice(), &[Supertype::Legendary]);
+        assert_eq!(game.object(entrant).unwrap().zone, Zone::Hand);
+        assert!(game.object(source).unwrap().card_types.contains(&CardType::Creature));
+        assert!(game.object(source).unwrap().subtypes.contains(&Subtype::Elf));
+    }
+    #[test]
+    fn entry_type_projection_kindred_retains_creature_subtypes_after_creature_type_removed() {
+        let (game, entrant, source) = setup(true);
+        let event = EnterBattlefieldEvent::new(entrant, Zone::Hand).with_copy_of(source)
+            .with_added_card_types(&[CardType::Artifact, CardType::Kindred]).with_removes_other_card_types(true);
+        let prospective = event.try_prospective_game_state(&game).unwrap().unwrap();
+        let object = prospective.object(entrant).unwrap();
+        assert_eq!(object.card_types.as_slice(), &[CardType::Artifact, CardType::Kindred]);
+        assert_eq!(object.subtypes.as_slice(), &[Subtype::Elf, Subtype::Equipment]);
+    }
+    #[test]
+    fn entry_type_projection_public_copy_commit_prunes_subtypes_for_both_copy_durations() {
+        for duration in [None, Some(crate::effect::Until::EndOfTurn)] {
+            let (mut game, entrant, source) = setup(false);
+            let entered = enter(&mut game, entrant, source, true, duration.clone());
+            assert_eq!(game.calculated_card_types(entered).as_slice(), &[CardType::Artifact], "{duration:?}");
+            assert_eq!(game.calculated_subtypes(entered).as_slice(), &[Subtype::Equipment, Subtype::Vehicle], "{duration:?}");
+            assert_eq!(game.object(source).unwrap().subtypes.as_slice(), &[Subtype::Elf, Subtype::Equipment]);
+        }
+    }
+    #[test]
+    fn entry_type_projection_replacement_matching_uses_resolved_copy_types_and_subtypes() {
+        for remove in [true, false] {
+            for duration in [None, Some(crate::effect::Until::EndOfTurn)] {
+                let (mut game, entrant, source) = setup(false);
+                let mut watcher = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Type-filtered entry replacements")
+                    .card_types(vec![CardType::Enchantment]);
+                for (filter, amount) in [
+                    (ObjectFilter::creature(), 1), (ObjectFilter::artifact(), 2),
+                    (ObjectFilter::permanent().with_subtype(Subtype::Elf), 4),
+                    (ObjectFilter::permanent().with_subtype(Subtype::Vehicle), 8),
+                    (ObjectFilter::permanent().with_subtype(Subtype::Equipment), 16),
+                ] {
+                    watcher = watcher.with_ability(Ability::static_ability(crate::static_abilities::StaticAbility::enters_with_counters_for_filter(
+                        filter, CounterType::PlusOnePlusOne, amount,
+                    )));
+                }
+                game.create_object_from_definition(&watcher.build(), PlayerId::from_index(0), Zone::Battlefield);
+                let entered = enter(&mut game, entrant, source, remove, duration.clone());
+                assert_eq!(game.object(entered).unwrap().counters.get(&CounterType::PlusOnePlusOne).copied(),
+                    Some(if remove { 26 } else { 31 }), "resolved type/subtype applicability: remove={remove}, duration={duration:?}");
+                assert_eq!(game.calculated_card_types(entered).contains(&CardType::Creature), !remove);
+                assert_eq!(game.calculated_subtypes(entered).contains(&Subtype::Elf), !remove);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod entry_copiable_choice_tests {
+    use super::*;
+    #[test]
+    fn entry_copiable_choice_copy_of_temporary_copy_executes_inherited_choice() {
+        for duration in [None, Some(crate::effect::Until::EndOfTurn)] {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let alice = PlayerId::from_index(0);
+            let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Choice copy base")
+                .card_types(vec![CardType::Artifact]).build();
+            let base = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+            let first = game.create_object_from_definition(&definition, alice, Zone::Hand);
+            let choice = Ability::static_ability(crate::static_abilities::StaticAbility::choose_color_as_enters(None, "choose a color".into()));
+            let action = |source, copy_duration, added_abilities| crate::replacement::ReplacementAction::EnterAsCopy {
+                source, enters_tapped: false, copy_duration,
+                linked_exile_objects: Vec::new(), additional_counters: Vec::new(), name_override: None,
+                added_colors: ColorSet::new(), added_card_types: Vec::new(), removes_other_card_types: false,
+                added_supertypes: Vec::new(), removed_supertypes: Vec::new(), added_subtypes: Vec::new(),
+                added_abilities, set_base_power_toughness: None, copy_followups: Vec::new(),
+            };
+            game.effect_store.replacement_effects.add_resolution_effect(crate::replacement::ReplacementEffect::with_matcher(
+                first, alice, crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+                action(base, Some(crate::effect::Until::EndOfTurn), vec![choice]),
+            ));
+            let receipt = game.move_object_with_etb_processing(first, Zone::Battlefield).unwrap();
+            assert!(!receipt.pending && receipt.programs.is_empty());
+            let crate::events::processing::EventOutcome::Proceed(first) = receipt.original else { panic!("first copy enters"); };
+            assert_eq!(game.chosen_color(first.new_id), Some(crate::color::Color::White));
+            assert!(game.object(first.new_id).unwrap().abilities.is_empty(), "temporary copy keeps printed base separately");
+            assert!(crate::ability::extract_static_abilities(&game.current_abilities(first.new_id).unwrap()).iter()
+                .any(|ability| ability.color_choice_as_enters().is_some()), "layer-one copy contains the choice");
+            let second = game.create_object_from_definition(&definition, alice, Zone::Hand);
+            game.effect_store.replacement_effects.add_resolution_effect(crate::replacement::ReplacementEffect::with_matcher(
+                second, alice, crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+                action(first.new_id, duration.clone(), Vec::new()),
+            ));
+            let receipt = game.move_object_with_etb_processing(second, Zone::Battlefield).unwrap();
+            assert!(!receipt.pending && receipt.programs.is_empty());
+            let crate::events::processing::EventOutcome::Proceed(second) = receipt.original else { panic!("second copy enters"); };
+            assert_eq!(game.chosen_color(second.new_id), Some(crate::color::Color::White),
+                "copied entry choice executes from resolved copiable values: {duration:?}");
+            assert_eq!(game.chosen_color(first.new_id), Some(crate::color::Color::White));
+            assert_eq!(game.chosen_color(base), None);
+        }
+    }
+}
+
+#[cfg(test)]
+mod entry_copiable_battle_tests {
+    use super::*;
+    struct SelectLast;
+    impl crate::decision::DecisionMaker for SelectLast {
+        fn decide_options(&mut self, _game: &GameState, context: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> {
+            context.options.iter().rev().find(|option| option.legal).map(|option| vec![option.index]).unwrap_or_default()
+        }
+    }
+    #[test]
+    fn entry_copiable_battle_copy_of_temporary_copy_asks_for_protector() {
+        for duration in [None, Some(crate::effect::Until::EndOfTurn)] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+            let alice = PlayerId::from_index(0);
+            let charlie = PlayerId::from_index(2);
+            let battle = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Copied siege")
+                .card_types(vec![CardType::Battle]).subtypes(vec![Subtype::Siege]).defense(5).build();
+            let base = game.create_object_from_definition(&battle, alice, Zone::Battlefield);
+            let blank = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Battle copy entrant")
+                .card_types(vec![CardType::Artifact]).build();
+            let action = |source, copy_duration| crate::replacement::ReplacementAction::EnterAsCopy {
+                source, enters_tapped: false, copy_duration,
+                linked_exile_objects: Vec::new(), additional_counters: Vec::new(), name_override: None,
+                added_colors: ColorSet::new(), added_card_types: Vec::new(), removes_other_card_types: false,
+                added_supertypes: Vec::new(), removed_supertypes: Vec::new(), added_subtypes: Vec::new(),
+                added_abilities: Vec::new(), set_base_power_toughness: None, copy_followups: Vec::new(),
+            };
+            let mut source = base;
+            for (copy_duration, stage) in [(Some(crate::effect::Until::EndOfTurn), "first"), (duration.clone(), "second")] {
+                let entrant = game.create_object_from_definition(&blank, alice, Zone::Hand);
+                game.effect_store.replacement_effects.add_resolution_effect(crate::replacement::ReplacementEffect::with_matcher(
+                    entrant, alice, crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+                    action(source, copy_duration),
+                ));
+                let receipt = game.move_object_with_etb_processing_with_dm(entrant, Zone::Battlefield, &mut SelectLast).unwrap();
+                assert!(!receipt.pending && receipt.programs.is_empty());
+                let crate::events::processing::EventOutcome::Proceed(result) = receipt.original else { panic!("copy enters"); };
+                assert!(game.calculated_card_types(result.new_id).contains(&CardType::Battle));
+                assert!(game.calculated_subtypes(result.new_id).contains(&Subtype::Siege));
+                assert_eq!(game.battle_protector(result.new_id), Some(charlie),
+                    "resolved copied siege must ask for its protector: {stage}, {duration:?}");
+                source = result.new_id;
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod entry_copiable_intrinsic_counter_tests {
+    use super::*;
+    fn copy_chain(card_type: CardType, counter: CounterType) {
+        for first_duration in [None, Some(crate::effect::Until::EndOfTurn)] {
+            for second_duration in [None, Some(crate::effect::Until::EndOfTurn)] {
+                let mut game = crate::tests::test_helpers::setup_two_player_game();
+                let alice = PlayerId::from_index(0);
+                let builder = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Intrinsic copy source").card_types(vec![card_type]);
+                let definition = if card_type == CardType::Battle { builder.subtypes(vec![Subtype::Siege]).defense(5).build() }
+                    else { builder.loyalty(5).build() };
+                let base = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+                // The currently remaining counters are not the copied printed number.
+                game.object_mut(base).unwrap().counters.insert(counter, 2);
+                let blank = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Intrinsic copy entrant")
+                    .card_types(vec![CardType::Artifact]).build();
+                let mut source = base;
+                for (duration, stage) in [(first_duration.clone(), "first"), (second_duration.clone(), "second")] {
+                    let entrant = game.create_object_from_definition(&blank, alice, Zone::Hand);
+                    game.effect_store.replacement_effects.add_resolution_effect(crate::replacement::ReplacementEffect::with_matcher(
+                        entrant, alice, crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+                        crate::replacement::ReplacementAction::EnterAsCopy {
+                            source, enters_tapped: false, copy_duration: duration,
+                            linked_exile_objects: Vec::new(), additional_counters: Vec::new(), name_override: None,
+                            added_colors: ColorSet::new(), added_card_types: Vec::new(), removes_other_card_types: false,
+                            added_supertypes: Vec::new(), removed_supertypes: Vec::new(), added_subtypes: Vec::new(),
+                            added_abilities: Vec::new(), set_base_power_toughness: None, copy_followups: Vec::new(),
+                        },
+                    ));
+                    let receipt = game.move_object_with_etb_processing(entrant, Zone::Battlefield).unwrap();
+                    assert!(!receipt.pending && receipt.programs.is_empty());
+                    let crate::events::processing::EventOutcome::Proceed(result) = receipt.original else { panic!("copy enters"); };
+                    assert!(game.calculated_card_types(result.new_id).contains(&card_type));
+                    assert_eq!(game.counter_count(result.new_id, counter), 5,
+                        "copied printed number survives: {counter:?}, {stage}, {first_duration:?}, {second_duration:?}");
+                    source = result.new_id;
+                }
+                assert_eq!(game.counter_count(base, counter), 2);
+            }
+        }
+    }
+    #[test]
+    fn entry_copiable_intrinsic_defense_survives_copy_chains_and_ignores_remaining_counters() {
+        copy_chain(CardType::Battle, CounterType::Defense);
+    }
+    #[test]
+    fn entry_copiable_intrinsic_loyalty_survives_copy_chains_and_ignores_remaining_counters() {
+        copy_chain(CardType::Planeswalker, CounterType::Loyalty);
+    }
+}
+
+#[cfg(test)]
+mod entry_copy_extra_defense_tests {
+    use super::*;
+    #[test]
+    fn entry_copy_extra_defense_preserves_authored_counters_beside_intrinsic_copy_counters() {
+        for duration in [None, Some(crate::effect::Until::EndOfTurn)] {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let alice = PlayerId::from_index(0);
+            let source = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Extra defense source")
+                .card_types(vec![CardType::Battle]).subtypes(vec![Subtype::Siege]).defense(5).build();
+            let source = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+            let entrant = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Extra defense entrant")
+                .card_types(vec![CardType::Artifact]).build();
+            let entrant = game.create_object_from_definition(&entrant, alice, Zone::Hand);
+            game.effect_store.replacement_effects.add_resolution_effect(crate::replacement::ReplacementEffect::with_matcher(
+                entrant, alice, crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+                crate::replacement::ReplacementAction::EnterAsCopy {
+                    source, enters_tapped: false, copy_duration: duration.clone(), linked_exile_objects: Vec::new(),
+                    additional_counters: vec![(CounterType::Defense, 3)], name_override: None,
+                    added_colors: ColorSet::new(), added_card_types: Vec::new(), removes_other_card_types: false,
+                    added_supertypes: Vec::new(), removed_supertypes: Vec::new(), added_subtypes: Vec::new(),
+                    added_abilities: Vec::new(), set_base_power_toughness: None, copy_followups: Vec::new(),
+                },
+            ));
+            let receipt = game.move_object_with_etb_processing(entrant, Zone::Battlefield).unwrap();
+            assert!(!receipt.pending && receipt.programs.is_empty());
+            let crate::events::processing::EventOutcome::Proceed(result) = receipt.original else { panic!("copy enters"); };
+            assert_eq!(game.counter_count(result.new_id, CounterType::Defense), 8,
+                "intrinsic five plus independently authored three: {duration:?}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod entry_copy_intrinsic_contribution_tests {
+    use super::*;
+    #[test]
+    fn entry_copy_intrinsic_contribution_replaces_prior_number_preserves_extra_and_obeys_final_type() {
+        for (card_type, counter) in [(CardType::Battle, CounterType::Defense), (CardType::Planeswalker, CounterType::Loyalty)] {
+            for duration in [None, Some(crate::effect::Until::EndOfTurn)] {
+                for remove_type in [false, true] {
+                    let mut game = crate::tests::test_helpers::setup_two_player_game();
+                    let alice = PlayerId::from_index(0);
+                    let build = |number| {
+                        let builder = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Intrinsic contribution")
+                            .card_types(vec![card_type]);
+                        if card_type == CardType::Battle { builder.subtypes(vec![Subtype::Siege]).defense(number).build() }
+                        else { builder.loyalty(number).build() }
+                    };
+                    let source = game.create_object_from_definition(&build(5), alice, Zone::Battlefield);
+                    let entrant = game.create_object_from_definition(&build(7), alice, Zone::Hand);
+                    game.effect_store.replacement_effects.add_resolution_effect(crate::replacement::ReplacementEffect::with_matcher(
+                        entrant, alice, crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+                        crate::replacement::ReplacementAction::EnterAsCopy {
+                            source, enters_tapped: false, copy_duration: duration.clone(), linked_exile_objects: Vec::new(),
+                            additional_counters: vec![(counter, 3)], name_override: None,
+                            added_colors: ColorSet::new(), added_card_types: if remove_type { vec![CardType::Artifact] } else { Vec::new() },
+                            removes_other_card_types: remove_type, added_supertypes: Vec::new(), removed_supertypes: Vec::new(),
+                            added_subtypes: Vec::new(), added_abilities: Vec::new(), set_base_power_toughness: None, copy_followups: Vec::new(),
+                        },
+                    ));
+                    let receipt = game.move_object_with_etb_processing(entrant, Zone::Battlefield).unwrap();
+                    assert!(!receipt.pending && receipt.programs.is_empty());
+                    let crate::events::processing::EventOutcome::Proceed(result) = receipt.original else { panic!("copy enters"); };
+                    assert_eq!(game.counter_count(result.new_id, counter), if remove_type { 3 } else { 8 },
+                        "replace intrinsic seven with copied five only if final type supports it; retain extra three: {counter:?}, {duration:?}, remove={remove_type}");
+                    assert_eq!(game.calculated_card_types(result.new_id).contains(&card_type), !remove_type);
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod entry_intrinsic_ability_loss_tests {
+    use super::*;
+    fn enter_under_loss(card_type: CardType, counter: CounterType, copy: bool) {
+        for creature in [false, true] {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let alice = PlayerId::from_index(0);
+            let watcher = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Ability loss source")
+                .card_types(vec![CardType::Enchantment]).build();
+            let watcher = game.create_object_from_definition(&watcher, alice, Zone::Battlefield);
+            game.effect_store.continuous_effects.add_effect(crate::continuous::ContinuousEffect::new(
+                watcher, alice, crate::continuous::EffectTarget::Filter(crate::target::ObjectFilter::creature()),
+                crate::continuous::Modification::RemoveAllAbilities,
+            ));
+            let mut types = vec![card_type]; if creature { types.push(CardType::Creature); }
+            let builder = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Intrinsic ability entrant")
+                .card_types(types).power_toughness(crate::card::PowerToughness::fixed(1, 1))
+                .with_ability(Ability::static_ability(crate::static_abilities::StaticAbility::enters_with_counters(CounterType::PlusOnePlusOne, 4)));
+            let definition = if card_type == CardType::Battle { builder.subtypes(vec![Subtype::Siege]).defense(5).build() }
+                else { builder.loyalty(5).build() };
+            let entrant = if copy {
+                let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+                let blank = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Intrinsic copy under loss")
+                    .card_types(vec![CardType::Artifact]).build();
+                let entrant = game.create_object_from_definition(&blank, alice, Zone::Hand);
+                game.effect_store.replacement_effects.add_resolution_effect(crate::replacement::ReplacementEffect::with_matcher(
+                    entrant, alice, crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+                    crate::replacement::ReplacementAction::EnterAsCopy {
+                        source, enters_tapped: false, copy_duration: None, linked_exile_objects: Vec::new(),
+                        additional_counters: Vec::new(), name_override: None, added_colors: ColorSet::new(),
+                        added_card_types: Vec::new(), removes_other_card_types: false, added_supertypes: Vec::new(),
+                        removed_supertypes: Vec::new(), added_subtypes: Vec::new(), added_abilities: Vec::new(),
+                        set_base_power_toughness: None, copy_followups: Vec::new(),
+                    },
+                ));
+                entrant
+            } else { game.create_object_from_definition(&definition, alice, Zone::Hand) };
+            let receipt = game.move_object_with_etb_processing_with_initial_counters_with_dm(
+                entrant, Zone::Battlefield, vec![(counter, 2)], &mut crate::decision::SelectFirstDecisionMaker,
+            ).unwrap();
+            assert!(!receipt.pending && receipt.programs.is_empty());
+            let crate::events::processing::EventOutcome::Proceed(result) = receipt.original else { panic!("entry completes"); };
+            assert_eq!(game.counter_count(result.new_id, CounterType::PlusOnePlusOne), if creature { 0 } else { 4 },
+                "printed entry ability demonstrates actual loss domain");
+            assert_eq!(game.counter_count(result.new_id, counter), if creature { 2 } else { 7 },
+                "intrinsic entry ability obeys the same loss; authored two remain: {counter:?}, copy={copy}, creature={creature}");
+        }
+    }
+    #[test] fn entry_intrinsic_ability_loss_suppresses_direct_battle_defense() { enter_under_loss(CardType::Battle, CounterType::Defense, false); }
+    #[test] fn entry_intrinsic_ability_loss_suppresses_direct_planeswalker_loyalty() { enter_under_loss(CardType::Planeswalker, CounterType::Loyalty, false); }
+    #[test] fn entry_intrinsic_ability_loss_suppresses_copied_battle_defense() { enter_under_loss(CardType::Battle, CounterType::Defense, true); }
+    #[test] fn entry_intrinsic_ability_loss_suppresses_copied_planeswalker_loyalty() { enter_under_loss(CardType::Planeswalker, CounterType::Loyalty, true); }
+    #[test]
+    fn entry_intrinsic_ability_loss_basic_land_mana_is_not_readded_after_loss() {
+        for creature in [false, true] {
+            let mut game = crate::tests::test_helpers::setup_two_player_game(); let alice = PlayerId::from_index(0);
+            let mut types = vec![CardType::Land]; if creature { types.push(CardType::Creature); }
+            let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Intrinsic Forest ability")
+                .card_types(types).subtypes(vec![Subtype::Forest]).power_toughness(crate::card::PowerToughness::fixed(1, 1)).build();
+            let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+            game.effect_store.continuous_effects.add_effect(crate::continuous::ContinuousEffect::new(
+                source, alice, crate::continuous::EffectTarget::Filter(crate::target::ObjectFilter::creature()),
+                crate::continuous::Modification::RemoveAllAbilities,
+            ));
+            game.refresh_continuous_state().unwrap();
+            let intrinsic = Ability::basic_land_mana(Subtype::Forest).unwrap();
+            assert_eq!(game.current_abilities(source).unwrap().contains(&intrinsic), !creature,
+                "intrinsic land mana must participate in layer-six ability removal: creature={creature}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod entry_intrinsic_counter_width_tests {
+    use super::*;
+    #[test]
+    fn entry_intrinsic_starting_counters_preserve_unsigned_printed_values_for_direct_and_copied_entries() {
+        for rule in [ironsmith_core::IntrinsicStartingCounter::Loyalty, ironsmith_core::IntrinsicStartingCounter::Defense] {
+            for copy in [false, true] {
+                let mut game = crate::tests::test_helpers::setup_two_player_game();
+                let alice = PlayerId::from_index(0);
+                let printed = 1_u32 << 31;
+                let builder = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Unsigned intrinsic number")
+                    .card_types(vec![rule.card_type()]);
+                let definition = match rule {
+                    ironsmith_core::IntrinsicStartingCounter::Loyalty => builder.loyalty(printed).build(),
+                    ironsmith_core::IntrinsicStartingCounter::Defense => builder.subtypes(vec![Subtype::Siege]).defense(printed).build(),
+                };
+                let entrant = if copy {
+                    let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+                    game.add_counters(source, rule.counter_type(), 2).unwrap();
+                    let blank = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Unsigned intrinsic copy")
+                        .card_types(vec![CardType::Artifact]).build();
+                    let entrant = game.create_object_from_definition(&blank, alice, Zone::Hand);
+                    game.effect_store.replacement_effects.add_resolution_effect(crate::replacement::ReplacementEffect::with_matcher(
+                        entrant, alice, crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+                        crate::replacement::ReplacementAction::EnterAsCopy {
+                            source, enters_tapped: false, copy_duration: None, linked_exile_objects: Vec::new(),
+                            additional_counters: Vec::new(), name_override: None, added_colors: ColorSet::new(),
+                            added_card_types: Vec::new(), removes_other_card_types: false, added_supertypes: Vec::new(),
+                            removed_supertypes: Vec::new(), added_subtypes: Vec::new(), added_abilities: Vec::new(),
+                            set_base_power_toughness: None, copy_followups: Vec::new(),
+                        },
+                    ));
+                    entrant
+                } else { game.create_object_from_definition(&definition, alice, Zone::Hand) };
+                let receipt = game.move_object_with_etb_processing(entrant, Zone::Battlefield).unwrap();
+                assert!(!receipt.pending && receipt.programs.is_empty());
+                let crate::events::processing::EventOutcome::Proceed(result) = receipt.original else { panic!("entry completes"); };
+                assert_eq!(game.counter_count(result.new_id, rule.counter_type()), printed, "unsigned value survives: {rule:?}, copy={copy}");
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod entry_intrinsic_counter_overflow_tests {
+    use super::*;
+    #[test]
+    fn entry_intrinsic_starting_counter_overflow_returns_error_without_committing_entry() {
+        for rule in [ironsmith_core::IntrinsicStartingCounter::Loyalty, ironsmith_core::IntrinsicStartingCounter::Defense] {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let alice = PlayerId::from_index(0);
+            let builder = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Overflowing intrinsic number")
+                .card_types(vec![rule.card_type()]);
+            let definition = match rule {
+                ironsmith_core::IntrinsicStartingCounter::Loyalty => builder.loyalty(u32::MAX).build(),
+                ironsmith_core::IntrinsicStartingCounter::Defense => builder.subtypes(vec![Subtype::Siege]).defense(u32::MAX).build(),
+            };
+            let entrant = game.create_object_from_definition(&definition, alice, Zone::Hand);
+            let before_ids = game.object_ids_in_deterministic_order();
+            let before_battlefield = game.battlefield.clone();
+            let result = game.move_object_with_etb_processing_with_initial_counters_with_dm(
+                entrant, Zone::Battlefield, vec![(rule.counter_type(), 1)], &mut crate::decision::SelectFirstDecisionMaker,
+            );
+            assert!(matches!(result, Err(crate::effects::ExecutionError::InternalError(ref message)) if message.contains("counter contribution overflow")));
+            assert_eq!(game.object(entrant).unwrap().zone, Zone::Hand);
+            assert_eq!(game.counter_count(entrant, rule.counter_type()), 0);
+            assert_eq!(game.object_ids_in_deterministic_order(), before_ids);
+            assert_eq!(game.battlefield, before_battlefield);
+        }
+    }
+}
+
+#[cfg(test)]
+mod entry_intrinsic_counter_zero_tests {
+    use super::*;
+    #[test]
+    fn entry_intrinsic_zero_numbers_preserve_one_shot_until_positive_counter_placement() {
+        for rule in [ironsmith_core::IntrinsicStartingCounter::Loyalty, ironsmith_core::IntrinsicStartingCounter::Defense] {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let alice = PlayerId::from_index(0);
+            let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Zero counter shield source")
+                .card_types(vec![CardType::Artifact]).build();
+            let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+            let ability = crate::static_abilities::StaticAbility::double_counters_replacement(
+                crate::target::ObjectFilter::permanent(), Some(rule.counter_type()),
+                "If matching counters would be put, put twice that many instead".into());
+            let shield = game.effect_store.replacement_effects.add_one_shot_effect(
+                ability.generate_replacement_effect(source, alice).unwrap());
+            for printed in [None, Some(0), Some(1)] {
+                let builder = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Zero counter recipient")
+                    .card_types(vec![rule.card_type()]);
+                let definition = match (rule, printed) {
+                    (ironsmith_core::IntrinsicStartingCounter::Loyalty, Some(count)) => builder.loyalty(count).build(),
+                    (ironsmith_core::IntrinsicStartingCounter::Defense, Some(count)) => builder.subtypes(vec![Subtype::Siege]).defense(count).build(),
+                    (ironsmith_core::IntrinsicStartingCounter::Loyalty, None) => builder.build(),
+                    (ironsmith_core::IntrinsicStartingCounter::Defense, None) => builder.subtypes(vec![Subtype::Siege]).build(),
+                };
+                let entrant = game.create_object_from_definition(&definition, alice, Zone::Hand);
+                game.take_pending_trigger_events();
+                let receipt = game.move_object_with_etb_processing(entrant, Zone::Battlefield).unwrap();
+                assert!(!receipt.pending && receipt.programs.is_empty());
+                let crate::events::processing::EventOutcome::Proceed(result) = receipt.original else { panic!("entry completes"); };
+                let positive = printed == Some(1);
+                assert_eq!(game.counter_count(result.new_id, rule.counter_type()), if positive { 2 } else { 0 },
+                    "zero does not become a placement and positive control actually doubles: {rule:?}, {printed:?}");
+                assert_eq!(game.effect_store.replacement_effects.get_effect(shield).is_some(), !positive,
+                    "one-shot consumption requires a real positive placement: {rule:?}, {printed:?}");
+                let counter_events = game.take_pending_trigger_events().into_iter()
+                    .filter(|event| event.downcast::<crate::events::MarkersChangedEvent>().is_some()).count();
+                assert_eq!(counter_events, usize::from(positive),
+                    "zero placements publish no counter event: {rule:?}, {printed:?}");
+            }
+        }
     }
 }

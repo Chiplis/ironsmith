@@ -76,6 +76,10 @@ impl WouldEnterBattlefieldMatcher {
 }
 
 impl ReplacementMatcher for WouldEnterBattlefieldMatcher {
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        matches!(kind, EventKind::ZoneChange | EventKind::EnterBattlefield)
+    }
+
     fn applies_from_entering_source(&self) -> bool {
         self.filter.source
     }
@@ -116,6 +120,10 @@ impl ReplacementMatcher for WouldEnterBattlefieldMatcher {
 pub struct ThisWouldEnterBattlefieldMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterBattlefieldMatcher {
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        matches!(kind, EventKind::ZoneChange | EventKind::EnterBattlefield)
+    }
+
     fn applies_from_entering_source(&self) -> bool {
         true
     }

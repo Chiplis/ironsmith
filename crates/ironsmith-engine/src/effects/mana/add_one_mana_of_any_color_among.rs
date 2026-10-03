@@ -15,6 +15,11 @@ use crate::mana::ManaSymbol;
 pub type AddOneManaOfAnyColorAmongEffect = ironsmith_core::AddOneManaOfAnyColorAmongEffect;
 
 impl EffectExecutor for AddOneManaOfAnyColorAmongEffect {
+    fn mana_production(&self) -> Option<crate::mana_payment::program::ManaProduction<'_>> {
+        use crate::mana_payment::program::ManaProduction;
+        Some(ManaProduction::ColorsAmong { filter: &self.filter, choose_one: true, player: &self.player })
+    }
+
     fn directly_produces_mana(&self) -> bool {
         true
     }
@@ -43,7 +48,7 @@ impl EffectExecutor for AddOneManaOfAnyColorAmongEffect {
             false,
             Some(&colors),
             default_color,
-        );
+        )?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
         }

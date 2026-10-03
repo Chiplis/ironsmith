@@ -1191,12 +1191,11 @@ export async function sampleCardFramePixels({fullScan, artScan, symbolScan, icon
           const box = boxes[section], stop = section === 'title' ? (future ? box.x+box.width : manaMatch?.symbols[0]?.x) : setSymbol?.x;
           const enclosed = (section === 'title' ? titlePanel : typePanel)?.kind === 'panel';
           const insetX = enclosed ? 6 : 0, insetY = enclosed ? 2 : 0;
-          // A rounded title's detected rail can start inside the first capital.
-          // Include the space just outside that estimate so the connected-component
-          // scan sees complete glyphs; clipped components are deliberately rejected.
-          // Integrated labels can start left of the artwork's inset. Include
-          // that frame margin so a clipped initial cannot escape the mask.
-          const x = Math.max(0, Math.ceil(enclosed ? box.x + (section === 'title' ? -6 : insetX) : Math.min(box.x,fullScan.width*.075))), y = Math.max(0,Math.floor(box.y + (enclosed && section === 'title' ? -3 : insetY)));
+          // Rounded title/type rails can start inside the first capital.
+          // Include the conventional text margin as well as space outside the
+          // detected rail: clipped connected components are rejected, leaving
+          // their original initial behind even when the rest of the mask passes.
+          const x = Math.max(0, Math.floor(Math.min(box.x - (enclosed ? 6 : 0), fullScan.width * .075))), y = Math.max(0,Math.floor(box.y + (enclosed && section === 'title' ? -3 : insetY)));
           const sampleHeight=Math.ceil(box.height+(enclosed&&section==='title'?6:-insetY*2));
           // Keep complete terminal glyphs when a long localized label reaches
           // the registered symbol. Cropping four pixels early can cut its last
@@ -1273,7 +1272,10 @@ export async function sampleCardFramePixels({fullScan, artScan, symbolScan, icon
         // leaves similar margins either side whatever its alignment. Centred
         // text clears that inset and is symmetric to within a rounding error.
         const printedType = JSON.parse(style['--printed-type-text-bounds'] || 'null');
-        const typeInset = printedType ? printedType.x - boxes.type.x : 0;
+        // Compare both text starts from the rules box's origin. A type rail
+        // detected inside its initial otherwise makes left-aligned rules look
+        // centred once the full type label is recovered.
+        const typeInset = printedType ? printedType.x - boxes.rules.x : 0;
         const centred = Math.abs(leftInset - rightInset) < boxes.rules.width * .01
           && leftInset > typeInset + boxes.rules.width * .03;
         if (centred) style['--printed-rules-text-align'] = 'center';
@@ -1292,7 +1294,7 @@ export async function sampleCardFramePixels({fullScan, artScan, symbolScan, icon
       section:options.section,excludedPixels:options.excludedPixels,protectBottomBoundary:options.protectBottomBoundary,
       allowItalic:options.section==='rules',symbols:options.section==='rules'||options.section==='title'&&Boolean(printing.mana_cost)&&!manaMatch,
       text:options.section==='rules'?`${printing?.printed_text||printing?.oracle_text||''} ${printing?.flavor_text||''}`:options.section==='title'?(printing?.printed_name||printing?.name):options.section==='type'?(printing?.printed_type_line||printing?.type_line):options.section==='footer'?`${printing?.artist||''} Illus. Ilus. Wizards of the Coast Inc.`:`${printing?.power||''}/${printing?.toughness||''}`,
-    },inpaint):reconstructPanel,{onUnsafeMask:failure=>{unsafeMask=failure;},title:titlePanel?.kind,type:typePanel?.kind,fontGuided:!!typography,setSymbol,manaMatch,icons,preserveRules:basicLandBoxIsTextless(printing),textBounds:Object.fromEntries(['title','type'].map(name=>[name,JSON.parse(style[`--printed-${name}-text-bounds`]||'null')]))},inpaint);
+    },inpaint):reconstructPanel,{hasFlavor:!!printing?.flavor_text,flavorTop:JSON.parse(style['--printed-flavor-first-line']||'null')?.y,onUnsafeMask:failure=>{unsafeMask=failure;},title:titlePanel?.kind,type:typePanel?.kind,fontGuided:!!typography,setSymbol,manaMatch,icons,preserveRules:basicLandBoxIsTextless(printing),textBounds:Object.fromEntries(['title','type'].map(name=>[name,JSON.parse(style[`--printed-${name}-text-bounds`]||'null')]))},inpaint);
     if(unsafeMask)return fallback(`residual-text-${unsafeMask.section}`);
     if(masked) {
       const original=frameCanvas(masked.width,masked.height);

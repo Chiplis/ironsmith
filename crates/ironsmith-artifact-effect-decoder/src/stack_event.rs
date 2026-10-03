@@ -73,3 +73,97 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         _ => Ok(None),
     }
 }
+
+pub(super) fn map_card_ids(
+    kind: &str,
+    payload: Value,
+    context: &super::card_graph::Context<'_>,
+) -> Result<Option<Value>, String> {
+    match kind {
+        "CantEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::CantEffect>(payload, context)
+                .map(Some)
+        }
+        "ChooseNewTargetsEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ChooseNewTargetsEffect,
+        >(payload, context)
+        .map(Some),
+        "CopySpellEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::CopySpellEffect>(payload, context)
+                .map(Some)
+        }
+        "CopySpellForEachTargetEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::CopySpellForEachTargetEffect,
+        >(payload, context)
+        .map(Some),
+        "CounterEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::CounterEffect>(payload, context)
+                .map(Some)
+        }
+        "ExileTaggedWhenSourceLeavesEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ExileTaggedWhenSourceLeavesEffect,
+        >(payload, context)
+        .map(Some),
+        "RegisterDamagedBySourceZoneReplacementEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::RegisterDamagedBySourceZoneReplacementEffect,
+        >(payload, context)
+        .map(Some),
+        "RegisterDrawReplacementEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::RegisterDrawReplacementEffect<wire::WireEffect>,
+        >(payload, context)
+        .map(Some),
+        "RegisterEnterTappedReplacementEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::RegisterEnterTappedReplacementEffect,
+        >(payload, context)
+        .map(Some),
+        "RegisterEnterUnderControlReplacementEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::RegisterEnterUnderControlReplacementEffect,
+        >(payload, context)
+        .map(Some),
+        "RegisterFutureZoneReplacementEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::RegisterFutureZoneReplacementEffect,
+        >(payload, context)
+        .map(Some),
+        "RegisterManaReplacementEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::RegisterManaReplacementEffect,
+        >(payload, context)
+        .map(Some),
+        "RegisterCounterPlacementReplacementEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::RegisterCounterPlacementReplacementEffect,
+        >(payload, context)
+        .map(Some),
+        "RegisterEnterWithCountersReplacementEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::RegisterEnterWithCountersReplacementEffect,
+        >(payload, context)
+        .map(Some),
+        "RegisterNextBatchEnterWithCountersEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::RegisterNextBatchEnterWithCountersEffect,
+        >(payload, context)
+        .map(Some),
+        "RegisterZoneReplacementEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::RegisterZoneReplacementEffect,
+        >(payload, context)
+        .map(Some),
+        "RetargetStackObjectEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::RetargetStackObjectEffect,
+        >(payload, context)
+        .map(Some),
+        "ScheduleDelayedTriggerEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ScheduleDelayedTriggerEffect<wire::WireEffect>,
+        >(payload, context)
+        .map(Some),
+        "ScheduleEffectsWhenTaggedLeavesEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ScheduleEffectsWhenTaggedLeavesEffect<wire::WireEffect>,
+        >(payload, context)
+        .map(Some),
+        "VariableCasualtyPlaneswalkerCopyEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::VariableCasualtyPlaneswalkerCopyEffect,
+        >(payload, context)
+        .map(Some),
+        "ScaleXValueEffect" => {
+            super::card_graph::map_payload_as::<wire::WireScaleXValueEffect>(payload, context)
+                .map(Some)
+        }
+        _ => Ok(None),
+    }
+}

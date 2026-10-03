@@ -575,6 +575,17 @@ export function usePeerLobby({
     ]
   );
 
+  function deferProtocolResponseTimeoutClaim(claim) {
+    const matchId = currentAuditMatchId();
+    void optimisticState.deferUntilVerifiedIdle(async () => {
+      if (currentAuditMatchId() !== matchId || !multiplayerRef.current.matchStarted
+        || isMatchDisputed(multiplayerRef.current)) return;
+      await submitProtocolResponseTimeoutClaim(claim);
+    }).catch(error => {
+      setStatus(`Protocol timeout recovery failed: ${toErrorMessage(error)}`, true);
+    });
+  }
+
   async function submitProtocolResponseTimeoutClaim(claim) {
     if (!claim || typeof claim !== "object") return false;
     const targetPlayerIndex = normalizePlayerIndex(claim.targetPlayerIndex);
@@ -1938,7 +1949,7 @@ export function usePeerLobby({
         }
         const protocolTimeoutClaim = protocolResponseTimeoutClaimFromError(err);
         if (protocolTimeoutClaim) {
-          await submitProtocolResponseTimeoutClaim(protocolTimeoutClaim);
+          deferProtocolResponseTimeoutClaim(protocolTimeoutClaim);
           return;
         }
         // Applying another player's post opening can expose a hidden-identity

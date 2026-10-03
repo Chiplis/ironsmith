@@ -8,12 +8,10 @@ pub struct CardDefinition<A, E, C, AC, OC> {
     pub card: Card,
     /// Canonical rules text rendered by the compiler-side presentation layer.
     ///
-    /// This is runtime metadata rather than part of the executable wire model,
-    /// so compiled artifacts transport it in their payload envelope.
-    #[cfg_attr(feature = "serde", serde(skip, default))]
+    /// Definitions embedded in executable payloads carry their own metadata.
+    /// Both fields are required on the wire, including explicit empty values.
     pub canonical_text: String,
     /// Canonical labels for the executable abilities in `abilities`.
-    #[cfg_attr(feature = "serde", serde(skip, default))]
     pub ability_labels: Vec<String>,
     pub abilities: Vec<A>,
     pub spell_effect: Option<ResolutionProgram<E>>,

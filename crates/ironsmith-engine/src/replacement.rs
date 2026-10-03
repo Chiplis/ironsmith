@@ -24,13 +24,16 @@ use crate::zone::Zone;
 use ironsmith_core::AdditionalTokenKind;
 
 /// A replacement effect that modifies events.
-#[derive(Debug, Clone)]
-pub struct ReplacementEffect {
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialization", serde(deny_unknown_fields, bound(deserialize = "A: serde::Deserialize<'de>, M: serde::Deserialize<'de>, S: serde::Deserialize<'de>, O: serde::Deserialize<'de>")))]
+pub struct ReplacementEffect<A = ReplacementAction, M = Box<dyn ReplacementMatcher>, S = StaticAbilityInstanceId, O = ReplacementAbilityOrigin> {
     /// Unique identifier for this effect
     pub id: ReplacementEffectId,
 
     /// Identity of a persistent manager registration. Static/ephemeral
     /// effects leave this unset because their transient IDs can change.
+    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
     registration_id: Option<ReplacementEffectId>,
 
     /// The source that created this effect
@@ -40,20 +43,24 @@ pub struct ReplacementEffect {
     pub controller: PlayerId,
 
     /// What happens instead
-    pub replacement: ReplacementAction,
+    pub replacement: A,
 
     /// Optional explicit priority bucket override per CR 616.1.
+    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
     pub priority_override: Option<ReplacementPriority>,
 
     /// Trait-based matcher for checking if this effect applies.
-    pub matcher: Option<Box<dyn ReplacementMatcher>>,
+    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
+    pub matcher: Option<M>,
 
     /// Stable identity of the static ability that generated this effect.
     /// Resolution-created effects leave this unset.
-    pub static_ability_instance: Option<StaticAbilityInstanceId>,
+    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
+    pub static_ability_instance: Option<S>,
     /// Stable originating occurrence plus generated branch, when produced
     /// from an object's abilities. Controller and mutable payload are not identity.
-    pub ability_origin: Option<ReplacementAbilityOrigin>,
+    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
+    pub ability_origin: Option<O>,
 
     /// Whether the affected player may decline this replacement effect.
     /// Optional effects are expanded into an explicit no-op CR 616 choice
@@ -61,15 +68,81 @@ pub struct ReplacementEffect {
     pub optional: bool,
 }
 
+/// Decode an explicitly present optional descriptor field. Serde's ordinary
+/// Option handling would otherwise accept an omitted capture as None.
+#[cfg(feature = "serialization")]
+fn deserialize_present_descriptor_option<'de, T: serde::Deserialize<'de>, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<T>, D::Error> {
+    <Option<T> as serde::Deserialize>::deserialize(deserializer)
+}
+
+impl<A, M, S, O> ReplacementEffect<A, M, S, O> {
+    /// Translate every executable and occurrence payload without changing the
+    /// captured controller, source, registration, ordering or optionality.
+    /// Each converter is mandatory and fallible. The owning codec must bind
+    /// nested world/card references and validate its complete imported world.
+    pub fn try_map_payloads<A2, M2, S2, O2, Error>(
+        self,
+        action: impl FnOnce(A) -> Result<A2, Error>,
+        matcher: impl FnOnce(M) -> Result<M2, Error>,
+        static_ability: impl FnOnce(S) -> Result<S2, Error>,
+        origin: impl FnOnce(O) -> Result<O2, Error>,
+    ) -> Result<ReplacementEffect<A2, M2, S2, O2>, Error> {
+        // Exhaustive destructuring makes a newly added runtime field require an
+        // explicit transport decision rather than silently disappearing.
+        let Self { id, registration_id, source, controller, replacement,
+            priority_override, matcher: native_matcher, static_ability_instance,
+            ability_origin, optional } = self;
+        Ok(ReplacementEffect {
+            id, registration_id, source, controller,
+            replacement: action(replacement)?, priority_override,
+            matcher: native_matcher.map(matcher).transpose()?,
+            static_ability_instance: static_ability_instance.map(static_ability).transpose()?,
+            ability_origin: ability_origin.map(origin).transpose()?, optional,
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ReplacementAbilityOrigin {
-    pub ability: crate::continuous::AbilityOrigin,
-    pub printed_face: Option<crate::ids::CardId>,
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialization", serde(deny_unknown_fields, bound(deserialize = "I: serde::Deserialize<'de>, C: serde::Deserialize<'de>")))]
+pub struct ReplacementAbilityOrigin<I = StaticAbilityInstanceId, C = crate::ids::CardId> {
+    pub ability: crate::continuous::AbilityOrigin<I, C>,
+    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
+    pub printed_face: Option<C>,
     pub branch: usize,
+}
+
+impl<I, C> ReplacementAbilityOrigin<I, C> {
+    /// Bind all nested generating occurrences through the owning ability table.
+    pub fn try_map_static_instances<J, Error, F>(
+        self, map: &mut F,
+    ) -> Result<ReplacementAbilityOrigin<J, C>, Error>
+    where F: FnMut(I) -> Result<J, Error> + ?Sized {
+        let Self { ability, printed_face, branch } = self;
+        Ok(ReplacementAbilityOrigin {
+            ability: ability.try_map_static_instances(map)?, printed_face, branch,
+        })
+    }
+
+    /// Bind every nested face, including level and borrowed/granted ancestry.
+    /// The enclosing codec must supply visibility-approved definition roots.
+    pub fn try_map_card_ids<D, Error, F>(
+        self, map: &mut F,
+    ) -> Result<ReplacementAbilityOrigin<I, D>, Error>
+    where F: FnMut(C) -> Result<D, Error> + ?Sized {
+        let Self { ability, printed_face, branch } = self;
+        Ok(ReplacementAbilityOrigin {
+            ability: ability.try_map_card_ids(map)?,
+            printed_face: printed_face.map(&mut *map).transpose()?, branch,
+        })
+    }
 }
 
 /// Unique identifier for a replacement effect.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 pub struct ReplacementEffectId(pub u64);
 
 impl ReplacementEffectId {
@@ -85,19 +158,62 @@ impl ReplacementEffectId {
 /// to recognize the same replacement effect for CR 614.5, especially when a
 /// replacement creates nested events that move objects and refresh state.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ReplacementEffectKey {
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialization", serde(deny_unknown_fields, bound(deserialize = "I: serde::Deserialize<'de>, C: serde::Deserialize<'de>")))]
+pub enum ReplacementEffectKey<I = StaticAbilityInstanceId, C = crate::ids::CardId> {
     /// Separate resolutions remain separate even when their source and text match.
     Registered(ReplacementEffectId),
     /// The same ability occurrence survives regeneration and mutable bindings.
-    Ability { source: ObjectId, origin: ReplacementAbilityOrigin },
+    Ability { source: ObjectId, origin: ReplacementAbilityOrigin<I, C> },
     /// Regenerated and event-local effects retain their structural identity.
     Regenerated {
         source: ObjectId,
         controller: PlayerId,
-        static_ability_instance: Option<StaticAbilityInstanceId>,
+        #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
+        static_ability_instance: Option<I>,
+        #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
         matcher: Option<String>,
         replacement: String,
     },
+}
+
+impl<I, C> ReplacementEffectKey<I, C> {
+    /// Remap occurrence references in both authoritative ability keys and the
+    /// legacy structural key. Registered identities are manager-local and stay
+    /// unchanged with the complete registered manager frame.
+    pub fn try_map_static_instances<J, Error, F>(
+        self, map: &mut F,
+    ) -> Result<ReplacementEffectKey<J, C>, Error>
+    where F: FnMut(I) -> Result<J, Error> + ?Sized {
+        Ok(match self {
+            Self::Registered(id) => ReplacementEffectKey::Registered(id),
+            Self::Ability { source, origin } => ReplacementEffectKey::Ability {
+                source, origin: origin.try_map_static_instances(map)?,
+            },
+            Self::Regenerated { source, controller, static_ability_instance, matcher, replacement } =>
+                ReplacementEffectKey::Regenerated { source, controller,
+                    static_ability_instance: static_ability_instance.map(&mut *map).transpose()?,
+                    matcher, replacement },
+        })
+    }
+
+    /// Remap all captured printed faces. Legacy structural identity strings are
+    /// preserved as identity data, never interpreted as executable descriptors.
+    /// Portability of legacy keys after payload/world rebinding remains an
+    /// owning integration requirement, not a guarantee from this mapper.
+    pub fn try_map_card_ids<D, Error, F>(
+        self, map: &mut F,
+    ) -> Result<ReplacementEffectKey<I, D>, Error>
+    where F: FnMut(C) -> Result<D, Error> + ?Sized {
+        Ok(match self {
+            Self::Registered(id) => ReplacementEffectKey::Registered(id),
+            Self::Ability { source, origin } => ReplacementEffectKey::Ability {
+                source, origin: origin.try_map_card_ids(map)?,
+            },
+            Self::Regenerated { source, controller, static_ability_instance, matcher, replacement } =>
+                ReplacementEffectKey::Regenerated { source, controller, static_ability_instance, matcher, replacement },
+        })
+    }
 }
 
 impl ReplacementEffect {
@@ -136,7 +252,9 @@ impl ReplacementEffect {
 
 /// What happens instead when a replacement triggers.
 #[derive(Debug, Clone, PartialEq)]
-pub enum ReplacementAction {
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialization", serde(deny_unknown_fields))]
+pub enum ReplacementAction<E = Effect, A = Ability, P = crate::resolution::ResolutionProgram, K = ReplacementEffectKey> {
     /// Prevent the event entirely
     Prevent,
 
@@ -158,7 +276,7 @@ pub enum ReplacementAction {
     /// The additional part still happens with an amount of zero when the damage
     /// can't be prevented (CR 615.12), while CR 615.13 is emitted only when the
     /// application actually prevents damage.
-    PreventDamageThen(Vec<Effect>),
+    PreventDamageThen(Vec<E>),
 
     /// Apply one prevention shield to a matching damage event.
     ///
@@ -167,6 +285,7 @@ pub enum ReplacementAction {
     PreventWithShield {
         shield_id: crate::prevention::PreventionShieldId,
         /// Batch-level CR 615.7 allocation cap for this source event.
+        #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
         max_amount: Option<u32>,
     },
 
@@ -174,7 +293,7 @@ pub enum ReplacementAction {
     Modify(EventModification),
 
     /// Do something different instead
-    Instead(Vec<Effect>),
+    Instead(Vec<E>),
 
     /// Redirect to a different target.
     /// Use `which` to specify which target to redirect for multi-target events.
@@ -221,14 +340,17 @@ pub enum ReplacementAction {
 
     /// Exile the object, record it as exiled with the replacement source, then
     /// execute follow-up effects from that source.
-    ExileWithSourceLinkThen(Vec<Effect>),
+    ExileWithSourceLinkThen(Vec<E>),
 
     /// Exile the object with counters, record it as exiled with the replacement
     /// source, then execute follow-up effects from that source.
     ExileWithSourceLinkCountersThen {
         counters: Vec<(CounterType, u32)>,
-        effects: Vec<Effect>,
+        effects: Vec<E>,
     },
+
+    /// Enter with the prospective printed number specified by an intrinsic rule.
+    EnterWithIntrinsicStartingCounters(ironsmith_core::IntrinsicStartingCounter),
 
     /// Enter with additional counters
     EnterWithCounters {
@@ -236,10 +358,12 @@ pub enum ReplacementAction {
         count: Value,
         /// Selects `count` when true and `otherwise_count` when false. The
         /// condition is evaluated with the entering object as its source.
+        #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
         count_condition: Option<crate::ConditionExpr>,
+        #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
         otherwise_count: Option<Value>,
         added_subtypes: Vec<Subtype>,
-        added_abilities: Vec<Ability>,
+        added_abilities: Vec<A>,
     },
 
     /// Enter with the controller's choice of one counter type.
@@ -273,9 +397,11 @@ pub enum ReplacementAction {
     EnterAsCopy {
         source: ObjectId,
         enters_tapped: bool,
+        #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
         copy_duration: Option<crate::effect::Until>,
         linked_exile_objects: Vec<ObjectId>,
         additional_counters: Vec<(CounterType, u32)>,
+        #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
         name_override: Option<String>,
         added_colors: crate::color::ColorSet,
         added_card_types: Vec<CardType>,
@@ -283,7 +409,8 @@ pub enum ReplacementAction {
         added_supertypes: Vec<Supertype>,
         removed_supertypes: Vec<Supertype>,
         added_subtypes: Vec<Subtype>,
-        added_abilities: Vec<Ability>,
+        added_abilities: Vec<A>,
+        #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
         set_base_power_toughness: Option<(i32, i32)>,
         /// What else happens once this copy is chosen.
         copy_followups: Vec<ironsmith_core::EnterAsCopyFollowup>,
@@ -293,6 +420,7 @@ pub enum ReplacementAction {
     EnterWithCharacteristics {
         added_card_types: Vec<CardType>,
         added_subtypes: Vec<Subtype>,
+        #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
         set_base_power_toughness: Option<(i32, i32)>,
     },
 
@@ -300,15 +428,22 @@ pub enum ReplacementAction {
     Double,
 
     /// Double counters of the matching type on counter-placement events.
-    DoubleCounters { counter_type: Option<CounterType> },
+    DoubleCounters {
+        #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
+        counter_type: Option<CounterType>,
+    },
 
     /// Halve (rounded down) counters of the matching type on counter-placement
     /// events ("they put half that many ... instead, rounded down").
-    HalveCounters { counter_type: Option<CounterType> },
+    HalveCounters {
+        #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
+        counter_type: Option<CounterType>,
+    },
 
     /// Add extra counters of the matching type to counter-placement events
     /// ("that many plus one ... counters are put on it instead").
     AddCountersToPlacement {
+        #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
         counter_type: Option<CounterType>,
         additional: i64,
     },
@@ -321,13 +456,13 @@ pub enum ReplacementAction {
     },
 
     /// Execute a selected as-enters program, then reconsider the pending entry.
-    AsEntersProgram(crate::resolution::ResolutionProgram),
+    AsEntersProgram(P),
 
     /// Add an additional effect
-    Additionally(Vec<Effect>),
+    Additionally(Vec<E>),
 
     /// Explicitly decline one optional replacement for this event.
-    DeclineOptional(ReplacementEffectKey),
+    DeclineOptional(K),
 
     /// Add separately defined tokens to a token-creation event.
     AddTokens {
@@ -432,8 +567,73 @@ pub enum ReplacementAction {
     },
 }
 
+
+impl<E, A, P, K> ReplacementAction<E, A, P, K> {
+    /// Encode all executable bodies, added abilities, selected programs and
+    /// declined-parent keys. Scalar event semantics remain unchanged. Each
+    /// occurrence is converted in order, including identical independent bodies.
+    /// The owning encoder supplies atomic table/reference binding and codecs.
+    pub fn try_map_payloads<E2, A2, P2, K2, Error>(
+        self, mut effect: impl FnMut(E) -> Result<E2, Error>,
+        mut ability: impl FnMut(A) -> Result<A2, Error>,
+        program: impl FnOnce(P) -> Result<P2, Error>,
+        key: impl FnOnce(K) -> Result<K2, Error>,
+    ) -> Result<ReplacementAction<E2, A2, P2, K2>, Error> {
+        Ok(match self {
+            Self::Prevent => ReplacementAction::Prevent,
+            Self::PreventDamage => ReplacementAction::PreventDamage,
+            Self::PreventDamageAmount(value) => ReplacementAction::PreventDamageAmount(value),
+            Self::PreventHalfDamage { round_up } => ReplacementAction::PreventHalfDamage { round_up },
+            Self::PreventDamageByRemovingSourceCounters { counter_type } => ReplacementAction::PreventDamageByRemovingSourceCounters { counter_type },
+            Self::PreventDamageThen(value) => ReplacementAction::PreventDamageThen(value.into_iter().map(&mut effect).collect::<Result<Vec<_>, _>>()?),
+            Self::PreventWithShield { shield_id, max_amount } => ReplacementAction::PreventWithShield { shield_id, max_amount },
+            Self::Modify(value) => ReplacementAction::Modify(value),
+            Self::Instead(value) => ReplacementAction::Instead(value.into_iter().map(&mut effect).collect::<Result<Vec<_>, _>>()?),
+            Self::Redirect { target, which } => ReplacementAction::Redirect { target, which },
+            Self::RedirectDamageAmount { target, which, amount } => ReplacementAction::RedirectDamageAmount { target, which, amount },
+            Self::ChangeDestination(value) => ReplacementAction::ChangeDestination(value),
+            Self::DiscardWithMadness => ReplacementAction::DiscardWithMadness,
+            Self::RedirectDrawToController => ReplacementAction::RedirectDrawToController,
+            Self::MoveToZoneWithCounters { zone, counters } => ReplacementAction::MoveToZoneWithCounters { zone, counters },
+            Self::ExileWithSourceLink => ReplacementAction::ExileWithSourceLink,
+            Self::ExileWithSourceLinkThen(value) => ReplacementAction::ExileWithSourceLinkThen(value.into_iter().map(&mut effect).collect::<Result<Vec<_>, _>>()?),
+            Self::ExileWithSourceLinkCountersThen { counters, effects } => ReplacementAction::ExileWithSourceLinkCountersThen { counters, effects: effects.into_iter().map(&mut effect).collect::<Result<Vec<_>, _>>()? },
+            Self::EnterWithCounters { counter_type, count, count_condition, otherwise_count, added_subtypes, added_abilities } => ReplacementAction::EnterWithCounters { counter_type, count, count_condition, otherwise_count, added_subtypes, added_abilities: added_abilities.into_iter().map(&mut ability).collect::<Result<Vec<_>, _>>()? },
+            Self::EnterWithIntrinsicStartingCounters(rule) => ReplacementAction::EnterWithIntrinsicStartingCounters(rule),
+            Self::EnterWithCounterChoice { counter_types, count } => ReplacementAction::EnterWithCounterChoice { counter_types, count },
+            Self::Tribute { counter_type, count, paid_label } => ReplacementAction::Tribute { counter_type, count, paid_label },
+            Self::EnterTapped => ReplacementAction::EnterTapped,
+            Self::EnterUntapped => ReplacementAction::EnterUntapped,
+            Self::EnterUnderControl(value) => ReplacementAction::EnterUnderControl(value),
+            Self::EnterUnderChosenControl { players } => ReplacementAction::EnterUnderChosenControl { players },
+            Self::EnterAsCopy { source, enters_tapped, copy_duration, linked_exile_objects, additional_counters, name_override, added_colors, added_card_types, removes_other_card_types, added_supertypes, removed_supertypes, added_subtypes, added_abilities, set_base_power_toughness, copy_followups } => ReplacementAction::EnterAsCopy { source, enters_tapped, copy_duration, linked_exile_objects, additional_counters, name_override, added_colors, added_card_types, removes_other_card_types, added_supertypes, removed_supertypes, added_subtypes, added_abilities: added_abilities.into_iter().map(&mut ability).collect::<Result<Vec<_>, _>>()?, set_base_power_toughness, copy_followups },
+            Self::EnterWithCharacteristics { added_card_types, added_subtypes, set_base_power_toughness } => ReplacementAction::EnterWithCharacteristics { added_card_types, added_subtypes, set_base_power_toughness },
+            Self::Double => ReplacementAction::Double,
+            Self::DoubleCounters { counter_type } => ReplacementAction::DoubleCounters { counter_type },
+            Self::HalveCounters { counter_type } => ReplacementAction::HalveCounters { counter_type },
+            Self::AddCountersToPlacement { counter_type, additional } => ReplacementAction::AddCountersToPlacement { counter_type, additional },
+            Self::SetPlayerCountersAndLockForTurn { counter_type, amount } => ReplacementAction::SetPlayerCountersAndLockForTurn { counter_type, amount },
+            Self::AsEntersProgram(value) => ReplacementAction::AsEntersProgram(program(value)?),
+            Self::Additionally(value) => ReplacementAction::Additionally(value.into_iter().map(&mut effect).collect::<Result<Vec<_>, _>>()?),
+            Self::DeclineOptional(value) => ReplacementAction::DeclineOptional(key(value)?),
+            Self::AddTokens { token, count } => ReplacementAction::AddTokens { token, count },
+            Self::AddTokensPerCreated { token } => ReplacementAction::AddTokensPerCreated { token },
+            Self::AddTokensOfOtherKinds { kinds } => ReplacementAction::AddTokensOfOtherKinds { kinds },
+            Self::ReplaceMana(value) => ReplacementAction::ReplaceMana(value),
+            Self::ReplaceManaExact(value) => ReplacementAction::ReplaceManaExact(value),
+            Self::Skip => ReplacementAction::Skip,
+            Self::InteractiveDiscardOrRedirect { filter, redirect_zone } => ReplacementAction::InteractiveDiscardOrRedirect { filter, redirect_zone },
+            Self::InteractiveSacrificeOrRedirect { filter, count, redirect_zone } => ReplacementAction::InteractiveSacrificeOrRedirect { filter, count, redirect_zone },
+            Self::InteractivePayLifeOrEnterTapped { life_cost } => ReplacementAction::InteractivePayLifeOrEnterTapped { life_cost },
+            Self::InteractiveRevealCardOrEnterTapped { filter } => ReplacementAction::InteractiveRevealCardOrEnterTapped { filter },
+            Self::InteractiveChooseDestination { destinations, description } => ReplacementAction::InteractiveChooseDestination { destinations, description },
+        })
+    }
+}
+
 /// How to modify an event.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 pub enum EventModification {
     /// Multiply by a factor (e.g., double strike)
     Multiply(u32),
@@ -456,6 +656,7 @@ pub enum EventModification {
 
 /// Where to redirect an effect.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 pub enum RedirectTarget {
     /// Redirect to this permanent's controller
     ToController,
@@ -478,6 +679,7 @@ pub enum RedirectTarget {
 /// For events like `MoveCounters` that have multiple redirectable targets
 /// (e.g., "source" and "destination"), this specifies which one to redirect.
 #[derive(Debug, Clone, PartialEq, Default)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 pub enum RedirectWhich {
     /// Redirect the first (or only) redirectable target.
     /// This is the default behavior.
@@ -490,12 +692,13 @@ pub enum RedirectWhich {
     /// Redirect targets matching this description.
     /// The description is matched against `RedirectableTarget::description`.
     /// E.g., "counter source" or "counter destination" for MoveCounters.
-    ByDescription(&'static str),
+    ByDescription(String),
 }
 
 /// Source type for replacement effects - distinguishes between static abilities
 /// and resolution-based effects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 pub enum ReplacementEffectSource {
     /// Effect from a static ability (regenerated each state refresh)
     StaticAbility,
@@ -574,6 +777,37 @@ pub struct SuspendedReplacementEffect {
     until_end_of_turn: bool,
 }
 
+/// Complete persistent replacement registrations. Static descriptors are rebuilt
+/// from the restored object world; their allocated identity gaps remain reserved.
+/// A codec must convert every executable descriptor, not its display string.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+pub struct RegisteredReplacementEffectState<E = ReplacementEffect> {
+    pub effects: Vec<E>,
+    pub next_id: u64,
+    pub effect_sources: Vec<(ReplacementEffectId, ReplacementEffectSource)>,
+    pub one_shot_effects: Vec<ReplacementEffectId>,
+    pub batch_one_shot_effects: Vec<ReplacementEffectId>,
+    pub pending_batch_one_shot_effects: Vec<ReplacementEffectId>,
+    pub until_end_of_turn_effects: Vec<ReplacementEffectId>,
+    pub until_next_turn_effects: Vec<(ReplacementEffectId, (PlayerId, u32, Option<u32>))>,
+}
+
+impl<E> RegisteredReplacementEffectState<E> {
+    pub fn try_map_effects<E2, Error>(
+        self, convert: impl FnMut(E) -> Result<E2, Error>,
+    ) -> Result<RegisteredReplacementEffectState<E2>, Error> {
+        let Self { effects, next_id, effect_sources, one_shot_effects,
+            batch_one_shot_effects, pending_batch_one_shot_effects,
+            until_end_of_turn_effects, until_next_turn_effects } = self;
+        Ok(RegisteredReplacementEffectState {
+            effects: effects.into_iter().map(convert).collect::<Result<Vec<_>, _>>()?,
+            next_id, effect_sources, one_shot_effects, batch_one_shot_effects,
+            pending_batch_one_shot_effects, until_end_of_turn_effects, until_next_turn_effects,
+        })
+    }
+}
+
 /// Manages all replacement effects in the game.
 #[derive(Debug, Clone, Default)]
 pub struct ReplacementEffectManager {
@@ -608,6 +842,94 @@ pub struct ReplacementEffectManager {
 }
 
 impl ReplacementEffectManager {
+    /// Capture full persistent state, rejecting inconsistent native bookkeeping
+    /// rather than dropping it from an apparently successful checkpoint.
+    pub fn registered_state(&self) -> Result<RegisteredReplacementEffectState, String> {
+        // Exhaustive destructuring makes new manager state require an explicit
+        // checkpoint decision rather than silently omitting it.
+        let Self { effects, effect_sources, one_shot_effects, batch_one_shot_effects,
+            pending_batch_one_shot_effects, until_end_of_turn_effects,
+            until_next_turn_effects, next_id } = self;
+        let mut allocated_ids = std::collections::HashSet::new();
+        for effect in effects {
+            if effect.id.0 >= *next_id || !allocated_ids.insert(effect.id) {
+                return Err("invalid replacement manager allocation".into());
+            }
+        }
+        let static_ids: std::collections::HashSet<_> = effects.iter()
+            .filter(|effect| effect.registration_id.is_none()
+                && effect_sources.get(&effect.id.0) == Some(&ReplacementEffectSource::StaticAbility))
+            .map(|effect| effect.id).collect();
+        let sorted_ids = |ids: &std::collections::HashSet<ReplacementEffectId>| {
+            let mut ids: Vec<_> = ids.iter().copied().collect(); ids.sort_by_key(|id| id.0); ids
+        };
+        let mut sources: Vec<_> = effect_sources.iter()
+            .filter(|(id, _)| !static_ids.contains(&ReplacementEffectId(**id)))
+            .map(|(id, source)| (ReplacementEffectId(*id), *source)).collect();
+        sources.sort_by_key(|(id, _)| id.0);
+        let mut next_turn: Vec<_> = until_next_turn_effects.iter()
+            .map(|(id, anchor)| (*id, *anchor)).collect();
+        next_turn.sort_by_key(|(id, _)| id.0);
+        let state = RegisteredReplacementEffectState {
+            effects: effects.iter().filter(|effect| !static_ids.contains(&effect.id)).cloned().collect(),
+            next_id: *next_id, effect_sources: sources,
+            one_shot_effects: sorted_ids(one_shot_effects),
+            batch_one_shot_effects: sorted_ids(batch_one_shot_effects),
+            pending_batch_one_shot_effects: sorted_ids(pending_batch_one_shot_effects),
+            until_end_of_turn_effects: sorted_ids(until_end_of_turn_effects),
+            until_next_turn_effects: next_turn,
+        };
+        Self::new().restore_registered_state(state.clone())?;
+        Ok(state)
+    }
+
+    /// Validate all identities and lifetime memberships before publishing. The
+    /// owning importer must validate object/player references and regenerate
+    /// static descriptors; departed sources remain valid stored identities.
+    pub fn restore_registered_state(&mut self, state: RegisteredReplacementEffectState) -> Result<(), String> {
+        if state.next_id == u64::MAX {
+            return Err("serialized replacement allocator cannot advance".into());
+        }
+        let mut ids = std::collections::HashSet::new();
+        for effect in &state.effects {
+            if effect.registration_id != Some(effect.id) || effect.id.0 >= state.next_id || !ids.insert(effect.id) {
+                return Err("invalid registered replacement identity".into());
+            }
+        }
+        let mut sources = std::collections::HashMap::new();
+        for (id, source) in state.effect_sources {
+            if !ids.contains(&id) || source == ReplacementEffectSource::StaticAbility || sources.insert(id.0, source).is_some() {
+                return Err("invalid registered replacement source".into());
+            }
+        }
+        let checked_ids = |entries: Vec<ReplacementEffectId>| -> Result<std::collections::HashSet<ReplacementEffectId>, String> {
+            let mut result = std::collections::HashSet::new();
+            for id in entries {
+                if !ids.contains(&id) || !result.insert(id) { return Err("invalid registered replacement lifetime membership".into()); }
+            }
+            Ok(result)
+        };
+        let one_shot = checked_ids(state.one_shot_effects)?;
+        let batch = checked_ids(state.batch_one_shot_effects)?;
+        if !one_shot.is_disjoint(&batch) { return Err("replacement cannot be both ordinary and batch one-shot".into()); }
+        let pending = checked_ids(state.pending_batch_one_shot_effects)?;
+        if !pending.is_subset(&batch) { return Err("pending replacement consumption is not a batch one-shot".into()); }
+        let cleanup = checked_ids(state.until_end_of_turn_effects)?;
+        let mut next_turn = std::collections::HashMap::new();
+        for (id, anchor) in state.until_next_turn_effects {
+            if !ids.contains(&id) || next_turn.insert(id, anchor).is_some() {
+                return Err("invalid registered replacement next-turn anchor".into());
+            }
+        }
+        *self = Self {
+            effects: state.effects, effect_sources: sources, next_id: state.next_id,
+            one_shot_effects: one_shot, batch_one_shot_effects: batch,
+            pending_batch_one_shot_effects: pending, until_end_of_turn_effects: cleanup,
+            until_next_turn_effects: next_turn,
+        };
+        Ok(())
+    }
+
     /// Create a new empty manager.
     pub fn new() -> Self {
         Self::default()
@@ -688,7 +1010,13 @@ impl ReplacementEffectManager {
 
     /// Remove all effects from a specific source.
     pub fn remove_effects_from_source(&mut self, source: ObjectId) {
-        self.effects.retain(|e| e.source != source);
+        let ids: Vec<_> = self.effects.iter()
+            .filter(|effect| effect.source == source)
+            .map(|effect| effect.id)
+            .collect();
+        for id in ids {
+            self.remove_effect(id);
+        }
     }
 
     /// Take the regeneration shields protecting `source` out of play for one
@@ -1231,6 +1559,374 @@ impl ReplacementEffect {
 mod tests {
     use super::*;
 
+    fn registered_transport_fixture() -> (ReplacementEffectManager, [ReplacementEffectId; 5]) {
+        let source = ObjectId::from_raw(71);
+        let player = PlayerId::from_index(1);
+        let mut manager = ReplacementEffectManager::new();
+        let effect = ReplacementEffect::with_matcher(source, player, WouldGainLifeMatcher::you(), ReplacementAction::Double);
+        let gap = manager.add_resolution_effect(effect.clone()); manager.remove_effect(gap);
+        manager.add_static_ability_effect(effect.clone());
+        let persistent = manager.add_resolution_effect(effect.clone());
+        let one = manager.add_one_shot_effect(effect.clone());
+        let batch = manager.add_batch_one_shot_effect(effect.clone());
+        manager.mark_effect_used(batch);
+        let cleanup = manager.add_until_end_of_turn_effect(effect.clone());
+        let turn = manager.add_until_next_turn_effect(effect, player, 4);
+        manager.prepare_for_departing_player(player, 9);
+        (manager, [persistent, one, batch, cleanup, turn])
+    }
+
+    fn complete_descriptor_fixture() -> ReplacementEffect {
+        let mut effect = ReplacementEffect::with_matcher(
+            ObjectId::from_raw(173), PlayerId::from_index(1),
+            WouldGainLifeMatcher::you(), ReplacementAction::Double,
+        ).with_ability_origin(crate::continuous::AbilityOrigin::Printed(4), Some(crate::ids::CardId::new()), 7);
+        effect.id = ReplacementEffectId(29);
+        effect.registration_id = Some(ReplacementEffectId(29));
+        effect.priority_override = Some(ReplacementPriority::SelfReplacement);
+        effect.static_ability_instance = Some(crate::static_abilities::StaticAbility::enters_tapped_ability().instance_id());
+        effect.optional = true;
+        effect
+    }
+
+    #[test]
+    fn replacement_action_payload_conversion_keeps_order_repeats_and_failures() {
+        use std::cell::Cell;
+        type Action = ReplacementAction<u8, u8, u8, u8>;
+        let calls = Cell::new(0);
+        let converted = Action::Instead(vec![3, 3, 7]).try_map_payloads(
+            |value| { calls.set(calls.get() + 1); Ok::<_, u8>(value + 10) },
+            Ok, Ok, Ok,
+        ).unwrap();
+        assert_eq!(converted, Action::Instead(vec![13, 13, 17]));
+        assert_eq!(calls.get(), 3, "equal occurrences are independent");
+        let calls = Cell::new(0);
+        let failed = Action::PreventDamageThen(vec![3, 7, 9]).try_map_payloads(
+            |value| { calls.set(calls.get() + 1); if value == 7 { Err(value) } else { Ok(value) } },
+            Ok, Ok, Ok,
+        );
+        assert_eq!(failed.unwrap_err(), 7);
+        assert_eq!(calls.get(), 2, "stop at the actual failed body");
+        assert_eq!(Action::AsEntersProgram(19).try_map_payloads(Ok, Ok,
+            |_| Err::<u8, _>("program"), Ok).unwrap_err(), "program");
+        assert_eq!(Action::DeclineOptional(23).try_map_payloads(Ok, Ok, Ok,
+            |_| Err::<u8, _>("key")).unwrap_err(), "key");
+    }
+
+    #[cfg(feature = "serialization")]
+    #[test]
+    fn replacement_action_wire_retains_redirect_description_and_dynamic_entry_counters() {
+        type Action = ReplacementAction<u8, u8, u8, u8>;
+        let redirect = Action::RedirectDamageAmount {
+            target: RedirectTarget::ToPlayer(PlayerId::from_index(1)),
+            which: RedirectWhich::ByDescription(String::from("damage recipient")), amount: 5,
+        };
+        let restored: Action = serde_json::from_str(&serde_json::to_string(&redirect).unwrap()).unwrap();
+        assert_eq!(restored, redirect);
+        let counters = Action::EnterWithCounters {
+            counter_type: CounterType::PlusOnePlusOne,
+            count: Value::EventValue(crate::effect::EventValueSpec::Amount),
+            count_condition: None, otherwise_count: Some(Value::Fixed(7)),
+            added_subtypes: vec![Subtype::Elf], added_abilities: vec![2, 2, 5],
+        };
+        let mapped = counters.clone().try_map_payloads(Ok::<_, String>, |value| Ok(value + 10), Ok, Ok).unwrap();
+        let json = serde_json::to_value(&mapped).unwrap();
+        assert_eq!(serde_json::from_value::<Action>(json.clone()).unwrap(), mapped);
+        let restored = mapped.try_map_payloads(Ok::<_, String>, |value| Ok(value - 10), Ok, Ok).unwrap();
+        assert_eq!(restored, counters);
+        for field in ["count_condition", "otherwise_count", "count", "added_abilities", "added_subtypes", "counter_type"] {
+            let mut missing = json.clone(); missing["EnterWithCounters"].as_object_mut().unwrap().remove(field);
+            assert!(serde_json::from_value::<Action>(missing).is_err(), "missing {field}");
+        }
+        let mut unknown = json; unknown["EnterWithCounters"]["unknown_body"] = serde_json::json!(3);
+        assert!(serde_json::from_value::<Action>(unknown).is_err());
+        for variant in ["DoubleCounters", "HalveCounters"] {
+            let mut absent = serde_json::Map::new(); absent.insert(variant.into(), serde_json::json!({}));
+            assert!(serde_json::from_value::<Action>(serde_json::Value::Object(absent)).is_err());
+            let mut explicit = serde_json::Map::new(); explicit.insert(variant.into(), serde_json::json!({"counter_type": null}));
+            assert!(serde_json::from_value::<Action>(serde_json::Value::Object(explicit)).is_ok());
+        }
+    }
+
+    #[test]
+    fn complete_replacement_descriptor_mapping_preserves_every_capture() {
+        let original = complete_descriptor_fixture();
+        let mapped = original.clone().try_map_payloads(
+            Ok::<_, String>, Ok, Ok, Ok,
+        ).unwrap();
+        assert_eq!(mapped.id, original.id);
+        assert_eq!(mapped.registration_id, original.registration_id);
+        assert_eq!(mapped.source, original.source);
+        assert_eq!(mapped.controller, original.controller);
+        assert_eq!(mapped.replacement, original.replacement);
+        assert_eq!(mapped.priority_override, original.priority_override);
+        assert_eq!(mapped.static_ability_instance, original.static_ability_instance);
+        assert_eq!(mapped.ability_origin, original.ability_origin);
+        assert_eq!(mapped.optional, original.optional);
+        assert_eq!(mapped.application_key(), original.application_key());
+        assert_eq!(mapped.matcher.as_ref().unwrap().as_ref().downcast_ref::<WouldGainLifeMatcher>().unwrap().player_filter,
+            original.matcher.as_ref().unwrap().as_ref().downcast_ref::<WouldGainLifeMatcher>().unwrap().player_filter);
+        let mut absent = original;
+        absent.matcher = None; absent.static_ability_instance = None; absent.ability_origin = None;
+        let mapped: ReplacementEffect = absent.try_map_payloads(Ok::<_, String>, |_| panic!("absent matcher"),
+            |_| panic!("absent static occurrence"), |_| panic!("absent origin")).unwrap();
+        assert!(mapped.matcher.is_none());
+        assert!(mapped.static_ability_instance.is_none());
+        assert!(mapped.ability_origin.is_none());
+    }
+
+    #[test]
+    fn complete_replacement_descriptor_mapping_propagates_each_payload_failure() {
+        use std::cell::Cell;
+        for failing in 0..4 {
+            let visited = Cell::new(0usize);
+            let record = |stage, value| {
+                visited.set(visited.get() + 1);
+                if stage == failing { Err(stage) } else { Ok(value) }
+            };
+            let result = complete_descriptor_fixture().try_map_payloads(
+                |_| record(0, 0u8), |_| record(1, 1u8),
+                |_| record(2, 2u8), |_| record(3, 3u8),
+            );
+            assert_eq!(result.unwrap_err(), failing);
+            assert_eq!(visited.get(), failing + 1, "do not publish or continue after a failed payload");
+        }
+    }
+
+    #[cfg(feature = "serialization")]
+    #[test]
+    fn complete_replacement_descriptor_schema_requires_all_fields_and_explicit_options() {
+        type Encoded = ReplacementEffect<u8, u8, u8, u8>;
+        let encoded: Encoded = complete_descriptor_fixture().try_map_payloads(
+            |_| Ok::<_, String>(10), |_| Ok(11), |_| Ok(12), |_| Ok(13),
+        ).unwrap();
+        let json = serde_json::to_value(&encoded).unwrap();
+        assert_eq!(serde_json::from_value::<Encoded>(json.clone()).unwrap(), encoded);
+        let fields = json.as_object().unwrap();
+        assert_eq!(fields.len(), 10);
+        for field in fields.keys() {
+            let mut missing = json.clone(); missing.as_object_mut().unwrap().remove(field);
+            assert!(serde_json::from_value::<Encoded>(missing).is_err(), "missing {field}");
+        }
+        let mut unknown = json.clone(); unknown["unknown_payload"] = serde_json::json!(1);
+        assert!(serde_json::from_value::<Encoded>(unknown).is_err());
+        let mut explicit_null = json;
+        for field in ["registration_id", "priority_override", "matcher", "static_ability_instance", "ability_origin"] {
+            explicit_null[field] = serde_json::Value::Null;
+        }
+        let restored = serde_json::from_value::<Encoded>(explicit_null).unwrap();
+        assert!(restored.registration_id.is_none() && restored.priority_override.is_none());
+        assert!(restored.matcher.is_none() && restored.static_ability_instance.is_none() && restored.ability_origin.is_none());
+        assert_eq!(restored.source, encoded.source);
+        assert_eq!(restored.controller, encoded.controller);
+        assert_eq!(restored.replacement, encoded.replacement);
+        assert!(restored.optional);
+    }
+
+    #[test]
+    fn registered_replacement_transport_preserves_consumption_expiry_and_identity() {
+        let (original, ids) = registered_transport_fixture();
+        let state = original.registered_state().unwrap();
+        assert_eq!(state.effects.iter().map(|effect| effect.id).collect::<Vec<_>>(), ids);
+        let keys = state.effects.iter().map(ReplacementEffect::application_key).collect::<Vec<_>>();
+        let mut restored = ReplacementEffectManager::new();
+        restored.add_static_ability_effect(ReplacementEffect::indestructible(ObjectId::from_raw(91), PlayerId::from_index(0)));
+        restored.restore_registered_state(state).unwrap();
+        assert_eq!(restored.effects().iter().map(ReplacementEffect::application_key).collect::<Vec<_>>(), keys);
+        assert_eq!(restored.next_id(), original.next_id());
+        assert!(restored.mark_effect_used(ids[1]));
+        restored.consume_pending_batch_one_shot_effects();
+        assert!(restored.get_effect(ids[1]).is_none());
+        assert!(restored.get_effect(ids[2]).is_none());
+        restored.clear_until_end_of_turn_effects();
+        assert!(restored.get_effect(ids[3]).is_none());
+        restored.expire_at_turn_start(8, &[PlayerId::from_index(0)]);
+        assert!(restored.get_effect(ids[4]).is_some());
+        restored.expire_at_turn_start(9, &[PlayerId::from_index(0)]);
+        assert!(restored.get_effect(ids[4]).is_none(), "departed player's actual next-turn boundary retained");
+        assert!(restored.get_effect(ids[0]).is_some());
+        let next = restored.add_resolution_effect(original.get_effect(ids[0]).unwrap().clone());
+        assert_eq!(next.0, original.next_id());
+    }
+
+    #[test]
+    fn registered_replacement_action_mapping_executes_each_retained_instead_body() {
+        use crate::effects::{EffectExecutor, ExecutionContext};
+        use std::cell::Cell;
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let body = Effect::gain_life_player(3, ChooseSpec::Player(PlayerFilter::Opponent));
+        let mut original = ReplacementEffectManager::new();
+        let id = original.add_until_end_of_turn_effect(ReplacementEffect::with_matcher(
+            source, bob, WouldGainLifeMatcher::you(), ReplacementAction::Instead(vec![body.clone(), body]),
+        ));
+        let calls = Cell::new(0);
+        let state = original.registered_state().unwrap().try_map_effects(|effect|
+            effect.try_map_payloads(|action| action.try_map_payloads(
+                |body| { calls.set(calls.get() + 1); Ok::<_, String>(body) }, Ok, Ok, Ok,
+            ), Ok, Ok, Ok)
+        ).unwrap();
+        assert_eq!(calls.get(), 2, "retain both equal independent executable occurrences");
+        assert_eq!(state.effects[0].application_key(), ReplacementEffectKey::Registered(id));
+        game.effect_store.replacement_effects.restore_registered_state(state).unwrap();
+        let effect = crate::effects::GainLifeEffect::new(2, ChooseSpec::Player(PlayerFilter::You));
+        let mut context = ExecutionContext::new_default(source, bob);
+        let outcome = effect.execute(&mut game, &mut context).unwrap();
+        assert_eq!(game.player(bob).unwrap().life, 20, "do not also commit the original gain");
+        assert_eq!(game.player(alice).unwrap().life, 26, "both bodies use the captured Bob controller");
+        let gains = outcome.events.iter().filter_map(|event|
+            event.downcast::<crate::events::LifeGainEvent>()
+        ).collect::<Vec<_>>();
+        assert_eq!(gains.len(), 2);
+        assert!(gains.iter().all(|event| event.player == alice && event.amount == 3));
+        game.effect_store.replacement_effects.clear_until_end_of_turn_effects();
+        effect.execute(&mut game, &mut context).unwrap();
+        assert_eq!(game.player(bob).unwrap().life, 22, "retained replacement expires normally");
+        assert_eq!(game.player(alice).unwrap().life, 26);
+    }
+
+    #[test]
+    fn registered_replacement_transport_executes_captured_controller_after_restore() {
+        use crate::effects::{EffectExecutor, ExecutionContext};
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let mut original = ReplacementEffectManager::new();
+        original.add_until_next_turn_effect(ReplacementEffect::with_matcher(
+            source, bob, WouldGainLifeMatcher::you(), ReplacementAction::Double,
+        ), bob, 4);
+        let state = original.registered_state().unwrap().try_map_effects(|effect|
+            effect.try_map_payloads(Ok::<_, String>, Ok, Ok, Ok)
+        ).unwrap();
+        game.effect_store.replacement_effects.restore_registered_state(state).unwrap();
+        let effect = crate::effects::GainLifeEffect::new(2, ChooseSpec::Player(PlayerFilter::You));
+        let mut bob_ctx = ExecutionContext::new_default(source, bob);
+        effect.execute(&mut game, &mut bob_ctx).unwrap();
+        assert_eq!(game.player(bob).unwrap().life, 24);
+        let mut alice_ctx = ExecutionContext::new_default(source, alice);
+        effect.execute(&mut game, &mut alice_ctx).unwrap();
+        assert_eq!(game.player(alice).unwrap().life, 22);
+        game.effect_store.replacement_effects.expire_at_turn_start(5, &[alice]);
+        effect.execute(&mut game, &mut bob_ctx).unwrap();
+        assert_eq!(game.player(bob).unwrap().life, 28);
+        game.effect_store.replacement_effects.expire_at_turn_start(6, &[bob]);
+        effect.execute(&mut game, &mut bob_ctx).unwrap();
+        assert_eq!(game.player(bob).unwrap().life, 30);
+    }
+
+    #[test]
+    fn registered_replacement_transport_capture_diagnoses_inconsistent_native_state() {
+        let (valid, ids) = registered_transport_fixture();
+        for case in 0..4 {
+            let mut manager = valid.clone();
+            match case {
+                0 => manager.effects.iter_mut().find(|effect| effect.id == ids[0]).unwrap().registration_id = None,
+                1 => { manager.one_shot_effects.insert(ReplacementEffectId(manager.next_id + 1)); },
+                2 => { manager.effect_sources.insert(manager.next_id + 1, ReplacementEffectSource::StaticAbility); },
+                3 => manager.next_id = ids[4].0,
+                _ => unreachable!(),
+            }
+            let before = format!("{manager:?}");
+            assert!(manager.registered_state().is_err(), "inconsistent native state {case} cannot disappear from export");
+            assert_eq!(format!("{manager:?}"), before);
+        }
+    }
+
+    #[test]
+    fn registered_replacement_transport_rejects_malformed_state_atomically() {
+        let (mut manager, ids) = registered_transport_fixture();
+        let valid = manager.registered_state().unwrap();
+        let before = format!("{manager:?}");
+        for case in 0..15 {
+            let mut state = valid.clone();
+            let foreign = ReplacementEffectId(state.next_id + 1);
+            match case {
+                0 => state.next_id = u64::MAX,
+                1 => state.effects.push(state.effects[0].clone()),
+                2 => state.effects[0].registration_id = None,
+                3 => state.effects[0].registration_id = Some(ids[1]),
+                4 => state.next_id = ids[4].0,
+                5 => state.effect_sources.push(state.effect_sources[0]),
+                6 => state.effect_sources.push((foreign, ReplacementEffectSource::Resolution)),
+                7 => state.effect_sources[0].1 = ReplacementEffectSource::StaticAbility,
+                8 => state.one_shot_effects.push(foreign),
+                9 => state.one_shot_effects.push(ids[1]),
+                10 => state.batch_one_shot_effects.push(ids[1]),
+                11 => state.pending_batch_one_shot_effects.push(ids[0]),
+                12 => state.until_end_of_turn_effects.push(foreign),
+                13 => state.until_next_turn_effects.push(state.until_next_turn_effects[0]),
+                14 => state.until_next_turn_effects.push((foreign, (PlayerId::from_index(1), 4, None))),
+                _ => unreachable!(),
+            }
+            assert!(manager.restore_registered_state(state).is_err(), "malformed case {case}");
+            assert_eq!(format!("{manager:?}"), before, "failure must not publish any field: {case}");
+        }
+        manager.restore_registered_state(valid).unwrap();
+        manager.consume_pending_batch_one_shot_effects();
+        assert!(manager.get_effect(ids[2]).is_none());
+    }
+
+    #[test]
+    fn source_removal_clears_lifetime_state_without_touching_other_registrations() {
+        let mut manager = ReplacementEffectManager::new();
+        let player = PlayerId::from_index(0);
+        let removed_source = ObjectId::from_raw(71);
+        let kept_source = ObjectId::from_raw(72);
+        let register = |manager: &mut ReplacementEffectManager, source| {
+            let effect = ReplacementEffect::with_matcher(
+                source, player, WouldGainLifeMatcher::you(), ReplacementAction::Double,
+            );
+            let static_id = manager.add_static_ability_effect(effect.clone());
+            let resolution = manager.add_resolution_effect(effect.clone());
+            let one_shot = manager.add_one_shot_effect(effect.clone());
+            let batch = manager.add_batch_one_shot_effect(effect.clone());
+            assert!(manager.mark_effect_used(batch));
+            let cleanup = manager.add_until_end_of_turn_effect(effect.clone());
+            let next_turn = manager.add_until_next_turn_effect(effect, player, 4);
+            [static_id, resolution, one_shot, batch, cleanup, next_turn]
+        };
+        let removed = register(&mut manager, removed_source);
+        let kept = register(&mut manager, kept_source);
+        manager.prepare_for_departing_player(player, 9);
+        let next_id = manager.next_id();
+        manager.remove_effects_from_source(removed_source);
+        for id in removed {
+            assert!(manager.get_effect(id).is_none());
+            assert!(!manager.effect_sources.contains_key(&id.0), "removed source provenance retained");
+            assert!(!manager.one_shot_effects.contains(&id), "removed one-shot retained");
+            assert!(!manager.batch_one_shot_effects.contains(&id), "removed batch one-shot retained");
+            assert!(!manager.pending_batch_one_shot_effects.contains(&id), "removed pending consumption retained");
+            assert!(!manager.until_end_of_turn_effects.contains(&id), "removed cleanup scope retained");
+            assert!(!manager.until_next_turn_effects.contains_key(&id), "removed next-turn anchor retained");
+        }
+        assert_eq!(manager.next_id(), next_id);
+        assert_eq!(manager.effects().iter().map(|effect| effect.id).collect::<Vec<_>>(), kept);
+        assert_eq!(manager.effect_sources.get(&kept[0].0), Some(&ReplacementEffectSource::StaticAbility));
+        assert_eq!(manager.effect_sources.get(&kept[1].0), Some(&ReplacementEffectSource::Resolution));
+        assert_eq!(manager.until_next_turn_effects.get(&kept[5]), Some(&(player, 4, Some(9))));
+        assert!(manager.is_one_shot(kept[2]));
+        assert!(manager.is_one_shot(kept[3]));
+        manager.remove_effects_from_source(removed_source);
+        manager.consume_pending_batch_one_shot_effects();
+        assert!(manager.get_effect(kept[3]).is_none());
+        assert!(manager.mark_effect_used(kept[2]));
+        manager.clear_until_end_of_turn_effects();
+        assert!(manager.get_effect(kept[4]).is_none());
+        manager.expire_at_turn_start(8, &[player]);
+        assert!(manager.get_effect(kept[5]).is_some());
+        manager.expire_at_turn_start(9, &[]);
+        assert!(manager.get_effect(kept[5]).is_none());
+        manager.clear_static_ability_effects();
+        assert_eq!(manager.effects().iter().map(|effect| effect.id).collect::<Vec<_>>(), vec![kept[1]]);
+        let replacement = manager.add_resolution_effect(ReplacementEffect::with_matcher(
+            removed_source, player, WouldGainLifeMatcher::you(), ReplacementAction::Double,
+        ));
+        assert_eq!(replacement.0, next_id);
+        assert!(!manager.is_one_shot(replacement));
+    }
+
+
     #[test]
     fn registration_identity_distinguishes_instances_and_survives_payload_changes() {
         let mut manager = ReplacementEffectManager::new();
@@ -1420,5 +2116,149 @@ mod ability_origin_identity_tests {
         assert_eq!(decline.application_key(), first.application_key());
         let sibling=first.clone().with_ability_origin(crate::continuous::AbilityOrigin::Printed(0), None, 1);
         assert_ne!(sibling.application_key(), first.application_key(), "generated siblings retain branch identity");
+    }
+}
+
+// Pure production rewrites are exposed independently of event matching. This
+// does not assert that a replacement matches, or that it is safe to reorder.
+impl<E, A, P, K> ReplacementAction<E, A, P, K> {
+    pub fn mana_transformation(&self) -> Option<crate::events::mana::ManaTransformation<'_>> {
+        use crate::events::mana::ManaTransformation;
+        match self {
+            Self::ReplaceMana(symbols) => Some(ManaTransformation::ReplaceTypes(symbols)),
+            Self::ReplaceManaExact(symbols) => Some(ManaTransformation::ReplaceExact(symbols)),
+            Self::Modify(EventModification::Multiply(factor)) => Some(ManaTransformation::Multiply(*factor)),
+            _ => None,
+        }
+    }
+}
+
+#[cfg(all(test, feature = "serialization"))]
+mod replacement_identity_binding_tests {
+    use super::*;
+    use crate::continuous::{AbilityEffectOrigin, AbilityOrigin, ContinuousAbilityOrigin,
+        ContinuousEffect, EffectTarget, Modification};
+    use crate::ids::CardId;
+    use crate::static_abilities::StaticAbility;
+
+    fn origin_fixture() -> (ReplacementAbilityOrigin, [StaticAbilityInstanceId; 2], [CardId; 2]) {
+        let source = ObjectId::from_raw(71);
+        // Equal semantic abilities still have independent native occurrences.
+        let first = StaticAbility::hexproof(); let second = StaticAbility::hexproof();
+        assert_ne!(first.instance_id(), second.instance_id());
+        let faces = [CardId::new(), CardId::new()];
+        let inner = ContinuousEffect::new(source, PlayerId::from_index(1),
+            EffectTarget::AllPermanents, Modification::AddAbility(second.clone()))
+            .with_originating_static_ability(second.clone());
+        let mut outer = ContinuousEffect::new(source, PlayerId::from_index(1),
+            EffectTarget::AllPermanents, Modification::AddAbility(first.clone()))
+            .with_originating_static_ability(first.clone());
+        outer.originating_ability = Some(Box::new(ContinuousAbilityOrigin {
+            host: ObjectId::from_raw(72),
+            ability: AbilityOrigin::Level { printed_face: Some(faces[1]),
+                parent: Box::new(AbilityOrigin::Effect { effect: AbilityEffectOrigin::from(&inner), slot: 8 }),
+                tier: 2, slot: 3 },
+            printed_face: Some(faces[0]), branch: 5,
+        }));
+        (ReplacementAbilityOrigin {
+            ability: AbilityOrigin::Borrowed { effect: AbilityEffectOrigin::from(&outer),
+                source: ObjectId::from_raw(73),
+                origin: Box::new(AbilityOrigin::Level { printed_face: Some(faces[1]),
+                    parent: Box::new(AbilityOrigin::Printed(4)), tier: 6, slot: 7 }) },
+            printed_face: Some(faces[0]), branch: 9,
+        }, [first.instance_id(), second.instance_id()], faces)
+    }
+
+    #[test]
+    fn replacement_identity_binding_rebinds_nested_keys_and_decline_parent() {
+        let (origin, instances, faces) = origin_fixture();
+        let original = ReplacementEffect::with_matcher(ObjectId::from_raw(74),
+            PlayerId::from_index(1), WouldGainLifeMatcher::you(), ReplacementAction::Double)
+            .with_ability_origin(origin.ability.clone(), origin.printed_face, origin.branch).optional();
+        let old_key = original.application_key();
+        let mut static_visits = Vec::new(); let mut face_visits = Vec::new();
+        let wire: ReplacementEffectKey<u32, u32> = old_key.clone()
+            .try_map_static_instances(&mut |id| {
+                static_visits.push(id);
+                if id == instances[0] { Ok::<_, String>(3) }
+                else if id == instances[1] { Ok(5) } else { Err("unbound occurrence".into()) }
+            }).unwrap()
+            .try_map_card_ids(&mut |face| {
+                face_visits.push(face);
+                if face == faces[0] { Ok::<_, String>(11) }
+                else if face == faces[1] { Ok(13) } else { Err("unbound face".into()) }
+            }).unwrap();
+        assert_eq!(static_visits, instances);
+        assert_eq!(face_visits.len(), 4);
+        assert_eq!(face_visits.iter().filter(|face| **face == faces[0]).count(), 2);
+        assert_eq!(face_visits.iter().filter(|face| **face == faces[1]).count(), 2);
+        let bytes = serde_json::to_vec(&wire).unwrap();
+        let decoded: ReplacementEffectKey<u32, u32> = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(decoded, wire);
+        let fresh_instances = [StaticAbility::hexproof().instance_id(), StaticAbility::hexproof().instance_id()];
+        let fresh_faces = [CardId::new(), CardId::new()];
+        assert!(fresh_instances.iter().all(|id| !instances.contains(id)));
+        let restored: ReplacementEffectKey = decoded
+            .try_map_static_instances(&mut |id| match id { 3 => Ok::<_, String>(fresh_instances[0]),
+                5 => Ok(fresh_instances[1]), _ => Err("unknown occurrence reference".into()) }).unwrap()
+            .try_map_card_ids(&mut |id| match id { 11 => Ok::<_, String>(fresh_faces[0]),
+                13 => Ok(fresh_faces[1]), _ => Err("unknown card reference".into()) }).unwrap();
+        let ReplacementEffectKey::Ability { source, origin: restored_origin } = &restored else { panic!("ability key") };
+        let descriptor = ReplacementEffect::with_matcher(*source, original.controller,
+            WouldGainLifeMatcher::you(), ReplacementAction::Double)
+            .with_ability_origin(restored_origin.ability.clone(), restored_origin.printed_face,
+                restored_origin.branch).optional();
+        assert_eq!(restored, descriptor.application_key());
+        assert_eq!(restored, descriptor.optional_decline_effect().unwrap().application_key());
+        assert_ne!(restored, old_key, "native allocations changed, so stale keys cannot substitute");
+        let rebound = restored.try_map_static_instances(&mut |id|
+            if id == fresh_instances[0] { Ok::<_, String>(3) }
+            else if id == fresh_instances[1] { Ok(5) } else { Err("unbound fresh occurrence".into()) }
+        ).unwrap().try_map_card_ids(&mut |id|
+            if id == fresh_faces[0] { Ok::<_, String>(11) }
+            else if id == fresh_faces[1] { Ok(13) } else { Err("unbound fresh face".into()) }
+        ).unwrap();
+        assert_eq!(rebound, wire, "every nested capture survives fresh-native reconstruction");
+    }
+
+    #[test]
+    fn replacement_identity_binding_rejects_unbound_nested_references() {
+        let (origin, instances, faces) = origin_fixture();
+        let key = ReplacementEffectKey::Ability { source: ObjectId::from_raw(74), origin };
+        let failed = key.clone().try_map_static_instances(&mut |id|
+            if id == instances[0] { Ok(3u32) } else { Err("nested occurrence") });
+        assert_eq!(failed.unwrap_err(), "nested occurrence");
+        let failed = key.try_map_card_ids(&mut |face|
+            if face == faces[0] { Ok(11u32) } else { Err("nested face") });
+        assert_eq!(failed.unwrap_err(), "nested face");
+    }
+
+    #[test]
+    fn replacement_identity_binding_schema_requires_explicit_capture_fields() {
+        type Key = ReplacementEffectKey<u32, u32>;
+        let key = Key::Regenerated { source: ObjectId::from_raw(88), controller: PlayerId::from_index(1),
+            static_ability_instance: Some(7), matcher: Some("identity text".into()), replacement: "identity only".into() };
+        let json = serde_json::to_value(&key).unwrap();
+        assert_eq!(serde_json::from_value::<Key>(json.clone()).unwrap(), key);
+        for field in ["source", "controller", "static_ability_instance", "matcher", "replacement"] {
+            let mut missing = json.clone(); missing["Regenerated"].as_object_mut().unwrap().remove(field);
+            assert!(serde_json::from_value::<Key>(missing).is_err(), "missing {field}");
+        }
+        let origin = ReplacementAbilityOrigin::<u32, u32> {
+            ability: AbilityOrigin::Printed(4), printed_face: None, branch: 8,
+        };
+        let json = serde_json::to_value(&origin).unwrap();
+        for field in ["ability", "printed_face", "branch"] {
+            let mut missing = json.clone(); missing.as_object_mut().unwrap().remove(field);
+            assert!(serde_json::from_value::<ReplacementAbilityOrigin<u32, u32>>(missing).is_err(), "missing {field}");
+        }
+        let mut unknown = json; unknown["unknown_origin"] = serde_json::json!(1);
+        assert!(serde_json::from_value::<ReplacementAbilityOrigin<u32, u32>>(unknown).is_err());
+        let registered = Key::Registered(ReplacementEffectId(19));
+        let mut visits = 0;
+        let mapped = registered.try_map_static_instances(&mut |value| { visits += 1; Ok::<_, String>(value) }).unwrap()
+            .try_map_card_ids(&mut |value| { visits += 1; Ok::<_, String>(value) }).unwrap();
+        assert_eq!(visits, 0);
+        assert_eq!(mapped, Key::Registered(ReplacementEffectId(19)));
     }
 }

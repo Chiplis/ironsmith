@@ -1464,12 +1464,18 @@ pub fn resolve_player_filter(
             ))
         }
         PlayerFilter::Opponent => {
+            let filter_ctx = ctx.filter_context(game);
+            // Replacement payloads may carry the affected player as context,
+            // even when this instruction asks for a different player. Reuse
+            // only a live candidate satisfying the authored player filter.
             for target in &ctx.targets {
-                if let ResolvedTarget::Player(id) = target {
+                if let ResolvedTarget::Player(id) = target
+                    && game.player(*id).is_some_and(|player| player.is_in_game())
+                    && spec.matches_player(*id, &filter_ctx)
+                {
                     return Ok(*id);
                 }
             }
-            let filter_ctx = ctx.filter_context(game);
             let opponents = game
                 .players
                 .iter()
@@ -1504,12 +1510,18 @@ pub fn resolve_player_filter(
             ))
         }
         PlayerFilter::Teammate => {
+            let filter_ctx = ctx.filter_context(game);
+            // Replacement payloads may carry the affected player as context,
+            // even when this instruction asks for a different player. Reuse
+            // only a live candidate satisfying the authored player filter.
             for target in &ctx.targets {
-                if let ResolvedTarget::Player(id) = target {
+                if let ResolvedTarget::Player(id) = target
+                    && game.player(*id).is_some_and(|player| player.is_in_game())
+                    && spec.matches_player(*id, &filter_ctx)
+                {
                     return Ok(*id);
                 }
             }
-            let filter_ctx = ctx.filter_context(game);
             let teammates = game
                 .players
                 .iter()
@@ -4988,6 +5000,41 @@ mod tests {
             1,
             "should count only attackers attacking Charlie"
         );
+    }
+
+    #[test]
+    fn constrained_player_filters_do_not_accept_unqualified_context_players() {
+        let mut game = new_test_game();
+        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let mut ctx = ExecutionContext::new_default(game.new_object_id(), bob);
+        for targets in [vec![bob], vec![bob, alice], vec![alice, bob], vec![PlayerId::from_index(99), alice]] {
+            ctx.targets = targets.into_iter().map(ResolvedTarget::Player).collect();
+            assert_eq!(resolve_player_filter(&game, &PlayerFilter::Opponent, &ctx).unwrap(), alice);
+        }
+        ctx.targets = vec![ResolvedTarget::Player(bob)];
+        assert_eq!(resolve_player_filter(&game, &PlayerFilter::Any, &ctx).unwrap(), bob,
+            "unconstrained affected-player bindings remain available");
+        for target in [alice, bob] {
+            ctx.targets = vec![ResolvedTarget::Player(target)];
+            assert!(matches!(resolve_player_filter(&game, &PlayerFilter::Teammate, &ctx),
+                Err(ExecutionError::UnresolvableValue(_))), "no teammate exists in this game");
+        }
+    }
+
+    #[test]
+    fn constrained_opponent_context_retains_multiplayer_choice_and_valid_targets() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Carol".into()], 20);
+        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let carol = PlayerId::from_index(2);
+        let mut ctx = ExecutionContext::new_default(game.new_object_id(), bob);
+        ctx.targets = vec![ResolvedTarget::Player(bob)];
+        assert!(matches!(resolve_player_filter(&game, &PlayerFilter::Opponent, &ctx),
+            Err(ExecutionError::UnresolvableValue(ref detail)) if detail == AN_OPPONENT_CHOICE_REQUIRED));
+        ctx.set_tagged_players(AN_OPPONENT_CHOICE_TAG, vec![carol]);
+        assert_eq!(resolve_player_filter(&game, &PlayerFilter::Opponent, &ctx).unwrap(), carol);
+        ctx.targets = vec![ResolvedTarget::Player(bob), ResolvedTarget::Player(alice)];
+        assert_eq!(resolve_player_filter(&game, &PlayerFilter::Opponent, &ctx).unwrap(), alice,
+            "a valid explicit context target still takes precedence");
     }
 
     #[test]

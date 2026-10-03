@@ -767,6 +767,7 @@ pub enum StaticEffectDiscoveryError {
     RoundLimit { maximum: usize, generated_effects: usize },
     EffectLimit { maximum: usize, completed_rounds: usize },
     MissingGeneratingOrigin { host: ObjectId },
+    MissingControllerSource { source: ObjectId },
     UnavailableCharacteristics { object: ObjectId },
 }
 
@@ -779,6 +780,8 @@ impl std::fmt::Display for StaticEffectDiscoveryError {
                 "static-effect discovery exceeded {maximum} generated effects after {completed_rounds} rounds"),
             Self::MissingGeneratingOrigin { host } => write!(f,
                 "static-effect discovery lost generating occurrence on {host:?}"),
+            Self::MissingControllerSource { source } => write!(f,
+                "continuous source-controller context unavailable for {source:?}"),
             Self::UnavailableCharacteristics { object } => write!(f,
                 "continuous characteristics unavailable for existing object {object:?}"),
         }
@@ -797,6 +800,7 @@ pub fn try_generate_continuous_effects_from_static_abilities(
     limits: StaticEffectDiscoveryLimits,
 ) -> Result<Vec<ContinuousEffect>, StaticEffectDiscoveryError> {
     let registered = game.effect_store.continuous_effects.effects().to_vec();
+    validate_static_controller_sources(game, &registered)?;
     let scope = text_box_query_scope(&registered);
     let mut text_cache = FxMap::default();
     let mut sources = Vec::new();
@@ -810,6 +814,7 @@ pub fn try_generate_continuous_effects_from_static_abilities(
     }
     let mut available = registered;
     available.extend(sources.iter().flat_map(|source| source.effects.iter().cloned()));
+    validate_static_controller_sources(game, &available)?;
     let mut emitted = std::collections::HashSet::new();
     let mut generated = 0;
     for source in &sources {
@@ -844,6 +849,7 @@ pub fn try_generate_continuous_effects_from_static_abilities(
             for effect in late {
                 let origin = effect.originating_ability.as_deref().ok_or(
                     StaticEffectDiscoveryError::MissingGeneratingOrigin { host: source.object_id })?;
+                validate_static_controller_sources(game, std::slice::from_ref(&effect))?;
                 if !emitted.insert(origin.clone()) { continue; }
                 if generated == limits.max_generated_effects {
                     return Err(StaticEffectDiscoveryError::EffectLimit {
@@ -866,6 +872,20 @@ pub fn try_generate_continuous_effects_from_static_abilities(
     }
     Err(StaticEffectDiscoveryError::RoundLimit {
         maximum: limits.max_rounds, generated_effects: generated })
+}
+
+fn validate_static_controller_sources(
+    game: &GameState, effects: &[ContinuousEffect],
+) -> Result<(), StaticEffectDiscoveryError> {
+    for effect in effects {
+        if effect.has_source_controller_context() {
+            let source = effect.source_controller_context_host();
+            if game.object(source).is_none() {
+                return Err(StaticEffectDiscoveryError::MissingControllerSource { source });
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Include registered effects only after static discovery has completed.
@@ -2231,6 +2251,158 @@ fn controller_setter_rolls_back_when_the_changed_controller_enables_failed_disco
 }
 
 #[test]
+fn ability_resolution_keeps_captured_controller_after_source_control_changes() {
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let alice = game.players[0].id;
+    let bob = game.players[1].id;
+    let card = CardBuilder::new(CardId::new(), "Captured ability source")
+        .card_types(vec![CardType::Artifact]).build();
+    let source = game.create_object_from_card(&card, bob, Zone::Battlefield);
+    game.push_to_stack(crate::game_state::StackEntry::ability(source, bob,
+        crate::resolution::ResolutionProgram::from_effects(vec![crate::Effect::gain_life(1)])));
+    game.effect_store.continuous_effects.add_effect(ContinuousEffect::gain_control(source, alice, source, alice));
+    game.refresh_continuous_state().expect("source control discovery completes");
+    assert_eq!(game.current_controller(source), Some(alice));
+    crate::game_loop::resolve_stack_entry(&mut game).expect("captured ability resolves");
+    assert_eq!(game.player(bob).unwrap().life, 21);
+    assert_eq!(game.player(alice).unwrap().life, 20);
+    assert_eq!(game.current_controller(source), Some(alice));
+    assert_eq!(game.object(source).unwrap().initial_controller, bob);
+}
+
+#[test]
+fn spell_resolution_discovery_error_preserves_stack_and_game_state() {
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let alice = game.players[0].id;
+    let bob = game.players[1].id;
+    let card = CardBuilder::new(CardId::new(), "Failed spell discovery")
+        .card_types(vec![CardType::Sorcery]).build();
+    let spell = game.create_object_from_card(&card, alice, Zone::Stack);
+    game.object_mut(spell).unwrap().spell_effect = Some(
+        crate::resolution::ResolutionProgram::from_effects(vec![crate::Effect::gain_life(1)]).into());
+    game.push_to_stack(crate::game_state::StackEntry::new(spell, bob));
+    let missing = ObjectId::from_raw(999_998);
+    game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(missing, alice,
+        EffectTarget::AllCreatures, Modification::AddAbility(StaticAbility::flying()))
+        .with_originating_static_ability(StaticAbility::flying()));
+    let revision = game.effect_store.continuous_effects.revision();
+    let object_revision = game.object(spell).unwrap().last_modified;
+    let error = crate::game_loop::resolve_stack_entry(&mut game).expect_err("incomplete discovery cannot resolve a spell");
+    assert_eq!(error, crate::game_loop::GameLoopError::ExecutionFailed(
+        crate::effects::ExecutionError::ContinuousDiscovery(
+            StaticEffectDiscoveryError::MissingControllerSource { source: missing })));
+    assert_eq!(game.stack.len(), 1);
+    assert_eq!(game.stack[0].object_id, spell);
+    assert_eq!(game.stack[0].controller, bob);
+    assert_eq!(game.object(spell).unwrap().zone, Zone::Stack);
+    assert_eq!(game.object(spell).unwrap().initial_controller, bob);
+    assert_eq!(game.object(spell).unwrap().last_modified, object_revision);
+    assert_eq!(game.effect_store.continuous_effects.revision(), revision);
+    assert_eq!(game.player(alice).unwrap().life, 20);
+    assert_eq!(game.player(bob).unwrap().life, 20);
+    assert!(game.take_pending_trigger_events().is_empty());
+}
+
+#[test]
+fn resolving_permanent_preserves_caster_beneath_continuing_control_and_color_effects() {
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let alice = game.players[0].id;
+    let bob = game.players[1].id;
+    let card = CardBuilder::new(CardId::new(), "Continuing spell characteristics")
+        .card_types(vec![CardType::Artifact]).build();
+    let spell = game.create_object_from_card(&card, alice, Zone::Stack);
+    let stable_id = game.object(spell).unwrap().stable_id;
+    game.push_to_stack(crate::game_state::StackEntry::new(spell, bob));
+    let control = game.effect_store.continuous_effects.add_effect(
+        ContinuousEffect::gain_control(spell, alice, spell, alice)
+            .with_source_type(EffectSourceType::Resolution { locked_targets: vec![spell] }));
+    game.effect_store.continuous_effects.add_effect(ContinuousEffect::from_resolution(
+        spell, alice, vec![spell], Modification::AddColors(crate::color::ColorSet::RED)));
+    game.refresh_continuous_state().expect("spell modifications complete");
+    assert_eq!(game.current_controller(spell), Some(alice));
+    assert_eq!(game.current_colors(spell), Some(crate::color::ColorSet::RED));
+    crate::game_loop::resolve_stack_entry(&mut game).expect("controlled permanent spell resolves");
+    let permanent = game.find_object_by_stable_id(stable_id).unwrap();
+    assert_ne!(permanent, spell);
+    assert_eq!(game.object(permanent).unwrap().zone, Zone::Battlefield);
+    assert_eq!(game.object(permanent).unwrap().owner, alice);
+    assert_eq!(game.object(permanent).unwrap().initial_controller, bob);
+    assert_eq!(game.current_controller(permanent), Some(alice));
+    assert_eq!(game.current_colors(permanent), Some(crate::color::ColorSet::RED));
+    game.effect_store.continuous_effects.remove_effect(control);
+    game.refresh_continuous_state().expect("control removal completes");
+    assert_eq!(game.current_controller(permanent), Some(bob));
+    assert_eq!(game.current_colors(permanent), Some(crate::color::ColorSet::RED));
+    let card = game.move_object(permanent, Zone::Hand, crate::events::cause::EventCause::from_effect(permanent, bob)).expect("permanent leaves");
+    assert_eq!(game.object(card).unwrap().owner, alice);
+    assert_eq!(game.object(card).unwrap().initial_controller, alice);
+    assert_eq!(game.current_controller(card), Some(alice));
+    assert_eq!(game.current_colors(card), Some(crate::color::ColorSet::COLORLESS));
+}
+
+#[test]
+fn stolen_spell_resolves_for_effective_controller_without_changing_caster_fact() {
+    for stolen in [false, true] {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let card = CardBuilder::new(CardId::new(), "Controlled spell resolution fixture")
+            .card_types(vec![CardType::Sorcery]).build();
+        let spell = game.create_object_from_card(&card, alice, Zone::Stack);
+        game.object_mut(spell).unwrap().spell_effect = Some(
+            crate::resolution::ResolutionProgram::from_effects(vec![crate::Effect::gain_life(1)]).into());
+        let stable_id = game.object(spell).unwrap().stable_id;
+        game.push_to_stack(crate::game_state::StackEntry::new(spell, bob));
+        assert_eq!(game.object(spell).unwrap().initial_controller, bob);
+        assert_eq!(game.current_controller(spell), Some(bob));
+        let effective = if stolen { alice } else { bob };
+        if stolen {
+            game.effect_store.continuous_effects.add_effect(
+                ContinuousEffect::gain_control(spell, alice, spell, alice)
+                    .with_source_type(EffectSourceType::Resolution { locked_targets: vec![spell] }));
+        }
+        game.refresh_continuous_state().expect("spell control graph is finite");
+        assert_eq!(game.current_controller(spell), Some(effective));
+        assert_eq!(game.object(spell).unwrap().initial_controller, bob);
+        crate::game_loop::resolve_stack_entry(&mut game).expect("controlled spell resolves");
+        assert_eq!(game.player(effective).unwrap().life, 21,
+            "the resolving spell's you refers to its current controller, stolen={stolen}");
+        let other = if stolen { bob } else { alice };
+        assert_eq!(game.player(other).unwrap().life, 20);
+        assert!(game.stack.is_empty());
+        let departed = game.find_object_by_stable_id(stable_id).expect("spell is a graveyard card");
+        assert_eq!(game.object(departed).unwrap().zone, Zone::Graveyard);
+        assert_eq!(game.object(departed).unwrap().owner, alice);
+        assert_eq!(game.object(departed).unwrap().initial_controller, alice);
+    }
+}
+
+#[test]
+fn spell_stack_controller_is_a_base_fact_below_control_effects() {
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let alice = game.players[0].id;
+    let bob = game.players[1].id;
+    let card = CardBuilder::new(CardId::new(), "Nonowner-cast permanent spell")
+        .card_types(vec![CardType::Artifact]).build();
+    let spell = game.create_object_from_card(&card, alice, Zone::Stack);
+    game.push_to_stack(crate::game_state::StackEntry::new(spell, bob));
+    assert_eq!(game.stack.last().unwrap().controller, bob);
+    assert_eq!(game.object(spell).unwrap().owner, alice);
+    let query = game.continuous_query_snapshot().expect("spell control proposal is finite");
+    assert_eq!(query.current_controller(spell), Some(bob),
+        "putting another player's card on the stack establishes caster control, independently of ownership");
+    assert_eq!(query.current_characteristics(spell).unwrap().controller, bob);
+    assert_eq!(game.stack.last().unwrap().source_snapshot.as_ref().unwrap().controller, bob,
+        "the cast snapshot must use the initial spell controller");
+    game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+        spell, alice, EffectTarget::Specific(spell), Modification::ChangeController(alice)));
+    let stolen = game.continuous_query_snapshot().expect("spell control change is finite");
+    assert_eq!(stolen.current_controller(spell), Some(alice),
+        "a later layer-two control effect applies above the initial caster fact");
+    assert_eq!(stolen.object(spell).unwrap().owner, alice);
+}
+
+#[test]
 fn physical_entry_controller_is_a_base_fact_below_existing_control_effects() {
     for entering_under_owner in [true, false] {
         let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
@@ -2347,6 +2519,127 @@ fn static_control_dependency_loop_uses_timestamp_order_and_live_source_control()
     assert_eq!(game.effect_store.continuous_effects.revision(), revision);
     assert_eq!(game.object(older).unwrap().owner, alice);
     assert_eq!(game.object(newer).unwrap().owner, bob);
+}
+
+
+#[test]
+fn static_control_dependency_chain_reorders_older_source_after_newer_control() {
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+    let alice = game.players[0].id;
+    let bob = game.players[1].id;
+    let charlie = game.players[2].id;
+    let aura = CardBuilder::new(CardId::new(), "Control chain source")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![crate::types::Subtype::Aura]).build();
+    let permanent = CardBuilder::new(CardId::new(), "Control chain recipient")
+        .card_types(vec![CardType::Artifact]).build();
+    let target = game.create_object_from_card(&permanent, charlie, Zone::Battlefield);
+    let older = game.create_object_from_card(&aura, bob, Zone::Battlefield);
+    let newer = game.create_object_from_card(&aura, alice, Zone::Battlefield);
+    let older_timestamp = game.effect_store.continuous_effects.get_object_timestamp(older)
+        .expect("older aura has an entry timestamp");
+    let newer_timestamp = game.effect_store.continuous_effects.get_object_timestamp(newer)
+        .expect("newer aura has an entry timestamp");
+    assert!(older_timestamp < newer_timestamp);
+    for (source, attached_to) in [(older, target), (newer, older)] {
+        game.object_mut(source).unwrap().attached_to =
+            Some(crate::object::AttachmentTarget::Object(attached_to));
+        game.object_mut(attached_to).unwrap().attachments.push(source);
+        let object = game.object_mut(source).unwrap();
+        object.abilities_mut().push(Ability::static_ability(StaticAbility::enchant(
+            crate::object::AuraAttachmentFilter::Object(ObjectFilter::permanent()))));
+        object.abilities_mut().push(Ability::static_ability(
+            StaticAbility::control_attached_permanent("You control the enchanted permanent".into())));
+    }
+    let revision = game.effect_store.continuous_effects.revision();
+    let query = game.continuous_query_snapshot().expect("acyclic control dependency is finite");
+    // Applying newer changes what older does, so older depends on newer despite timestamps.
+    assert_eq!(query.current_controller(newer), Some(alice));
+    assert_eq!(query.current_controller(older), Some(alice));
+    assert_eq!(query.current_controller(target), Some(alice));
+    assert_eq!(query.current_characteristics(target).unwrap().controller, alice);
+    assert_eq!(query.object(target).unwrap().owner, charlie);
+    assert_eq!(query.object(older).unwrap().owner, bob);
+    assert_eq!(game.effect_store.continuous_effects.revision(), revision);
+    assert_eq!(game.object(target).unwrap().owner, charlie);
+    assert_eq!(game.object(older).unwrap().owner, bob);
+}
+
+
+#[test]
+fn missing_static_controller_source_returns_typed_error_before_matching() {
+    use crate::events::ReplacementMatcher;
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let alice = game.players[0].id;
+    let card = CardBuilder::new(CardId::new(), "Controller source error entrant")
+        .card_types(vec![CardType::Creature]).build();
+    let entrant = game.create_object_from_card(&card, alice, Zone::Hand);
+    let missing_source = ObjectId::from_raw(999_999);
+    game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+        missing_source, alice, EffectTarget::AllCreatures,
+        Modification::AddAbility(StaticAbility::flying()))
+        .with_originating_static_ability(StaticAbility::flying()));
+    let revision = game.effect_store.continuous_effects.revision();
+    let context = crate::events::EventContext::for_controller(alice, &game);
+    let matcher = crate::events::zones::matchers::WouldEnterBattlefieldMatcher::new(
+        ObjectFilter::creature().with_static_ability(StaticAbilityId::Flying));
+    let event = crate::events::EnterBattlefieldEvent::new(entrant, Zone::Hand);
+    assert_eq!(matcher.matches_event(&event, &context),
+        Err(StaticEffectDiscoveryError::MissingControllerSource { source: missing_source }));
+    assert_eq!(game.effect_store.continuous_effects.revision(), revision);
+    assert_eq!(game.object(entrant).unwrap().zone, Zone::Hand);
+}
+
+
+#[test]
+fn controller_bound_grant_prefix_preserves_control_dependency_order() {
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+    let alice = game.players[0].id;
+    let bob = game.players[1].id;
+    let charlie = game.players[2].id;
+    let artifact = CardBuilder::new(CardId::new(), "Control prefix grant source")
+        .card_types(vec![CardType::Artifact]).build();
+    let grantor = game.create_object_from_card(&artifact, charlie, Zone::Battlefield);
+    game.object_mut(grantor).unwrap().abilities_mut().push(Ability::static_ability(
+        StaticAbility::grant_object_ability_for_filter(ObjectFilter::creature().you_control(),
+            Ability::static_ability(StaticAbility::flying()), "Creatures you control have flying".into())));
+    let aura = CardBuilder::new(CardId::new(), "Control prefix chain source")
+        .card_types(vec![CardType::Enchantment]).subtypes(vec![crate::types::Subtype::Aura]).build();
+    let older = game.create_object_from_card(&aura, bob, Zone::Battlefield);
+    let newer = game.create_object_from_card(&aura, alice, Zone::Battlefield);
+    assert!(game.effect_store.continuous_effects.get_object_timestamp(older).unwrap()
+        < game.effect_store.continuous_effects.get_object_timestamp(newer).unwrap());
+    for (source, attached_to) in [(older, grantor), (newer, older)] {
+        game.object_mut(source).unwrap().attached_to = Some(crate::object::AttachmentTarget::Object(attached_to));
+        game.object_mut(attached_to).unwrap().attachments.push(source);
+        let object = game.object_mut(source).unwrap();
+        object.abilities_mut().push(Ability::static_ability(StaticAbility::enchant(
+            crate::object::AuraAttachmentFilter::Object(ObjectFilter::permanent()))));
+        object.abilities_mut().push(Ability::static_ability(
+            StaticAbility::control_attached_permanent("You control the enchanted permanent".into())));
+    }
+    let creature = CardBuilder::new(CardId::new(), "Control prefix grant recipient")
+        .card_types(vec![CardType::Creature]).build();
+    let recipients = [alice, bob, charlie].map(|owner|
+        game.create_object_from_card(&creature, owner, Zone::Battlefield));
+    let revision = game.effect_store.continuous_effects.revision();
+    let effects = try_get_all_continuous_effects(&game, StaticEffectDiscoveryLimits::default())
+        .expect("prefix fixture static discovery is finite");
+    let calculate = |id| crate::continuous::calculate_characteristics_with_effects(
+        id, game.objects_map(), &effects, &game.battlefield, game.commander_objects(), &game)
+        .expect("single-object prefix query is complete");
+    assert_eq!(calculate(grantor).controller, alice, "full control layer must resolve the chain first");
+    for (index, id) in recipients.iter().enumerate() {
+        assert_eq!(calculate(*id).static_abilities.iter().any(|ability| ability.id() == StaticAbilityId::Flying),
+            index == 0, "single-object grant must use the dependency-correct control prefix for recipient {index}");
+    }
+    let query = game.continuous_query_snapshot().expect("whole-world prefix query is finite");
+    assert_eq!(query.current_controller(grantor), Some(alice));
+    for (index, id) in recipients.iter().enumerate() {
+        assert_eq!(query.current_has_static_ability_id(*id, StaticAbilityId::Flying), index == 0);
+    }
+    assert_eq!(game.effect_store.continuous_effects.revision(), revision);
+    assert_eq!(game.object(grantor).unwrap().owner, charlie);
 }
 
 }

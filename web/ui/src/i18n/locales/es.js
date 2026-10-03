@@ -1,5 +1,7 @@
 // All interface copy for es. Preserve interpolation placeholders.
 export const messages = {
+  "Payment options could not be loaded.": "No se pudieron cargar las opciones de pago.",
+  "Loading payment options…": "Cargando opciones de pago…",
   "Replacement": "Reemplazo",
   "Replacement effects": "Efectos de reemplazo",
   "Replacement order": "Orden de reemplazo",
@@ -926,11 +928,13 @@ export const ui = {
   "Hand (": "Mano (",
   "Haste": "Prisa",
   "Summoning sickness": "Mareo de invocación",
-  "Power/Toughness modified by an active aura": "Poder/resistencia modificados por un aura activa",
+  "Power/Toughness modified by an effect": "Poder/resistencia modificados por un efecto",
   "Health {0}": "Salud: {0}",
   "Hexproof": "Antimaleficio",
   "Hidden": "Oculto",
   "Hide system events": "Ocultar eventos del sistema",
+  "Auto-pass": "Pasar automáticamente",
+  "Automatically resolve whenever you have priority and the stack is not empty.": "Resolver automáticamente cuando tengas prioridad y la pila no esté vacía.",
   "Hold priority": "Conservar prioridad",
   "Hold priority until turned off, including after casting your own spells. Enable before casting.": "Conserva la prioridad hasta que lo desactives, incluso después de lanzar tus hechizos. Actívalo antes de lanzar.",
   "Holding priority": "Conservando la prioridad",

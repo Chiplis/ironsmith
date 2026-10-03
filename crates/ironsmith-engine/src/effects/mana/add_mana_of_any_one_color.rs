@@ -31,6 +31,11 @@ use super::choice_helpers::{
 /// let effect = AddManaOfAnyOneColorEffect::you(3);
 /// ```
 impl EffectExecutor for AddManaOfAnyOneColorEffect {
+    fn mana_production(&self) -> Option<crate::mana_payment::program::ManaProduction<'_>> {
+        use crate::mana_payment::program::ManaProduction;
+        Some(ManaProduction::ChooseColors { amount: &self.amount, available: &crate::color::Color::ALL, same_color: true, distinct: false, player: &self.player })
+    }
+
     fn directly_produces_mana(&self) -> bool {
         true
     }
@@ -47,7 +52,7 @@ impl EffectExecutor for AddManaOfAnyOneColorEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        let color = choose_mana_colors(game, ctx, player_id, 1, true, false, None, Color::Green)
+        let color = choose_mana_colors(game, ctx, player_id, 1, true, false, None, Color::Green)?
             .into_iter()
             .next()
             .unwrap_or(Color::Green);

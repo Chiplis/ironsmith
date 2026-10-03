@@ -2174,6 +2174,7 @@ impl StaticAbilityModelInterpreter {
                     .map(Self::ability_from_model)
                     .collect(),
             ),
+            ironsmith_core::StaticAbilityPayload::IntrinsicStartingCounters(rule) => StaticAbility::intrinsic_starting_counters(*rule),
             ironsmith_core::StaticAbilityPayload::EntersWithCountersValue { counter, count } => {
                 StaticAbility::enters_with_counters_value(*counter, count.clone())
             }
@@ -2260,6 +2261,10 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
 
     fn compiled_model(&self) -> Option<&CompiledStaticAbility> {
         Some(&self.model)
+    }
+
+    fn intrinsic_starting_counter_rule(&self) -> Option<ironsmith_core::IntrinsicStartingCounter> {
+        self.leaf_static_ability()?.intrinsic_starting_counter_rule()
     }
 
     fn dungeon_entry_quality(&self) -> Option<&str> {
@@ -2676,7 +2681,10 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     }
 
     fn has_first_strike(&self) -> bool {
-        self.id() == StaticAbilityId::FirstStrike
+        matches!(
+            self.id(),
+            StaticAbilityId::FirstStrike | StaticAbilityId::DoubleStrike
+        )
     }
 
     fn has_double_strike(&self) -> bool {

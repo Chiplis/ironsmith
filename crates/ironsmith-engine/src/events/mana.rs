@@ -11,11 +11,35 @@ use crate::mana::ManaSymbol;
 use crate::snapshot::ObjectSnapshot;
 use crate::target::ObjectFilter;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum ManaProductionProvenance {
     #[default]
     Unknown,
     TappedSourceForMana,
+}
+
+/// A pure rewrite of one pending production event. Applying this instruction
+/// does not credit a pool or emit a trigger; the replacement procedure owns
+/// ordering, optional choices and the once-per-event application history.
+#[derive(Debug, Clone, Copy)]
+pub enum ManaTransformation<'a> {
+    ReplaceTypes(&'a [ManaSymbol]),
+    ReplaceExact(&'a [ManaSymbol]),
+    Multiply(u32),
+}
+
+impl ManaTransformation<'_> {
+    pub fn apply(self, original: &[ManaSymbol]) -> Vec<ManaSymbol> {
+        match self {
+            Self::ReplaceTypes([symbol]) => vec![*symbol; original.len()],
+            Self::ReplaceTypes(symbols) | Self::ReplaceExact(symbols) => symbols.to_vec(),
+            Self::Multiply(factor) => {
+                let mut output = Vec::with_capacity(original.len() * factor as usize);
+                for _ in 0..factor { output.extend_from_slice(original); }
+                output
+            }
+        }
+    }
 }
 
 /// Mana was added to a player's mana pool.
@@ -81,6 +105,29 @@ impl ManaAddedEvent {
     }
 }
 
+/// Declarative predicate over one pending mana production. No replacement is
+/// applied by matching; amounts and provenance are tested before each rewrite.
+#[derive(Debug, Clone, Copy)]
+pub struct ManaEventPredicate<'a> {
+    pub source_filter: &'a ObjectFilter,
+    pub required_provenance: Option<ManaProductionProvenance>,
+    pub minimum_amount: usize,
+}
+
+impl ManaEventPredicate<'_> {
+    pub(crate) fn matches(self, event: &ManaAddedEvent, game: &GameState, filter_ctx: &crate::target::FilterContext) -> bool {
+        if event.mana.is_empty() || event.mana.len() < self.minimum_amount
+            || self.required_provenance.is_some_and(|required| event.provenance != required) {
+            return false;
+        }
+        if let Some(object) = game.object(event.source) {
+            self.source_filter.matches(object, filter_ctx, game)
+        } else if let Some(snapshot) = event.snapshot.as_ref() {
+            self.source_filter.matches_snapshot(snapshot, filter_ctx, game)
+        } else { false }
+    }
+}
+
 pub mod matchers {
     use super::*;
     use crate::events::context::EventContext;
@@ -108,33 +155,23 @@ pub mod matchers {
     }
 
     impl ReplacementMatcher for ManaProducedBySourceMatcher {
+        fn may_match_event_kind(&self, kind: EventKind) -> bool {
+            kind == EventKind::ManaAdded
+        }
+
+        fn mana_predicate(&self) -> Option<ManaEventPredicate<'_>> {
+            Some(ManaEventPredicate {
+                source_filter: &self.source_filter,
+                required_provenance: self.required_provenance,
+                minimum_amount: 1,
+            })
+        }
+
         fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
-            if event.event_kind() != EventKind::ManaAdded {
-                return false;
-            }
             let Some(mana_event) = event.as_any().downcast_ref::<ManaAddedEvent>() else {
                 return false;
             };
-            if mana_event.mana.is_empty() {
-                return false;
-            }
-            if let Some(required) = self.required_provenance
-                && mana_event.provenance != required
-            {
-                return false;
-            }
-
-            if let Some(object) = ctx.game.object(mana_event.source) {
-                return self
-                    .source_filter
-                    .matches(object, &ctx.filter_ctx, ctx.game);
-            }
-            if let Some(snapshot) = mana_event.snapshot.as_ref() {
-                return self
-                    .source_filter
-                    .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game);
-            }
-            false
+            self.mana_predicate().is_some_and(|predicate| predicate.matches(mana_event, ctx.game, &ctx.filter_ctx))
         }
 
         fn priority(&self) -> ReplacementPriority {

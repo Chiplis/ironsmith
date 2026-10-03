@@ -212,6 +212,8 @@ export default function ManaPaymentDecision({ decision, canAct, inlineSubmit = t
       </button>
       <button type="button" className="mana-plan-constraint" disabled={!canAct || confirming} aria-label={ui("Remove {0} from payment", { 0: source.source_name || source.source_id })} title={ui("Remove this payment source")} onClick={() => editor.remove(source)}><X size={13} /></button>
     </div>)}
+    {payment.activation_options_error && <span className="text-xs opacity-60" role="status">{ui("Payment options could not be loaded.")}</span>}
+    {payment.activation_options_complete === false && <span className="text-xs opacity-60" role="status">{ui("Loading payment options…")}</span>}
     {!sources.length && <span className="mana-plan-empty">{ui(payment.can_confirm === false ? "Choose another source to cover the cost." : "Floating mana covers the cost.")}</span>}
     <Button type="button" variant="outline" size="sm" disabled={!canAct || confirming} onClick={event => openSourceMenu(event)} aria-label={ui("Add payment source")} className="mana-plan-add"><Plus size={14} />{ui("Source")}</Button>
   </div>;

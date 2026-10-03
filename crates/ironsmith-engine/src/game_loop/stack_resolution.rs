@@ -1051,7 +1051,8 @@ fn resolve_stack_entry_full_inner(
     decision_maker: &mut dyn DecisionMaker,
     mut trigger_queue: Option<&mut TriggerQueue>,
 ) -> Result<(), GameLoopError> {
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().map_err(|error| GameLoopError::ExecutionFailed(
+        crate::effects::ExecutionError::ContinuousDiscovery(error)))?;
     // Rebound granted by a static ability (Cast Through Time) applies to
     // spells on the stack, so read it before the entry is popped.
     let resolving_spell_has_granted_rebound = game.stack.last().is_some_and(|entry| {
@@ -1061,9 +1062,15 @@ fn resolve_stack_entry_full_inner(
                 crate::static_abilities::StaticAbilityId::Rebound,
             )
     });
-    let entry = game
+    let mut entry = game
         .pop_from_stack()
         .ok_or_else(|| GameLoopError::InvalidState("Stack is empty".to_string()))?;
+    // Spells use their current controller (CR 109.5, 112.2); abilities keep
+    // the controller captured when they were put on the stack (CR 113.8).
+    if !entry.is_ability {
+        entry.controller = game.current_controller(entry.object_id).ok_or_else(||
+            GameLoopError::InvalidState("Resolving spell has no object controller".to_string()))?;
+    }
 
     // Get the object for this stack entry
     let mut obj = game.object(entry.object_id).cloned();
@@ -1535,9 +1542,10 @@ fn resolve_stack_entry_full_inner(
                     obj.alternative_casts.get(index).cloned()
                 } else { None }
             });
+            let current_turn = game.turn.turn_number;
             if let Some(method) = battlefield_method
                 && let Some(spell) = game.object_mut(entry.object_id) {
-                crate::alternative_cast::ensure_alternative_battlefield_abilities(spell, &method);
+                crate::alternative_cast::ensure_alternative_battlefield_abilities(spell, &method, current_turn);
             }
 
             // It's a permanent spell, move to battlefield with ETB processing
@@ -1547,7 +1555,7 @@ fn resolve_stack_entry_full_inner(
                 Target::Player(id) => crate::object::AttachmentTarget::Player(*id),
             })).flatten();
             if let Some(player) = chosen_player { game.set_chosen_player(entry.object_id, player); }
-            let mut options = crate::effects::zones::BattlefieldEntryOptions::specific(entry.controller, cast_with_sneak);
+            let mut options = crate::effects::zones::BattlefieldEntryOptions::specific(obj.initial_controller, cast_with_sneak);
             if obj.subtypes.contains(&Subtype::Aura) { options = options.with_aura_entry_attachment(aura_target); }
             let receipt = crate::effects::zones::move_to_battlefield_with_options(game, &mut ctx, entry.object_id, options)?;
             if ctx.decision_maker.awaiting_choice() { return Ok(()); }

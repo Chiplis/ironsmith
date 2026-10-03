@@ -174,7 +174,7 @@ export async function closePeerServer(child) {
   ]);
 }
 
-export async function startHarnessServer(peerPort, envOverrides = {}) {
+export async function startHarnessServer(peerPort, envOverrides = {}, plugins = []) {
   const vitePort = await freePort();
   const harnessEnv = {
     VITE_PEER_HOST: "127.0.0.1",
@@ -195,6 +195,7 @@ export async function startHarnessServer(peerPort, envOverrides = {}) {
   }
 
   const vite = await createViteServer({
+    plugins,
     root: UI_ROOT,
     configFile: path.join(UI_ROOT, "vite.config.js"),
     clearScreen: false,

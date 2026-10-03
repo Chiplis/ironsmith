@@ -36,8 +36,8 @@ impl EffectExecutor for RemoveCountersEffect {
         _game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        // Counter removal makes no choices; defer to commit so the whole
-        // each-player action lands as one batch.
+        // Defer removal and its replacement choices to batch commit, where
+        // the enclosing each-player checkpoint owns the whole action.
         Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
             effect: crate::effect::Effect::new(self.clone()),
             iterated_player: ctx.iteration.iterated_player,
@@ -53,30 +53,32 @@ impl EffectExecutor for RemoveCountersEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
-        let count = resolve_value(game, &self.count, ctx)?.max(0) as u32;
-
-        // Verify the object exists
-        if game.object(target_id).is_none() {
-            return Ok(EffectOutcome::target_invalid());
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        game.clear_pending_decision_controllers();
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = (|| {
+            let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
+            let requested = resolve_value(game, &self.count, ctx)?.max(0) as u32;
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            if game.object(target_id).is_none() { return Ok(EffectOutcome::target_invalid()); }
+            if game.is_phased_out(target_id) { return Ok(EffectOutcome::count(0)); }
+            let count = requested.min(game.counter_count(target_id, self.counter_type));
+            if count == 0 { return Ok(EffectOutcome::count(0)); }
+            let event = crate::events::Event::remove_counters(target_id, self.counter_type, count)
+                .with_provenance(ctx.provenance);
+            let processed = crate::events::processing::process_trait_event_with_execution_context(
+                game, event, ctx,
+            )?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            commit_counter_removal(game, ctx, processed)
+        })();
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
+            context_checkpoint.restore(ctx);
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
         }
-
-        // Use centralized method which emits events and returns actual count removed
-        match game.remove_counters(
-            target_id,
-            self.counter_type,
-            count,
-            Some(ctx.source),
-            Some(ctx.controller),
-        ) {
-            Some((removed, event)) => Ok(EffectOutcome::count(removed as i32)
-                .with_event(event)
-                .with_affected_objects_from_game(game, vec![target_id])),
-            None => {
-                // No counters were removed (object had 0 of this counter type)
-                Ok(EffectOutcome::count(0))
-            }
-        }
+        result
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -99,6 +101,67 @@ impl EffectExecutor for RemoveCountersEffect {
             });
         }
         None
+    }
+}
+
+
+fn commit_counter_removal(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    processed: crate::events::processing::TraitEventResult,
+) -> Result<EffectOutcome, ExecutionError> {
+    use crate::events::{RemoveCountersEvent, downcast_event};
+    use crate::events::processing::TraitEventResult;
+    match processed {
+        expanded @ TraitEventResult::Expanded { .. } =>
+            crate::effects::replacement::execute_event_expansion_with_targets(
+                game, ctx, expanded, commit_counter_removal,
+                |_game, context, _outcome| {
+                    let removal = downcast_event::<RemoveCountersEvent>(context.event.inner())
+                        .ok_or_else(|| ExecutionError::InternalError("added counter-removal program lost its event".into()))?;
+                    Ok(Some(vec![crate::effects::ResolvedTarget::Object(removal.target)]))
+                },
+            ),
+        TraitEventResult::Proceed(event) | TraitEventResult::Modified(event) => {
+            let removal = downcast_event::<RemoveCountersEvent>(event.inner()).ok_or_else(||
+                ExecutionError::InternalError("counter-removal replacement returned an incompatible event".into()))?;
+            if game.object(removal.target).is_none() { return Ok(EffectOutcome::target_invalid()); }
+            let actual = removal.count.min(game.counter_count(removal.target, removal.counter_type));
+            let count = i32::try_from(actual).map_err(|_| ExecutionError::InternalError(
+                "counter-removal outcome exceeds the supported count range".into()))?;
+            match game.remove_counters(removal.target, removal.counter_type, removal.count,
+                Some(ctx.source), Some(ctx.controller)) {
+                Some((removed, mut notification)) => {
+                    if removed != actual { return Err(ExecutionError::InternalError(
+                        "counter-removal commit disagrees with its resolved amount".into())); }
+                    notification = notification.with_provenance(event.provenance());
+                    if game.object(ctx.source).is_none() && let Some(snapshot) = &ctx.source_snapshot {
+                        notification = notification.with_source_snapshot(snapshot.clone());
+                    }
+                    Ok(EffectOutcome::count(count).with_event(notification)
+                        .with_affected_objects_from_game(game, vec![removal.target]))
+                }
+                None => Ok(EffectOutcome::count(0)),
+            }
+        }
+        TraitEventResult::Replaced { effects, source, controller, context, .. } => {
+            let removal = downcast_event::<RemoveCountersEvent>(context.event.inner()).ok_or_else(||
+                ExecutionError::InternalError("counter-removal replacement lost its event".into()))?;
+            let payload = crate::effects::replacement::execute_replacement_payload(
+                game, ctx, &effects, source, controller, &context,
+                Some(vec![crate::effects::ResolvedTarget::Object(removal.target)]),
+            )?;
+            let mut original = EffectOutcome::replaced();
+            original.set_value(crate::effect::OutcomeValue::Count(0));
+            Ok(EffectOutcome::aggregate_replacement_outcomes(original, [payload]))
+        }
+        TraitEventResult::Prevented => {
+            let mut outcome = EffectOutcome::prevented();
+            outcome.set_value(crate::effect::OutcomeValue::Count(0));
+            Ok(outcome)
+        }
+        TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. } =>
+            Err(ExecutionError::InternalError("counter removal suspended without a captured decision".into())),
     }
 }
 
@@ -323,5 +386,130 @@ mod tests {
     fn test_remove_counters_get_target_spec() {
         let effect = RemoveCountersEffect::plus_one_counters(1, ChooseSpec::creature());
         assert!(effect.get_target_spec().is_some());
+    }
+}
+
+#[cfg(test)]
+mod counter_removal_replacement_owner_tests {
+    use super::*;
+
+    fn check_replaced_removal(instead: bool) {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = crate::ids::PlayerId::from_index(0);
+        let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Counter removal source")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let source = game.create_object_from_definition(&definition, alice, crate::zone::Zone::Battlefield);
+        let counter_type = crate::object::CounterType::Charge;
+        game.object_mut(source).unwrap().counters.insert(counter_type, 3);
+        let action = if instead {
+            crate::replacement::ReplacementAction::Instead(vec![crate::effect::Effect::gain_life(2)])
+        } else { crate::replacement::ReplacementAction::Prevent };
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(
+            crate::replacement::ReplacementEffect::with_matcher(source, alice,
+                crate::events::counters::matchers::WouldRemoveCountersMatcher::any(), action));
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let effect = crate::effect::Effect::new(RemoveCountersEffect::new(counter_type, 2, ChooseSpec::Source));
+        let outcome = crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap();
+        assert_eq!(game.counter_count(source, counter_type), 3,
+            "counter removal must honor the declared replacement proposal before mutating counters");
+        assert_eq!(outcome.count_or_zero(), 0);
+        assert_eq!(game.player(alice).unwrap().life, if instead { 22 } else { 20 });
+        assert_eq!(outcome.events_of_type::<crate::events::MarkersChangedEvent>().count(), 0);
+        assert_eq!(outcome.events_of_type::<crate::events::LifeGainEvent>().count(), usize::from(instead));
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+        let next = crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap();
+        assert_eq!(next.count_or_zero(), 2);
+        assert_eq!(game.counter_count(source, counter_type), 1);
+        assert_eq!(next.events_of_type::<crate::events::MarkersChangedEvent>().count(), 1);
+        assert_eq!(game.player(alice).unwrap().life, if instead { 22 } else { 20 });
+    }
+
+    #[test]
+    fn counter_removal_prevention_reaches_actual_effect_owner() { check_replaced_removal(false); }
+    #[test]
+    fn counter_removal_instead_program_reaches_actual_effect_owner() { check_replaced_removal(true); }
+}
+
+#[cfg(test)]
+mod removed_counter_removal_selected_api_tests {
+    use super::*;
+    #[test]
+    fn selected_zero_counter_removal_preserves_one_shot_until_positive_proposal() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = crate::ids::PlayerId::from_index(0);
+        let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Selected counter removal source")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let source = game.create_object_from_definition(&definition, alice, crate::zone::Zone::Battlefield);
+        let counter_type = crate::object::CounterType::Charge;
+        game.object_mut(source).unwrap().counters.insert(counter_type, 3);
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(
+            crate::replacement::ReplacementEffect::with_matcher(source, alice,
+                crate::events::counters::matchers::WouldRemoveCountersMatcher::any(),
+                crate::replacement::ReplacementAction::Prevent));
+        for count in [0, 1] {
+            let result = crate::events::processing::process_event_with_chosen_replacement_trait(
+                &mut game, crate::events::Event::remove_counters(source, counter_type, count), shield).unwrap();
+            if count == 0 {
+                let event = result.resolved_event().expect("zero removal retains its proposal without applying prevention");
+                let removal = crate::events::downcast_event::<crate::events::RemoveCountersEvent>(event.inner()).unwrap();
+                assert_eq!(removal.count, 0);
+                assert_eq!(removal.target, source);
+                assert_eq!(removal.counter_type, counter_type);
+            } else {
+                assert!(matches!(result, crate::events::processing::TraitEventResult::Prevented));
+            }
+            assert_eq!(game.effect_store.replacement_effects.get_effect(shield).is_some(), count == 0);
+            assert_eq!(game.counter_count(source, counter_type), 3, "proposal APIs do not commit removal");
+            assert!(game.take_pending_trigger_events().is_empty());
+        }
+    }
+}
+
+#[cfg(test)]
+mod removed_counter_removal_quantity_tests {
+    use super::*;
+    fn check_removed_operation(modification: crate::replacement::EventModification) {
+        struct PreferSource(crate::ids::ObjectId);
+        impl crate::decision::DecisionMaker for PreferSource {
+            fn decide_options(&mut self, _game: &GameState, ctx: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> {
+                let option = ctx.options.iter().find(|option| option.legal && option.object_id == Some(self.0))
+                    .or_else(|| ctx.options.iter().find(|option| option.legal)).unwrap();
+                vec![option.index]
+            }
+        }
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = crate::ids::PlayerId::from_index(0);
+        let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Counter removal quantity source")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let source = game.create_object_from_definition(&definition, alice, crate::zone::Zone::Battlefield);
+        let adder = game.create_object_from_definition(&definition, alice, crate::zone::Zone::Battlefield);
+        let counter_type = crate::object::CounterType::Charge;
+        game.object_mut(source).unwrap().counters.insert(counter_type, 3);
+        let register = |source, modification| crate::replacement::ReplacementEffect::with_matcher(source, alice,
+            crate::events::counters::matchers::WouldRemoveCountersMatcher::any(),
+            crate::replacement::ReplacementAction::Modify(modification));
+        let removed = game.effect_store.replacement_effects.add_one_shot_effect(register(source, modification));
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(register(adder, crate::replacement::EventModification::Add(1)));
+        let effect = crate::effect::Effect::new(RemoveCountersEffect::new(counter_type, 1, ChooseSpec::Source));
+        let mut chooser = PreferSource(source);
+        for positive in [false, true] {
+            game.take_pending_trigger_events();
+            let mut ctx = ExecutionContext::new(source, alice, &mut chooser);
+            let outcome = crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap();
+            assert_eq!(outcome.count_or_zero(), if positive { 2 } else { 0 });
+            assert_eq!(game.counter_count(source, counter_type), if positive { 1 } else { 3 });
+            assert_eq!(outcome.events_of_type::<crate::events::MarkersChangedEvent>().count(), usize::from(positive));
+            assert!(game.effect_store.replacement_effects.get_effect(removed).is_none());
+            assert_eq!(game.effect_store.replacement_effects.get_effect(shield).is_some(), !positive);
+            if !positive { assert!(game.take_pending_trigger_events().is_empty()); }
+        }
+    }
+    #[test]
+    fn counter_removal_subtraction_to_zero_preserves_later_increase() {
+        check_removed_operation(crate::replacement::EventModification::Subtract(1));
+    }
+    #[test]
+    fn counter_removal_set_to_zero_preserves_later_increase() {
+        check_removed_operation(crate::replacement::EventModification::SetTo(0));
     }
 }

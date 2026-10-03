@@ -462,11 +462,11 @@ fn is_controller_change_cost(effect: &ApplyContinuousEffect) -> bool {
     let base_is_controller_change = effect
         .modification
         .as_ref()
-        .is_none_or(|modification| matches!(modification, Modification::ChangeController(_)));
+        .is_none_or(|modification| matches!(modification, Modification::ChangeController(_) | Modification::ChangeControllerToEffectController));
     let additional_are_controller_changes = effect
         .additional_modifications
         .iter()
-        .all(|modification| matches!(modification, Modification::ChangeController(_)));
+        .all(|modification| matches!(modification, Modification::ChangeController(_) | Modification::ChangeControllerToEffectController));
     let runtime_are_controller_changes = effect.runtime_modifications.iter().all(|modification| {
         matches!(
             modification,
@@ -477,11 +477,11 @@ fn is_controller_change_cost(effect: &ApplyContinuousEffect) -> bool {
     let has_controller_change = effect
         .modification
         .as_ref()
-        .is_some_and(|modification| matches!(modification, Modification::ChangeController(_)))
+        .is_some_and(|modification| matches!(modification, Modification::ChangeController(_) | Modification::ChangeControllerToEffectController))
         || effect
             .additional_modifications
             .iter()
-            .any(|modification| matches!(modification, Modification::ChangeController(_)))
+            .any(|modification| matches!(modification, Modification::ChangeController(_) | Modification::ChangeControllerToEffectController))
         || effect.runtime_modifications.iter().any(|modification| {
             matches!(
                 modification,
@@ -858,6 +858,16 @@ fn materialize_granted_entry_counter_source(
 }
 
 impl EffectExecutor for ApplyContinuousEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+        for modification in self
+            .modification
+            .iter()
+            .chain(&self.additional_modifications)
+        {
+            modification.visit_owned_effects(visitor);
+        }
+    }
+
     fn supports_simultaneous_player_action(&self) -> bool {
         true
     }

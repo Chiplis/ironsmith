@@ -589,8 +589,8 @@ mod tests {
     }
 
     fn registered_handwritten_constructor_names(module_source: &str) -> Vec<String> {
-        module_source
-            .lines()
+        let (_, code) = rust_source_views(module_source);
+        code.lines()
             .filter_map(|line| {
                 let line = line.trim();
                 let name = line.strip_prefix("maybe_register!(")?.strip_suffix(");")?;
@@ -605,10 +605,11 @@ mod tests {
     ) -> Option<(&'a str, &'a str)> {
         let needle = format!("pub fn {constructor_name}(");
         for (path, source) in sources {
-            let Some(start) = source.find(&needle) else {
+            let (_, code) = rust_source_views(source);
+            let Some(start) = code.find(&needle) else {
                 continue;
             };
-            let signature_tail = &source[start..];
+            let signature_tail = &code[start..];
             let Some(open_offset) = signature_tail.find('{') else {
                 continue;
             };
@@ -627,7 +628,9 @@ mod tests {
     }
 
     fn handwritten_constructor_card_name(body: &str) -> Option<String> {
-        let builder_start = body.find("CardDefinitionBuilder::new(")?;
+        let (visible, code) = rust_source_views(body);
+        let builder_start = code.find("CardDefinitionBuilder::new(")?;
+        let body = visible.as_str();
         let after_builder = &body[builder_start..];
         let first_quote = after_builder.find('"')?;
         let name_start = builder_start + first_quote + 1;
@@ -645,81 +648,281 @@ mod tests {
             )
     }
 
-    fn strip_cfg_test_source(source: &str) -> String {
-        let mut stripped = String::new();
-        let mut lines = source.lines().peekable();
-        while let Some(line) = lines.next() {
-            let trimmed = line.trim();
-            if trimmed.starts_with("#[cfg(test)]")
-                || trimmed.starts_with("#[cfg(all(test,")
-                || trimmed.starts_with("#[cfg(any(test,")
-            {
-                while let Some(next) = lines.peek() {
-                    if next.trim().is_empty() {
-                        stripped.push('\n');
-                        lines.next();
-                    } else {
-                        break;
-                    }
+    /// Keep literals visible to the hook audit, but mask comments and retain
+    /// their byte offsets. The second view also masks literals for syntax scans.
+    fn rust_source_views(source: &str) -> (String, String) {
+        fn blank(bytes: &mut [u8], start: usize, end: usize) {
+            for byte in &mut bytes[start..end] {
+                if !matches!(*byte, b'\n' | b'\r') { *byte = b' '; }
+            }
+        }
+        let bytes = source.as_bytes();
+        let mut visible = bytes.to_vec();
+        let mut code = visible.clone();
+        let mut at = 0;
+        while at < bytes.len() {
+            if bytes.get(at..at + 2) == Some(b"//") {
+                let end = bytes[at..].iter().position(|b| *b == b'\n')
+                    .map_or(bytes.len(), |offset| at + offset);
+                blank(&mut visible, at, end); blank(&mut code, at, end); at = end; continue;
+            }
+            if bytes.get(at..at + 2) == Some(b"/*") {
+                let start = at; at += 2; let mut depth = 1;
+                while at < bytes.len() && depth > 0 {
+                    if bytes.get(at..at + 2) == Some(b"/*") { depth += 1; at += 2; }
+                    else if bytes.get(at..at + 2) == Some(b"*/") { depth -= 1; at += 2; }
+                    else { at += 1; }
                 }
-                if let Some(next) = lines.peek()
-                    && next.trim_start().starts_with("mod tests")
-                {
-                    let test_line = lines.next().expect("peeked test module line");
-                    stripped.push_str(&" ".repeat(test_line.len()));
-                    stripped.push('\n');
-                    if let Some(open_offset) = test_line.find('{') {
-                        let mut depth = 1usize;
-                        for byte in test_line.as_bytes()[open_offset + 1..].iter() {
-                            match *byte {
-                                b'{' => depth += 1,
-                                b'}' => {
-                                    depth = depth.saturating_sub(1);
-                                }
-                                _ => {}
-                            }
+                assert_eq!(depth, 0, "unterminated Rust block comment in source audit");
+                blank(&mut visible, start, at); blank(&mut code, start, at); continue;
+            }
+            let mut literal_end = None;
+            if bytes[at] == b'r' {
+                let mut quote = at + 1;
+                while bytes.get(quote) == Some(&b'#') { quote += 1; }
+                if bytes.get(quote) == Some(&b'"') {
+                    let hashes = quote - at - 1; let mut end = quote + 1;
+                    while end < bytes.len() {
+                        if bytes[end] == b'"' && bytes.get(end + 1..end + 1 + hashes)
+                            .is_some_and(|tail| tail.iter().all(|b| *b == b'#')) {
+                            literal_end = Some(end + 1 + hashes); break;
                         }
-                        while depth > 0 {
-                            let Some(test_body_line) = lines.next() else {
-                                break;
-                            };
-                            for byte in test_body_line.as_bytes() {
-                                match *byte {
-                                    b'{' => depth += 1,
-                                    b'}' => {
-                                        depth = depth.saturating_sub(1);
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            stripped.push_str(&" ".repeat(test_body_line.len()));
-                            stripped.push('\n');
-                        }
+                        end += 1;
                     }
-                    continue;
+                    assert!(literal_end.is_some(), "unterminated Rust raw string in source audit");
                 }
             }
-            stripped.push_str(line);
-            stripped.push('\n');
+            if bytes[at] == b'"' {
+                let mut end = at + 1;
+                while end < bytes.len() {
+                    if bytes[end] == b'\\' { end += 2; }
+                    else if bytes[end] == b'"' { literal_end = Some(end + 1); break; }
+                    else { end += 1; }
+                }
+                assert!(literal_end.is_some(), "unterminated Rust string in source audit");
+            }
+            if bytes[at] == b'\'' {
+                let mut end = at + 1;
+                if bytes.get(end) == Some(&b'\\') {
+                    end += 1;
+                    match bytes.get(end) {
+                        Some(b'x') => end += 3,
+                        Some(b'u') if bytes.get(end + 1) == Some(&b'{') => {
+                            end += 2;
+                            while end < bytes.len() && bytes[end] != b'}' { end += 1; }
+                            end += 1;
+                        }
+                        Some(_) => end += 1,
+                        None => {}
+                    }
+                } else if let Some(character) = source[at + 1..].chars().next() {
+                    end += character.len_utf8();
+                }
+                if bytes.get(end) == Some(&b'\'') { literal_end = Some(end + 1); }
+                // An apostrophe without a character's closing quote is a lifetime.
+            }
+            if let Some(end) = literal_end { blank(&mut code, at, end); at = end; }
+            else { at += 1; }
         }
-        stripped
+        (String::from_utf8(visible).expect("comment masking preserves UTF-8"),
+            String::from_utf8(code).expect("literal masking preserves UTF-8"))
     }
 
-    fn matching_brace_end(source: &str, open_brace: usize) -> Option<usize> {
+    fn matching_delimiter_end(code: &[u8], start: usize, open: u8, close: u8) -> Option<usize> {
+        if code.get(start) != Some(&open) { return None; }
         let mut depth = 0usize;
-        for (offset, byte) in source.as_bytes()[open_brace..].iter().enumerate() {
-            match *byte {
-                b'{' => depth += 1,
-                b'}' => {
-                    depth = depth.checked_sub(1)?;
-                    if depth == 0 {
-                        return Some(open_brace + offset);
-                    }
-                }
-                _ => {}
+        for (offset, byte) in code[start..].iter().enumerate() {
+            if *byte == open { depth += 1; }
+            else if *byte == close {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 { return Some(start + offset); }
             }
         }
         None
+    }
+
+    /// Evaluate cfg with `test` false and every other atom unknown. Remove a
+    /// module only when it requires test, rather than merely mentioning test.
+    fn cfg_requires_test(expression: &str) -> bool {
+        fn evaluate(expression: &str) -> (Option<bool>, bool) {
+            let expression = expression.trim();
+            if expression == "test" { return (Some(false), true); }
+            let Some(open) = expression.find('(') else { return (None, false); };
+            let Some(inner) = expression[open + 1..].strip_suffix(')') else { return (None, false); };
+            let kind = expression[..open].trim();
+            let mut parts = Vec::new(); let mut depth = 0; let mut start = 0;
+            for (at, byte) in inner.bytes().enumerate() {
+                match byte {
+                    b'(' => depth += 1,
+                    b')' => depth -= 1,
+                    b',' if depth == 0 => { parts.push(&inner[start..at]); start = at + 1; }
+                    _ => {}
+                }
+            }
+            if !inner[start..].trim().is_empty() { parts.push(&inner[start..]); }
+            let values = parts.into_iter().map(evaluate).collect::<Vec<_>>();
+            let saw_test = values.iter().any(|value| value.1);
+            let value = match kind {
+                "all" if values.iter().any(|value| value.0 == Some(false)) => Some(false),
+                "all" if values.iter().all(|value| value.0 == Some(true)) => Some(true),
+                "any" if values.iter().any(|value| value.0 == Some(true)) => Some(true),
+                "any" if values.iter().all(|value| value.0 == Some(false)) => Some(false),
+                "not" if values.len() == 1 => values[0].0.map(|value| !value),
+                _ => None,
+            };
+            (value, saw_test)
+        }
+        let (value, saw_test) = evaluate(expression); saw_test && value == Some(false)
+    }
+
+    fn strip_cfg_test_source(source: &str) -> String {
+        fn skip_space(code: &[u8], at: &mut usize) {
+            while code.get(*at).is_some_and(u8::is_ascii_whitespace) { *at += 1; }
+        }
+        let (visible, code) = rust_source_views(source);
+        let mut output = visible.into_bytes(); let bytes = code.as_bytes(); let mut cursor = 0;
+        while let Some(offset) = code[cursor..].find("#[") {
+            let start = cursor + offset;
+            let Some(end) = matching_delimiter_end(bytes, start + 1, b'[', b']') else { break; };
+            cursor = end + 1;
+            let attribute = code[start + 2..end].trim();
+            let Some(expression) = attribute.strip_prefix("cfg").map(str::trim)
+                .and_then(|tail| tail.strip_prefix('(')).and_then(|tail| tail.strip_suffix(')')) else { continue; };
+            if !cfg_requires_test(expression) { continue; }
+            let mut item = end + 1; skip_space(bytes, &mut item);
+            while bytes.get(item..item + 2) == Some(b"#[") {
+                let Some(end) = matching_delimiter_end(bytes, item + 1, b'[', b']') else { break; };
+                item = end + 1; skip_space(bytes, &mut item);
+            }
+            if code[item..].starts_with("pub") && bytes.get(item + 3)
+                .is_some_and(|b| b.is_ascii_whitespace() || *b == b'(') {
+                item += 3; skip_space(bytes, &mut item);
+                if bytes.get(item) == Some(&b'(') {
+                    let Some(end) = matching_delimiter_end(bytes, item, b'(', b')') else { continue; };
+                    item = end + 1; skip_space(bytes, &mut item);
+                }
+            }
+            if !code[item..].starts_with("mod") || !bytes.get(item + 3).is_some_and(u8::is_ascii_whitespace) { continue; }
+            item += 3; skip_space(bytes, &mut item);
+            if bytes.get(item..item + 2) == Some(b"r#") { item += 2; }
+            let name = item;
+            while let Some(character) = code[item..].chars().next() {
+                if !character.is_alphanumeric() && character != '_' { break; }
+                item += character.len_utf8();
+            }
+            if item == name { continue; } skip_space(bytes, &mut item);
+            let end = match bytes.get(item) {
+                Some(b'{') => matching_delimiter_end(bytes, item, b'{', b'}'),
+                Some(b';') => Some(item),
+                _ => None,
+            };
+            let Some(end) = end else { continue; };
+            for byte in &mut output[start..=end] {
+                if !matches!(*byte, b'\n' | b'\r') { *byte = b' '; }
+            }
+            cursor = end + 1;
+        }
+        String::from_utf8(output).expect("source masking preserves UTF-8 and byte offsets")
+    }
+
+    fn matching_brace_end(source: &str, open_brace: usize) -> Option<usize> {
+        let (_, code) = rust_source_views(source);
+        matching_delimiter_end(code.as_bytes(), open_brace, b'{', b'}')
+    }
+
+    #[test]
+    fn source_audit_ignores_comments_but_preserves_card_literals_and_offsets() {
+        let source = r####"// Documentation mentions Comment Card.
+/* Outer Comment Card /* nested { Comment Card } */ still a comment. */
+fn production() {
+    let normal = "Actual Card // /* } escaped \" quote";
+    let raw = br###"Raw Card /* // } \""###;
+    let unicode = 'λ';
+    let character = '\u{7d}';
+    let quote = '\'';
+}
+"####;
+        let visible = strip_cfg_test_source(source);
+        assert!(!visible.contains("Comment Card"));
+        assert!(visible.contains("Actual Card"));
+        assert!(visible.contains("Raw Card"));
+        assert_eq!(visible.len(), source.len());
+        assert_eq!(visible.lines().count(), source.lines().count());
+        assert_eq!(visible.find("Actual Card"), source.find("Actual Card"));
+        let (_, code) = rust_source_views(source);
+        assert!(!code.contains("Actual Card"));
+        assert!(!code.contains("Raw Card"));
+    }
+
+    #[test]
+    fn source_audit_cfg_test_modules_do_not_hide_later_production_hooks() {
+        let source = r####"#[cfg(test)]
+#[allow(dead_code)]
+pub(crate) mod helper_checks {
+    const NAME: &str = r###"Test Card } /* // {{"###;
+    fn helper<'a>(_: &'a str) { let brace = '{'; let unicode = '\u{7d}'; }
+}
+fn production(name: &str) { if name == "Production Card" { unreachable!(); } }
+"####;
+        let visible = strip_cfg_test_source(source);
+        assert!(!visible.contains("Test Card"));
+        assert!(visible.contains("Production Card"));
+        assert_eq!(visible.len(), source.len());
+        assert_eq!(visible.find("Production Card"), source.find("Production Card"));
+        let literal = r####"fn production() { let text = "#[cfg(test)] mod tests { Actual Card }"; }"####;
+        assert!(strip_cfg_test_source(literal).contains("Actual Card"));
+    }
+
+    #[test]
+    fn source_audit_cfg_any_retains_possible_production_modules() {
+        for cfg in ["test", "all(feature = \"audit\", test)",
+            "any(all(test, feature = \"audit\"), test)", "not(not(test))"] {
+            let source = format!("#[cfg({cfg})]\nmod checks {{ const NAME: &str = \"Test Card\"; }}\nfn production() {{ let name = \"Production Card\"; }}\n");
+            let visible = strip_cfg_test_source(&source);
+            assert!(!visible.contains("Test Card"), "cfg={cfg}");
+            assert!(visible.contains("Production Card"), "cfg={cfg}");
+        }
+        for cfg in ["any(test, feature = \"audit\")", "not(test)", "all()",
+            "not(all(test, feature = \"audit\"))"] {
+            let source = format!("#[cfg({cfg})]\nmod tests {{ const NAME: &str = \"Production Card\"; }}\n");
+            assert!(strip_cfg_test_source(&source).contains("Production Card"), "cfg={cfg}");
+        }
+    }
+
+    #[test]
+    fn source_audit_braces_in_literals_comments_and_lifetimes_are_not_structure() {
+        let source = r####"{
+    let raw = r###" } } { // /* "###;
+    let normal = " } escaped \" { ";
+    let character = '}';
+    let unicode = '\u{7d}';
+    /* } /* } */ { */
+    fn helper<'a>(_: &'a str) { }
+}
+fn tail() { }
+"####;
+        let tail = source.find("\nfn tail").unwrap();
+        let expected = source[..tail].rfind('}').unwrap();
+        assert_eq!(matching_brace_end(source, 0), Some(expected));
+        assert_eq!(matching_brace_end(source, source.find("} }").unwrap()), None);
+    }
+
+    #[test]
+    fn source_audit_constructor_discovery_ignores_fake_comment_and_string_definitions() {
+        let sources = vec![("fixture.rs".to_string(), r####"
+// pub fn fixture() -> CardDefinition { fake }
+const TEXT: &str = "pub fn fixture() -> CardDefinition { fake }";
+pub fn fixture() -> CardDefinition {
+    let brace = '}';
+    let raw = r###" } // /* "###;
+    CardDefinitionBuilder::new(CardId::new(), /* "Wrong Name" */ "Actual Fixture").build()
+}
+"####.to_string())];
+        let (_, body) = handwritten_constructor_body(&sources, "fixture").unwrap();
+        assert!(body.contains("Actual Fixture"));
+        assert_eq!(handwritten_constructor_card_name(body).as_deref(), Some("Actual Fixture"));
+        let registry = "// maybe_register!(fake);\n/*\nmaybe_register!(also_fake);\n*/\nmaybe_register!(actual);\n";
+        assert_eq!(registered_handwritten_constructor_names(registry), vec!["actual"]);
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]

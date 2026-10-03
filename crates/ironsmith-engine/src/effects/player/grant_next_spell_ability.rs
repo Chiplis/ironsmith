@@ -10,6 +10,10 @@ use crate::game_state::GameState;
 pub type GrantNextSpellAbilityEffect = ironsmith_core::GrantNextSpellAbilityEffect<Ability>;
 
 impl EffectExecutor for GrantNextSpellAbilityEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+        crate::ability::visit_owned_effects(&self.ability, visitor);
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

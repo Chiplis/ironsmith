@@ -2149,6 +2149,44 @@ mod live_action_rollback_tests {
     }
 
     #[test]
+    fn deferred_payment_options_preserve_confirmable_proposal() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut wasm, _) = manual_payment_fixture();
+        let spell = begin_manual_payment_spell(&mut wasm);
+        let eager = wasm.current_mana_payment_view().unwrap();
+        assert!(eager.can_confirm);
+        assert!(!eager.editor.activation_options.is_empty());
+        wasm.mana_activation_inventory_cache.borrow_mut().take();
+        wasm.set_deferred_mana_options(true);
+        let immediate = wasm.current_mana_payment_view().unwrap();
+        assert!(immediate.can_confirm);
+        assert_eq!(immediate.plan_id, eager.plan_id);
+        assert!(!immediate.editor.activation_options_complete);
+        assert!(immediate.editor.activation_options.is_empty());
+        assert!(immediate.mana_abilities.is_empty());
+        assert!(wasm.mana_activation_inventory_cache.borrow().is_none());
+        let json = wasm.export_mana_payment_options_request(&immediate.request_hash, &immediate.plan_id).unwrap();
+        let request: ironsmith::mana_payment::ManaPaymentRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(request.source, spell);
+        let Some(DecisionContext::ManaPayment(context)) = wasm.pending_decision.as_ref() else { unreachable!() };
+        assert_eq!(request, context.request);
+        // The browser options worker receives a checkpoint, not the live engine.
+        let checkpoint = wasm.try_build_sync_checkpoint().unwrap();
+        let mut isolated = WasmGame::new();
+        // The browser worker registers the captured card sources before import.
+        isolated.registry.register(CardDefinitionBuilder::new(CardId::new(), "Manual Payment Spell")
+            .card_types(vec![CardType::Sorcery])
+            .mana_cost(ManaCost::new().add_generic(1))
+            .build());
+        isolated.apply_sync_checkpoint(checkpoint).unwrap();
+        let options = mana_activation_option_views(&isolated.game, &request);
+        assert_eq!(serde_json::to_value(options).unwrap(), serde_json::to_value(eager.editor.activation_options).unwrap());
+        assert_eq!(wasm.export_mana_payment_options_request("stale", &immediate.plan_id).unwrap(), "null");
+        confirm_pending_mana_payment(&mut wasm);
+        assert!(wasm.priority_state.pending_cast.is_none());
+    }
+
+    #[test]
     fn manual_mana_payment_taps_source_and_returns_to_unpaid_spell() {
         let _guard = crate::test_id_counter_guard();
         let (mut wasm, mountain) = manual_payment_fixture();
@@ -2256,6 +2294,128 @@ mod live_action_rollback_tests {
         assert!(wasm.game.is_tapped(mountain));
         confirm_pending_mana_payment(&mut wasm);
         assert_eq!(wasm.game.player(alice).unwrap().mana_pool.colorless, 1);
+    }
+
+    fn check_nested_mana_continuation(depth: usize, cancel_deepest: bool) {
+        let _guard = crate::test_id_counter_guard();
+        let (mut wasm, mountain) = manual_payment_fixture();
+        let alice = PlayerId::from_index(0);
+        let filters: Vec<_> = (0..depth).map(|index| {
+            let definition = CardDefinitionBuilder::new(CardId::new(), format!("Nested mana filter {index}"))
+                .card_types(vec![CardType::Artifact])
+                .with_ability(ironsmith::ability::Ability::mana(
+                    ironsmith::cost::TotalCost::from_costs(vec![
+                        ironsmith::costs::Cost::mana(ManaCost::new().add_generic(1)),
+                        ironsmith::costs::Cost::tap(), ironsmith::costs::Cost::life(1),
+                    ]), vec![ManaSymbol::Colorless, ManaSymbol::Colorless],
+                )).build();
+            wasm.game.create_object_from_definition(&definition, alice, Zone::Battlefield)
+        }).collect();
+        let spell = begin_manual_payment_spell(&mut wasm);
+        for (index, source) in filters.iter().enumerate() {
+            activate_manual_source(&mut wasm, *source, 0);
+            assert_eq!(wasm.current_mana_payment_view().unwrap().source_name, format!("Nested mana filter {index}"));
+            assert_eq!(wasm.priority_state.pending_cast.as_ref().unwrap().spell_id, spell);
+            assert_eq!(wasm.game.player(alice).unwrap().life, 20);
+            assert!(filters.iter().all(|source| !wasm.game.is_tapped(*source)));
+        }
+        activate_manual_source(&mut wasm, mountain, 0);
+        assert!(wasm.game.is_tapped(mountain), "completed child mana action must survive every unfinished ancestor");
+        assert_eq!(wasm.game.player(alice).unwrap().mana_pool.red, 1);
+        let paid_depth = if cancel_deepest {
+            dispatch_manual_payment_command(&mut wasm, UiCommand::ManaPayment { response: ManaPaymentCommand::Cancel });
+            assert!(wasm.game.is_tapped(mountain));
+            assert!(!wasm.game.is_tapped(*filters.last().unwrap()));
+            assert_eq!(wasm.game.player(alice).unwrap().life, 20);
+            depth - 1
+        } else { depth };
+        for (paid, index) in (0..paid_depth).rev().enumerate() {
+            assert_eq!(wasm.current_mana_payment_view().unwrap().source_name, format!("Nested mana filter {index}"));
+            confirm_pending_mana_payment(&mut wasm);
+            assert!(wasm.game.is_tapped(filters[index]));
+            assert_eq!(wasm.game.player(alice).unwrap().life, 19 - paid as i32);
+            assert_eq!(wasm.game.player(alice).unwrap().mana_pool.red, 0);
+            assert_eq!(wasm.game.player(alice).unwrap().mana_pool.colorless, 2 + paid as u32);
+            assert!(wasm.game.is_tapped(mountain));
+        }
+        assert_eq!(wasm.current_mana_payment_view().unwrap().source_name, "Manual Payment Spell");
+        assert_eq!(wasm.priority_state.pending_cast.as_ref().unwrap().spell_id, spell);
+        confirm_pending_mana_payment(&mut wasm);
+        assert!(wasm.priority_state.pending_mana_ability.is_none());
+        assert!(wasm.priority_state.pending_cast.is_none());
+        assert_eq!(wasm.game.player(alice).unwrap().mana_pool.colorless, paid_depth as u32);
+        assert_eq!(wasm.game.player(alice).unwrap().life, 20 - paid_depth as i32);
+    }
+
+    #[test]
+    fn nested_mana_continuations_keep_three_levels_and_pay_each_once() {
+        check_nested_mana_continuation(3, false);
+    }
+
+    #[test]
+    fn nested_mana_continuations_cancel_only_the_unfinished_child() {
+        check_nested_mana_continuation(3, true);
+    }
+
+    fn check_nested_exhaust_announcement(cancel: bool) {
+        let _guard = crate::test_id_counter_guard();
+        let (mut wasm, _) = manual_payment_fixture();
+        let alice = PlayerId::from_index(0);
+        let mut exhaust = |name: &str, costs, output| {
+            let mut ability = ironsmith::ability::Ability::mana(ironsmith::cost::TotalCost::from_costs(costs), output);
+            let ironsmith::ability::AbilityKind::Activated(activated) = &mut ability.kind else { unreachable!() };
+            activated.additional_restrictions.push("Activate each exhaust ability only once.".to_string());
+            let definition = CardDefinitionBuilder::new(CardId::new(), name)
+                .card_types(vec![CardType::Artifact]).with_ability(ability).build();
+            wasm.game.create_object_from_definition(&definition, alice, Zone::Battlefield)
+        };
+        let parent = exhaust("Exhaust mana parent", vec![
+            ironsmith::costs::Cost::mana(ManaCost::new().add_generic(1)),
+            ironsmith::costs::Cost::tap(), ironsmith::costs::Cost::life(1),
+        ], vec![ManaSymbol::Colorless, ManaSymbol::Colorless]);
+        let child = exhaust("Exhaust mana child", vec![ironsmith::costs::Cost::tap()], vec![ManaSymbol::Red]);
+        let spell = begin_manual_payment_spell(&mut wasm);
+        activate_manual_source(&mut wasm, parent, 0);
+        assert_eq!(wasm.game.exhaust_ability_activation_count_this_turn(alice), 1, "Exhaust counts when activation begins, before mana payment");
+        assert!(wasm.game.exhaust_ability_activated(parent, 0));
+        assert_eq!(wasm.game.ability_activation_count_this_turn(parent, 0), 1);
+        assert!(!wasm.game.is_tapped(parent));
+        activate_manual_source(&mut wasm, child, 0);
+        assert!(wasm.game.is_tapped(child));
+        assert_eq!(wasm.game.exhaust_ability_activation_count_this_turn(alice), 2);
+        if cancel {
+            dispatch_manual_payment_command(&mut wasm, UiCommand::ManaPayment { response: ManaPaymentCommand::Cancel });
+            assert!(!wasm.game.exhaust_ability_activated(parent, 0));
+            assert!(!wasm.game.ability_activated_this_turn(parent, 0));
+            assert_eq!(wasm.game.ability_activation_count_this_turn(parent, 0), 0);
+            assert_eq!(wasm.game.exhaust_ability_activation_count_this_turn(alice), 1);
+            assert!(wasm.game.exhaust_ability_activated(child, 0));
+            assert!(wasm.game.is_tapped(child));
+            assert!(!wasm.game.is_tapped(parent));
+            assert_eq!(wasm.game.player(alice).unwrap().life, 20);
+        } else {
+            confirm_pending_mana_payment(&mut wasm);
+            assert!(wasm.game.is_tapped(parent));
+            assert_eq!(wasm.game.exhaust_ability_activation_count_this_turn(alice), 2);
+            assert_eq!(wasm.game.ability_activation_count_this_turn(parent, 0), 1);
+            assert_eq!(wasm.game.player(alice).unwrap().life, 19);
+        }
+        assert_eq!(wasm.current_mana_payment_view().unwrap().source_name, "Manual Payment Spell");
+        assert_eq!(wasm.priority_state.pending_cast.as_ref().unwrap().spell_id, spell);
+        confirm_pending_mana_payment(&mut wasm);
+        assert_eq!(wasm.game.player(alice).unwrap().mana_pool.colorless, if cancel { 0 } else { 1 });
+        assert!(wasm.game.turn_store.exhaust_activations_in_progress.is_empty());
+        assert!(wasm.priority_state.pending_mana_parents.is_empty());
+    }
+
+    #[test]
+    fn nested_mana_continuations_exhaust_counts_at_announcement_and_commits_once() {
+        check_nested_exhaust_announcement(false);
+    }
+
+    #[test]
+    fn nested_mana_continuations_exhaust_cancel_preserves_completed_child_announcement() {
+        check_nested_exhaust_announcement(true);
     }
 
     #[test]

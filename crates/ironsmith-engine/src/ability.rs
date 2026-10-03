@@ -459,3 +459,96 @@ mod tests {
         }
     }
 }
+
+/// Walk owned immutable executable payloads for graph retention. This is
+/// introspection, not an execution plan or a reconstruction from display text.
+pub fn visit_cost_owned_effects(
+    cost: &crate::costs::Cost,
+    visitor: &mut dyn FnMut(&crate::effect::Effect),
+) {
+    if let Some(effect) = cost.compiled_model().and_then(|model| model.effect_ref()) {
+        visitor(effect);
+    }
+}
+
+pub fn visit_static_owned_effects(
+    ability: &crate::static_abilities::StaticAbility,
+    visitor: &mut dyn FnMut(&crate::effect::Effect),
+) {
+    if let Some(model) = ability.compiled_model() {
+        let visitor = std::cell::RefCell::new(visitor);
+        let result = model.clone().try_map(
+            Ok::<_, std::convert::Infallible>,
+            |effect| {
+                visitor.borrow_mut()(&effect);
+                Ok(effect)
+            },
+            |cost| {
+                visit_cost_owned_effects(&cost, &mut **visitor.borrow_mut());
+                Ok(cost)
+            },
+            Ok,
+        );
+        match result {
+            Ok(_) => {}
+            Err(never) => match never {},
+        }
+    }
+}
+
+pub fn visit_owned_effects(ability: &Ability, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+    let visitor = std::cell::RefCell::new(visitor);
+    let result = ability.clone().try_map(
+        |ability| {
+            visit_static_owned_effects(&ability, &mut **visitor.borrow_mut());
+            Ok::<_, std::convert::Infallible>(ability)
+        },
+        Ok,
+        |effect| {
+            visitor.borrow_mut()(&effect);
+            Ok(effect)
+        },
+        |cost| {
+            visit_cost_owned_effects(&cost, &mut **visitor.borrow_mut());
+            Ok(cost)
+        },
+        Ok,
+    );
+    match result {
+        Ok(_) => {}
+        Err(never) => match never {},
+    }
+}
+
+/// Reach immutable payloads in every branch of the cost algebra, without
+/// selecting or paying a branch. Order matches canonical cost interpretation.
+pub fn visit_total_cost_owned_effects(
+    cost: &crate::cost::TotalCost,
+    visitor: &mut dyn FnMut(&crate::effect::Effect),
+) {
+    match cost.kind() {
+        ironsmith_core::TotalCostKind::All(costs) => {
+            for cost in costs {
+                visit_cost_owned_effects(cost, visitor);
+            }
+        }
+        ironsmith_core::TotalCostKind::OneOf(branches) => {
+            for branch in branches {
+                visit_total_cost_owned_effects(branch, visitor);
+            }
+        }
+    }
+}
+
+/// Reuse the exhaustive shared ability payload mapper for activated prototypes.
+/// Functional zones are absent from a prototype and irrelevant to this walk.
+pub fn visit_activated_owned_effects(
+    activated: &ActivatedAbility,
+    visitor: &mut dyn FnMut(&crate::effect::Effect),
+) {
+    let ability = Ability {
+        kind: AbilityKind::Activated(activated.clone()),
+        functional_zones: Vec::new(),
+    };
+    visit_owned_effects(&ability, visitor);
+}

@@ -1293,6 +1293,8 @@ pub(super) fn cancelability_allows_locked_pending_mana_ability_while_decision_op
         mana_production_provenance: ironsmith::events::mana::ManaProductionProvenance::Unknown,
         undo_locked_by_mana: true,
         pending_mana_payment: None,
+        exhaust_announcement: None,
+        x_value: None,
     });
     wasm.pending_decision = Some(DecisionContext::Boolean(BooleanContext::new(
         PlayerId::from_index(0),
@@ -1325,6 +1327,8 @@ pub(super) fn cancelability_allows_mana_undo_when_not_locked() {
         mana_production_provenance: ironsmith::events::mana::ManaProductionProvenance::Unknown,
         undo_locked_by_mana: false,
         pending_mana_payment: None,
+        exhaust_announcement: None,
+        x_value: None,
     });
 
     assert!(

@@ -5,10 +5,12 @@ use crate::mana::{ManaCost, ManaSymbol};
 use crate::player::{ManaPool, ManaSpendPolicy};
 
 /// Stable, transaction-local identity for an expanded mana pip.
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ManaPipId(pub u32);
 
 /// Whether declining a payment is itself a legal choice.
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PaymentObligation {
     #[default]
@@ -21,6 +23,7 @@ pub enum PaymentObligation {
 /// ability and mana-output branch was chosen for a multi-ability source. The
 /// containing vector is a multiset: repeated entries require repeated legal
 /// activations of the same ability.
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RequiredManaActivation {
     pub source: ObjectId,
@@ -29,6 +32,7 @@ pub struct RequiredManaActivation {
 }
 
 /// One exact keyword-payment resource selected during incremental planning.
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct RequiredAlternativePayment {
     pub source: ObjectId,
@@ -37,6 +41,7 @@ pub struct RequiredAlternativePayment {
 
 /// User choices that constrain replanning.  These are deliberately expressed
 /// as constraints rather than client-authored executable steps.
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ManaPaymentPreferences {
     pub required_sources: Vec<ObjectId>,
@@ -103,6 +108,7 @@ fn color_restriction_sort_key(colors: &[Color]) -> u8 {
 }
 
 /// Everything needed to plan one payment transaction.
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ManaPaymentRequest {
     pub payer: PlayerId,
@@ -158,6 +164,10 @@ impl ManaPaymentRequest {
 /// A single mana ability activation selected by a plan.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlannedManaActivation {
+    /// Exact server-selected production outputs and replacement decisions,
+    /// grouped by the original nonempty mana event for authoritative replay.
+    pub replacement_witnesses: Option<Vec<super::ManaReplacementWitness>>,
+
     pub source: ObjectId,
     pub ability_index: usize,
     /// Restriction supplied to existing mana-choice effects during execution.
@@ -170,6 +180,7 @@ pub struct PlannedManaActivation {
     pub undo_safe: bool,
 }
 
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ManaPaymentSourceKind {
     ManaAbility,

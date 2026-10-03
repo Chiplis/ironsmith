@@ -1076,7 +1076,10 @@ impl super::Trigger {
     pub fn from_model(
         trigger: ironsmith_core::trigger_model::Trigger,
     ) -> Result<Self, TriggerModelConversionError> {
-        interpret_trigger_model(trigger)
+        let model = trigger.clone();
+        let mut runtime = interpret_trigger_model(trigger)?;
+        runtime.retained_model = Some(std::sync::Arc::new(model));
+        Ok(runtime)
     }
 }
 

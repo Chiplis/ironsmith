@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef } from "react";
 import { cardFrameFitKey, measureCardFrameLayout } from '@/lib/card-frame-measurement';
 import "@/styles/card-frame-text-fit.css";
 
-// Preserve the printing's typography; long live labels scroll within their section.
+// Preserve printed typography; fallback type and stats shrink only to fit.
 export default function CardFrameSingleLine({ as = "span", className, children }) {
   const textRef = useRef(null);
   const fitRef = useRef(null);
@@ -45,8 +45,28 @@ export default function CardFrameSingleLine({ as = "span", className, children }
       // Reset before measuring so shorter text, new fonts, and wider cards can
       // recover their original size. Flex layout reserves mana/count space.
       text.style.removeProperty("font-size");
-      text.style.overflow = "auto";
+      // Stats have an intrinsic width. Font ink can exceed a line-height of
+      // one by a pixel; scrolling that ink paints a scrollbar beside the P/T.
+      text.style.overflow = text.classList.contains('interactive-card-frame__stats-text') ? 'visible' : 'auto';
       text.style.textOverflow = "clip";
+      const stage = text.closest('.interactive-card-frame-stage');
+      const fallback = ['custom', 'placeholder'].includes(stage?.dataset.frameMode);
+      if (fallback && (text.classList.contains('interactive-card-frame__type')
+        || text.classList.contains('interactive-card-frame__stats-text'))) {
+        text.style.overflow = 'hidden';
+        const preferredSize = parseFloat(getComputedStyle(text).fontSize);
+        if (text.scrollWidth > text.clientWidth) {
+          let low = 1;
+          let high = preferredSize;
+          for (let i = 0; i < 12; i++) {
+            const size = (low + high) / 2;
+            text.style.fontSize = `${size}px`;
+            if (text.scrollWidth > text.clientWidth) high = size;
+            else low = size;
+          }
+          text.style.fontSize = `${low}px`;
+        }
+      }
       alignBaseline();
     });
     const scheduleFit = () => {

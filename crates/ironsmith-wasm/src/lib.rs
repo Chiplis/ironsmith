@@ -380,8 +380,15 @@ struct ManaPaymentEditorView {
     required_alternatives: Vec<ManaPaymentAlternativeCommand>,
     required_life_pips: Vec<u32>,
     activation_options: Vec<ManaActivationOptionView>,
+    activation_options_complete: bool,
     life_options: Vec<ManaLifeOptionView>,
     reserved_sources: Vec<ReservedPaymentSourceView>,
+}
+
+#[derive(Serialize)]
+struct ManaPaymentOptionsView {
+    activation_options: Vec<ManaActivationOptionView>,
+    mana_abilities: Vec<ManualManaAbilityView>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -691,6 +698,7 @@ fn mana_payment_view_from_pending_cast(
     game: &GameState,
     pending: &ironsmith::game_loop::PendingCast,
     activation_options: &[ManaActivationOptionView],
+    defer_options: bool,
 ) -> Option<ManaPaymentView> {
     if !matches!(
         pending.stage,
@@ -733,7 +741,7 @@ fn mana_payment_view_from_pending_cast(
             .collect(),
         planned_sources: planned_mana_source_views(game, payment),
         available_sources: available_mana_source_views(game, payment),
-        mana_abilities: manual_mana_ability_views(game, &payment.request),
+        mana_abilities: if defer_options { Vec::new() } else { manual_mana_ability_views(game, &payment.request) },
         allocations: planned_pip_allocation_views(payment),
         pool_before: (&payment.plan.pool_before).into(),
         pool_after_activations: (&payment.plan.expected_pool_after_activations).into(),
@@ -775,6 +783,7 @@ fn mana_payment_view_from_pending_activation(
     game: &GameState,
     pending: &ironsmith::game_loop::PendingActivation,
     activation_options: &[ManaActivationOptionView],
+    defer_options: bool,
 ) -> Option<ManaPaymentView> {
     if !matches!(pending.stage, ActivationStage::PayingMana) {
         return None;
@@ -806,7 +815,7 @@ fn mana_payment_view_from_pending_activation(
             .collect(),
         planned_sources: planned_mana_source_views(game, payment),
         available_sources: available_mana_source_views(game, payment),
-        mana_abilities: manual_mana_ability_views(game, &payment.request),
+        mana_abilities: if defer_options { Vec::new() } else { manual_mana_ability_views(game, &payment.request) },
         allocations: planned_pip_allocation_views(payment),
         pool_before: (&payment.plan.pool_before).into(),
         pool_after_activations: (&payment.plan.expected_pool_after_activations).into(),
@@ -848,6 +857,7 @@ fn mana_payment_view_from_context(
     game: &GameState,
     context: &ironsmith::decisions::context::ManaPaymentContext,
     activation_options: &[ManaActivationOptionView],
+    defer_options: bool,
 ) -> ManaPaymentView {
     let payment = ironsmith::mana_payment::PendingManaPayment::new(
         context.request.clone(),
@@ -873,7 +883,7 @@ fn mana_payment_view_from_context(
             .collect(),
         planned_sources: planned_mana_source_views(game, &payment),
         available_sources: available_mana_source_views(game, &payment),
-        mana_abilities: manual_mana_ability_views(game, &payment.request),
+        mana_abilities: if defer_options { Vec::new() } else { manual_mana_ability_views(game, &payment.request) },
         allocations: planned_pip_allocation_views(&payment),
         pool_before: (&context.plan.pool_before).into(),
         pool_after_activations: (&context.plan.expected_pool_after_activations).into(),
@@ -961,7 +971,11 @@ fn mana_activation_option_views(
     request: &ironsmith::mana_payment::ManaPaymentRequest,
 ) -> Vec<ManaActivationOptionView> {
     let counters = snapshot_id_counters();
-    let options = ironsmith::mana_payment::mana_payment_activation_inventory(game, request);
+    let options = ironsmith::mana_payment::mana_payment_ready_activation_inventory(
+        game,
+        request,
+        || WasmReplayDecisionMaker::new(&[]),
+    );
     let views = options
         .iter()
         .filter(|option| {
@@ -969,23 +983,6 @@ fn mana_activation_option_views(
                 request.reason,
                 ironsmith::costs::PaymentReason::ActivateManaAbility
             ) && option.source == request.source
-            {
-                return false;
-            }
-            // Offer deferred choices only when the reviewed output fully resolves
-            // the activation. Other cost/effect choices use explicit Activate now.
-            let mut staged = game.clone();
-            let mut decision_maker = WasmReplayDecisionMaker::new(&[]);
-            if ironsmith::special_actions::perform_activate_mana_ability_restricted_colors(
-                &mut staged,
-                request.payer,
-                option.source,
-                option.ability_index,
-                option.color_restriction.clone(),
-                &mut decision_maker,
-            )
-            .is_err()
-                || decision_maker.awaiting_choice()
             {
                 return false;
             }
@@ -1081,6 +1078,7 @@ fn mana_payment_editor_view(
             .map(|pip| pip.0)
             .collect(),
         activation_options: activation_options.to_vec(),
+        activation_options_complete: true,
         life_options: ironsmith::mana_payment::mana_payment_life_options(game, &life_request)
             .into_iter()
             .map(|(pip, life)| ManaLifeOptionView {
@@ -4618,6 +4616,7 @@ pub struct WasmGame {
     manabrew_next_prompt_id: u32,
     manabrew_open_prompt: Option<ManabrewOpenPrompt>,
     cached_snapshot: Option<CachedSnapshot>,
+    defer_mana_options: bool,
     mana_activation_inventory_cache: std::cell::RefCell<Option<(u64, Vec<ManaActivationOptionView>)>>,
 }
 

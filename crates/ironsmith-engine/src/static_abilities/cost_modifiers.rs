@@ -1580,6 +1580,10 @@ impl StaticAbilityKind for AffinityForArtifacts {
 pub struct Delve;
 
 impl StaticAbilityKind for Delve {
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::Delve
     }
@@ -1602,6 +1606,10 @@ impl StaticAbilityKind for Delve {
 pub struct Convoke;
 
 impl StaticAbilityKind for Convoke {
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::Convoke
     }
@@ -1624,6 +1632,10 @@ impl StaticAbilityKind for Convoke {
 pub struct Improvise;
 
 impl StaticAbilityKind for Improvise {
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::Improvise
     }

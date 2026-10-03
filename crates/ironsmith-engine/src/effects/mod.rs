@@ -76,14 +76,14 @@ pub const PUBLIC_REVEALED_TAG: &str = "__public_revealed";
 pub const REVEALED_THIS_WAY_TAG: &str = crate::tag::REVEALED_THIS_WAY_TAG;
 
 // Re-export the traits, modal spec, and cost validation error
-pub use context::{DoThisLimit, ExecutionError, ResolvedTarget, TargetError, rebase_target_scope};
+pub use context::{DoThisLimit, ExecutionError, ReplacementContextMappingError, ReplacementExecutionContext, ResolvedTarget, TargetError, rebase_target_scope};
 pub use executor_trait::{
     CostExecutableEffect, CostValidationError, DeferredPlayerActionProposal,
     EffectExecutionCategory, EffectExecutor, ModalEffectSpec, ModalSpec,
     SimultaneousEffectProposal, TargetReusePolicy, TargetSelectionProfile,
 };
 pub type EffectContext<'a> = context::ExecutionContext<'a>;
-pub(crate) use context::{ExecutionContext, ExecutionContextCheckpoint, ReplacementExecutionContext};
+pub(crate) use context::{ExecutionContext, ExecutionContextCheckpoint};
 pub use runtime::{execute_effect, resolve_value, validate_target};
 pub(crate) use runtime::{
     match_triggers_at_instruction_boundary, retain_unmatched_outcome_events,

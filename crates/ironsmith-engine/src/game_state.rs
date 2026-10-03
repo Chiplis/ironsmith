@@ -221,6 +221,19 @@ pub struct PendingReplacementChoice {
     pub player: PlayerId,
 }
 
+/// Bookkeeping contributed by one exhaust activation announcement. A nested
+/// payment can cancel this contribution without undoing completed child actions.
+#[derive(Debug, Clone)]
+pub struct ExhaustActivationAnnouncement {
+    source: ObjectId,
+    ability_index: usize,
+    origin: Option<(crate::continuous::AbilityOrigin, Option<u32>, u32)>,
+    counters: Vec<(TurnCounterKey, Option<u32>, u32)>,
+    was_activated: bool,
+    was_exhausted: bool,
+    was_in_progress: bool,
+}
+
 /// Result of moving an object to the battlefield with ETB replacement processing.
 ///
 /// This captures all the modifications that were applied by replacement effects.
@@ -794,7 +807,9 @@ impl ObjectStore {
         &mut self,
         def: &crate::cards::CardDefinition,
     ) -> CardSharedHandles {
-        if let Some(handles) = self.card_shared.get(&def.card.id) {
+        if let Some(handles) = self.card_shared.get(&def.card.id)
+            && handles.matches_definition(def)
+        {
             return handles.clone();
         }
         let handles = CardSharedHandles::from_definition(def);
@@ -1140,7 +1155,7 @@ struct EnterAsCopySourceCache {
     /// ability exists, so callers must use layered characteristics. `Some`
     /// contains the exact active printed/level/temporary abilities that can be
     /// inspected without entering the layer system.
-    sparse_candidates: Option<Arc<Vec<(ObjectId, StaticAbility)>>>,
+    sparse_candidates: Option<Arc<Vec<(ObjectId, crate::continuous::AbilityOrigin, StaticAbility)>>>,
 }
 
 #[derive(Debug)]
@@ -4681,6 +4696,7 @@ impl GameState {
             .continuous_global_invalidations;
         counter.set(counter.get().saturating_add(1));
         self.runtime_cache.payment_restriction_presence.set(None);
+        self.runtime_cache.tap_sensitivity.set(None);
         self.runtime_cache.continuous_context_revision.set(
             self.runtime_cache
                 .continuous_context_revision
@@ -4970,19 +4986,108 @@ impl GameState {
         let sensitive = self
             .cached_continuous_effects_snapshot_arc()
             .iter()
-            .any(Self::continuous_effect_is_tap_sensitive);
+            .any(Self::continuous_effect_is_tap_sensitive)
+            // Generated scalar effects can hide their original dependency
+            // (for example an anthem evaluated from unspent mana). Include
+            // inactive and printed abilities as well as the effective ones.
+            || self.objects_map().values().any(|object| {
+                object.abilities.iter().filter(|ability| ability.functions_in(&object.zone))
+                    .any(|ability| match &ability.kind {
+                        crate::ability::AbilityKind::Static(ability) =>
+                            Self::static_ability_is_mana_sensitive(ability),
+                        _ => false,
+                    })
+            })
+            || self.battlefield.iter().any(|&id| {
+                self.current_characteristics(id).is_some_and(|chars| {
+                    chars.static_abilities.iter().any(Self::static_ability_is_mana_sensitive)
+                })
+            });
         self.runtime_cache
             .tap_sensitivity
             .set(Some((revision, sensitive)));
         sensitive
     }
 
+    fn static_ability_is_mana_sensitive(ability: &StaticAbility) -> bool {
+        use ironsmith_core::StaticAbilityPayload as P;
+        let Some(model) = ability.compiled_model() else {
+            return ability.may_generate_continuous_effects();
+        };
+        match &model.payload {
+            P::AdditionalLandPlays(_) => false,
+            // Play permissions retain a live filter and do not generate
+            // characteristics. A plain mana activation cannot move a card
+            // between the permission's zones or consume a land play.
+            P::Grants(spec) if matches!(spec.grantable, ironsmith_core::Grantable::PlayFrom) => {
+                Self::object_filter_is_tap_sensitive(&spec.filter)
+            }
+            P::RuleRestriction { restriction, additional_restrictions, .. }
+                if std::iter::once(restriction).chain(additional_restrictions).all(|restriction| {
+                    matches!(restriction,
+                        crate::effect::Restriction::AdditionalLandPlays(_, _)
+                            | crate::effect::Restriction::NoMaximumHandSize(_))
+                }) => false,
+            P::Anthem(anthem) => {
+                anthem.condition.as_ref().is_some_and(Self::condition_is_mana_sensitive)
+                    || anthem.filter.as_ref().is_some_and(Self::object_filter_is_tap_sensitive)
+                    || Self::anthem_value_is_mana_sensitive(&anthem.power)
+                    || Self::anthem_value_is_mana_sensitive(&anthem.toughness)
+            }
+            // These payloads retain their filters in their generated effects.
+            P::CopyActivatedAbilities(copy) => Self::object_filter_is_tap_sensitive(&copy.filter),
+            P::CopyTriggeredAbilities(copy) => Self::object_filter_is_tap_sensitive(&copy.filter),
+            P::CopyStaticAbilityVariants(copy) => Self::object_filter_is_tap_sensitive(&copy.filter),
+            // A currently inactive wrapper may become active after production.
+            P::Conditional { ability, condition } => {
+                Self::condition_is_mana_sensitive(condition)
+                    || Self::static_ability_is_mana_sensitive(&StaticAbility::from_model((**ability).clone()))
+            }
+            P::GrantObjectAbilityForFilter(grant) => {
+                Self::object_filter_is_tap_sensitive(&grant.filter)
+                    || grant.condition.as_ref().is_some_and(Self::condition_is_mana_sensitive)
+                    || std::iter::once(&grant.ability).chain(&grant.additional_abilities).any(|ability| {
+                        match &ability.kind {
+                            ironsmith_core::AbilityKind::Static(ability) =>
+                                Self::static_ability_is_mana_sensitive(&StaticAbility::from_model(ability.clone())),
+                            _ => false,
+                        }
+                    })
+            }
+            _ => ability.may_generate_continuous_effects(),
+        }
+    }
+
+    fn anthem_value_is_mana_sensitive(value: &crate::static_abilities::AnthemValue) -> bool {
+        use crate::static_abilities::AnthemValue;
+        match value {
+            AnthemValue::Fixed(_) => false,
+            AnthemValue::Dynamic(value) => Self::value_is_tap_sensitive(value),
+            AnthemValue::PerCount { .. } | AnthemValue::CappedPerCount { .. } => true,
+        }
+    }
+
     fn continuous_effect_is_tap_sensitive(effect: &ContinuousEffect) -> bool {
-        // A condition is arbitrary game-state code, so it is never assumed
-        // insensitive.
-        effect.condition.is_some()
+        effect.condition.as_ref().is_some_and(Self::condition_is_mana_sensitive)
             || Self::effect_target_is_tap_sensitive(&effect.applies_to)
             || Self::modification_is_tap_sensitive(&effect.modification)
+    }
+
+    fn condition_is_mana_sensitive(condition: &crate::ConditionExpr) -> bool {
+        use crate::ConditionExpr;
+        match condition {
+            ConditionExpr::And(left, right) | ConditionExpr::Or(left, right) =>
+                Self::condition_is_mana_sensitive(left) || Self::condition_is_mana_sensitive(right),
+            ConditionExpr::Not(inner) => Self::condition_is_mana_sensitive(inner),
+            ConditionExpr::ValueComparison { left, right, .. } =>
+                Self::value_is_tap_sensitive(left) || Self::value_is_tap_sensitive(right),
+            // A plain mana activation cannot advance the turn or change the
+            // source's casting history. Unknown conditions remain dependencies.
+            ConditionExpr::YourTurn | ConditionExpr::SourceWasCast
+                | ConditionExpr::ThisSpellEscaped | ConditionExpr::ThisSpellWasCastFromZone(_)
+                | ConditionExpr::ThisSpellWasCastFromNonHand => false,
+            _ => true,
+        }
     }
 
     fn effect_target_is_tap_sensitive(target: &EffectTarget) -> bool {
@@ -4994,19 +5099,29 @@ impl GameState {
 
     fn modification_is_tap_sensitive(modification: &Modification) -> bool {
         match modification {
+            Modification::CopyActivatedAbilities { filter, .. }
+            | Modification::CopyTriggeredAbilities { filter, .. }
+            | Modification::CopyStaticAbilityVariants { filter, .. } => {
+                Self::object_filter_is_tap_sensitive(filter)
+            }
             Modification::SetPower { value, .. } | Modification::SetToughness { value, .. } => {
                 Self::value_is_tap_sensitive(value)
             }
             Modification::SetPowerToughness {
                 power, toughness, ..
-            } => Self::value_is_tap_sensitive(power) || Self::value_is_tap_sensitive(toughness),
+            }
+            | Modification::ModifyPowerToughnessValue { power, toughness } => {
+                Self::value_is_tap_sensitive(power) || Self::value_is_tap_sensitive(toughness)
+            }
             _ => false,
         }
     }
 
     fn value_is_tap_sensitive(value: &crate::effect::Value) -> bool {
         match value {
-            crate::effect::Value::Fixed(_) => false,
+            crate::effect::Value::Fixed(_)
+            | crate::effect::Value::LifeLostThisTurn(crate::target::PlayerFilter::You)
+            | crate::effect::Value::LifeGainedThisTurn(crate::target::PlayerFilter::You) => false,
             crate::effect::Value::SurfaceHinted { value, .. }
             | crate::effect::Value::Scaled(value, _)
             | crate::effect::Value::DividedRoundedDown(value, _)
@@ -5028,7 +5143,9 @@ impl GameState {
     }
 
     fn object_filter_is_tap_sensitive(filter: &crate::target::ObjectFilter) -> bool {
-        filter.tapped || filter.untapped
+        // This classifier is also used across a complete mana activation,
+        // which can change the source's activation history as well as tap it.
+        Self::filter_reads_tapped_state_or_activation_history(filter, true)
     }
 
     /// Restores the cached continuous state after a mana activation that only
@@ -5047,6 +5164,10 @@ impl GameState {
         {
             return false;
         }
+        // The caller proved that player mutations only changed mana. Observe
+        // that cursor too, or the next characteristic query rediscovers the
+        // same mutation and immediately invalidates the retained state.
+        *self.runtime_cache.observed_players.borrow_mut() = Some(self.players.cursor());
         self.runtime_cache.continuous_state_dirty.set(false);
         true
     }
@@ -7326,6 +7447,10 @@ impl GameState {
         owner: PlayerId,
         zone: Zone,
     ) -> ObjectId {
+        // Retain the physical definition at creation, before overlays or copies
+        // change the live object's characteristics. Raw Card creation has no
+        // authored program, so this is the exact original native definition.
+        self.object_store.shared_handles_for_definition(&crate::cards::CardDefinition::new(card.clone()));
         self.prime_linked_face_lookup(card.other_face_name.as_deref(), card.other_face);
         let id = self.new_object_id();
         let mut object = Object::from_card(id, card, owner, zone);
@@ -7417,6 +7542,13 @@ impl GameState {
         self.prime_linked_face_definitions(def);
         let handles = self.object_store.shared_handles_for_definition(def);
         Object::from_token_definition_with_shared(id, def, controller, &handles)
+    }
+
+    /// Latest exact native definition retained at creation/explicit application.
+    /// Read physical metadata from this immutable store, never from a live
+    /// object's copied/overlaid characteristics or a mutable name alias.
+    pub fn retained_card_definition(&self, id: CardId) -> Option<&crate::cards::CardDefinition> {
+        self.object_store.card_shared.get(&id).map(|handles| handles.definition())
     }
 
     /// Cache a linked-face definition for later runtime lookups.
@@ -7749,6 +7881,25 @@ impl GameState {
                 .is_some()
     }
 
+    /// Resolve the currently displayed definition without confusing equal names
+    /// from independent retained graphs or the original physical card identity.
+    pub fn displayed_face_definition(
+        &self,
+        object: &Object,
+    ) -> Option<crate::cards::CardDefinition> {
+        if let Some(other_id) = object.other_face
+            && let Some(other) = self.linked_face_definitions_by_id.get(&other_id)
+            && let Some(shown_id) = other.card.other_face
+            && let Some(shown) = self.linked_face_definitions_by_id.get(&shown_id)
+            && shown.card.other_face == Some(other_id)
+            && shown.card.name == object.name.as_ref()
+        {
+            return Some(shown.clone());
+        }
+        // Legacy catalog-backed objects may not have both definitions cached.
+        self.linked_face_definition_by_name_or_id(Some(object.name.as_ref()), object.card)
+    }
+
     /// Whether a permanent is a transformed permanent: a transforming
     /// double-faced permanent with its back face up (CR 712.2, glossary
     /// "Transformed Permanent"). Transform-like families keep the front face
@@ -7764,12 +7915,9 @@ impl GameState {
         {
             return false;
         }
-        let shown_id = match self.linked_face_definitions_by_name.get(object.name.as_ref()) {
-            Some(definition) => Some(definition.card.id),
-            None => self
-                .linked_face_definition_by_name_or_id(Some(object.name.as_ref()), None)
-                .map(|definition| definition.card.id),
-        };
+        let shown_id = self
+            .displayed_face_definition(object)
+            .map(|definition| definition.card.id);
         let other_id = match object.other_face {
             Some(other) => Some(other),
             None => self
@@ -7778,7 +7926,6 @@ impl GameState {
         };
         matches!((shown_id, other_id), (Some(shown), Some(other)) if shown.0 > other.0)
     }
-
     /// The prepare spell face of a prepared permanent, if it has one.
     pub fn prepare_spell_definition(
         &self,
@@ -7799,6 +7946,17 @@ impl GameState {
         name: Option<&str>,
         id: Option<crate::ids::CardId>,
     ) -> Option<crate::cards::CardDefinition> {
+        // An exact retained graph node takes precedence over a name alias when
+        // both identify the same face. Distinct runtime definitions may share
+        // names. A different requested name still selects the displayed face:
+        // callers can pair that name with the original physical card's id.
+        if let Some(card_id) = id
+            && let Some(definition) = self.linked_face_definitions_by_id.get(&card_id)
+            && name.is_none_or(|face_name| face_name == definition.card.name)
+        {
+            return Some(definition.clone());
+        }
+
         if let Some(face_name) = name
             && let Some(definition) = self.linked_face_definitions_by_name.get(face_name)
         {

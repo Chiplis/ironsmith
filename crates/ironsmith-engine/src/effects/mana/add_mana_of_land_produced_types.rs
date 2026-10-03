@@ -74,6 +74,11 @@ impl AddManaOfLandProducedTypesEffect {
 }
 
 impl EffectExecutor for AddManaOfLandProducedTypesEffect {
+    fn mana_production(&self) -> Option<crate::mana_payment::program::ManaProduction<'_>> {
+        use crate::mana_payment::program::ManaProduction;
+        Some(ManaProduction::LandProducedTypes { amount: &self.amount, player: &self.player, filter: &self.land_filter, allow_colorless: self.allow_colorless, same_type: self.same_type, source: self.mana_type_source })
+    }
+
     fn directly_produces_mana(&self) -> bool {
         true
     }
@@ -113,7 +118,7 @@ impl EffectExecutor for AddManaOfLandProducedTypesEffect {
             self.same_type,
             &available,
             available[0],
-        );
+        )?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
         }
@@ -129,7 +134,7 @@ impl EffectExecutor for AddManaOfLandProducedTypesEffect {
     }
 }
 
-fn collect_triggering_event_mana_symbols(
+pub(super) fn collect_triggering_event_mana_symbols(
     game: &GameState,
     ctx: &ExecutionContext,
     source_filter: &ObjectFilter,
@@ -177,7 +182,7 @@ fn collect_triggering_event_mana_symbols(
     symbols
 }
 
-fn collect_available_mana_symbols(
+pub(super) fn collect_available_mana_symbols(
     game: &GameState,
     ctx: &ExecutionContext,
     land_filter: &ObjectFilter,
@@ -264,7 +269,7 @@ fn push_symbol_if_addable(out: &mut Vec<ManaSymbol>, symbol: ManaSymbol) {
     }
 }
 
-fn is_allowed_symbol(symbol: ManaSymbol, allow_colorless: bool) -> bool {
+pub(super) fn is_allowed_symbol(symbol: ManaSymbol, allow_colorless: bool) -> bool {
     match symbol {
         ManaSymbol::White
         | ManaSymbol::Blue

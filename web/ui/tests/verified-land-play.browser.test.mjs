@@ -4,7 +4,13 @@ import {
   assertNoFullUiSyncFailuresWithDebug, test,
 } from './peerjs-resync-harness.js';
 
-test('verified multiplayer publishes playable hand actions and both players can play a land', { timeout: 240000 }, async t => {
+for (const fixture of [
+  { name: 'basic lands', host: '60 Mountain', guest: '60 Island', lands: ['Mountain', 'Island'] },
+  { name: 'mixed Warp and Badgermole decks',
+    host: '48 Mountain\n4 Nova Hellkite\n4 Magmatic Hellkite\n4 Sunbillow Verge',
+    guest: '48 Forest\n4 Badgermole Cub\n4 Icetill Explorer\n4 Llanowar Elves',
+    lands: ['Mountain', 'Sunbillow Verge', 'Forest'] },
+]) test(`verified multiplayer highlights both hands and plays lands: ${fixture.name}`, { timeout: 240000 }, async t => {
   const peerPort = await freePort();
   const peerServer = await startPeerServer(peerPort);
   t.after(() => closePeerServer(peerServer));
@@ -19,7 +25,7 @@ test('verified multiplayer publishes playable hand actions and both players can 
       headers: { 'Access-Control-Allow-Origin': '*' } }));
   const { hostPage: host, guestPage: guest } = await startFullUiPeerMatch({
     baseUrl, hostContext, guestContext, securityMode: 'verified',
-    hostDeckText: '60 Mountain', guestDeckText: '60 Island',
+    hostDeckText: fixture.host, guestDeckText: fixture.guest,
   });
   const played = new Set();
   for (let turnAction = 0; turnAction < 40 && played.size < 2; turnAction++) {
@@ -59,14 +65,16 @@ test('verified multiplayer publishes playable hand actions and both players can 
     await waitForFullUiPair(host, guest, (a, b) =>
       a.multiplayer.lastAppliedSequence > previousSequence
       && a.multiplayer.lastAppliedSequence === b.multiplayer.lastAppliedSequence
-      && !a.multiplayer.pendingVerification && !b.multiplayer.pendingVerification,
-    'the action is verified by both peers', 30000);
+      && !a.multiplayer.pendingVerification && !b.multiplayer.pendingVerification
+      && (!land || (a.state.players[actor].battlefield.length === 1
+        && b.state.players[actor].battlefield.length === 1)),
+    'the action is verified and its board update is visible to both peers', 30000);
     if (land) {
       played.add(actor);
       for (const peer of [host, guest]) {
         const state = (await fullUiSnapshot(peer)).state;
         assert.equal(state.players[actor].battlefield.length, 1);
-        assert.equal(state.players[actor].battlefield[0].name, actor === 0 ? 'Mountain' : 'Island');
+        assert.ok(fixture.lands.includes(state.players[actor].battlefield[0].name));
       }
     }
   }

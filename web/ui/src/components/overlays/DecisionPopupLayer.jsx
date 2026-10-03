@@ -1345,11 +1345,11 @@ function MobileDecisionDock({
   const { style: decisionButtonStyle, isLocal: localDecisionButton } =
     useDecisionButtonAccent(state, decision, playerAccentOverrides);
   const isVertical = orientation === "vertical";
-  const effectivePrimaryDisabled = primaryDisabled || attackButtonTransition.locked;
+  const effectivePrimaryDisabled = primaryDisabled || attackButtonTransition.locked || multiplayer?.submittingAction;
   const rawPeerWait = multiplayer?.peerWait || null;
   const peerWait = useDeferredPeerWait(rawPeerWait);
   const peerWaiting = Boolean(peerWait);
-  const peerWaitLocked = Boolean(rawPeerWait);
+  const peerWaitLocked = Boolean(rawPeerWait || multiplayer?.submittingAction);
   const primaryText = safeInlineLabel(primaryLabel, "Continue");
   const primaryAdvanceText = safeInlineLabel(primaryAdvanceLabel);
   const subtitleText = safeInlineLabel(subtitle);
@@ -1372,7 +1372,7 @@ function MobileDecisionDock({
             variant="ghost"
             size="sm"
             className="mobile-decision-secondary-button"
-            disabled={secondaryDisabled}
+            disabled={secondaryDisabled || multiplayer?.submittingAction}
             onClick={onSecondary}
           >
             {ui(secondaryLabel)}
@@ -2467,7 +2467,7 @@ function PriorityBar({
   const rawPeerWait = multiplayer?.peerWait || null;
   const peerWait = useDeferredPeerWait(rawPeerWait);
   const peerWaiting = Boolean(peerWait);
-  const peerWaitLocked = Boolean(rawPeerWait);
+  const peerWaitLocked = Boolean(rawPeerWait || multiplayer?.submittingAction);
   const isPriorityDecision = decision?.kind === "priority";
   const isCombatDecision = decision?.kind === "attackers" || decision?.kind === "blockers";
   const decisionActions = useMemo(() => decision?.actions || [], [decision]);
@@ -2499,7 +2499,7 @@ function PriorityBar({
   // like the opening hand's Keep hand / Mulligan pair.
   const showResolveAllButton = showPriorityAdvanceButton
     && resolvingStackPriority
-    && stackSize > 2
+    && stackSize > 1
     && !openingHandMulliganAction;
   const passCurrentLabel = resolvingStackPriority
     ? "Resolve"
@@ -3026,7 +3026,7 @@ function PriorityBar({
                           className="pass-priority-btn decision-main-button action-strip-advance-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
                           style={decisionButtonStyle}
                           data-local-action={localDecisionButton ? "true" : "false"}
-                          disabled={!canAct}
+                          disabled={!canAct || multiplayer?.submittingAction}
                           aria-disabled={peerWaitLocked || !canAct}
                           aria-label={ui(peerWaiting ? "Waiting for peers" : passCurrentLabel)}
                           onPointerDown={peerWaiting ? undefined : triggerPassActionFromPointer}
@@ -3074,7 +3074,7 @@ function PriorityBar({
                         className="pass-priority-btn decision-main-button action-strip-advance-button action-strip-resolve-all-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
                         style={decisionButtonStyle}
                         data-local-action={localDecisionButton ? "true" : "false"}
-                        disabled={!canAct}
+                        disabled={!canAct || multiplayer?.submittingAction}
                         aria-disabled={peerWaitLocked || !canAct}
                         aria-label={ui("Resolve all")}
                         onClick={triggerResolveAll}
@@ -3098,7 +3098,7 @@ function PriorityBar({
                         size="sm"
                         className="pass-priority-btn decision-main-button action-strip-mulligan-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
                         data-local-action={localDecisionButton ? "true" : "false"}
-                        disabled={!canAct}
+                        disabled={!canAct || multiplayer?.submittingAction}
                         aria-disabled={peerWaitLocked || !canAct}
                         aria-label={ui(openingHandMulliganLabel)}
                         onClick={() => {
@@ -3125,7 +3125,7 @@ function PriorityBar({
                         size="sm"
                         className="pass-priority-btn decision-main-button action-strip-pregame-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
                         data-local-action={localDecisionButton ? "true" : "false"}
-                        disabled={!canAct}
+                        disabled={!canAct || multiplayer?.submittingAction}
                         aria-disabled={peerWaitLocked || !canAct}
                         aria-label={ui(action.label)}
                         onClick={() => {
@@ -3359,7 +3359,7 @@ function PriorityBar({
                         className="pass-priority-btn decision-main-button action-strip-advance-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
                         style={decisionButtonStyle}
                         data-local-action={localDecisionButton ? "true" : "false"}
-                        disabled={!canAct}
+                        disabled={!canAct || multiplayer?.submittingAction}
                         aria-disabled={peerWaitLocked || !canAct}
                         aria-label={ui(peerWaiting ? "Waiting for peers" : passCurrentLabel)}
                         onPointerDown={peerWaiting ? undefined : triggerPassActionFromPointer}
@@ -3698,7 +3698,7 @@ function CombatBar({ anchor = null, inline = false, replaceMiddleControls = fals
   const rawPeerWait = multiplayer?.peerWait || null;
   const peerWait = useDeferredPeerWait(rawPeerWait);
   const peerWaiting = Boolean(peerWait);
-  const peerWaitLocked = Boolean(rawPeerWait);
+  const peerWaitLocked = Boolean(rawPeerWait || multiplayer?.submittingAction);
   const handleCombatActionChange = useCallback(
     (nextAction) => {
       setCombatActionState({ key: decisionIdentity, action: nextAction || null });

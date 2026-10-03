@@ -18,6 +18,24 @@ use std::io;
 /// Default implementations provide deterministic minimal behavior, and
 /// implementors can override the relevant methods for interactive or AI control.
 pub trait DecisionMaker {
+    /// Optional exact output selected by the server's mana plan. The effect
+    /// validates this against its current choice domain before adding mana.
+    fn planned_mana_output(&mut self, _game: &GameState, _choice: &crate::mana_payment::ManaProductionChoice)
+        -> Result<Option<Vec<crate::mana::ManaSymbol>>, String> {
+        Ok(None)
+    }
+
+    /// Optional server-selected record for one original mana production event.
+    /// Returning a record does not authorize it: event execution validates every
+    /// rewrite against current replacement candidates before committing it.
+    fn take_mana_replacement_witness(
+        &mut self,
+        _game: &GameState,
+        _event: &crate::events::ManaAddedEvent,
+    ) -> Result<Option<crate::mana_payment::ManaReplacementWitness>, String> {
+        Ok(None)
+    }
+
     /// Called when a player auto-passes (had no actions available).
     /// Default implementation does nothing.
     fn on_auto_pass(&mut self, _game: &GameState, _player: PlayerId) {}
@@ -307,6 +325,16 @@ impl DecisionRouter {
 }
 
 impl DecisionMaker for DecisionRouter {
+    fn planned_mana_output(&mut self, game: &GameState, choice: &crate::mana_payment::ManaProductionChoice)
+        -> Result<Option<Vec<crate::mana::ManaSymbol>>, String> {
+        self.dm_for(game, choice.player).planned_mana_output(game, choice)
+    }
+
+    fn take_mana_replacement_witness(&mut self, game: &GameState, event: &crate::events::ManaAddedEvent)
+        -> Result<Option<crate::mana_payment::ManaReplacementWitness>, String> {
+        self.dm_for(game, event.player).take_mana_replacement_witness(game, event)
+    }
+
     fn on_auto_pass(&mut self, game: &GameState, player: PlayerId) {
         self.dm_for(game, player).on_auto_pass(game, player);
     }
@@ -477,6 +505,16 @@ impl DecisionMaker for DecisionRouter {
 /// Blanket impl so `&mut D` implements `DecisionMaker` where `D: DecisionMaker`.
 /// This allows passing `&mut dyn DecisionMaker` to functions expecting `impl DecisionMaker`.
 impl<D: DecisionMaker + ?Sized> DecisionMaker for &mut D {
+    fn planned_mana_output(&mut self, game: &GameState, choice: &crate::mana_payment::ManaProductionChoice)
+        -> Result<Option<Vec<crate::mana::ManaSymbol>>, String> {
+        (**self).planned_mana_output(game, choice)
+    }
+
+    fn take_mana_replacement_witness(&mut self, game: &GameState, event: &crate::events::ManaAddedEvent)
+        -> Result<Option<crate::mana_payment::ManaReplacementWitness>, String> {
+        (**self).take_mana_replacement_witness(game, event)
+    }
+
     fn on_auto_pass(&mut self, game: &GameState, player: PlayerId) {
         (*self).on_auto_pass(game, player)
     }
@@ -631,6 +669,16 @@ impl<D: DecisionMaker + ?Sized> DecisionMaker for &mut D {
 /// Blanket impl so `Box<D>` implements `DecisionMaker` where `D: DecisionMaker`.
 /// This allows using `Box<dyn DecisionMaker>` in struct fields.
 impl<D: DecisionMaker + ?Sized> DecisionMaker for Box<D> {
+    fn planned_mana_output(&mut self, game: &GameState, choice: &crate::mana_payment::ManaProductionChoice)
+        -> Result<Option<Vec<crate::mana::ManaSymbol>>, String> {
+        (**self).planned_mana_output(game, choice)
+    }
+
+    fn take_mana_replacement_witness(&mut self, game: &GameState, event: &crate::events::ManaAddedEvent)
+        -> Result<Option<crate::mana_payment::ManaReplacementWitness>, String> {
+        (**self).take_mana_replacement_witness(game, event)
+    }
+
     fn on_auto_pass(&mut self, game: &GameState, player: PlayerId) {
         (**self).on_auto_pass(game, player)
     }

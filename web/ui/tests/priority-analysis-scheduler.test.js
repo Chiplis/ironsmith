@@ -1,98 +1,200 @@
-import test from "node:test";
-import assert from "node:assert/strict";
-import { createPriorityAnalysisScheduler, mergePriorityAnalysis } from "../src/lib/priority-analysis-scheduler.js";
-import { priorityHoldReason } from "../src/lib/priority-automation.js";
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createIsolatedPriorityAnalysis } from '../src/lib/isolated-priority-analysis.js';
+import { mergePriorityAnalysis } from '../src/lib/priority-analysis-scheduler.js';
+import { priorityHoldReason } from '../src/lib/priority-automation.js';
 
-test('diagnostics announce an overdue slice budget before its blocking work', async () => {
-  let clock = 0, tick;
-  const stages = [], slices = [], kinds = [];
-  const engine = { beginPriorityAnalysis: () => true,
-    stepPriorityAnalysis(_token, budget) {
-      assert.equal(stages.at(-1).phase, 'priority_analysis');
-      assert.equal(stages.at(-1).details.nodeBudget, budget);
-      clock += 43_000;
-      return { kind: 'priority', analysis_complete: true };
-    }, lastAnalysisSliceNodes: () => 12 };
-  const scheduler = createPriorityAnalysisScheduler({ game: () => engine, busy: () => false,
-    now: () => clock, schedule: fn => { tick = fn; return 1; }, cancel() {},
-    enqueue: async (fn, metadata) => { kinds.push(metadata.kind); return fn(); },
-    publish() {}, fail: assert.fail,
-    reportStage: (phase, details) => stages.push({ phase, details }), reportSlice: slice => slices.push(slice),
-    runSetup: (metadata, fn) => { kinds.push(metadata.kind); return fn(); } });
-  scheduler.start(); clock = 2001; tick(); await Promise.resolve();
-  assert.deepEqual(kinds, ['priority_analysis_setup', 'priority_analysis']);
-  assert.equal(stages[0].details.nodeBudget, 4096);
-  assert.equal(stages.at(-1).details.spentNodes, 12);
-  assert.equal(slices[0].elapsedMs, 43_000); assert.equal(slices[0].overdue, true);
-});
-
-function harness() {
-  const timers = new Map(); let id = 0; const events = []; let busy = false; let steps = 0;
-  const engine = { beginPriorityAnalysis: () => true, cancelPriorityAnalysis() {},
-    stepPriorityAnalysis: () => ++steps === 1 ? null : { kind: "priority", player: 0, analysis_complete: true, actions: [] } };
-  const scheduler = createPriorityAnalysisScheduler({ game: () => engine, busy: () => busy,
-    enqueue: (fn) => Promise.resolve().then(fn), publish: (value) => events.push(value), fail: assert.fail,
-    schedule: (fn) => { timers.set(++id, fn); return id; }, cancel: (key) => timers.delete(key) });
-  const tick = async () => { const [key, fn] = timers.entries().next().value; timers.delete(key); fn(); await new Promise(setImmediate); };
-  return { scheduler, events, timers, tick, busy: (value) => { busy = value; }, steps: () => steps };
+function harness({ capture = async () => ({ checkpoint: { perspective: 0 } }), deliver } = {}) {
+  const timers = new Map(), workers = [], events = [], errors = [];
+  let id = 0, identity = 'A';
+  const scheduler = createIsolatedPriorityAnalysis({ capture, deliver, identity: () => identity,
+    pending: () => true, publish: value => events.push(value), fail: value => errors.push(value),
+    schedule: (fn, delay = 0) => { timers.set(++id, { fn, delay }); return id; }, cancel: key => timers.delete(key),
+    createWorker() {
+      const worker = { sent: [], terminated: false,
+        postMessage(message) { this.sent.push(message); }, terminate() { this.terminated = true; },
+        reply(data) { this.onmessage({ data: { token: this.sent[0].token, ...data } }); } };
+      workers.push(worker); return worker;
+    } });
+  return { scheduler, workers, events, errors, timers, identity: value => { identity = value; },
+    async tick() { const [key, { fn }] = [...timers].sort((a, b) => a[1].delay - b[1].delay)[0]; timers.delete(key); await fn(); } };
 }
+test('analysis executes only in the separate worker, publishes partial menus, and captures once', async () => {
+  let captures = 0;
+  const h = harness({ capture: async () => { captures++; return {}; } });
+  h.scheduler.start(7); await h.tick();
+  h.scheduler.start(7); assert.equal(h.timers.size, 0); assert.equal(captures, 1);
+  const w = h.workers[0];
+  w.reply({ type: 'priority', sequence: 1, decision: { player: 0, analysis_complete: false, actions: ['land'] } });
+  assert.deepEqual(h.events[0].decision.actions, ['land']);
+  w.reply({ type: 'priority', sequence: 2, decision: { player: 0, analysis_complete: true, actions: ['land', 'warp'] } });
+  assert.equal(h.events[1].revision, 7); assert.equal(h.events[1].sequence, 2);
+});
+test('cancellation rejects late results immediately and reuses a cooperative worker', async () => {
+  const h = harness(); h.scheduler.start(); await h.tick(); const old = h.workers[0];
+  h.scheduler.invalidate(); assert.equal(old.terminated, false);
+  assert.equal(old.sent.at(-1).type, 'cancel');
+  old.reply({ type: 'priority', decision: { analysis_complete: true } }); assert.equal(h.events.length, 0);
+  h.identity('B'); h.scheduler.start(); await h.tick();
+  assert.equal(h.workers.length, 1);
+  old.reply({ type: 'available', cancelSerial: old.sent.findLast(m => m.type === 'cancel').serial });
+  old.reply({ type: 'priority', token: old.sent.at(-1).token, decision: { analysis_complete: false } });
+  assert.equal(h.events[0].revision, 1);
+});
+test('invalidation during snapshot capture cannot launch an obsolete worker', async () => {
+  let resolve;
+  const h = harness({ capture: () => new Promise(done => { resolve = done; }) });
+  h.scheduler.start(); const tick = h.tick(); h.scheduler.invalidate(); resolve({}); await tick;
+  assert.equal(h.workers.length, 0);
+});
+test('a rejected command can resume with the unchanged visible revision', async () => {
+  const h = harness(); h.scheduler.start(0); await h.tick(); h.scheduler.invalidate();
+  h.scheduler.start(0); await h.tick();
+  h.workers[0].reply({ type: 'priority', token: h.workers[0].sent.at(-1).token, decision: {} }); assert.equal(h.events[0].revision, 0);
+});
+test('inspector work is isolated, deduplicated and cancelled without holding the command queue', async () => {
+  const h = harness(); const a = h.scheduler.inspector(1n, 2);
+  assert.equal(h.scheduler.inspector(1n, 2), a); await h.tick();
+  const w = h.workers[0], request = w.sent.find(m => m.type === 'inspector');
+  w.reply({ type: 'inspector', id: request.id, result: ['ability'] });
+  assert.deepEqual(await a, ['ability']); assert.equal(h.scheduler.inspector(1n, 2), a);
+  const b = h.scheduler.inspector(2n, 0); h.scheduler.invalidate(); assert.deepEqual(await b, []);
+});
+test('analysis errors do not mark unchecked cards illegal or strand inspector callers', async () => {
+  const h = harness(); const request = h.scheduler.inspector(1n, 0); await h.tick();
+  h.workers[0].reply({ type: 'error', error: 'bad checkpoint' });
+  assert.equal(h.events.length, 0); assert.equal(h.errors.length, 1); assert.deepEqual(await request, []);
+});
+test('partial actions merge monotonically and stale revisions and players are rejected', () => {
+  const state = { __priority_revision: 3, decision: { kind: 'priority', player: 0, analysis_complete: false } };
+  const first = { revision: 3, sequence: 1, decision: { kind: 'priority', player: 0, analysis_complete: false, actions: ['land'] } };
+  const partial = mergePriorityAnalysis(state, first); assert.deepEqual(partial.decision.actions, ['land']);
+  assert.equal(mergePriorityAnalysis(partial, first), partial);
+  assert.equal(mergePriorityAnalysis(partial, { ...first, revision: 2 }), partial);
+  assert.equal(mergePriorityAnalysis(partial, { ...first, decision: { player: 1 } }), partial);
+  const final = mergePriorityAnalysis(partial, { ...first, sequence: 2, decision: { ...first.decision, analysis_complete: true, actions: ['land', 'warp'] } });
+  assert.equal(final.decision.analysis_complete, true); assert.equal(mergePriorityAnalysis(final, first), final);
+});
+test('pending menus cannot prove that auto-pass if no actions is safe', () => {
+  const args = { autoPassEnabled: true, decision: { kind: 'priority', player: 0, analysis_complete: false, actions: [{ kind: 'pass_priority' }] }, currentState: { perspective: 0 } };
+  assert.equal(priorityHoldReason({ ...args, holdRule: 'if_actions' }), 'checking playable actions');
+  assert.equal(priorityHoldReason({ ...args, holdRule: 'never' }), null);
+});
 
-test("analysis yields between slices and gives queued commands precedence", async () => {
-  const h = harness(); h.scheduler.start(); h.busy(true); await h.tick(); assert.equal(h.steps(), 0);
-  h.busy(false); await h.tick(); assert.equal(h.steps(), 1); assert.equal(h.events.length, 0);
-  await h.tick(); assert.equal(h.events.length, 1); assert.equal(h.timers.size, 0);
-});
-test("a pass cancels the old search before another slice can publish", async () => {
-  const h = harness(); h.scheduler.start(); await h.tick(); h.scheduler.invalidate();
-  assert.equal(h.timers.size, 0); assert.equal(h.events.length, 0);
-  h.scheduler.start(); await h.tick(); assert.equal(h.events[0].revision, 1);
-});
-test("stale results and different players cannot enrich the current menu", () => {
-  const state = { __priority_revision: 3, decision: { kind: "priority", player: 0, analysis_complete: false } };
-  assert.equal(mergePriorityAnalysis(state, { revision: 2, decision: { player: 0 } }), state);
-  assert.equal(mergePriorityAnalysis(state, { revision: 3, decision: { player: 1 } }), state);
-  const decision = { kind: "priority", player: 0, analysis_complete: true };
-  assert.equal(mergePriorityAnalysis(state, { revision: 3, decision }).decision, decision);
-});
-test("pending menus cannot prove hold-if-actions may pass; unconditional yield remains possible", () => {
-  const args = { autoPassEnabled: true, decision: { kind: "priority", player: 0, analysis_complete: false, actions: [{ kind: "pass_priority" }] }, currentState: { perspective: 0 } };
-  assert.equal(priorityHoldReason({ ...args, holdRule: "if_actions" }), "checking playable actions");
-  assert.equal(priorityHoldReason({ ...args, holdRule: "never" }), null);
-  assert.equal(priorityHoldReason({ ...args, holdRule: "if_actions", decision: { ...args.decision, analysis_complete: true } }), null);
+test('incremental publication preserves undo controls owned by the live runtime', () => {
+  const undo = { action_ref: { kind: 'untap_land', stable_id: 22 }, index: 1 };
+  const state = { __priority_revision: 4, decision: { kind: 'priority', player: 0, analysis_complete: false, actions: [undo] } };
+  const analysis = { revision: 4, sequence: 1, decision: { kind: 'priority', player: 0, analysis_complete: false, actions: [{ action_ref: { kind: 'play_land', land_id: 3 }, index: 0 }] } };
+  const next = mergePriorityAnalysis(state, analysis);
+  assert.deepEqual(next.decision.actions[1].action_ref, undo.action_ref);
+  assert.equal(mergePriorityAnalysis(next, analysis), next);
 });
 
-test("a cancelled job can resume for an unchanged visible snapshot after a rejected command", async () => {
-  const h = harness(); h.scheduler.start(); await h.tick(); h.scheduler.invalidate();
-  h.scheduler.start(0); await h.tick(); assert.equal(h.events[0].revision, 0);
+test('restarting an unchanged visible revision never resets publication ordering', async () => {
+  const h = harness(); h.scheduler.start(0); await h.tick();
+  h.workers[0].reply({ type: 'priority', sequence: 50, decision: {} });
+  h.scheduler.invalidate(); h.scheduler.start(0); await h.tick();
+  h.workers[0].reply({ type: 'priority', token: h.workers[0].sent.at(-1).token, sequence: 1, decision: {} });
+  assert.ok(h.events[1].sequence > h.events[0].sequence);
+  assert.equal(h.events[1].revision, h.events[0].revision);
 });
 
-test("inspector slices share scheduling, deduplicate requests, and cancel without blocking commands", async () => {
-  const timers = new Map(); let id = 0; let busy = false; let steps = 0;
-  const engine = { beginPriorityAnalysis: () => false, cancelPriorityAnalysis() {},
-    beginInspectorAnalysis() {}, stepInspectorAnalysis() { steps++; return null; } };
-  const scheduler = createPriorityAnalysisScheduler({ game: () => engine, busy: () => busy,
-    enqueue: fn => Promise.resolve().then(fn), publish: assert.fail, fail: assert.fail,
-    schedule: fn => { timers.set(++id, fn); return id; }, cancel: key => timers.delete(key) });
-  const tick = async () => { const [key, fn] = timers.entries().next().value; timers.delete(key); fn(); await new Promise(setImmediate); };
-  const preview = scheduler.inspector(1n, 2);
-  assert.equal(scheduler.inspector(1n, 2), preview);
-  busy = true; await tick(); assert.equal(steps, 0);
-  busy = false; await tick(); assert.equal(steps, 1);
-  scheduler.invalidate(); assert.deepEqual(await preview, []);
-  assert.equal(timers.size, 0);
+test('publication waits until the command queue leaves a temporary branch, then rechecks staleness', async () => {
+  const deliveries = [];
+  const h = harness({ deliver: fn => deliveries.push(fn) });
+  h.scheduler.start(); await h.tick();
+  h.identity('temporary verification branch');
+  h.workers[0].reply({ type: 'priority', decision: { analysis_complete: false } });
+  assert.equal(h.events.length, 0);
+  h.identity('A'); deliveries.shift()(); assert.equal(h.events.length, 1);
+  h.workers[0].reply({ type: 'priority', decision: { analysis_complete: true } });
+  h.scheduler.invalidate(); deliveries.shift()(); assert.equal(h.events.length, 1);
 });
 
-test("completed inspector results are reused until game invalidation", async () => {
-  let callback; let steps = 0;
-  const result = [{ mana_payment_available: false }];
-  const engine = { beginPriorityAnalysis: () => false, cancelPriorityAnalysis() {},
-    beginInspectorAnalysis() {}, stepInspectorAnalysis() { steps++; return result; } };
-  const scheduler = createPriorityAnalysisScheduler({ game: () => engine, busy: () => false,
-    enqueue: fn => Promise.resolve().then(fn), publish: assert.fail, fail: assert.fail,
-    schedule: fn => { callback = fn; return 1; }, cancel() {} });
-  const first = scheduler.inspector(1n, 2); callback();
-  assert.deepEqual(await first, result);
-  assert.deepEqual(await scheduler.inspector(1n, 2), result); assert.equal(steps, 1);
-  scheduler.invalidate(); const next = scheduler.inspector(1n, 2); callback();
-  assert.deepEqual(await next, result); assert.equal(steps, 2);
+test('a fresh base snapshot of the same revision can restore the latest partial menu', () => {
+  const base = { __priority_revision: 3, decision: { kind: 'priority', player: 0, analysis_complete: false, actions: [] } };
+  const analysis = { revision: 3, sequence: 4, decision: { ...base.decision, actions: ['land'] } };
+  const enriched = mergePriorityAnalysis(base, analysis);
+  const refreshed = { ...enriched, decision: base.decision };
+  assert.deepEqual(mergePriorityAnalysis(refreshed, analysis).decision.actions, ['land']);
+});
+
+
+test('idle and cooperative busy workers survive invalidation, while dispose frees them', async () => {
+  const h = harness(); h.scheduler.start(); await h.tick();
+  const worker = h.workers[0];
+  worker.reply({ type: 'idle' });
+  h.scheduler.invalidate(); assert.equal(worker.terminated, false);
+  h.identity('B'); h.scheduler.start(); await h.tick();
+  assert.equal(h.workers.length, 1);
+  const token = worker.sent.at(-1).token;
+  worker.reply({ type: 'priority', decision: {} }); // old token
+  assert.equal(h.events.length, 0);
+  worker.reply({ type: 'idle', token });
+  const request = h.scheduler.inspector(1n, 0);
+  h.scheduler.invalidate(); assert.equal(worker.terminated, false);
+  assert.equal(worker.sent.at(-1).type, 'cancel');
+  assert.deepEqual(await request, []);
+  h.scheduler.start(); await h.tick();
+  worker.reply({ type: 'available', cancelSerial: worker.sent.findLast(m => m.type === 'cancel').serial });
+  worker.reply({ type: 'idle', token: worker.sent.at(-1).token });
+  h.scheduler.dispose(); assert.equal(worker.terminated, true);
+  assert.equal(h.timers.size, 0);
+});
+
+test('an idle notification queued before an inspector request cannot suppress cancellation', async () => {
+  const deliveries = [];
+  const h = harness({ deliver: fn => deliveries.push(fn) });
+  h.scheduler.start(); await h.tick();
+  const worker = h.workers[0];
+  worker.reply({ type: 'idle' });
+  const request = h.scheduler.inspector(8n, 0);
+  deliveries.shift()();
+  h.scheduler.invalidate();
+  assert.equal(worker.sent.at(-1).type, 'cancel');
+  assert.deepEqual(await request, []);
+});
+
+
+test('a stuck synchronous search is terminated and restarted after the cancellation deadline', async () => {
+  const h = harness(); h.scheduler.start(7); await h.tick();
+  const stuck = h.workers[0];
+  stuck.reply({ type: 'phase', phase: 'search' });
+  h.scheduler.invalidate(); h.identity('B'); h.scheduler.start(8); await h.tick();
+  assert.equal(stuck.terminated, false);
+  assert.equal([...h.timers.values()][0].delay, 100);
+  await h.tick(); // Cancellation deadline, no safe-boundary acknowledgement.
+  assert.equal(stuck.terminated, true);
+  await h.tick();
+  h.workers[1].reply({ type: 'priority', decision: {} });
+  assert.equal(h.events[0].revision, 8);
+  stuck.reply({ type: 'priority', decision: {} });
+  assert.equal(h.events.length, 1);
+});
+
+test('initializing workers get time to retain their registry and acknowledge obsolete work', async () => {
+  const h = harness(); h.scheduler.start(); await h.tick();
+  const worker = h.workers[0];
+  h.scheduler.invalidate(); h.identity('B'); h.scheduler.start(); await h.tick();
+  assert.equal([...h.timers.values()][0].delay, 5000);
+  worker.reply({ type: 'available', cancelSerial: worker.sent.findLast(m => m.type === 'cancel').serial }); // Old token is deliberately accepted.
+  assert.equal(h.timers.size, 0);
+  assert.equal(worker.terminated, false);
+  worker.reply({ type: 'priority', token: worker.sent.at(-1).token, decision: {} });
+  assert.equal(h.events.length, 1);
+});
+
+
+test('an acknowledgement sent before a newer cancellation cannot disarm its deadline', async () => {
+  const h = harness(); h.scheduler.start(); await h.tick();
+  const worker = h.workers[0];
+  worker.reply({ type: 'phase', phase: 'search' });
+  h.scheduler.invalidate();
+  const firstSerial = worker.sent.at(-1).serial;
+  h.scheduler.start(); await h.tick();
+  h.scheduler.invalidate();
+  worker.reply({ type: 'available', cancelSerial: firstSerial });
+  assert.equal(h.timers.size, 1);
+  await h.tick();
+  assert.equal(worker.terminated, true);
 });

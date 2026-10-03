@@ -823,6 +823,16 @@ fn lowercase_first_ascii(text: &str) -> String {
 }
 
 impl StaticAbilityKind for RuleRestriction {
+    fn may_generate_continuous_effects(&self) -> bool {
+        // Keep unreviewed and conditional restrictions conservative for the
+        // mana dependency classifier. These unconditional derived limits do
+        // not change characteristics or mana-source eligibility.
+        self.condition.is_some()
+            || !std::iter::once(&self.restriction).chain(&self.additional_restrictions).all(|restriction| {
+                matches!(restriction, Restriction::AdditionalLandPlays(_, _) | Restriction::NoMaximumHandSize(_))
+            })
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::RuleRestriction
     }

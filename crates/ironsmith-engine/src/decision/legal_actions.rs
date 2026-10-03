@@ -2,32 +2,70 @@ use crate::grant_registry::grant_usage_limit_allows;
 use super::*;
 use crate::ability::ActivatedAbilityRuntimeExt as _;
 
+#[derive(Clone, Copy)]
+enum ActionScope { All, Globals, Source(ObjectId) }
 thread_local! {
-    static REQUESTED_ACTION_SOURCE: std::cell::Cell<Option<ObjectId>> = const { std::cell::Cell::new(None) };
+    static REQUESTED_ACTION_SOURCE: std::cell::Cell<ActionScope> = const { std::cell::Cell::new(ActionScope::All) };
 }
-
 fn requested_action_source(id: ObjectId) -> bool {
-    REQUESTED_ACTION_SOURCE.with(|source| source.get().is_none_or(|requested| requested == id))
+    REQUESTED_ACTION_SOURCE.with(|source| match source.get() {
+        ActionScope::All => true,
+        ActionScope::Globals => false,
+        ActionScope::Source(requested) => requested == id,
+    })
+}
+fn requested_global_actions() -> bool {
+    REQUESTED_ACTION_SOURCE.with(|source| !matches!(source.get(), ActionScope::Source(_)))
 }
 
-/// Enumerate routes for one selected source using the same legality code as
-/// the full menu. The game itself is never filtered: other objects still
-/// contribute mana, restrictions, targets, continuous effects and grants.
+/// Check one source without filtering the game: other objects still provide
+/// mana, targets, restrictions and grants. Global actions have their own job.
 pub fn compute_actions_for_source(
-    game: &GameState,
-    player: PlayerId,
-    source: Option<ObjectId>,
+    game: &GameState, player: PlayerId, source: Option<ObjectId>,
 ) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
-    struct Restore(Option<ObjectId>);
+    compute_scoped_actions(game, player, source.map_or(ActionScope::All, ActionScope::Source))
+}
+pub fn compute_global_actions(
+    game: &GameState, player: PlayerId,
+) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
+    compute_scoped_actions(game, player, ActionScope::Globals)
+}
+fn compute_scoped_actions(
+    game: &GameState, player: PlayerId, scope: ActionScope,
+) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
+    struct Restore(ActionScope);
     impl Drop for Restore {
-        fn drop(&mut self) {
-            REQUESTED_ACTION_SOURCE.with(|slot| slot.set(self.0));
-        }
+        fn drop(&mut self) { REQUESTED_ACTION_SOURCE.with(|slot| slot.set(self.0)); }
     }
-    let _restore = Restore(REQUESTED_ACTION_SOURCE.with(|slot| slot.replace(source)));
+    let _restore = Restore(REQUESTED_ACTION_SOURCE.with(|slot| slot.replace(scope)));
     let mut actions = compute_legal_actions(game, player)?;
     actions.extend(compute_commander_actions(game, player));
     Ok(actions)
+}
+
+/// Stable presentation order. Lands in hand go first so spell affordability
+/// cannot withhold a cheap land play. Include every zone used by enumeration.
+pub fn priority_analysis_sources(game: &GameState, player: PlayerId) -> Vec<ObjectId> {
+    let mut sources = Vec::new();
+    if let Some(p) = game.player(player) {
+        sources.extend(p.hand.iter().copied().filter(|id| game.object(*id).is_some_and(|o| o.is_land())));
+        sources.extend(p.hand.iter().copied());
+    }
+    sources.extend(game.battlefield.iter().copied());
+    if let Some(p) = game.player(player) { sources.extend(p.graveyard.iter().copied()); }
+    // Land-play grants can refer to cards in another player's public zones.
+    for p in game.players.iter() { sources.extend(p.graveyard.iter().copied()); }
+    sources.extend(game.exile.iter().copied());
+    // Grants can refer to another player's top card, so include all tops.
+    for p in game.players.iter() { sources.extend(p.library.last().copied()); }
+    sources.extend(game.command_zone.iter().copied());
+    if let Some(p) = game.player(player) { sources.extend(p.sideboard.iter().copied()); }
+    for p in game.players.iter() { sources.extend(p.sideboard.iter().copied()); }
+    sources.extend(game.face_up_planar_objects().iter().copied());
+    sources.extend(game.stack.iter().map(|entry| entry.object_id));
+    let mut seen = std::collections::HashSet::new();
+    sources.retain(|id| seen.insert(*id));
+    sources
 }
 
 pub fn legal_action_source(action: &LegalAction) -> Option<ObjectId> {
@@ -509,6 +547,7 @@ fn append_granted_land_play_actions_from_public_zone(
     view: &DerivedGameView<'_>,
 ) {
     crate::object_query::for_each_candidate_id_for_zone(game, Some(zone), |card_id| {
+        if !requested_action_source(card_id) { return; }
         let Some(card) = game.object(card_id) else {
             return;
         };
@@ -649,6 +688,7 @@ fn add_land_actions(
         && let Some(card_id) = game
             .player(player)
             .and_then(|player_obj| player_obj.library.last().copied())
+        && requested_action_source(card_id)
         && let Some(card) = game.object(card_id)
         && (card.is_land()
             || crate::decision::linked_other_face_land_definition(game, card).is_some())
@@ -1221,6 +1261,7 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Result<Vec<L
     perf.controlled_battlefield_ms = controlled_battlefield_started_at.elapsed_ms();
 
     actions.push(LegalAction::PassPriority);
+    if requested_global_actions() {
     for delayed_trigger_index in 0..game.effect_store.delayed_triggers.len() {
         let action = crate::special_actions::SpecialAction::PayDelayedTrigger {
             delayed_trigger_index,
@@ -1254,6 +1295,7 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Result<Vec<L
         if crate::special_actions::can_perform_check(&action, game, player).is_ok() {
             actions.push(LegalAction::SpecialAction(action));
         }
+    }
     }
 
     let lands_started_at = PerfTimer::start();

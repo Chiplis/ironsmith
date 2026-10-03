@@ -1,5 +1,7 @@
 // All interface copy for en. Preserve interpolation placeholders.
 export const messages = {
+  "Payment options could not be loaded.": "Payment options could not be loaded.",
+  "Loading payment options…": "Loading payment options…",
   "Replacement": "Replacement",
   "Replacement effects": "Replacement effects",
   "Replacement order": "Replacement order",
@@ -800,11 +802,13 @@ export const ui = {
   "Hand (": "Hand (",
   "Haste": "Haste",
   "Summoning sickness": "Summoning sickness",
-  "Power/Toughness modified by an active aura": "Power/Toughness modified by an active aura",
+  "Power/Toughness modified by an effect": "Power/Toughness modified by an effect",
   "Health {0}": "Health {0}",
   "Hexproof": "Hexproof",
   "Hidden": "Hidden",
   "Hide system events": "Hide system events",
+  "Auto-pass": "Auto-pass",
+  "Automatically resolve whenever you have priority and the stack is not empty.": "Automatically resolve whenever you have priority and the stack is not empty.",
   "Hold priority": "Hold priority",
   "Hold priority until turned off, including after casting your own spells. Enable before casting.": "Hold priority until turned off, including after casting your own spells. Enable before casting.",
   "Holding priority": "Holding priority",

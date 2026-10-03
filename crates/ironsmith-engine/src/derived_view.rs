@@ -693,10 +693,21 @@ impl<'a> DerivedGameView<'a> {
             // the calculated characteristics `GameState::current_ability`
             // dispatches against: legal actions advertise indexes into this
             // vector and priority dispatch resolves them against that one.
-            // Mirror the no-effect tail of the layer calculation — level
-            // grants, intrinsic basic-land mana abilities, then dropping
-            // inactive static abilities — so the two index spaces agree.
+            // Mirror the no-effect ability-layer input: intrinsic basic-land
+            // mana precedes level grants, then inactive static abilities are
+            // dropped, so advertised and dispatch index spaces agree.
             let mut abilities = object.abilities_vec();
+            for ability in crate::continuous::intrinsic_basic_land_mana_abilities(
+                &object.card_types,
+                &object.subtypes,
+            ) {
+                if !abilities.contains(&ability) {
+                    abilities.push(ability);
+                }
+            }
+            for (_, ability) in crate::continuous::intrinsic_starting_counter_abilities(&object.card_types) {
+                abilities.push(ability);
+            }
             for level_ability in object.level_granted_abilities() {
                 for granted in level_ability.source_granted_inline_abilities() {
                     let candidate = match &granted.kind {
@@ -711,14 +722,6 @@ impl<'a> DerivedGameView<'a> {
                     &mut abilities,
                     crate::ability::Ability::static_ability(level_ability),
                 );
-            }
-            for ability in crate::continuous::intrinsic_basic_land_mana_abilities(
-                &object.card_types,
-                &object.subtypes,
-            ) {
-                if !abilities.contains(&ability) {
-                    abilities.push(ability);
-                }
             }
             abilities.retain(|ability| match &ability.kind {
                 AbilityKind::Static(static_ability) => {

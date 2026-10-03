@@ -1,4 +1,4 @@
-import {inpaintGlyphMask} from './card-frame-font-mask.js';
+import {inpaintGlyphMask, paperField, isPanelInk, protectBottomOrnaments, rulesPaperMask, findFlavorSeparator, statsGlyphMask} from './card-frame-font-mask.js';
 // Keep the original printing everywhere except its editable text regions.
 // The caller supplies the existing glyph-removal/inpainting implementation.
 function* maskSourceFrameSteps(scan, boxes, stats, statsPanel, panels = {}) {
@@ -39,11 +39,43 @@ function* maskSourceFrameSteps(scan, boxes, stats, statsPanel, panels = {}) {
     for(let y=0;y<r.height;y++)patch.set(data.subarray(((r.y+y)*width+r.x)*4,((r.y+y)*width+r.x+r.width)*4),y*r.width*4);
     const excludedPixels=new Uint8Array(r.width*r.height);
     if(r.name==='rules'&&statsPanel)for(let y=0;y<r.height;y++)for(let x=0;x<r.width;x++)if(inStats(r.x+x,r.y+y))excludedPixels[y*r.width+x]=1;
-    let clean=yield {kind:'panel',scan:{data:patch,width:r.width,height:r.height},options:{removeSeparators:r.name==='rules',minimumCleanFraction:.02,section:r.name,excludedPixels,protectBottomBoundary:r.name==='rules'}};
+    const mirroredRules=r.name==='rules';
+    const separator=mirroredRules&&(panels.hasFlavor||Number.isFinite(panels.flavorTop))?findFlavorSeparator({data:patch,width:r.width,height:r.height},panels.flavorTop-r.y):null;
+    const cleanHeight=mirroredRules?Math.min(Math.ceil(r.height/2),separator===null?r.height:Math.max(12,separator-4)):r.height;
+    // Recover only the upper paper, then reflect it vertically. A flavor
+    // separator in the lower half must never become an inpainting donor.
+    const panelScan={data:patch.slice(0,r.width*cleanHeight*4),width:r.width,height:cleanHeight};
+    let clean=yield r.name==='stats'?{kind:'inpaint',scan:panelScan,mask:statsGlyphMask(panelScan)}:{kind:'panel',scan:panelScan,options:{removeSeparators:mirroredRules,minimumCleanFraction:.02,section:r.name,excludedPixels:excludedPixels.slice(0,r.width*cleanHeight),protectBottomBoundary:false}};
     if (!clean) return null;
     if (clean.quality?.safe === false) {
       panels.onUnsafeMask?.({section:r.name,quality:clean.quality});
       return null;
+    }
+    if(mirroredRules) {
+      const upperScan={data:patch.slice(0,r.width*cleanHeight*4),width:r.width,height:cleanHeight};
+      const paperMask=rulesPaperMask(upperScan,clean.mask,excludedPixels);
+      clean=yield {kind:'inpaint',scan:upperScan,mask:paperMask};
+      const fullScan={data:patch,width:r.width,height:r.height},paperAt=paperField(fullScan);
+      const ink=new Uint8Array(r.width*r.height);
+      for(let p=0;p<ink.length;p++)ink[p]=!excludedPixels[p]&&isPanelInk(patch[p*4],patch[p*4+1],patch[p*4+2],paperAt(p%r.width,Math.floor(p/r.width)))?1:0;
+      const ornaments=protectBottomOrnaments(ink,r.width,r.height);
+      const mirrored=patch.slice(),mirroredMask=new Uint8Array(ink.length);
+      // The upper crop can include the panel's inner bevel. Keep that bevel
+      // in place, but stop reflection at the paper just below its edge band
+      // so it cannot create a second horizontal rule along the bottom.
+      const donorInset=Math.min(8,cleanHeight-1);
+      for(let y=0;y<r.height;y++)for(let x=0;x<r.width;x++) {
+        const span=cleanHeight-1-donorInset;
+        const phase=span?(y-cleanHeight+1)%(span*2):0;
+        const reflected=separator===null?Math.max(donorInset,r.height-1-y):cleanHeight-1-Math.min(phase,span*2-phase);
+        const p=y*r.width+x,source=(y<cleanHeight?y:reflected)*r.width+x;
+        if(excludedPixels[p]||ornaments[p]||excludedPixels[source])continue;
+        if(y>=cleanHeight||clean.mask[source]) {
+          mirrored.set(clean.data.subarray(source*4,source*4+4),p*4);
+          mirroredMask[p]=1;
+        }
+      }
+      clean={...clean,data:mirrored,mask:mirroredMask,width:r.width,height:r.height};
     }
     if(r.name==='title'&&!panels.fontGuided) {
       const donors=[];

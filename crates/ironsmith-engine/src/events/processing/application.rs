@@ -13,15 +13,15 @@ pub(super) fn apply_trait_replacement(
     game: &mut GameState,
     event: Event,
     effect: &ReplacementEffect,
-) -> TraitApplyResult {
-    match &effect.replacement {
+) -> Result<TraitApplyResult, crate::effects::ExecutionError> {
+    Ok(match &effect.replacement {
         ReplacementAction::Prevent => TraitApplyResult::Prevented,
 
         ReplacementAction::PreventDamage => {
             let Some(damage) =
                 crate::events::downcast_event::<crate::events::DamageEvent>(event.inner()).cloned()
             else {
-                return TraitApplyResult::Unchanged(event);
+                return Ok(TraitApplyResult::Unchanged(event));
             };
             if damage.is_unpreventable || damage.amount == 0 {
                 TraitApplyResult::Unchanged(event)
@@ -35,7 +35,7 @@ pub(super) fn apply_trait_replacement(
             let Some(damage) =
                 crate::events::downcast_event::<crate::events::DamageEvent>(event.inner()).cloned()
             else {
-                return TraitApplyResult::Unchanged(event);
+                return Ok(TraitApplyResult::Unchanged(event));
             };
             let prevented = if damage.is_unpreventable {
                 0
@@ -54,7 +54,7 @@ pub(super) fn apply_trait_replacement(
             let Some(damage) =
                 crate::events::downcast_event::<crate::events::DamageEvent>(event.inner()).cloned()
             else {
-                return TraitApplyResult::Unchanged(event);
+                return Ok(TraitApplyResult::Unchanged(event));
             };
             let prevented = if damage.is_unpreventable {
                 0
@@ -75,13 +75,13 @@ pub(super) fn apply_trait_replacement(
             let Some(damage) =
                 crate::events::downcast_event::<crate::events::DamageEvent>(event.inner()).cloned()
             else {
-                return TraitApplyResult::Unchanged(event);
+                return Ok(TraitApplyResult::Unchanged(event));
             };
             let counters_to_remove = damage
                 .amount
                 .min(game.counter_count(effect.source, *counter_type));
             if counters_to_remove == 0 {
-                return TraitApplyResult::Unchanged(event);
+                return Ok(TraitApplyResult::Unchanged(event));
             }
             let prevented = if damage.is_unpreventable {
                 0
@@ -118,7 +118,7 @@ pub(super) fn apply_trait_replacement(
             let Some(damage) =
                 crate::events::downcast_event::<crate::events::DamageEvent>(event.inner()).cloned()
             else {
-                return TraitApplyResult::Unchanged(event);
+                return Ok(TraitApplyResult::Unchanged(event));
             };
             let prevented = if damage.is_unpreventable {
                 0
@@ -154,7 +154,7 @@ pub(super) fn apply_trait_replacement(
             let Some(damage) =
                 crate::events::downcast_event::<crate::events::DamageEvent>(event.inner()).cloned()
             else {
-                return TraitApplyResult::Unchanged(event);
+                return Ok(TraitApplyResult::Unchanged(event));
             };
             let result = game.effect_store.prevention_effects.apply_chosen_shield(
                 *shield_id,
@@ -200,7 +200,7 @@ pub(super) fn apply_trait_replacement(
                 let covers = token_groups_covered(game, effect, create_tokens);
                 let modified =
                     create_tokens.scaled_groups(covers, |count| count.saturating_mul(2));
-                return TraitApplyResult::Modified(event.rewrap(modified));
+                return Ok(TraitApplyResult::Modified(event.rewrap(modified)));
             }
             let modified = apply_trait_double(&event);
             match modified {
@@ -324,6 +324,36 @@ pub(super) fn apply_trait_replacement(
             }
         }
 
+        ReplacementAction::EnterWithIntrinsicStartingCounters(rule) => {
+            let etb = crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner())
+                .cloned().or_else(|| {
+                    crate::events::downcast_event::<crate::events::ZoneChangeEvent>(event.inner())
+                        .filter(|zone| zone.to == Zone::Battlefield && zone.objects.len() == 1)
+                        .map(|zone| crate::events::EnterBattlefieldEvent::new(zone.objects[0], zone.from))
+                }).ok_or_else(|| crate::effects::ExecutionError::InternalError(
+                    "intrinsic starting counters require a single-object battlefield entry proposal".into()))?;
+            let prospective = etb.try_prospective_game_state(game)
+                .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?
+                .ok_or(crate::effects::ExecutionError::ObjectNotFound(etb.object))?;
+            let chars = prospective.calculated_characteristics(etb.object)
+                .ok_or(crate::effects::ExecutionError::ObjectNotFound(etb.object))?;
+            let count = match rule {
+                ironsmith_core::IntrinsicStartingCounter::Loyalty => chars.loyalty,
+                ironsmith_core::IntrinsicStartingCounter::Defense => chars.defense,
+            }.unwrap_or(0);
+            let counter = rule.counter_type();
+            let prior = etb.enters_with_counters.iter().filter(|(kind, _)| *kind == counter)
+                .try_fold(0_u32, |total, (_, value)| total.checked_add(*value))
+                .ok_or_else(|| crate::effects::ExecutionError::InternalError("entry counter contribution overflow".into()))?;
+            prior.checked_add(count).ok_or_else(|| crate::effects::ExecutionError::InternalError(
+                "intrinsic entry counter contribution overflow".into()))?;
+            match apply_trait_enter_with_counters(&event, counter, count, &[], &[]) {
+                Some(modified) => TraitApplyResult::Modified(modified),
+                None => return Err(crate::effects::ExecutionError::InternalError(
+                    "intrinsic starting-counter action could not modify its entry proposal".into())),
+            }
+        }
+
         ReplacementAction::EnterWithCounters {
             counter_type,
             count,
@@ -406,7 +436,7 @@ pub(super) fn apply_trait_replacement(
 
         ReplacementAction::EnterWithCounterChoice { counter_types, .. } => {
             if counter_types.is_empty() {
-                return TraitApplyResult::Unchanged(event);
+                return Ok(TraitApplyResult::Unchanged(event));
             }
             TraitApplyResult::NeedsInteraction {
                 decision_ctx: super::counter_choice_context(
@@ -427,7 +457,7 @@ pub(super) fn apply_trait_replacement(
         ReplacementAction::Tribute { count, .. } => {
             let opponents = super::tribute_opponents(game, effect.controller);
             if opponents.is_empty() {
-                return TraitApplyResult::Unchanged(event);
+                return Ok(TraitApplyResult::Unchanged(event));
             };
             let decision_ctx = if opponents.len() == 1 {
                 super::tribute_boolean_context(game, effect.source, opponents[0], *count)
@@ -466,11 +496,11 @@ pub(super) fn apply_trait_replacement(
             use crate::events::{DamageEvent, DamageTarget, downcast_event};
 
             if *amount == 0 {
-                return TraitApplyResult::Unchanged(event);
+                return Ok(TraitApplyResult::Unchanged(event));
             }
 
             let Some(damage) = downcast_event::<DamageEvent>(event.inner()) else {
-                return TraitApplyResult::Unchanged(event);
+                return Ok(TraitApplyResult::Unchanged(event));
             };
             let Some(new_target) = resolve_trait_redirect_target(
                 game,
@@ -479,7 +509,7 @@ pub(super) fn apply_trait_replacement(
                 which,
                 effect.controller,
             ) else {
-                return TraitApplyResult::Unchanged(event);
+                return Ok(TraitApplyResult::Unchanged(event));
             };
             let redirected_target = match new_target {
                 Target::Player(player_id) => DamageTarget::Player(player_id),
@@ -488,7 +518,7 @@ pub(super) fn apply_trait_replacement(
 
             let redirected_amount = (*amount).min(damage.amount);
             if redirected_amount == 0 {
-                return TraitApplyResult::Unchanged(event);
+                return Ok(TraitApplyResult::Unchanged(event));
             }
 
             let mut modified = damage
@@ -505,7 +535,7 @@ pub(super) fn apply_trait_replacement(
             let Some(etb) = crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(
                 event.inner(),
             ) else {
-                return TraitApplyResult::Unchanged(event);
+                return Ok(TraitApplyResult::Unchanged(event));
             };
             let mut pending = etb.clone();
             pending.pending_program = Some((program.clone(), effect.controller));
@@ -528,7 +558,7 @@ pub(super) fn apply_trait_replacement(
             use crate::events::{CreateTokensEvent, downcast_event};
 
             let Some(create_tokens) = downcast_event::<CreateTokensEvent>(event.inner()) else {
-                return TraitApplyResult::Unchanged(event);
+                return Ok(TraitApplyResult::Unchanged(event));
             };
             // "that many": every covered token, including ones an earlier
             // replacement added (CR 616.1).
@@ -552,7 +582,7 @@ pub(super) fn apply_trait_replacement(
             use crate::events::{CreateTokensEvent, downcast_event};
 
             let Some(create_tokens) = downcast_event::<CreateTokensEvent>(event.inner()) else {
-                return TraitApplyResult::Unchanged(event);
+                return Ok(TraitApplyResult::Unchanged(event));
             };
             // Each token group of one of `kinds` (the original token or one an
             // earlier replacement added, CR 616.1) becomes one of each kind.
@@ -597,10 +627,10 @@ pub(super) fn apply_trait_replacement(
             use crate::events::{DrawEvent, downcast_event};
 
             let Some(draw) = downcast_event::<DrawEvent>(event.inner()) else {
-                return TraitApplyResult::Unchanged(event);
+                return Ok(TraitApplyResult::Unchanged(event));
             };
             if draw.player == effect.controller {
-                return TraitApplyResult::Unchanged(event);
+                return Ok(TraitApplyResult::Unchanged(event));
             }
             TraitApplyResult::Modified(event.rewrap(draw.with_player(effect.controller)))
         }
@@ -609,13 +639,10 @@ pub(super) fn apply_trait_replacement(
             use crate::events::{ManaAddedEvent, downcast_event};
 
             let Some(mana_event) = downcast_event::<ManaAddedEvent>(event.inner()) else {
-                return TraitApplyResult::Unchanged(event);
+                return Ok(TraitApplyResult::Unchanged(event));
             };
-            let replacement_mana = if mana.len() == 1 {
-                vec![mana[0]; mana_event.mana.len()]
-            } else {
-                mana.clone()
-            };
+            let replacement_mana = crate::events::mana::ManaTransformation::ReplaceTypes(mana)
+                .apply(&mana_event.mana);
             TraitApplyResult::Modified(event.rewrap(mana_event.clone().with_mana(replacement_mana)))
         }
 
@@ -623,9 +650,11 @@ pub(super) fn apply_trait_replacement(
             use crate::events::{ManaAddedEvent, downcast_event};
 
             let Some(mana_event) = downcast_event::<ManaAddedEvent>(event.inner()) else {
-                return TraitApplyResult::Unchanged(event);
+                return Ok(TraitApplyResult::Unchanged(event));
             };
-            TraitApplyResult::Modified(event.rewrap(mana_event.clone().with_mana(mana.clone())))
+            TraitApplyResult::Modified(event.rewrap(mana_event.clone().with_mana(
+                crate::events::mana::ManaTransformation::ReplaceExact(mana).apply(&mana_event.mana)
+            )))
         }
 
         ReplacementAction::EnterAsCopy {
@@ -844,10 +873,10 @@ pub(super) fn apply_trait_replacement(
             let (matching_cards, hidden_hand_choice) =
                 hand_replacement_choice_candidates(game, controller, filter);
             if matching_cards.is_empty() && !hidden_hand_choice {
-                return match apply_trait_enter_tapped(&event) {
+                return Ok(match apply_trait_enter_tapped(&event) {
                     Some(modified) => TraitApplyResult::Modified(modified),
                     None => TraitApplyResult::Unchanged(event),
-                };
+                });
             }
             let candidates: Vec<crate::decisions::context::SelectableObject> = matching_cards
                 .iter()
@@ -941,7 +970,7 @@ pub(super) fn apply_trait_replacement(
                 destinations: Some(destinations.clone()),
             }
         }
-    }
+    })
 }
 
 fn queue_damage_prevented_event(
@@ -1276,6 +1305,20 @@ fn apply_trait_modification(
             };
             Some(event.rewrap(modified))
         }
+        EventKind::RemoveCounters => {
+            let removal = downcast_event::<crate::events::RemoveCountersEvent>(event.inner())?;
+            let count = match modification {
+                EventModification::Multiply(factor) => removal.count.saturating_mul(*factor),
+                EventModification::Add(delta) => removal.count.saturating_add_signed(*delta),
+                EventModification::Subtract(delta) => removal.count.saturating_sub(*delta),
+                EventModification::SetTo(value) => *value,
+                EventModification::SetToAtLeast(value) => {
+                    removal.count.max(resolve_value_for_replacement(value, game, effect.source))
+                }
+                EventModification::ReduceToZero => 0,
+            };
+            Some(event.rewrap(removal.with_count(count)))
+        }
         EventKind::CreateTokens => {
             let create_tokens = downcast_event::<CreateTokensEvent>(event.inner())?;
             let modified = match modification {
@@ -1321,10 +1364,8 @@ fn apply_trait_modification(
             let EventModification::Multiply(factor) = modification else {
                 return None;
             };
-            let mut mana = Vec::with_capacity(mana_event.mana.len() * (*factor as usize).max(1));
-            for _ in 0..*factor {
-                mana.extend(mana_event.mana.iter().cloned());
-            }
+            let mana = crate::events::mana::ManaTransformation::Multiply(*factor)
+                .apply(&mana_event.mana);
             Some(event.rewrap(mana_event.clone().with_mana(mana)))
         }
         EventKind::Draw => {
@@ -1758,7 +1799,7 @@ fn apply_trait_redirect(
     let selected = match which {
         RedirectWhich::First => redirectable.first(),
         RedirectWhich::Index(idx) => redirectable.get(*idx),
-        RedirectWhich::ByDescription(desc) => redirectable.iter().find(|t| t.description == *desc),
+        RedirectWhich::ByDescription(desc) => redirectable.iter().find(|t| t.description == desc.as_str()),
     }?;
     let new_event_box = event
         .inner()
@@ -1777,7 +1818,7 @@ fn resolve_trait_redirect_target(
     let selected = match which {
         RedirectWhich::First => redirectable.first(),
         RedirectWhich::Index(idx) => redirectable.get(*idx),
-        RedirectWhich::ByDescription(desc) => redirectable.iter().find(|t| t.description == *desc),
+        RedirectWhich::ByDescription(desc) => redirectable.iter().find(|t| t.description == desc.as_str()),
     }?;
 
     let new_target = match redirect_target {

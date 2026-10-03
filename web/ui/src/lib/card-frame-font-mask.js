@@ -184,7 +184,9 @@ export function inpaintGlyphMask({data,width,height},mask) {
   }
   for(let p=0;p<mask.length;p++)if(mask[p])pending.push(p);
   const neighbors=p=>{const x=p%width,y=Math.floor(p/width),ns=[];if(x)ns.push(p-1);if(x<width-1)ns.push(p+1);if(y)ns.push(p-width);if(y<height-1)ns.push(p+width);return ns;};
-  for(let pass=0;pass<40;pass++) {
+  // A dense rules line can leave a hole wider than forty pixels after its
+  // outlines are included. Propagate far enough to reach every masked pixel.
+  for(let pass=0;pass<width+height;pass++) {
     const updates=[];
     for(const p of pending)if(!known[p]) {
       const ns=neighbors(p).filter(n=>known[n]);
@@ -269,6 +271,90 @@ export function expandGlyphMask(accepted,width,height,protectedPixels,radius=3) 
     }
   }
   return mask;
+}
+
+// Paper used as a mirrored rules background needs a stricter cleanup than
+// ordinary glyph recognition. Include faint outlines and letters clipped by
+// the half-box boundary, which cannot match a complete font template.
+export function rulesPaperMask(scan, glyphMask, excludedPixels) {
+  const {data,width,height}=scan,paperAt=paperField(scan);
+  const ink=new Uint8Array(width*height),protectedPixels=new Uint8Array(ink.length);
+  for(let p=0;p<ink.length;p++) {
+    const x=p%width,y=Math.floor(p/width);
+    protectedPixels[p]=excludedPixels?.[p]||x<3||x>=width-3||y<8?1:0;
+    const light=(data[p*4]+data[p*4+1]+data[p*4+2])/3;
+    ink[p]=!protectedPixels[p]&&(glyphMask[p]||Math.abs(light-paperAt(x,y))>24)?1:0;
+  }
+  return expandGlyphMask(ink,width,height,protectedPixels,4);
+}
+
+// The registered P/T crop already bounds the lettering. Contrast is enough
+// here, including an italic slash or a digit absent from our font templates.
+// Border-connected contrast belongs to the badge bevel, not its contents.
+export function statsGlyphMask(scan) {
+  const {data,width,height}=scan,paperAt=paperField(scan);
+  const ink=new Uint8Array(width*height),seen=new Uint8Array(ink.length);
+  const accepted=new Uint8Array(ink.length),protectedPixels=new Uint8Array(ink.length);
+  for(let p=0;p<ink.length;p++) {
+    const light=(data[p*4]+data[p*4+1]+data[p*4+2])/3;
+    ink[p]=Math.abs(light-paperAt(p%width,Math.floor(p/width)))>35?1:0;
+  }
+  for(let seed=0;seed<ink.length;seed++)if(ink[seed]&&!seen[seed]) {
+    const pending=[seed],points=[];seen[seed]=1;let edge=false;
+    while(pending.length) {
+      const p=pending.pop(),x=p%width,y=Math.floor(p/width);points.push(p);
+      edge ||= x===0||x===width-1||y===0||y===height-1;
+      for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++) {
+        const nx=x+dx,ny=y+dy,q=ny*width+nx;
+        if(nx>=0&&nx<width&&ny>=0&&ny<height&&ink[q]&&!seen[q]){seen[q]=1;pending.push(q);}
+      }
+    }
+    for(const p of points)(edge?protectedPixels:accepted)[p]=1;
+  }
+  // Keep the outer sampling margin intact even beside an accepted digit.
+  for(let p=0;p<ink.length;p++)if(p%width===0||p%width===width-1||p<width||p>=width*(height-1))protectedPixels[p]=1;
+  return expandGlyphMask(accepted,width,height,protectedPixels,2);
+}
+
+// The flavor registration bounds the search. Only inspect the blank gap
+// after the last substantial text band, rather than assuming a box midpoint.
+export function findFlavorSeparator(scan, flavorTop) {
+  const {data,width,height}=scan;
+  const registered=Number.isFinite(flavorTop);
+  if(registered&&(flavorTop<=12||flavorTop>=height))return null;
+  const limit=registered?Math.floor(flavorTop)-2:height-8;
+  const paperAt=paperField(scan),rows=[];
+  const light=(x,y)=>{const p=(y*width+x)*4;return (data[p]+data[p+1]+data[p+2])/3;};
+  for(let y=8;y<limit;y++) {
+    let count=0;
+    for(let x=8;x<width-8;x++)if(paperAt(x,y)-light(x,y)>45)count++;
+    if(count>=3&&count<width*.6)rows.push(y);
+  }
+  const bands=[];
+  let lastText=8,start=null,previous=null;
+  for(const y of [...rows,Infinity]) {
+    if(start!==null&&y>previous+2) {
+      if(previous-start>=3){lastText=previous;bands.push({top:start,bottom:previous});}
+      start=null;
+    }
+    if(start===null)start=y;
+    previous=y;
+  }
+  const candidates=[];
+  for(let y=registered?lastText+4:12;y<Math.min(height-3,limit);y++) {
+    // If the font match failed, require text on both sides of the line.
+    // The lower band supplies the estimated flavor start for this gap.
+    if(!registered&&!bands.some((b,i)=>i+1<bands.length&&y>b.bottom+3&&y<bands[i+1].top-3))continue;
+    let support=0,total=0;
+    for(let x=8;x<width-8;x++) {
+      const valley=Math.min(light(x,y-3),light(x,y+3))-light(x,y);
+      if(valley>4){support++;total+=valley;}
+    }
+    if(support>(width-16)*.45)candidates.push({y,score:total});
+  }
+  if(!candidates.length)return null;
+  const best=candidates.reduce((a,b)=>a.score>b.score?a:b);
+  return candidates.filter(c=>Math.abs(c.y-best.y)<=3).reduce((y,c)=>Math.min(y,c.y),best.y);
 }
 
 // Midtone material (notably gold name bars) can carry white lettering too.

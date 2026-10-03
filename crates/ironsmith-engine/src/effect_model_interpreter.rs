@@ -68,6 +68,17 @@ pub trait EffectModelInterpreterHooks<M: EffectModel> {
         spec: M::GrantSpec,
     ) -> Result<crate::grant::GrantSpec, Self::Error>;
 
+    /// Retain an executable model at every lowering boundary, including nested
+    /// effects. Services with a wire vocabulary override this; the engine never
+    /// infers a payload from debug text or a calculated characteristic.
+    fn retain_runtime_effect_model_hook(
+        &mut self,
+        _model: &M::Effect,
+        effect: Effect,
+    ) -> Result<Effect, Self::Error> {
+        Ok(effect)
+    }
+
     fn runtime_external_model_effect_hook(
         &mut self,
         _effect: &M::Effect,
@@ -190,6 +201,16 @@ where
 }
 
 pub fn interpret_effect_model<M, H>(effect: M::Effect, hooks: &mut H) -> Result<Effect, H::Error>
+where
+    M: EffectModel,
+    H: EffectModelInterpreterHooks<M>,
+{
+    let model = effect.clone();
+    let runtime = interpret_effect_model_inner::<M, H>(effect, hooks)?;
+    hooks.retain_runtime_effect_model_hook(&model, runtime)
+}
+
+fn interpret_effect_model_inner<M, H>(effect: M::Effect, hooks: &mut H) -> Result<Effect, H::Error>
 where
     M: EffectModel,
     H: EffectModelInterpreterHooks<M>,
@@ -327,6 +348,7 @@ where
             payload.count.clone(),
             payload.controller.clone(),
         );
+        converted.controller_target = payload.controller_target.clone();
         if payload.use_source_chosen_color {
             converted = converted.with_source_chosen_color();
         }

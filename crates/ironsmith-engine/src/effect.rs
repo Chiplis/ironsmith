@@ -1246,7 +1246,10 @@ impl RestrictionExt for Restriction {
                     .map(|player| player.id)
                     .collect();
                 for player_id in affected_players {
-                    if let Some(player) = game.player_mut(player_id) {
+                    // This is an output of restriction refresh, like the base
+                    // value reset in update_cant_effects, not a player input.
+                    // Using player_mut would invalidate the refresh itself.
+                    if let Some(player) = game.players.get_mut_for_derived_update().get_mut(player_id.index()) {
                         player.land_plays_per_turn =
                             player.land_plays_per_turn.saturating_add(*count);
                     }
@@ -1262,7 +1265,7 @@ impl RestrictionExt for Restriction {
                     .map(|player| player.id)
                     .collect();
                 for player_id in affected_players {
-                    if let Some(player) = game.player_mut(player_id) {
+                    if let Some(player) = game.players.get_mut_for_derived_update().get_mut(player_id.index()) {
                         player.max_hand_size = i32::MAX;
                     }
                 }
@@ -1829,12 +1832,26 @@ impl RestrictionExt for Restriction {
 ///
 /// Use the helper constructors (e.g., `Effect::draw()`, `Effect::damage()`) to
 /// create effects rather than constructing directly.
-#[derive(Debug)]
-pub struct Effect(pub Arc<dyn EffectExecutor>);
+pub struct Effect(pub Arc<dyn EffectExecutor>, Option<RetainedEffectModel>);
+
+/// The canonical executable model belongs to this exact immutable executor.
+/// A direct replacement of the public executor must invalidate its model.
+#[derive(Clone)]
+struct RetainedEffectModel {
+    executor: std::sync::Weak<dyn EffectExecutor>,
+    json: Arc<str>,
+}
+
+impl std::fmt::Debug for Effect {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Preserve the runtime debug surface; transport metadata is not rules text.
+        formatter.debug_tuple("Effect").field(&self.0).finish()
+    }
+}
 
 impl Clone for Effect {
     fn clone(&self) -> Self {
-        Effect(Arc::clone(&self.0))
+        Effect(Arc::clone(&self.0), self.1.clone())
     }
 }
 
@@ -1851,12 +1868,39 @@ impl PartialEq for Effect {
 impl Effect {
     /// Create a new effect from an EffectExecutor implementation.
     pub fn new<E: EffectExecutor + 'static>(executor: E) -> Self {
-        Effect(Arc::new(executor))
+        Effect(Arc::new(executor), None)
+    }
+
+    /// Retain the canonical model encoded by the compiler/artifact service.
+    /// This is not a display string and must never be reparsed as Oracle text.
+    /// The service owns validation and the versioned model vocabulary.
+    pub fn with_serialized_model(mut self, json: impl Into<Arc<str>>) -> Self {
+        self.1 = Some(RetainedEffectModel {
+            executor: Arc::downgrade(&self.0),
+            json: json.into(),
+        });
+        self
+    }
+
+    /// Return the retained model only while it describes this executor.
+    /// Native callbacks without a model require an explicit codec boundary.
+    pub fn serialized_model(&self) -> Option<&str> {
+        let model = self.1.as_ref()?;
+        let executor = model.executor.upgrade()?;
+        if !Arc::ptr_eq(&executor, &self.0) {
+            return None;
+        }
+        Some(&model.json)
     }
 
     /// Attempt to downcast this effect to a concrete executor type.
     pub fn downcast_ref<T: 'static>(&self) -> Option<&T> {
         (self.0.as_ref() as &dyn std::any::Any).downcast_ref::<T>()
+    }
+
+    /// Structured production semantics, when the executor supports compact evaluation.
+    pub fn mana_production(&self) -> Option<crate::mana_payment::program::ManaProduction<'_>> {
+        self.0.mana_production()
     }
 
     /// Return mana symbols this effect can produce for inference call sites.
@@ -1873,6 +1917,13 @@ impl Effect {
     pub fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
         self.0.visit_child_effects(visitor);
     }
+
+    /// Visit definitions owned by this immutable executor, preserving native
+    /// ability occurrence identities that canonical models cannot reconstruct.
+    pub fn visit_card_definitions(&self, visitor: &mut dyn FnMut(&crate::cards::CardDefinition)) {
+        self.0.visit_card_definitions(visitor);
+    }
+
 
     /// Return a transparent wrapper's inner effect, if this effect has one.
     pub fn transparent_child_effect(&self) -> Option<&Effect> {
@@ -5538,5 +5589,56 @@ mod replacement_instruction_predicate_contract_tests {
         assert!(EffectPredicate::Happened.evaluate_outcome(&outcome));
         let failed = outcome.with_execution_fact(ExecutionFact::Impossible);
         assert!(!EffectPredicate::Happened.evaluate_outcome(&failed));
+    }
+}
+
+#[cfg(test)]
+mod retained_effect_model_tests {
+    use super::*;
+
+    #[test]
+    fn retained_effect_model_survives_clone_without_changing_runtime_introspection() {
+        let effect = Effect::gain_life(3);
+        let before = format!("{effect:?}");
+        let encoded = effect.with_serialized_model("canonical executable envelope");
+        let cloned = encoded.clone();
+        assert_eq!(
+            encoded.serialized_model(),
+            Some("canonical executable envelope")
+        );
+        assert_eq!(cloned.serialized_model(), encoded.serialized_model());
+        assert_eq!(format!("{encoded:?}"), before);
+        assert!(
+            encoded
+                .downcast_ref::<crate::effects::GainLifeEffect>()
+                .is_some()
+        );
+        assert!(
+            cloned
+                .downcast_ref::<crate::effects::GainLifeEffect>()
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn retained_effect_model_cannot_describe_a_replaced_executor() {
+        let original = Effect::gain_life(3).with_serialized_model("original gain-life model");
+        let mut replaced = original.clone();
+        replaced.0 = Effect::draw(1).0;
+        assert_eq!(
+            replaced.serialized_model(),
+            None,
+            "retaining metadata cannot authorize restoration of an unrelated executor"
+        );
+        assert_eq!(
+            original.serialized_model(),
+            Some("original gain-life model"),
+            "replacing one clone cannot corrupt another"
+        );
+        assert_eq!(
+            Effect::draw(1).serialized_model(),
+            None,
+            "an unencoded native callback is not an empty successful model"
+        );
     }
 }

@@ -318,7 +318,7 @@ fn triggering_object_entered_transformed(
     {
         return false;
     }
-    let Some(current) = game.linked_face_definition_by_name_or_id(Some(&object.name), object.card)
+    let Some(current) = game.displayed_face_definition(object)
     else {
         return false;
     };

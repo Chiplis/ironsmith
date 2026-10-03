@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   describeDecisionCommandMismatch,
+  serializePriorityCommand,
   findPriorityActionForCommand,
   isDecisionCommandCompatible,
   priorityCommandForAction,
@@ -421,4 +422,30 @@ test('deferred priority menus route structured actions to engine validation with
   assert.equal(isDecisionCommandCompatible(decision, { type: 'priority_action', action_ref: { kind: 'begin_game' } }), false);
   assert.equal(isDecisionCommandCompatible(decision, { type: 'priority_action', action_ref: { kind: 'unknown' } }), false);
   assert.equal(isDecisionCommandCompatible(decision, { type: 'select_objects', object_ids: [121] }), false);
+});
+
+
+test("multiplayer serializes a confirmed land against a refreshed incomplete menu", () => {
+  const ref = { kind: "play_land", land_id: 42, back_face: false };
+  const decision = { kind: "priority", analysis_complete: false, actions: [
+    { index: 0, action_ref: { kind: "pass_priority" } },
+  ] };
+  const command = { type: "priority_action", action_index: 9, action_ref: ref };
+  assert.deepEqual(serializePriorityCommand(command, decision, new Map([[42, 75]])), {
+    type: "priority_action", action_ref: ref, object_id: 42, object_stable_id: 75,
+  });
+  assert.throws(() => serializePriorityCommand(command, { ...decision, analysis_complete: true }));
+  assert.throws(() => serializePriorityCommand(command, { kind: "targets" }));
+  assert.throws(() => serializePriorityCommand({ type: "priority_action", action_index: 9 }, decision));
+});
+
+test("deferred multiplayer serialization retains alternative casting and ability references", () => {
+  const decision = { kind: "priority", analysis_complete: false, actions: [] };
+  for (const ref of [
+    { kind: "cast_spell", spell_id: 42, from_zone: "hand", casting_method: { kind: "alternative", index: 1 } },
+    { kind: "activate_ability", source: 42, ability_index: 2 },
+    { kind: "special_action", action: { kind: "foretell", card_id: 42 } },
+  ]) assert.deepEqual(serializePriorityCommand({ type: "priority_action", action_ref: ref }, decision), {
+    type: "priority_action", action_ref: ref, object_id: 42,
+  });
 });

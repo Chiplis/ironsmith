@@ -61,12 +61,23 @@ use std::sync::Arc;
 ///
 /// This provides a convenient way to work with costs as values while
 /// maintaining the flexibility of trait objects.
-#[derive(Debug)]
-pub struct Cost(pub Arc<dyn CostPayer>);
+pub struct Cost(pub Arc<dyn CostPayer>, Option<Arc<RetainedCostModel>>);
+
+#[derive(Clone)]
+struct RetainedCostModel {
+    payer: std::sync::Weak<dyn CostPayer>,
+    model: ironsmith_core::Cost<crate::effect::Effect>,
+}
+
+impl std::fmt::Debug for Cost {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.debug_tuple("Cost").field(&self.0).finish()
+    }
+}
 
 impl Clone for Cost {
     fn clone(&self) -> Self {
-        Cost(Arc::clone(&self.0))
+        Cost(Arc::clone(&self.0), self.1.clone())
     }
 }
 
@@ -81,7 +92,26 @@ impl PartialEq for Cost {
 impl Cost {
     /// Create a new Cost from any CostPayer implementation.
     pub fn new<C: CostPayer + 'static>(payer: C) -> Self {
-        Cost(Arc::new(payer))
+        Cost(Arc::new(payer), None)
+    }
+
+    /// Return the complete lowered cost model while it still describes this
+    /// payer. Nested effects retain their own executable transport models.
+    pub fn compiled_model(&self) -> Option<&ironsmith_core::Cost<crate::effect::Effect>> {
+        let retained = self.1.as_ref()?;
+        let payer = retained.payer.upgrade()?;
+        if !Arc::ptr_eq(&payer, &self.0) {
+            return None;
+        }
+        Some(&retained.model)
+    }
+
+    fn with_model(mut self, model: ironsmith_core::Cost<crate::effect::Effect>) -> Self {
+        self.1 = Some(Arc::new(RetainedCostModel {
+            payer: Arc::downgrade(&self.0),
+            model,
+        }));
+        self
     }
 
     // ========================================================================
@@ -103,27 +133,38 @@ impl Cost {
     /// Create a life payment cost.
     pub fn life(amount: u32) -> Self {
         Self::effect(crate::effects::LoseLifeEffect::you(amount))
+            .with_model(ironsmith_core::Cost::Life(crate::effect::Value::from(amount)))
     }
 
     /// Create a mana cost.
     pub fn mana(cost: ManaCost) -> Self {
-        Self::new(ManaPaymentCost::new(cost))
+        let model = ironsmith_core::Cost::Mana(cost.clone());
+        let mut payment = Self::new(ManaPaymentCost::new(cost));
+        payment.1 = Some(Arc::new(RetainedCostModel {
+            payer: Arc::downgrade(&payment.0),
+            model,
+        }));
+        payment
     }
 
     /// Create a dynamic mana cost. These are resolved by total-cost payment
     /// helpers with an execution context before ordinary mana payment.
     pub fn dynamic_mana(cost: ironsmith_core::DynamicManaCost) -> Self {
-        Self::new(DynamicManaPaymentCost::new(cost))
+        let model = ironsmith_core::Cost::DynamicMana(cost.clone());
+        Self::new(DynamicManaPaymentCost::new(cost)).with_model(model)
     }
 
     /// Create a cost backed by an effect executor.
     pub fn effect<E: crate::effects::CostExecutableEffect + 'static>(effect: E) -> Self {
-        Self::new(CostEffect::new(effect))
+        let effect = crate::effect::Effect::new(effect);
+        let model = ironsmith_core::Cost::Effect(effect.clone());
+        Self::new(CostEffect { effect }).with_model(model)
     }
 
     /// Create a cost from an erased effect after validating cost execution support.
     pub fn try_effect(effect: crate::effect::Effect) -> Result<Self, String> {
-        CostEffect::try_new(effect).map(Self::new)
+        let model = ironsmith_core::Cost::Effect(effect.clone());
+        CostEffect::try_new(effect).map(|payer| Self::new(payer).with_model(model))
     }
 
     /// Convert a sequence of erased effects into a component-wise total cost.
@@ -166,9 +207,7 @@ impl Cost {
     /// Create a cost from an effect value after validating that the runtime effect
     /// explicitly opted into cost execution.
     pub(crate) fn validated_effect(effect: crate::effect::Effect) -> Self {
-        Self::new(
-            CostEffect::try_new(effect).expect("attempted to use a non-cost effect as a cost"),
-        )
+        Self::try_effect(effect).expect("attempted to use a non-cost effect as a cost")
     }
 
     /// Convert a runtime effect into a canonical cost component.
@@ -199,6 +238,16 @@ impl Cost {
 
     /// Interpret a shared core cost model into the runtime cost payer wrapper.
     pub fn from_model(model: ironsmith_core::Cost<crate::effect::Effect>) -> Result<Self, String> {
+        let retained = model.clone();
+        let mut cost = Self::from_model_inner(model)?;
+        cost.1 = Some(Arc::new(RetainedCostModel {
+            payer: Arc::downgrade(&cost.0),
+            model: retained,
+        }));
+        Ok(cost)
+    }
+
+    fn from_model_inner(model: ironsmith_core::Cost<crate::effect::Effect>) -> Result<Self, String> {
         fn fixed_u32(value: crate::effect::Value, context: &str) -> Result<u32, String> {
             match value {
                 crate::effect::Value::Fixed(amount) if amount >= 0 => Ok(amount as u32),
@@ -272,7 +321,8 @@ impl Cost {
 
     /// Create a sacrifice another permanent cost.
     pub fn sacrifice(filter: ObjectFilter) -> Self {
-        Self::validated_effect(crate::effect::Effect::sacrifice(filter, 1))
+        let model = ironsmith_core::Cost::Sacrifice(filter.clone());
+        Self::validated_effect(crate::effect::Effect::sacrifice(filter, 1)).with_model(model)
     }
 
     /// Create a discard cards cost.
@@ -282,6 +332,7 @@ impl Cost {
 
     /// Create a discard cards cost with one-or-more allowed card types.
     pub fn discard_types(count: u32, card_types: Vec<CardType>) -> Self {
+        let model = ironsmith_core::Cost::Discard { count, card_types: card_types.clone() };
         let card_filter = if card_types.is_empty() {
             None
         } else {
@@ -299,7 +350,7 @@ impl Cost {
                 card_filter,
             )
             .with_tag("discarded_cost"),
-        ))
+        )).with_model(model)
     }
 
     /// Create a discard hand cost.
@@ -310,6 +361,7 @@ impl Cost {
     /// Create a discard-this-card cost.
     pub fn discard_source() -> Self {
         Self::validated_effect(crate::effect::Effect::discard_source_as_cost())
+            .with_model(ironsmith_core::Cost::DiscardSource)
     }
 
     /// Create an exile self cost.
@@ -324,13 +376,14 @@ impl Cost {
 
     /// Create an exile-from-graveyard cost with one-or-more allowed card types.
     pub fn exile_from_graveyard_types(count: u32, card_types: Vec<CardType>) -> Self {
+        let model = ironsmith_core::Cost::ExileFromGraveyard { count, card_types: card_types.clone() };
         let mut filter = crate::filter::ObjectFilter::default()
             .in_zone(crate::zone::Zone::Graveyard)
             .owned_by(crate::target::PlayerFilter::You);
         filter.card_types = card_types;
         Self::validated_effect(crate::effect::Effect::exile_from_graveyard_as_cost(
             count, filter,
-        ))
+        )).with_model(model)
     }
 
     /// Create an exile from hand cost.
@@ -338,7 +391,7 @@ impl Cost {
         Self::validated_effect(crate::effect::Effect::exile_from_hand_as_cost(
             count,
             color_filter,
-        ))
+        )).with_model(ironsmith_core::Cost::ExileFromHand { count, color_filter })
     }
 
     /// Create a remove counters cost.
@@ -394,14 +447,18 @@ impl Cost {
         Self::validated_effect(crate::effect::Effect::remove_any_counters_from_source(
             counter_type,
             display_x,
-        ))
+        )).with_model(ironsmith_core::Cost::RemoveAnyCountersFromSource {
+            counter_type, display_x, remove_all: false,
+        })
     }
 
     /// Create a remove-all-counters-from-source cost.
     pub fn remove_all_counters_from_source(counter_type: Option<CounterType>) -> Self {
         Self::validated_effect(crate::effect::Effect::remove_all_counters_from_source(
             counter_type,
-        ))
+        )).with_model(ironsmith_core::Cost::RemoveAnyCountersFromSource {
+            counter_type, display_x: false, remove_all: true,
+        })
     }
 
     /// Create a return self to hand cost.
@@ -883,4 +940,41 @@ pub(crate) fn legal_discard_cost_cards_in_context(
         .into_iter()
         .filter(|id| !ctx.replacement.entry_reserved_objects.contains(id))
         .collect()
+}
+
+
+#[cfg(test)]
+mod retained_cost_model_tests {
+    use super::*;
+
+    #[test]
+    fn retained_cost_model_preserves_clone_and_rejects_replaced_payer() {
+        let cost = Cost::from_model(ironsmith_core::Cost::Tap).expect("tap model lowers");
+        let before = format!("{:?}", Cost::tap());
+        assert!(matches!(
+            cost.compiled_model(),
+            Some(ironsmith_core::Cost::Tap)
+        ));
+        assert_eq!(
+            format!("{cost:?}"),
+            before,
+            "transport data cannot change runtime introspection"
+        );
+        let mut changed = cost.clone();
+        assert!(matches!(
+            changed.compiled_model(),
+            Some(ironsmith_core::Cost::Tap)
+        ));
+        changed.0 = Cost::life(2).0;
+        assert!(
+            changed.compiled_model().is_none(),
+            "old tap model cannot restore a life payer"
+        );
+        assert!(matches!(
+            cost.compiled_model(),
+            Some(ironsmith_core::Cost::Tap)
+        ));
+        assert!(matches!(Cost::life(2).compiled_model(), Some(ironsmith_core::Cost::Life(crate::effect::Value::Fixed(2)))),
+            "standard native life payer retains exact semantic model");
+    }
 }

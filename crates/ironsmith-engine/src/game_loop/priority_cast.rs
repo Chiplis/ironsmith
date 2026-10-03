@@ -3352,6 +3352,10 @@ pub(super) fn continue_spell_next_cost_or_finalize(
         return begin_spell_mana_payment(game, trigger_queue, state, pending, decision_maker);
     }
     auto_pay_spell_tap_cost_steps(game, trigger_queue, &mut pending, decision_maker)?;
+    if decision_maker.awaiting_choice() {
+        state.pending_cast = Some(pending);
+        return Ok(GameProgress::Continue);
+    }
     pending.stage = spell_stage_after_targets(&pending);
     let option_count =
         usize::from(pending.mana_cost_to_pay.is_some()) + pending.remaining_cost_steps.len();
@@ -3935,6 +3939,22 @@ pub(super) fn auto_pay_spell_tap_cost_steps(
     pending: &mut PendingCast,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<(), GameLoopError> {
+    let checkpoint = (game.clone(), trigger_queue.clone(), pending.clone());
+    let result = auto_pay_spell_tap_cost_steps_inner(game, trigger_queue, pending, decision_maker);
+    if result.is_err() || decision_maker.awaiting_choice() {
+        game.restore_execution_checkpoint(checkpoint.0, result.is_ok() && decision_maker.awaiting_choice());
+        *trigger_queue = checkpoint.1;
+        *pending = checkpoint.2;
+    }
+    result
+}
+
+fn auto_pay_spell_tap_cost_steps_inner(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    pending: &mut PendingCast,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<(), GameLoopError> {
     loop {
         let Some(index) = pending.remaining_cost_steps.iter().position(|step| {
             matches!(
@@ -3956,12 +3976,9 @@ pub(super) fn auto_pay_spell_tap_cost_steps(
         cost_ctx.x_value = pending.x_value;
         cost_ctx.announced_targets = pending.chosen_targets.clone();
 
-        match cost.pay(game, &mut cost_ctx).map_err(|err| {
-            GameLoopError::InvalidState(format!(
-                "Failed to auto-pay spell tap cost {}: {err:?}",
-                describe_cost_component(&cost)
-            ))
-        })? {
+        let payment = cost.pay(game, &mut cost_ctx);
+        if cost_ctx.decision_maker.awaiting_choice() { return Ok(()); }
+        match payment.map_err(super::priority_mana::activation_cost_error)? {
             crate::costs::CostPaymentResult::Paid => {
                 record_immediate_cost_payment(&mut pending.payment_trace, &cost, pending.spell_id);
                 pending.tagged_objects = cost_ctx.tagged_objects;
@@ -6483,6 +6500,10 @@ pub(super) fn continue_activation(
                     &mut pending,
                     decision_maker,
                 )?;
+                if decision_maker.awaiting_choice() {
+                    state.pending_activation = Some(pending);
+                    return Ok(GameProgress::Continue);
+                }
                 let option_count = usize::from(pending.mana_cost_to_pay.is_some())
                     + pending.remaining_cost_steps.len();
                 if option_count == 0 {
@@ -6852,6 +6873,22 @@ pub(super) fn auto_pay_activation_tap_cost_steps(
     pending: &mut PendingActivation,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<(), GameLoopError> {
+    let checkpoint = (game.clone(), trigger_queue.clone(), pending.clone());
+    let result = auto_pay_activation_tap_cost_steps_inner(game, trigger_queue, pending, decision_maker);
+    if result.is_err() || decision_maker.awaiting_choice() {
+        game.restore_execution_checkpoint(checkpoint.0, result.is_ok() && decision_maker.awaiting_choice());
+        *trigger_queue = checkpoint.1;
+        *pending = checkpoint.2;
+    }
+    result
+}
+
+fn auto_pay_activation_tap_cost_steps_inner(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    pending: &mut PendingActivation,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<(), GameLoopError> {
     loop {
         let Some(index) = pending.remaining_cost_steps.iter().position(|step| {
             matches!(
@@ -6872,12 +6909,9 @@ pub(super) fn auto_pay_activation_tap_cost_steps(
         cost_ctx.tagged_objects = pending.tagged_objects.clone();
         cost_ctx.x_value = pending.x_value.and_then(|x| u32::try_from(x).ok());
 
-        match cost.pay(game, &mut cost_ctx).map_err(|err| {
-            GameLoopError::InvalidState(format!(
-                "Failed to auto-pay activation tap cost {}: {err:?}",
-                describe_cost_component(&cost)
-            ))
-        })? {
+        let payment = cost.pay(game, &mut cost_ctx);
+        if cost_ctx.decision_maker.awaiting_choice() { return Ok(()); }
+        match payment.map_err(super::priority_mana::activation_cost_error)? {
             crate::costs::CostPaymentResult::Paid => {
                 record_immediate_cost_payment(&mut pending.payment_trace, &cost, pending.source);
                 pending.tagged_objects = cost_ctx.tagged_objects;

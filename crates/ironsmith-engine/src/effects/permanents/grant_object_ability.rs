@@ -38,6 +38,10 @@ impl GrantObjectAbilityEffect {
 }
 
 impl EffectExecutor for GrantObjectAbilityEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+        crate::ability::visit_owned_effects(&self.ability, visitor);
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

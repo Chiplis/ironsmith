@@ -52,7 +52,7 @@ impl StaticAbilityKind for ControlAttachedPermanent {
                 source,
                 controller,
                 EffectTarget::AttachedTo(source),
-                Modification::ChangeController(controller),
+                Modification::ChangeControllerToEffectController,
             )
             .with_source_type(EffectSourceType::StaticAbility),
         ]

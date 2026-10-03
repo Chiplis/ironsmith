@@ -3264,8 +3264,7 @@ pub(super) fn test_dash_grants_haste_and_returns_to_hand_at_next_end_step() {
         from_zone: Zone::Hand,
         casting_method: CastingMethod::Alternative(0),
     });
-    apply_priority_response(&mut game, &mut trigger_queue, &mut state, &cast_response)
-        .expect("dash cast should succeed");
+    finish_temporary_alternative_cast(&mut game, &mut trigger_queue, &mut state, &cast_response);
     resolve_stack_entry(&mut game).expect("dash spell should resolve");
 
     let dashed_id = *game
@@ -3354,8 +3353,7 @@ pub(super) fn test_copied_blitz_creature_spell_schedules_blitz_delayed_triggers(
         from_zone: Zone::Hand,
         casting_method: CastingMethod::Alternative(0),
     });
-    apply_priority_response(&mut game, &mut trigger_queue, &mut state, &cast_response)
-        .expect("blitz cast should succeed");
+    finish_temporary_alternative_cast(&mut game, &mut trigger_queue, &mut state, &cast_response);
 
     let original_entry = game
         .stack
@@ -3378,9 +3376,17 @@ pub(super) fn test_copied_blitz_creature_spell_schedules_blitz_delayed_triggers(
 
     assert_eq!(
         game.effect_store.delayed_triggers.len(),
-        4,
-        "copy and original should each schedule dies-draw plus end-step sacrifice triggers"
+        2,
+        "copy and original each schedule an end-step sacrifice; death draw is an ordinary granted trigger"
     );
+    let draws = (0..2).map(|index| {
+        let card = CardBuilder::new(CardId::new(), format!("Blitz draw {index}"))
+            .card_types(vec![CardType::Artifact]).build();
+        let id = game.create_object_from_card(&card, alice, Zone::Library);
+        game.object(id).unwrap().stable_id
+    }).collect::<Vec<_>>();
+    let hand_before = game.player(alice).unwrap().hand.len();
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
 
     let end_step_event = TriggerEvent::new_with_provenance(
         crate::events::phase::BeginningOfEndStepEvent::new(game.turn.active_player),
@@ -3391,9 +3397,19 @@ pub(super) fn test_copied_blitz_creature_spell_schedules_blitz_delayed_triggers(
     }
     put_triggers_on_stack(&mut game, &mut trigger_queue)
         .expect("put blitz sacrifice triggers on stack");
-    while !game.stack_is_empty() {
-        resolve_stack_entry(&mut game).expect("resolve blitz sacrifice trigger");
+    for _ in 0..8 {
+        if game.stack_is_empty() { break; }
+        resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+            .expect("resolve blitz sacrifice/death draw trigger");
+        put_triggers_on_stack(&mut game, &mut trigger_queue)
+            .expect("publish actual granted death draw triggers");
     }
+    assert!(game.stack_is_empty(), "all sacrifice and death draw triggers resolve");
+    assert_eq!(game.player(alice).unwrap().hand.len(), hand_before + 2,
+        "copy and original each draw exactly once when sacrificed");
+    let hand = &game.player(alice).unwrap().hand;
+    assert!(draws.iter().all(|stable| hand.iter().any(|id| game.object(*id).unwrap().stable_id == *stable)),
+        "both original library cards arrive in hand with their physical identities");
 
     assert!(
         game.battlefield.iter().all(|&id| game
@@ -3451,4 +3467,81 @@ pub(super) fn create_howl_target_spell_on_stack(game: &mut GameState) -> ObjectI
     let spell_id = game.create_object_from_card(&bolt, alice, Zone::Stack);
     game.push_to_stack(StackEntry::new(spell_id, alice));
     spell_id
+}
+
+
+#[test]
+pub(super) fn retained_temporary_registration_alternative_resolution_replaces_expired_rider() {
+    use crate::cards::CardDefinitionBuilder;
+    use crate::mana::{ManaCost, ManaSymbol};
+    use crate::triggers::TriggerQueue;
+    for blitz in [false, true] {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+        let cost = ManaCost::from_pips(vec![vec![ManaSymbol::Red]]);
+        game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Red, 1);
+        let builder = CardDefinitionBuilder::new(CardId::new(), "Granted Alternative Recipient")
+            .mana_cost(cost.clone()).card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 1));
+        let mut definition = if blitz { builder.blitz(cost) } else { builder.dash(cost) }.build();
+        // The alternative method is retained, but the battlefield rider is
+        // supplied by the runtime rather than an intrinsic printed ability.
+        definition.abilities.clear();
+        let hand = game.create_object_from_definition(&definition, alice, Zone::Hand);
+        let mut state = PriorityLoopState::new(2);
+        let mut trigger_queue = TriggerQueue::new();
+        finish_temporary_alternative_cast(&mut game, &mut trigger_queue, &mut state,
+            &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+                spell_id: hand, from_zone: Zone::Hand, casting_method: CastingMethod::Alternative(0),
+            }));
+        let spell = game.stack.last().unwrap().object_id;
+        let store = &mut game.object_mut(spell).unwrap().temporary_static_ability_grants;
+        assert_eq!(store.len(), 1, "casting registers the conditional runtime rider");
+        let mut expired = store[0].clone();
+        expired.expires_end_of_turn = 0;
+        store.clear();
+        store.push(expired);
+        // Imported stack state can preserve expired registrations. Resolution
+        // must not let those registrations suppress the required live rider.
+        resolve_stack_entry(&mut game).expect("alternative spell resolves");
+        let permanent = *game.battlefield.iter().find(|&&id| game.object(id).unwrap().name == "Granted Alternative Recipient").unwrap();
+        assert!(game.current_has_static_ability_id(permanent, crate::static_abilities::StaticAbilityId::Haste), "resolved runtime rider grants haste, blitz={blitz}");
+        assert!(crate::rules::combat::can_attack(game.object(permanent).unwrap(), &game));
+    }
+}
+
+
+fn finish_temporary_alternative_cast(
+    game: &mut GameState,
+    queue: &mut TriggerQueue,
+    state: &mut PriorityLoopState,
+    response: &PriorityResponse,
+) {
+    use crate::decision::GameProgress;
+    use crate::decisions::context::DecisionContext;
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let mut progress = apply_priority_response_with_dm(game, queue, state, response, &mut dm)
+        .expect("alternative casting starts");
+    for _ in 0..16 {
+        if !game.stack_is_empty() { return; }
+        let response = match progress {
+            GameProgress::NeedsDecisionCtx(DecisionContext::ManaPayment(ctx)) =>
+                PriorityResponse::ManaPaymentPlan(crate::mana_payment::ManaPaymentResponse::Confirm {
+                    plan_id: ctx.plan.id, request_hash: ctx.plan.request_hash,
+                }),
+            GameProgress::NeedsDecisionCtx(DecisionContext::SelectOptions(ctx)) => {
+                assert!(ctx.description.to_ascii_lowercase().starts_with("choose the next cost to pay"));
+                PriorityResponse::NextCostChoice(ctx.options.iter().find(|option| option.legal)
+                    .expect("an actual cost remains payable").index)
+            }
+            other => panic!("unexpected alternative cast continuation: {other:?}"),
+        };
+        progress = apply_priority_response_with_dm(game, queue, state, &response, &mut dm)
+            .expect("alternative cost/payment continuation succeeds");
+    }
+    panic!("alternative casting did not reach the stack");
 }

@@ -1277,6 +1277,10 @@ impl StaticAbilityKind for LevelAbilities {
 pub struct NoMaximumHandSize;
 
 impl StaticAbilityKind for NoMaximumHandSize {
+    // These rule outputs are rebuilt by update_cant_effects, not by the
+    // continuous-effect generator.
+    fn may_generate_continuous_effects(&self) -> bool { false }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::NoMaximumHandSize
     }
@@ -1286,7 +1290,7 @@ impl StaticAbilityKind for NoMaximumHandSize {
     }
 
     fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
-        if let Some(player) = game.player_mut(controller) {
+        if let Some(player) = game.players.get_mut_for_derived_update().get_mut(controller.index()) {
             player.max_hand_size = i32::MAX;
         }
     }
@@ -1306,6 +1310,10 @@ impl SetMaximumHandSize {
 }
 
 impl StaticAbilityKind for SetMaximumHandSize {
+    // These rule outputs are rebuilt by update_cant_effects, not by the
+    // continuous-effect generator.
+    fn may_generate_continuous_effects(&self) -> bool { false }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::SetMaximumHandSize
     }
@@ -1324,7 +1332,7 @@ impl StaticAbilityKind for SetMaximumHandSize {
 
     fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
         for player_id in player_ids_for_filter(game, self.player.clone(), controller) {
-            if let Some(player) = game.player_mut(player_id) {
+            if let Some(player) = game.players.get_mut_for_derived_update().get_mut(player_id.index()) {
                 player.max_hand_size = self.amount as i32;
             }
         }
@@ -1345,6 +1353,10 @@ impl ReduceMaximumHandSize {
 }
 
 impl StaticAbilityKind for ReduceMaximumHandSize {
+    // These rule outputs are rebuilt by update_cant_effects, not by the
+    // continuous-effect generator.
+    fn may_generate_continuous_effects(&self) -> bool { false }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::ReduceMaximumHandSize
     }
@@ -1392,7 +1404,7 @@ impl StaticAbilityKind for ReduceMaximumHandSize {
 
         let reduction = self.amount as i32;
         for player_id in affected {
-            if let Some(player) = game.player_mut(player_id) {
+            if let Some(player) = game.players.get_mut_for_derived_update().get_mut(player_id.index()) {
                 player.max_hand_size = player.max_hand_size.saturating_sub(reduction);
             }
         }
@@ -1413,6 +1425,10 @@ impl IncreaseMaximumHandSize {
 }
 
 impl StaticAbilityKind for IncreaseMaximumHandSize {
+    // These rule outputs are rebuilt by update_cant_effects, not by the
+    // continuous-effect generator.
+    fn may_generate_continuous_effects(&self) -> bool { false }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::IncreaseMaximumHandSize
     }
@@ -1453,7 +1469,7 @@ impl StaticAbilityKind for IncreaseMaximumHandSize {
 
         let increase = self.amount as i32;
         for player_id in affected {
-            if let Some(player) = game.player_mut(player_id) {
+            if let Some(player) = game.players.get_mut_for_derived_update().get_mut(player_id.index()) {
                 player.max_hand_size = player.max_hand_size.saturating_add(increase);
             }
         }
@@ -1682,6 +1698,8 @@ impl MaximumHandSizeSevenMinusYourGraveyardCardTypes {
 }
 
 impl StaticAbilityKind for MaximumHandSizeSevenMinusYourGraveyardCardTypes {
+    fn may_generate_continuous_effects(&self) -> bool { false }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::MaximumHandSizeSevenMinusYourGraveyardCardTypes
     }
@@ -1708,7 +1726,7 @@ impl StaticAbilityKind for MaximumHandSizeSevenMinusYourGraveyardCardTypes {
         let max_hand_size = (7 - card_types).max(0);
         let affected = player_ids_for_filter(game, self.player.clone(), controller);
         for player_id in affected {
-            if let Some(player) = game.player_mut(player_id) {
+            if let Some(player) = game.players.get_mut_for_derived_update().get_mut(player_id.index()) {
                 player.max_hand_size = max_hand_size;
             }
         }
@@ -3622,6 +3640,16 @@ struct TappedForMinimumManaMatcher {
 }
 
 impl ReplacementMatcher for TappedForMinimumManaMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        kind == crate::events::EventKind::ManaAdded
+    }
+
+    fn mana_predicate(&self) -> Option<crate::events::mana::ManaEventPredicate<'_>> {
+        let mut predicate = self.inner.mana_predicate()?;
+        predicate.minimum_amount = predicate.minimum_amount.max(self.minimum_amount as usize);
+        Some(predicate)
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         self.inner.matches_prepared_event(event, ctx)
             && crate::events::downcast_event::<crate::events::ManaAddedEvent>(event)
@@ -4270,6 +4298,10 @@ impl SourceLineStaticGroup {
 }
 
 impl StaticAbilityKind for SourceLineStaticGroup {
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::SourceLineStaticGroup
     }

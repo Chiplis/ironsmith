@@ -65,6 +65,7 @@ const WORKER_METHODS = [
   "loadDemoDecks",
   "objectDetails",
   "inspectorActions",
+  "getPaymentActivationOptions",
   "beginPaymentAnalysis",
   "stepPaymentAnalysis",
   "cancelPaymentAnalysis",

@@ -999,7 +999,7 @@ fn order_triggers_for_controller(
     ordered
 }
 
-pub(super) fn is_triggered_mana_ability(game: &GameState, trigger: &TriggeredAbilityEntry) -> bool {
+pub(crate) fn is_triggered_mana_ability(game: &GameState, trigger: &TriggeredAbilityEntry) -> bool {
     if trigger.ability.choices.iter().any(ChooseSpec::is_target) {
         return false;
     }
@@ -1035,7 +1035,7 @@ pub(super) fn resolve_triggered_stack_entry_immediately(
     trigger_queue: &mut TriggerQueue,
     decision_maker: &mut dyn DecisionMaker,
     entry: StackEntry,
-) {
+) -> Result<(), GameLoopError> {
     // Mirror stack-resolution context as closely as possible, but without using the stack.
     let mut ctx = ExecutionContext::new(entry.object_id, entry.controller, decision_maker)
         .with_optional_costs_paid(entry.optional_costs_paid.clone())
@@ -1093,7 +1093,7 @@ pub(super) fn resolve_triggered_stack_entry_immediately(
     let (valid_targets, valid_target_assignments, all_targets_invalid) =
         validate_stack_entry_targets(game, &entry);
     if !entry.targets.is_empty() && all_targets_invalid {
-        return;
+        return Ok(());
     }
 
     if let Some(trigger_identity) = entry.trigger_identity {
@@ -1112,7 +1112,7 @@ pub(super) fn resolve_triggered_stack_entry_immediately(
             Some(&entry.optional_costs_paid),
         )
     {
-        return;
+        return Ok(());
     }
 
     ctx = ctx
@@ -1139,13 +1139,28 @@ pub(super) fn resolve_triggered_stack_entry_immediately(
         &valid_target_assignments,
     ) {
         Ok(events) => events,
-        Err(_) => return,
+        Err(error) => return Err(error),
     };
 
     for event in all_events {
         queue_triggers_from_event(game, trigger_queue, event, false);
     }
     drain_pending_trigger_events(game, trigger_queue);
+    Ok(())
+}
+
+/// Resolve immediate mana triggers for callers that keep their pending triggers
+/// in GameState rather than an external priority queue. Ordinary triggers remain
+/// pending and are transferred to the enclosing queue at its next drain.
+pub(crate) fn resolve_pending_mana_triggers(
+    game: &mut GameState,
+    decision_maker: &mut dyn DecisionMaker,
+) -> Result<(), GameLoopError> {
+    let mut queue = TriggerQueue::default();
+    drain_pending_trigger_events(game, &mut queue);
+    let result = resolve_triggered_mana_abilities_with_dm(game, &mut queue, decision_maker);
+    game.effect_store.pending_trigger_entries.extend(queue.take_all());
+    result
 }
 
 pub(super) fn resolve_triggered_mana_abilities_with_dm(
@@ -1206,7 +1221,7 @@ pub(super) fn resolve_triggered_mana_abilities_with_dm(
                     trigger_queue,
                     decision_maker,
                     entry,
-                );
+                )?;
                 let queued = trigger_queue
                     .entries
                     .iter()

@@ -13,6 +13,12 @@ use crate::target::ChooseSpec;
 pub type GrantAbilitiesTargetEffect = ironsmith_core::GrantAbilitiesTargetEffect<StaticAbility>;
 
 impl EffectExecutor for GrantAbilitiesTargetEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+        for ability in &self.abilities {
+            crate::ability::visit_static_owned_effects(ability, visitor);
+        }
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

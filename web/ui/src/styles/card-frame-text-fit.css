@@ -91,3 +91,18 @@
 .registered-card-frame__field .interactive-card-frame__rules[data-text-overflow="true"] {
   overflow: auto;
 }
+
+/* Fallback frames have no printed metrics: use the card's width without a
+   fixed pixel ceiling, then let the single-line fitter handle long labels. */
+.interactive-card-frame-stage:is([data-frame-mode="custom"], [data-frame-mode="placeholder"]) .interactive-card-frame__type {
+  font-size: 4.8cqw;
+}
+.interactive-card-frame-stage:is([data-frame-mode="custom"], [data-frame-mode="placeholder"]) .interactive-card-frame__art-stats {
+  font-size: 5.5cqw;
+  max-width: 35%;
+}
+.interactive-card-frame-stage:is([data-frame-mode="custom"], [data-frame-mode="placeholder"]) .interactive-card-frame__stats-text {
+  display: block;
+  width: 100%;
+  min-width: 0;
+}

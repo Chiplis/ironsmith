@@ -2461,13 +2461,14 @@ fn test_control_attached_permanent_changes_controller() {
     let controller = PlayerId::from_index(0);
     let effects = ability.generate_effects(source, controller, &game);
     assert_eq!(effects.len(), 1);
+    assert_eq!(effects[0].controller, controller);
     assert!(matches!(
         effects[0].applies_to,
         EffectTarget::AttachedTo(id) if id == source
     ));
     assert!(matches!(
         effects[0].modification,
-        Modification::ChangeController(player) if player == controller
+        Modification::ChangeControllerToEffectController
     ));
 }
 

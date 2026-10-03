@@ -693,6 +693,7 @@ fn test_ability_granting_counters() {
         world_supertype_since: None,
         colors: creature.colors(),
         loyalty: creature.base_loyalty,
+        defense: creature.base_defense,
         abilities: creature.abilities.clone().into(),
         static_abilities: extract_static_abilities(&creature.abilities).into(),
         ability_gain_prohibitions: Vec::new(),
@@ -752,6 +753,7 @@ fn test_multiple_ability_counters() {
         world_supertype_since: None,
         colors: ColorSet::COLORLESS,
         loyalty: creature.base_loyalty,
+        defense: creature.base_defense,
         abilities: Vec::new().into(),
         static_abilities: Vec::new().into(),
         ability_gain_prohibitions: Vec::new(),
@@ -827,6 +829,7 @@ fn test_counter_flying_preserves_independent_redundant_instances() {
         world_supertype_since: None,
         colors: ColorSet::COLORLESS,
         loyalty: creature.base_loyalty,
+        defense: creature.base_defense,
         abilities: vec![crate::ability::Ability::static_ability(printed_flying.clone())].into(),
         static_abilities: vec![printed_flying].into(),
         ability_gain_prohibitions: Vec::new(),
@@ -1087,7 +1090,7 @@ fn prewarming_does_not_publish_an_enclosing_characteristic_snapshot() {
         source, PlayerId::from_index(0), EffectTarget::Specific(graveyard[0]),
         Modification::AddCardTypes(vec![CardType::Artifact])));
     game.update_static_ability_effects().unwrap();
-    let initial = initial_characteristics(game.object(source).unwrap());
+    let initial = initial_characteristics(game.object(source).unwrap(), game.turn.turn_number);
     assert_eq!(initial.power, Some(1));
     let guard = CharacteristicCalculationGuard::begin(&game, source, &initial);
     game.prewarm_calculated_characteristics(&[source, graveyard[0]]);
@@ -1133,7 +1136,7 @@ fn derived_view_memos_retain_layer_context_without_publishing_intermediate_resul
                 };
                 if initially_warm { assert_eq!(read(), (Some(3), true, true, 1)); }
                 let complete = game.calculated_characteristics(source).unwrap();
-                let initial = initial_characteristics(game.object(source).unwrap());
+                let initial = initial_characteristics(game.object(source).unwrap(), game.turn.turn_number);
                 let creature_filter = crate::filter::ObjectFilter::creature()
                     .in_zone(crate::zone::Zone::Battlefield);
                 let controlled_filter = creature_filter.clone().you_control();
@@ -1199,7 +1202,7 @@ fn recursive_characteristic_context_is_scoped_to_its_game_snapshot() {
                 other.calculated_characteristics_with_effects(source, &other_effects).unwrap().power,
                 view.calculated_characteristics(source).unwrap().power);
             if initially_warm { assert_eq!(read_other(), (Some(7), Some(7), Some(7))); }
-            let initial = initial_characteristics(game.object(source).unwrap());
+            let initial = initial_characteristics(game.object(source).unwrap(), game.turn.turn_number);
             let guard = CharacteristicCalculationGuard::begin(&game, source, &initial);
             assert_eq!(game.calculated_characteristics(source).unwrap().power, Some(1),
                 "recursive reads in the owning snapshot must retain its current layer");
@@ -1390,7 +1393,7 @@ fn synthesized_continuous_and_counter_abilities_keep_identity_across_reads() {
     let mut observations = Vec::new();
     for (modification, expected) in [
         (Modification::restriction(RestrictionKind::CantBeBlocked), StaticAbilityId::Unblockable),
-        (Modification::restriction(RestrictionKind::CantAttack), StaticAbilityId::Defender),
+        (Modification::restriction(RestrictionKind::CantAttack), StaticAbilityId::CantAttack),
         (Modification::restriction(RestrictionKind::CantBlock), StaticAbilityId::CantBlock),
         (Modification::restriction(RestrictionKind::DoesntUntap), StaticAbilityId::DoesntUntap),
         (Modification::SetAuraAttachmentFilter(
@@ -1974,5 +1977,1075 @@ fn counter_timestamp_snapshots_order_equal_display_names_by_typed_identity() {
             assert_eq!(manager.timestamp_state().counters, expected,
                 "full state export must use the same complete ordering");
         }
+    }
+}
+
+
+#[test]
+fn registered_state_restore_preserves_expired_duration_and_allocator_history() {
+    let mut game = dynamic_value_test_game();
+    let alice = PlayerId::from_index(0);
+    let card = CardBuilder::new(CardId::from_raw(99301), "Duration snapshot land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let object = game.create_object_from_card(&card, alice, Zone::Battlefield);
+    game.object_mut(object)
+        .expect("land exists")
+        .counters
+        .insert(CounterType::Flood, 1);
+    let effect = ContinuousEffect::new(
+        object,
+        alice,
+        EffectTarget::Specific(object),
+        Modification::AddSubtypes(vec![Subtype::Island]),
+    )
+    .until(Until::ForAsLongAs(
+        ironsmith_core::ContinuousDurationPredicate::ObjectHasCounter {
+            object: ironsmith_core::ContinuousDurationObject::Specific(object),
+            counter_type: CounterType::Flood,
+            minimum: 1,
+        },
+    ));
+    let manager = &mut game.effect_store.continuous_effects;
+    let discarded = manager.add_effect(effect.clone());
+    manager.remove_effect(discarded);
+    let group = manager.next_effect_group_id();
+    let id = manager.add_effect(effect.with_group(group));
+    let registered = manager.effects()[0].clone();
+    assert!(continuous_effect_duration_is_active(&registered, &game));
+    game.object_mut(object)
+        .expect("land exists")
+        .counters
+        .remove(&CounterType::Flood);
+    assert!(!continuous_effect_duration_is_active(&registered, &game));
+    let snapshot = game.effect_store.continuous_effects.registered_state();
+    assert_eq!(
+        snapshot.duration_latches,
+        vec![(id, ContinuousDurationLatch::Expired)]
+    );
+    game.object_mut(object)
+        .expect("land exists")
+        .counters
+        .insert(CounterType::Flood, 1);
+
+    // The duration's predicate is true again, but restoring must not restart it.
+    let mut restored = ContinuousEffectManager::new();
+    restored
+        .restore_registered_state(snapshot.clone())
+        .expect("snapshot restores");
+    assert_eq!(restored.registered_state(), snapshot);
+    game.effect_store.continuous_effects = restored;
+    assert!(!continuous_effect_duration_is_active(&registered, &game));
+    let manager = &mut game.effect_store.continuous_effects;
+    assert_eq!(
+        manager
+            .add_effect(ContinuousEffect::new(
+                object,
+                alice,
+                EffectTarget::Specific(object),
+                Modification::ChangeController(alice)
+            ))
+            .0,
+        snapshot.next_id
+    );
+    assert_eq!(manager.next_effect_group_id().0, snapshot.next_group_id + 1);
+    assert_eq!(
+        manager.effects()[0],
+        registered,
+        "old identity and payload survive later registration"
+    );
+    assert_eq!(
+        manager.current_timestamp(),
+        snapshot.timestamps.current_timestamp + 1
+    );
+}
+
+#[test]
+fn registered_state_restore_preserves_descriptors_and_invalidates_static_cache() {
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = ObjectId::from_raw(99302);
+    let target = ObjectId::from_raw(99303);
+    let mut manager = ContinuousEffectManager::new();
+    let group = manager.next_effect_group_id();
+    let mut effect = ContinuousEffect::new(
+        source,
+        bob,
+        EffectTarget::Specific(target),
+        Modification::ChangeController(bob),
+    )
+    .with_group(group)
+    .until(Until::YourNextTurn);
+    effect.expires_end_of_turn = 23;
+    effect.condition = Some(crate::ConditionExpr::YourTurn);
+    effect.source_type = EffectSourceType::Resolution {
+        locked_targets: vec![target],
+    };
+    manager.add_effect(effect);
+    manager.add_effect(
+        ContinuousEffect::new(
+            source,
+            alice,
+            EffectTarget::Specific(target),
+            Modification::AddSubtypes(vec![Subtype::Island]),
+        )
+        .with_group(group),
+    );
+    manager.record_entry(target);
+    let snapshot = manager.registered_state();
+    let mut destination = ContinuousEffectManager::new();
+    destination.set_static_ability_effects(vec![ContinuousEffect::new(
+        source,
+        alice,
+        EffectTarget::Specific(target),
+        Modification::ChangeController(alice),
+    )]);
+    let revision = destination.revision();
+    destination
+        .restore_registered_state(snapshot.clone())
+        .expect("valid state");
+    assert_eq!(destination.registered_state(), snapshot);
+    assert!(
+        destination.static_ability_effects().is_empty(),
+        "old-world static cache cannot survive import"
+    );
+    assert!(
+        destination.revision() > revision,
+        "cached characteristics must invalidate"
+    );
+}
+
+#[test]
+fn registered_state_restore_rejects_corruption_without_partial_publication() {
+    let alice = PlayerId::from_index(0);
+    let source = ObjectId::from_raw(99304);
+    let mut manager = ContinuousEffectManager::new();
+    let group = manager.next_effect_group_id();
+    manager.add_effect(
+        ContinuousEffect::new(
+            source,
+            alice,
+            EffectTarget::Specific(source),
+            Modification::AddSubtypes(vec![Subtype::Island]),
+        )
+        .with_group(group)
+        .until(Until::YouStopControllingThis),
+    );
+    manager.set_static_ability_effects(vec![ContinuousEffect::new(
+        source,
+        alice,
+        EffectTarget::Specific(source),
+        Modification::ChangeController(alice),
+    )]);
+    let original = manager.registered_state();
+    let static_effects = manager.static_ability_effects().to_vec();
+    let revision = manager.revision();
+    for corruption in 0..13 {
+        let mut bad = original.clone();
+        match corruption {
+            0 => bad.effects.push(bad.effects[0].clone()),
+            1 => bad.effects[0].registration_id = None,
+            2 => bad.next_id = bad.effects[0].id.0,
+            3 => bad.next_id = u64::MAX,
+            4 => bad.next_group_id = ContinuousEffectGroupId::STATIC_SOURCE_PREFIX - 1,
+            5 => {
+                bad.effects[0].group = Some(ContinuousEffectGroupId::runtime(bad.next_group_id + 1))
+            }
+            6 => bad.duration_latches.clear(),
+            7 => bad.duration_latches.push(bad.duration_latches[0]),
+            8 => bad.duration_latches[0].0 = ContinuousEffectId::new(bad.next_id),
+            9 => bad.effects[0].duration = Until::Forever,
+            10 => bad.effects[0].timestamp = bad.timestamps.current_timestamp + 1,
+            11 => bad.timestamps.current_timestamp = u64::MAX,
+            12 => bad.timestamps.object_entries = vec![(source, 1), (source, 1)],
+            _ => unreachable!(),
+        }
+        assert!(
+            manager.restore_registered_state(bad).is_err(),
+            "corruption {corruption} rejected"
+        );
+        assert_eq!(
+            manager.registered_state(),
+            original,
+            "corruption {corruption} cannot publish state"
+        );
+        assert_eq!(manager.static_ability_effects(), static_effects.as_slice());
+        assert_eq!(manager.revision(), revision);
+    }
+}
+
+
+#[cfg(feature = "serialization")]
+#[test]
+fn complete_modification_schema_round_trip_keeps_payloads_and_control_semantics() {
+    type Model = ContinuousModification<String, String, String, String, String, String>;
+    let literal = Model::ChangeController(PlayerId::from_index(1));
+    let relative = Model::ChangeControllerToEffectController;
+    let values = vec![
+        literal.clone(),
+        relative.clone(),
+        Model::CopyOf {
+            target_id: ObjectId::from_raw(99311),
+            copiable_values: Box::new("copy with retained abilities and occurrence IDs".into()),
+            preserve_source_abilities: true,
+            name_override: Some("Copied name".into()),
+            name_override_surface: None,
+            add_supertypes: vec![Supertype::Legendary],
+        },
+        Model::SetTextBox("text with retained ability instances and labels".into()),
+        Model::SetAuraAttachmentFilter("attachment filter with enchant occurrence".into()),
+        Model::AddAbility("static occurrence".into()),
+        Model::RemoveAbility("removed static occurrence".into()),
+        Model::AddAbilityGeneric("activated/triggered occurrence".into()),
+        Model::SetAbilities(vec!["first occurrence".into(), "second occurrence".into()]),
+        Model::RemoveAbilityGeneric {
+            ability: "lost occurrence".into(),
+            mode: ironsmith_core::AbilityLossMode::Lose,
+        },
+        Model::Restriction("restriction with canonical ability occurrence".into()),
+        Model::CopyActivatedAbilities {
+            filter: ObjectFilter::creature().you_control(),
+            counter: Some(CounterType::Flood),
+            include_mana: true,
+            only_loyalty: true,
+            exclude_source_name: true,
+            exclude_source_id: true,
+            force_once_each_turn: true,
+        },
+        Model::ModifyPowerToughnessByColorCount {
+            power_multiplier: -2,
+            toughness_multiplier: 3,
+        },
+        Model::SetPowerToughness {
+            power: Value::Fixed(7),
+            toughness: Value::Fixed(9),
+            sublayer: PtSublayer::CharacteristicDefining,
+        },
+    ];
+    assert_ne!(
+        serde_json::to_value(&literal).unwrap(),
+        serde_json::to_value(&relative).unwrap(),
+        "literal and effect-relative control are different wire semantics"
+    );
+    for original in values {
+        let mapped = original
+            .clone()
+            .try_map_payloads(
+                |v| Ok::<_, String>(format!("static:{v}")),
+                |v| Ok::<_, String>(format!("ability:{v}")),
+                |v| Ok::<_, String>(format!("copy:{v}")),
+                |v| Ok::<_, String>(format!("text:{v}")),
+                |v| Ok::<_, String>(format!("restriction:{v}")),
+                |v| Ok::<_, String>(format!("attachment:{v}")),
+            )
+            .expect("every payload can be encoded");
+        let serialized = serde_json::to_string(&mapped).expect("complete model serializes");
+        let decoded: Model =
+            serde_json::from_str(&serialized).expect("complete model deserializes");
+        let restored = decoded
+            .try_map_payloads(
+                |v| {
+                    Ok::<_, String>(
+                        v.strip_prefix("static:")
+                            .expect("static converter")
+                            .to_owned(),
+                    )
+                },
+                |v| {
+                    Ok::<_, String>(
+                        v.strip_prefix("ability:")
+                            .expect("ability converter")
+                            .to_owned(),
+                    )
+                },
+                |v| Ok::<_, String>(v.strip_prefix("copy:").expect("copy converter").to_owned()),
+                |v| Ok::<_, String>(v.strip_prefix("text:").expect("text converter").to_owned()),
+                |v| {
+                    Ok::<_, String>(
+                        v.strip_prefix("restriction:")
+                            .expect("restriction converter")
+                            .to_owned(),
+                    )
+                },
+                |v| {
+                    Ok::<_, String>(
+                        v.strip_prefix("attachment:")
+                            .expect("attachment converter")
+                            .to_owned(),
+                    )
+                },
+            )
+            .expect("payloads can be restored");
+        assert_eq!(
+            restored, original,
+            "conversion and JSON cannot drop scalar or retained payload fields"
+        );
+    }
+}
+
+#[test]
+fn complete_modification_schema_propagates_nested_payload_failure() {
+    type Model = ContinuousModification<u8, u8, u8, u8, u8, u8>;
+    let original = Model::SetAbilities(vec![1, 2, 3]);
+    let mut seen = Vec::new();
+    let result = original.try_map_payloads(
+        Ok::<_, &'static str>,
+        |value| {
+            seen.push(value);
+            if value == 2 {
+                Err("unsupported retained ability")
+            } else {
+                Ok(value)
+            }
+        },
+        Ok::<_, &'static str>,
+        Ok::<_, &'static str>,
+        Ok::<_, &'static str>,
+        Ok::<_, &'static str>,
+    );
+    assert_eq!(result, Err("unsupported retained ability"));
+    assert_eq!(
+        seen,
+        vec![1, 2],
+        "a failure cannot be converted to an incomplete successful ability list"
+    );
+}
+
+#[cfg(feature = "serialization")]
+#[test]
+fn complete_registered_schema_json_preserves_context_provenance_and_expiry() {
+    type Descriptor = ContinuousEffect<String, String, String>;
+    let object = ObjectId::from_raw(99321);
+    let target = ObjectId::from_raw(99322);
+    let original = RegisteredContinuousEffectState {
+        effects: vec![Descriptor {
+            id: ContinuousEffectId::new(5),
+            registration_id: Some(ContinuousEffectId::new(5)),
+            source: object,
+            controller: PlayerId::from_index(1),
+            applies_to: EffectTarget::Specific(target),
+            modification: "complete copy/ability payload".into(),
+            timestamp: 11,
+            group: Some(ContinuousEffectGroupId::runtime(3)),
+            duration: Until::YouStopControllingThis,
+            expires_end_of_turn: 23,
+            condition: Some(crate::ConditionExpr::YourTurn),
+            source_type: EffectSourceType::Resolution {
+                locked_targets: vec![target],
+            },
+            originating_static_ability: Some("generating static instance".into()),
+            originating_ability: Some(Box::new(
+                "host, printed face, branch and nested occurrence".into(),
+            )),
+        }],
+        next_id: 9,
+        next_group_id: 4,
+        duration_latches: vec![(ContinuousEffectId::new(5), ContinuousDurationLatch::Expired)],
+        timestamps: ContinuousTimestampState {
+            current_timestamp: 17,
+            object_entries: vec![(object, 1), (target, 8)],
+            counters: vec![((target, CounterType::Flood), 13)],
+            attachments: vec![(object, 15)],
+        },
+    };
+    let encoded = original
+        .clone()
+        .try_map_effects(|effect| {
+            effect.try_map_payloads(
+                |v| Ok::<_, String>(format!("modification:{v}")),
+                |v| Ok::<_, String>(format!("static:{v}")),
+                |v| Ok::<_, String>(format!("origin:{v}")),
+            )
+        })
+        .expect("all descriptor payloads encoded");
+    let json = serde_json::to_string(&encoded).expect("complete state serializes");
+    let decoded: RegisteredContinuousEffectState<Descriptor> =
+        serde_json::from_str(&json).expect("complete state deserializes");
+    let restored = decoded
+        .try_map_effects(|effect| {
+            effect.try_map_payloads(
+                |v| {
+                    Ok::<_, String>(
+                        v.strip_prefix("modification:")
+                            .expect("modification converter")
+                            .to_owned(),
+                    )
+                },
+                |v| {
+                    Ok::<_, String>(
+                        v.strip_prefix("static:")
+                            .expect("static converter")
+                            .to_owned(),
+                    )
+                },
+                |v| {
+                    Ok::<_, String>(
+                        v.strip_prefix("origin:")
+                            .expect("origin converter")
+                            .to_owned(),
+                    )
+                },
+            )
+        })
+        .expect("all descriptor payloads restored");
+    assert_eq!(
+        restored, original,
+        "captured controller/locked targets/provenance/turn anchor/identity/clock/latches cannot be reconstructed from characteristic projections"
+    );
+    let mut malformed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    malformed
+        .as_object_mut()
+        .unwrap()
+        .remove("duration_latches");
+    assert!(
+        serde_json::from_value::<RegisteredContinuousEffectState<Descriptor>>(malformed).is_err(),
+        "missing lifetime state cannot silently initialize expired durations as started"
+    );
+}
+
+#[test]
+fn complete_registered_schema_propagates_generating_occurrence_failure() {
+    let effect = ContinuousEffect::<u8, u8, u8> {
+        id: ContinuousEffectId::new(5),
+        registration_id: Some(ContinuousEffectId::new(5)),
+        source: ObjectId::from_raw(99323),
+        controller: PlayerId::from_index(0),
+        applies_to: EffectTarget::Source,
+        modification: 1,
+        timestamp: 11,
+        group: None,
+        duration: Until::Forever,
+        expires_end_of_turn: 23,
+        condition: None,
+        source_type: EffectSourceType::StaticAbility,
+        originating_static_ability: Some(2),
+        originating_ability: Some(Box::new(3)),
+    };
+    let result = effect.try_map_payloads(Ok::<_, &'static str>, Ok::<_, &'static str>, |_origin| {
+        Err::<u8, _>("unsupported generating occurrence")
+    });
+    assert_eq!(
+        result,
+        Err("unsupported generating occurrence"),
+        "a descriptor cannot succeed by omitting the provenance its duration/dependency semantics require"
+    );
+}
+
+#[cfg(feature = "serialization")]
+fn retained_copy_schema_fixture() -> crate::snapshot::RetainedCopiableValues<String> {
+    crate::snapshot::RetainedCopiableValues {
+        name: "Retained characteristics".into(),
+        mana_cost: Some(ManaCost::from_symbols(vec![
+            ManaSymbol::Generic(3),
+            ManaSymbol::White,
+        ])),
+        compiled_card_text: "Complete copied text".into(),
+        ability_labels: vec!["First label".into(), "Second label".into()],
+        power: Some(-2),
+        toughness: Some(7),
+        card_types: vec![CardType::Creature, CardType::Enchantment],
+        subtypes: vec![Subtype::Aura],
+        supertypes: vec![Supertype::Legendary],
+        colors: crate::ColorSet::WHITE,
+        loyalty: Some(5),
+        defense: Some(6),
+        abilities: vec!["first payload".into(), "second payload".into()],
+        aura_attach_filter: Some(crate::object::AuraAttachmentFilter::from(
+            ObjectFilter::creature(),
+        )),
+    }
+}
+
+#[cfg(feature = "serialization")]
+#[test]
+fn retained_copy_text_schema_preserves_complete_metadata_and_requires_abilities() {
+    let copy = retained_copy_schema_fixture();
+    let json = serde_json::to_value(&copy).unwrap();
+    let restored: crate::snapshot::RetainedCopiableValues<String> =
+        serde_json::from_value(json.clone()).unwrap();
+    assert_eq!(restored, copy);
+    let mut missing = json;
+    missing.as_object_mut().unwrap().remove("abilities");
+    assert!(
+        serde_json::from_value::<crate::snapshot::RetainedCopiableValues<String>>(missing).is_err()
+    );
+    let overlay = RetainedTextBoxOverlay {
+        compiled_card_text: copy.compiled_card_text.clone(),
+        abilities: copy.abilities.clone(),
+        ability_labels: copy.ability_labels.clone(),
+    };
+    let mut json = serde_json::to_value(&overlay).unwrap();
+    assert_eq!(
+        serde_json::from_value::<RetainedTextBoxOverlay<String>>(json.clone()).unwrap(),
+        overlay
+    );
+    json.as_object_mut().unwrap().remove("abilities");
+    assert!(serde_json::from_value::<RetainedTextBoxOverlay<String>>(json).is_err());
+    let ability = Ability::static_ability(StaticAbility::flying());
+    let expected_id = match &ability.kind {
+        AbilityKind::Static(value) => value.instance_id(),
+        _ => unreachable!(),
+    };
+    let native = CopiableValues {
+        name: copy.name,
+        mana_cost: copy.mana_cost,
+        compiled_card_text: copy.compiled_card_text,
+        ability_labels: copy.ability_labels,
+        power: copy.power,
+        toughness: copy.toughness,
+        card_types: copy.card_types,
+        subtypes: copy.subtypes,
+        supertypes: copy.supertypes,
+        colors: copy.colors,
+        loyalty: copy.loyalty,
+        defense: copy.defense,
+        abilities: std::sync::Arc::new(vec![ability]),
+        aura_attach_filter: copy.aura_attach_filter,
+    };
+    let model = crate::snapshot::RetainedCopiableValues::from(native.clone());
+    let recovered = CopiableValues::from(model);
+    assert_eq!(recovered, native);
+    match &recovered.abilities[0].kind {
+        AbilityKind::Static(value) => assert_eq!(
+            value.instance_id(),
+            expected_id,
+            "native conversion preserves occurrence aliases"
+        ),
+        _ => panic!("static payload lost"),
+    }
+}
+
+#[cfg(feature = "serialization")]
+#[test]
+fn retained_copy_text_schema_propagates_nested_ability_failure() {
+    let copy = retained_copy_schema_fixture();
+    let overlay = RetainedTextBoxOverlay {
+        compiled_card_text: copy.compiled_card_text.clone(),
+        abilities: copy.abilities.clone(),
+        ability_labels: copy.ability_labels.clone(),
+    };
+    let reject_second = |payload: String| -> Result<usize, &'static str> {
+        if payload == "first payload" {
+            Ok(1)
+        } else {
+            Err("nested payload cannot encode")
+        }
+    };
+    assert_eq!(
+        copy.try_map_abilities(reject_second),
+        Err("nested payload cannot encode")
+    );
+    assert_eq!(
+        overlay.try_map_abilities(reject_second),
+        Err("nested payload cannot encode")
+    );
+}
+
+#[cfg(feature = "serialization")]
+#[test]
+fn retained_copy_text_schema_requires_explicit_optional_characteristics() {
+    let original = serde_json::to_value(retained_copy_schema_fixture()).unwrap();
+    let fields = [
+        "mana_cost",
+        "power",
+        "toughness",
+        "loyalty",
+        "defense",
+        "aura_attach_filter",
+    ];
+    let accepted_missing = fields
+        .iter()
+        .filter(|field| {
+            let mut value = original.clone();
+            value.as_object_mut().unwrap().remove(**field);
+            serde_json::from_value::<crate::snapshot::RetainedCopiableValues<String>>(value).is_ok()
+        })
+        .copied()
+        .collect::<Vec<_>>();
+    assert!(
+        accepted_missing.is_empty(),
+        "missing characteristics silently defaulted: {accepted_missing:?}"
+    );
+    for field in fields {
+        let mut value = original.clone();
+        value[field] = serde_json::Value::Null;
+        let restored: crate::snapshot::RetainedCopiableValues<String> =
+            serde_json::from_value(value.clone())
+                .expect("explicit null is a legitimate absent characteristic");
+        assert_eq!(
+            serde_json::to_value(restored).unwrap(),
+            value,
+            "explicit null preserves the complete payload"
+        );
+    }
+}
+
+#[test]
+fn retained_restriction_models_restore_native_rules_and_functional_zones() {
+    use crate::static_abilities::StaticAbilityId;
+    let cases = [
+        (
+            RestrictionKind::CantBeBlocked,
+            StaticAbilityId::Unblockable,
+            [true, true, false],
+        ),
+        (
+            RestrictionKind::CantAttack,
+            StaticAbilityId::CantAttack,
+            [false, true, true],
+        ),
+        (
+            RestrictionKind::CantBlock,
+            StaticAbilityId::CantBlock,
+            [true, false, true],
+        ),
+        (
+            RestrictionKind::DoesntUntap,
+            StaticAbilityId::DoesntUntap,
+            [true, true, true],
+        ),
+    ];
+    let missing = cases
+        .iter()
+        .filter(|(kind, _, _)| {
+            RegisteredRestriction::new(*kind)
+                .ability()
+                .compiled_model()
+                .is_none()
+        })
+        .map(|(kind, _, _)| *kind)
+        .collect::<Vec<_>>();
+    assert!(
+        missing.is_empty(),
+        "native restriction payloads have no canonical model: {missing:?}"
+    );
+    let alice = PlayerId::from_index(0);
+    for (kind, id, expected_rules) in cases {
+        let original = RegisteredRestriction::new(kind).ability().clone();
+        let model = original
+            .compiled_model()
+            .expect("complete restriction model");
+        let restored = StaticAbility::from_model(model.clone());
+        assert_eq!(restored.id(), id);
+        assert_eq!(restored.display(), original.display());
+        assert_eq!(restored.has_defender(), original.has_defender());
+        assert_eq!(restored.is_unblockable(), original.is_unblockable());
+        assert_eq!(restored.affects_untap(), original.affects_untap());
+        assert_eq!(restored.is_keyword(), original.is_keyword());
+        assert_eq!(
+            restored.may_generate_continuous_effects(),
+            original.may_generate_continuous_effects()
+        );
+        use ironsmith_core::functional_zones::StaticAbilityFunctionalZones;
+        assert_eq!(
+            restored.default_functional_zones(),
+            original.default_functional_zones()
+        );
+        for ability in [original, restored] {
+            let mut game = dynamic_value_test_game();
+            let card = CardBuilder::new(CardId::new(), "Restriction rules fixture")
+                .card_types(vec![CardType::Creature])
+                .build();
+            let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+            ability.apply_restrictions(&mut game, source, alice);
+            let tracker = &game.effect_store.cant_effects;
+            assert_eq!(
+                [
+                    tracker.can_attack(source),
+                    tracker.can_block(source),
+                    tracker.can_be_blocked(source)
+                ],
+                expected_rules
+            );
+        }
+    }
+}
+
+#[test]
+fn registered_cant_attack_is_not_bypassed_by_defender_permission() {
+    use crate::ability::Ability;
+    use crate::static_abilities::StaticAbilityId;
+    for (defender, restored) in [(false, false), (true, false), (false, true), (true, true)] {
+        let mut game = dynamic_value_test_game();
+        let alice = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::new(), "Attack restriction recipient")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let object = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let abilities = std::sync::Arc::make_mut(
+            &mut game.object_mut(object).expect("recipient exists").abilities,
+        );
+        abilities.push(Ability::static_ability(
+            StaticAbility::can_attack_as_though_no_defender(),
+        ));
+        if defender {
+            abilities.push(Ability::static_ability(StaticAbility::defender()));
+        }
+        game.refresh_continuous_state()
+            .expect("finite baseline refresh");
+        assert!(
+            game.effect_store.cant_effects.can_attack(object),
+            "permission bypasses only Defender"
+        );
+        let mut restriction = RegisteredRestriction::new(RestrictionKind::CantAttack);
+        if restored {
+            restriction.ability = StaticAbility::from_model(
+                restriction
+                    .ability()
+                    .compiled_model()
+                    .expect("complete attack restriction model")
+                    .clone(),
+            );
+        }
+        let effect = game
+            .effect_store
+            .continuous_effects
+            .add_effect(ContinuousEffect::new(
+                object,
+                alice,
+                EffectTarget::Specific(object),
+                Modification::Restriction(restriction),
+            ));
+        game.refresh_continuous_state()
+            .expect("finite restricted refresh");
+        assert!(
+            !game.effect_store.cant_effects.can_attack(object),
+            "independent can't attack survives Defender permission (printed defender: {defender})"
+        );
+        assert_eq!(
+            game.current_has_static_ability_id(object, StaticAbilityId::Defender),
+            defender,
+            "an attack prohibition must not grant the Defender keyword"
+        );
+        assert!(game.current_has_static_ability_id(object, StaticAbilityId::CantAttack));
+        game.effect_store.continuous_effects.remove_effect(effect);
+        game.refresh_continuous_state()
+            .expect("finite removal refresh");
+        assert!(
+            game.effect_store.cant_effects.can_attack(object),
+            "removing only the independent prohibition restores permission"
+        );
+        assert_eq!(
+            game.current_has_static_ability_id(object, StaticAbilityId::Defender),
+            defender
+        );
+    }
+}
+
+#[test]
+fn retained_metadata_schema_preserves_occurrences_and_rejects_inconsistent_payloads() {
+    use crate::object::{AuraAttachmentMetadata, RetainedAuraAttachmentMetadata};
+    let kinds = [
+        RestrictionKind::CantBeBlocked,
+        RestrictionKind::CantAttack,
+        RestrictionKind::CantBlock,
+        RestrictionKind::DoesntUntap,
+    ];
+    for kind in kinds {
+        let original = RegisteredRestriction::new(kind);
+        let retained = RetainedRestriction::from(original.clone());
+        assert_eq!(
+            retained.ability.instance_id(),
+            original.ability().instance_id()
+        );
+        let restored =
+            RegisteredRestriction::try_from(retained).expect("consistent native payload");
+        assert_eq!(
+            restored.ability().instance_id(),
+            original.ability().instance_id()
+        );
+        assert_eq!(restored.kind(), kind);
+        for other in kinds {
+            let value = RetainedRestriction {
+                kind,
+                ability: RegisteredRestriction::new(other).ability().clone(),
+            };
+            assert_eq!(
+                RegisteredRestriction::try_from(value).is_ok(),
+                kind == other
+            );
+        }
+    }
+    assert!(
+        RegisteredRestriction::try_from(RetainedRestriction {
+            kind: RestrictionKind::CantAttack,
+            ability: StaticAbility::defender()
+        })
+        .is_err(),
+        "Defender cannot stand in for an independent prohibition"
+    );
+    let creature = crate::object::AuraAttachmentFilter::from(ObjectFilter::creature());
+    let land = crate::object::AuraAttachmentFilter::from(ObjectFilter::land());
+    let original = AuraAttachmentMetadata::from(creature.clone());
+    let retained = RetainedAuraAttachmentMetadata::from(original);
+    let occurrence = retained.enchant_ability.instance_id();
+    let restored = AuraAttachmentMetadata::try_from(retained).expect("matching enchant filter");
+    let retained = RetainedAuraAttachmentMetadata::from(restored);
+    assert_eq!(retained.filter, creature);
+    assert_eq!(retained.enchant_ability.instance_id(), occurrence);
+    for ability in [StaticAbility::enchant(land), StaticAbility::flying()] {
+        assert!(
+            AuraAttachmentMetadata::try_from(RetainedAuraAttachmentMetadata {
+                filter: creature.clone(),
+                enchant_ability: ability
+            })
+            .is_err(),
+            "wrong filter and missing enchant reject"
+        );
+    }
+    let error = RetainedRestriction {
+        kind: RestrictionKind::CantAttack,
+        ability: 1,
+    }
+    .try_map_ability(|_| Err::<String, _>("restriction failure"));
+    assert_eq!(error.unwrap_err(), "restriction failure");
+    let error = RetainedAuraAttachmentMetadata {
+        filter: creature,
+        enchant_ability: 1,
+    }
+    .try_map_ability(|_| Err::<String, _>("attachment failure"));
+    assert_eq!(error.unwrap_err(), "attachment failure");
+}
+
+#[cfg(feature = "serialization")]
+#[test]
+fn retained_metadata_schema_json_requires_every_payload_field() {
+    use crate::object::RetainedAuraAttachmentMetadata;
+    let restriction = RetainedRestriction {
+        kind: RestrictionKind::CantAttack,
+        ability: "occurrence".to_owned(),
+    };
+    let attachment = RetainedAuraAttachmentMetadata {
+        filter: crate::object::AuraAttachmentFilter::from(ObjectFilter::creature()),
+        enchant_ability: "occurrence".to_owned(),
+    };
+    let r = serde_json::to_value(restriction).unwrap();
+    let a = serde_json::to_value(attachment).unwrap();
+    let round_r: RetainedRestriction<String> = serde_json::from_value(r.clone()).unwrap();
+    let round_a: RetainedAuraAttachmentMetadata<String> =
+        serde_json::from_value(a.clone()).unwrap();
+    assert_eq!(serde_json::to_value(round_r).unwrap(), r);
+    assert_eq!(serde_json::to_value(round_a).unwrap(), a);
+    for field in ["kind", "ability"] {
+        let mut missing = r.clone();
+        missing.as_object_mut().unwrap().remove(field);
+        assert!(serde_json::from_value::<RetainedRestriction<String>>(missing).is_err());
+        let mut null = r.clone();
+        null[field] = serde_json::Value::Null;
+        assert!(serde_json::from_value::<RetainedRestriction<String>>(null).is_err());
+    }
+    for field in ["filter", "enchant_ability"] {
+        let mut missing = a.clone();
+        missing.as_object_mut().unwrap().remove(field);
+        assert!(serde_json::from_value::<RetainedAuraAttachmentMetadata<String>>(missing).is_err());
+        let mut null = a.clone();
+        null[field] = serde_json::Value::Null;
+        assert!(serde_json::from_value::<RetainedAuraAttachmentMetadata<String>>(null).is_err());
+    }
+}
+
+
+#[test]
+fn retained_temporary_registration_expiry_matches_all_layer_routes_and_preserves_origin() {
+    use crate::object::TemporaryStaticAbilityGrant;
+    use crate::static_abilities::StaticAbilityId;
+    let mut game = dynamic_value_test_game();
+    let alice = game.players[0].id;
+    let card = CardBuilder::new(CardId::new(), "Retained grant recipient")
+        .card_types(vec![CardType::Creature]).build();
+    let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+    let other = game.create_object_from_card(&card, alice, Zone::Battlefield);
+    let store = &mut game.object_mut(source).unwrap().temporary_static_ability_grants;
+    for (ability, expires_end_of_turn) in [(StaticAbilityId::Deathtouch, 2), (StaticAbilityId::Haste, 4)] {
+        store.push(TemporaryStaticAbilityGrant { ability, ability_payload: None, expires_end_of_turn });
+    }
+    let expected_origin = store.origin(1).unwrap().clone();
+    game.refresh_continuous_state().unwrap();
+    assert!(game.current_has_static_ability_id(source, StaticAbilityId::Deathtouch));
+    game.next_turn();
+    game.next_turn();
+    assert_eq!(game.turn.turn_number, 3);
+    // A checkpoint can retain expired registrations. All query routes must
+    // respect lifetime without requiring cleanup to prune their stored payloads.
+    assert_eq!(game.object(source).unwrap().temporary_static_ability_grants.len(), 2);
+    game.refresh_continuous_state().unwrap();
+    let manager = game.effect_store.continuous_effects.calculate_characteristics(
+        source, game.objects_map(), &game.battlefield, &game).unwrap();
+    let direct = calculate_characteristics_with_effects(source, game.objects_map(),
+        &[], &game.battlefield, game.commander_objects(), &game).unwrap();
+    let batch = calculate_characteristics_batch_with_effects(&[source, other],
+        game.objects_map(), &[], &game.battlefield, game.commander_objects(), &game);
+    for chars in [&manager, &direct, batch.get(&source).unwrap()] {
+        assert!(!chars.static_abilities.iter().any(|ability| ability.id() == StaticAbilityId::Deathtouch));
+        assert!(chars.static_abilities.iter().any(|ability| ability.id() == StaticAbilityId::Haste));
+        assert_eq!(chars.abilities.len(), 1);
+        assert_eq!(chars.abilities.origin(0), Some(&AbilityOrigin::Temporary(expected_origin.clone())));
+    }
+    game.prewarm_calculated_characteristics(&[source, other]);
+    assert!(!game.current_has_static_ability_id(source, StaticAbilityId::Deathtouch));
+    assert!(game.current_has_static_ability_id(source, StaticAbilityId::Haste));
+    assert_eq!(game.object(source).unwrap().temporary_static_ability_grants.len(), 2);
+}
+
+#[test]
+fn ability_copying_respects_donor_zone_and_linked_identity() {
+    for (triggered, linked) in [(false, false), (true, false), (false, true), (true, true)] {
+        let mut game = dynamic_value_test_game();
+        let payer = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::new(), "Ability donor")
+            .card_types(vec![CardType::Creature]).build();
+        let mut linked_donor = None;
+        for zone in [Zone::Battlefield, Zone::Hand, Zone::Graveyard, Zone::Exile, Zone::Exile] {
+            let id = game.create_object_from_card(&card, payer, zone);
+            if zone == Zone::Exile { linked_donor.get_or_insert(id); }
+            let ability = if triggered {
+                crate::ability::Ability::triggered(
+                    crate::triggers::Trigger::player_taps_for_mana(PlayerFilter::You, ObjectFilter::land()),
+                    vec![crate::effect::Effect::add_mana(vec![ManaSymbol::Green])],
+                )
+            } else {
+                crate::ability::Ability::activated(crate::cost::TotalCost::free(),
+                    vec![crate::effect::Effect::gain_life(1)])
+            };
+            game.object_mut(id).unwrap().abilities_mut().push(ability);
+        }
+        let receiver_card = CardBuilder::new(CardId::new(), "Ability receiver")
+            .card_types(vec![CardType::Artifact]).build();
+        let receiver = game.create_object_from_card(&receiver_card, payer, Zone::Battlefield);
+        let filter = if linked {
+            game.add_exiled_with_source_link(receiver, linked_donor.unwrap());
+            ObjectFilter::creature().in_zone(Zone::Exile).match_tagged(
+                crate::tag::SOURCE_EXILED_TAG, crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            )
+        } else { ObjectFilter::creature().in_zone(Zone::Exile) };
+        let modification = if triggered {
+            Modification::CopyTriggeredAbilities { filter, exclude_source_name: false, exclude_source_id: true }
+        } else {
+            Modification::CopyActivatedAbilities { filter, counter: None, include_mana: true,
+                only_loyalty: false, exclude_source_name: false, exclude_source_id: true,
+                force_once_each_turn: false }
+        };
+        game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+            receiver, payer, EffectTarget::Specific(receiver), modification,
+        ));
+        game.refresh_continuous_state().unwrap();
+        let chars = game.calculated_characteristics(receiver).unwrap();
+        assert_eq!(chars.abilities.len(), if linked { 1 } else { 2 }, "only matching donors contribute");
+    }
+}
+
+
+#[test]
+fn intrinsic_land_mana_obeys_ability_layer_operations_on_every_calculation_route() {
+    for land_type_change in [false, true] {
+        for operation in 0..4 {
+            let mut game = dynamic_value_test_game();
+            let alice = PlayerId::from_index(0);
+            let card = CardBuilder::new(CardId::new(), "Intrinsic mana layer recipient")
+                .card_types(vec![CardType::Land, CardType::Creature])
+                .subtypes(vec![Subtype::Forest])
+                .power_toughness(PowerToughness::fixed(1, 1)).build();
+            let object = game.create_object_from_card(&card, alice, Zone::Battlefield);
+            let origin = StaticAbility::set_land_subtypes(ObjectFilter::land(), vec![Subtype::Island]);
+            let watcher = crate::cards::CardDefinitionBuilder::new(CardId::new(), "Land type layer source")
+                .card_types(vec![CardType::Enchantment]);
+            let watcher = if land_type_change {
+                watcher.with_ability(Ability::static_ability(origin.clone()))
+            } else { watcher }.build();
+            let watcher = game.create_object_from_definition(&watcher, alice, Zone::Battlefield);
+            if land_type_change {
+                let origin = game.object(watcher).unwrap().abilities.iter().find_map(|ability| {
+                    match &ability.kind {
+                        AbilityKind::Static(ability) if ability.id() == crate::static_abilities::StaticAbilityId::SetLandSubtypes => Some(ability.clone()),
+                        _ => None,
+                    }
+                }).expect("actual source owns its materialized land-type static instance");
+                for modification in [Modification::SetSubtypes(vec![Subtype::Island]), Modification::RemoveAllAbilities] {
+                    game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+                        watcher, alice, EffectTarget::Specific(object), modification)
+                        .with_originating_static_ability(origin.clone()));
+                }
+            }
+            let modification = match operation {
+                0 => Modification::RemoveAllAbilities,
+                1 => Modification::RemoveAllAbilitiesExceptMana,
+                2 => Modification::SetAbilities(Vec::new()),
+                _ => Modification::SetAbilities(vec![Ability::static_ability(StaticAbility::flying())]),
+            };
+            game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+                watcher, alice, EffectTarget::Specific(object), modification));
+            let granted = Ability::basic_land_mana(Subtype::Swamp).unwrap();
+            game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+                watcher, alice, EffectTarget::Specific(object), Modification::AddAbilityGeneric(granted.clone())));
+            let effects = game.effect_store.continuous_effects.effects().to_vec();
+            let manager = game.effect_store.continuous_effects.calculate_characteristics(
+                object, game.objects_map(), &game.battlefield, &game).unwrap();
+            let direct = calculate_characteristics_with_effects(object, game.objects_map(),
+                &effects, &game.battlefield, game.commander_objects(), &game).unwrap();
+            let batch = calculate_characteristics_batch_with_effects(&[object, watcher],
+                game.objects_map(), &effects, &game.battlefield, game.commander_objects(), &game);
+            for (route, chars) in [("manager", &manager), ("direct", &direct), ("batch", batch.get(&object).unwrap())] {
+                let intrinsic = Ability::basic_land_mana(if land_type_change { Subtype::Island } else { Subtype::Forest }).unwrap();
+                assert_eq!(chars.abilities.contains(&intrinsic), operation == 1,
+                    "intrinsic mana participates in the operation: {route}, operation={operation}, land_type_change={land_type_change}; subtypes={:?}; abilities={:?}", chars.subtypes, chars.abilities.as_slice());
+                assert!(chars.abilities.contains(&granted), "later separate mana grant survives: {route}");
+                assert_eq!(chars.abilities.contains(&Ability::static_ability(StaticAbility::flying())), operation == 3);
+                if land_type_change {
+                    assert!(chars.subtypes.contains(&Subtype::Island), "land-type operation actually applied: {route}");
+                    assert!(!chars.subtypes.contains(&Subtype::Forest), "old land type is gone: {route}");
+                    assert!(!chars.abilities.contains(&Ability::basic_land_mana(Subtype::Forest).unwrap()), "old land-type mana removed");
+                }
+            }
+        }
+    }
+}
+
+
+#[test]
+fn intrinsic_land_mana_and_equal_continuous_grant_remain_independent() {
+    let mut game = dynamic_value_test_game();
+    let alice = PlayerId::from_index(0);
+    let card = CardBuilder::new(CardId::new(), "Intrinsic land and independent equal grant")
+        .card_types(vec![CardType::Land]).subtypes(vec![Subtype::Forest]).build();
+    let object = game.create_object_from_card(&card, alice, Zone::Battlefield);
+    let intrinsic = Ability::basic_land_mana(Subtype::Forest).unwrap();
+    game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+        object, alice, EffectTarget::Specific(object), Modification::AddAbilityGeneric(intrinsic.clone())));
+    let effects = game.effect_store.continuous_effects.effects().to_vec();
+    let chars = calculate_characteristics_with_effects(object, game.objects_map(),
+        &effects, &game.battlefield, game.commander_objects(), &game).unwrap();
+    let indices: Vec<_> = chars.abilities.iter().enumerate()
+        .filter_map(|(index, ability)| (ability == &intrinsic).then_some(index)).collect();
+    assert_eq!(indices.len(), 2, "inherent rule and separate equal grant are independent occurrences");
+    assert_eq!(chars.abilities.origin(indices[0]), Some(&AbilityOrigin::IntrinsicBasicLandMana(Subtype::Forest)));
+    assert!(matches!(chars.abilities.origin(indices[1]), Some(AbilityOrigin::Effect { .. })));
+    game.refresh_continuous_state().unwrap();
+    assert_eq!(game.current_abilities(object).unwrap().iter().filter(|ability| *ability == &intrinsic).count(), 2);
+}
+
+#[test]
+fn intrinsic_land_mana_fast_path_preserves_level_grant_dispatch_indices() {
+    let mut game = dynamic_value_test_game();
+    let alice = PlayerId::from_index(0);
+    let card = crate::cards::CardDefinitionBuilder::new(CardId::new(), "Intrinsic mana with level grant")
+        .card_types(vec![CardType::Land, CardType::Creature]).subtypes(vec![Subtype::Forest])
+        .with_ability(Ability::static_ability(StaticAbility::with_level_abilities(vec![
+            crate::ability::LevelAbility::new(1, None).with_ability(StaticAbility::haste())
+        ]))).build();
+    let object = game.create_object_from_definition(&card, alice, Zone::Battlefield);
+    game.add_counters(object, CounterType::Level, 1).unwrap();
+    game.refresh_continuous_state().unwrap();
+    let effects = game.try_all_continuous_effects().unwrap();
+    assert!(effects.is_empty(), "level keyword grant exercises the path without continuous instructions");
+    let view = crate::derived_view::DerivedGameView::new(&game);
+    assert!(!view.requires_battlefield_characteristic_calculation(object), "exercise the fast path");
+    let advertised = view.abilities_rc(object).unwrap();
+    let chars = calculate_characteristics_with_effects(object, game.objects_map(),
+        &effects, &game.battlefield, game.commander_objects(), &game).unwrap();
+    assert_eq!(advertised.as_slice(), chars.abilities.as_slice(), "advertised and layer dispatch index spaces agree");
+    let sparse = unmodified_ability_occurrences(game.object(object).unwrap(), game.turn.turn_number);
+    assert_eq!(sparse.as_slice(), chars.abilities.as_slice(), "sparse occurrence scan preserves the same ability sequence");
+    for (index, ability) in advertised.iter().enumerate() {
+        assert_eq!(game.current_ability(object, index).as_ref(), Some(ability), "dispatch index {index}");
     }
 }

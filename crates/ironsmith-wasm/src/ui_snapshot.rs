@@ -104,6 +104,7 @@ struct PermanentObjectView {
     summoning_sick: bool,
     has_active_aura: bool,
     power_toughness_without_counters: Option<String>,
+    pt_modified_by_effect: bool,
     counters: Vec<CounterSnapshot>,
 }
 
@@ -875,6 +876,9 @@ impl SnapshotObjectViewCache {
         let power_toughness = format_power_toughness(power, toughness);
         let power_toughness_without_counters =
             format_power_toughness_without_pt_counters(obj, power, toughness);
+        let pt_modified_by_effect = power_toughness_without_counters.is_some()
+            && power_toughness_without_counters
+                != format_power_toughness_without_pt_counters(obj, obj.power(), obj.toughness());
         let oracle_text = current
             .as_ref()
             .map(|chars| chars.compiled_card_text.to_string())
@@ -904,6 +908,7 @@ impl SnapshotObjectViewCache {
             summoning_sick,
             has_active_aura: aura_active,
             power_toughness_without_counters,
+            pt_modified_by_effect,
             counters: counter_snapshots_for_object(obj),
         });
 
@@ -1949,6 +1954,7 @@ fn grouped_battlefield_for_ids(
                 summoning_sick,
                 has_active_aura,
                 power_toughness_without_counters,
+                pt_modified_by_effect: representative.is_some_and(|view| view.pt_modified_by_effect),
                 counter_signature: key.counter_signature.clone(),
                 counters,
             }
@@ -2193,6 +2199,7 @@ pub(super) struct PermanentSnapshot {
     pub(super) summoning_sick: bool,
     pub(super) has_active_aura: bool,
     pub(super) power_toughness_without_counters: Option<String>,
+    pub(super) pt_modified_by_effect: bool,
     pub(super) counter_signature: String,
     pub(super) counters: Vec<CounterSnapshot>,
 }
@@ -5082,7 +5089,12 @@ mod tests {
             .find(|permanent| permanent.member_ids.contains(&bear.0))
             .expect("expected Bears in battlefield snapshot");
 
-        assert_eq!(bear_snapshot.power_toughness.as_deref(), Some("4/2"));
+        assert_eq!(bear_snapshot.power_toughness.as_deref(), Some("5/3"));
+        assert_eq!(
+            bear_snapshot.power_toughness_without_counters.as_deref(),
+            Some("4/2")
+        );
+        assert!(bear_snapshot.pt_modified_by_effect);
         assert_eq!(
             bear_snapshot
                 .counters
@@ -5091,6 +5103,41 @@ mod tests {
                 .map(|counter| counter.amount),
             Some(1)
         );
+    }
+
+    #[test]
+    fn battlefield_snapshot_highlights_buffs_and_nerfs_from_any_source() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        for (power, toughness, expected) in [
+            (0, 0, false),
+            (2, 2, true),
+            (4, 4, true),
+            (-1, -1, true),
+            (0, -1, true),
+        ] {
+            let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+            let alice = PlayerId::from_index(0);
+            let bear = game.create_object_from_card(&test_bears_card(), alice, Zone::Battlefield);
+            game.object_mut(bear)
+                .unwrap()
+                .add_counters(CounterType::PlusOnePlusOne, 1);
+            game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+                bear,
+                alice,
+                EffectTarget::Specific(bear),
+                Modification::ModifyPowerToughness { power, toughness },
+            ));
+            let (battlefield, _) = grouped_battlefield_for_player(&game, alice, &HashSet::new());
+            let snapshot = battlefield
+                .iter()
+                .find(|permanent| permanent.id == bear.0)
+                .unwrap();
+            assert!(!snapshot.has_active_aura);
+            assert_eq!(
+                snapshot.pt_modified_by_effect, expected,
+                "delta {power}/{toughness}"
+            );
+        }
     }
 
     #[test]
@@ -5125,7 +5172,8 @@ mod tests {
             snapshot.power_toughness_without_counters.as_deref(),
             Some("0/0")
         );
-        assert_eq!(snapshot.counter_signature, "Plus One Plus One:1");
+        assert_eq!(snapshot.counter_signature, "+1/+1:1");
+        assert!(!snapshot.pt_modified_by_effect);
     }
 
     #[test]
@@ -5607,6 +5655,7 @@ mod mana_payment_preview {
     use ironsmith::mana::{ManaCost, ManaSymbol};
     use ironsmith::mana_payment::{
         ManaPaymentRequest, check_mana_payment, last_mana_payment_perf, plan_first_mana_payment,
+        plan_mana_payment,
     };
 
     fn request(source: ObjectId, pips: Vec<Vec<ManaSymbol>>) -> ManaPaymentRequest {
@@ -5723,7 +5772,7 @@ mod mana_payment_preview {
         let (wasm, source) = board(&vec!["Ancient Tomb"; 8]);
         let request = request(source, vec![vec![ManaSymbol::Generic(9)]]);
 
-        assert!(plan_first_mana_payment(&wasm.game, &request).is_ok());
+        assert!(plan_mana_payment(&wasm.game, &request).is_ok());
         let ranked_nodes = last_mana_payment_perf().visited_nodes;
         assert!(check_mana_payment(&wasm.game, &request).is_ok());
         let check_nodes = last_mana_payment_perf().visited_nodes;

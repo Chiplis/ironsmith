@@ -177,8 +177,14 @@ test('an unsigned crypto-material request cannot reserve a private shuffle autho
   const callbackEnd = declaration.lastIndexOf('}, [');
   assert.ok(callbackStart >= 0 && callbackEnd > callbackStart);
   const calls = [];
+  const phases = [];
   const context = {
     assertMatchNotDisputed,
+    summarizePeerCommand: command => ({ type: command.type }),
+    timePeerSyncPhase: async (label, metadata, task) => {
+      phases.push({ label, metadata });
+      return task();
+    },
     multiplayerRef: { current: { matchStarted: true, lastAppliedSequence: 7 } },
     currentAuditMatchId: () => 'match',
     playerIndexForPeerId: () => 0,
@@ -200,4 +206,13 @@ test('an unsigned crypto-material request cannot reserve a private shuffle autho
     actorIndex: 0, seq: 8, prevStateHash: 'head', publicCheckpointHash: 'checkpoint',
     command: { type: 'priority_action' }, actionIntent: { signature: 'invalid' } }), /Invalid signature/);
   assert.deepEqual(calls, ['signature']);
+  assert.deepEqual(phases.map(({ label }) => label), [
+    'wait_action_head', 'read_state', 'verify_checkpoint', 'verify_intent',
+  ].map(phase => `crypto_material_request:authorize:${phase}`));
+  for (const { metadata } of phases) {
+    assert.equal(metadata.seq, 8);
+    assert.equal(metadata.actor, 0);
+    assert.deepEqual(metadata.command, { type: 'priority_action' });
+    assert.equal('actionIntent' in metadata, false);
+  }
 });

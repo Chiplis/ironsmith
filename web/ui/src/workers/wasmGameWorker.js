@@ -1,3 +1,4 @@
+import { createPaymentOptionsAnalysis } from "../lib/payment-options-analysis.js";
 import { createAsyncLimiter } from "../lib/bounded-async.js";
 import { inRuntimeBranch } from "../lib/runtime-branches.js";
 import { CARD_ASSET_MISSING, fetchCardAssetJson, versionedCardAssetUrl } from "../lib/card-asset-cache.js";
@@ -6,7 +7,7 @@ import { previewCryptoRequirementsWithMaterial } from "../lib/preview-crypto-mat
 import { replayTrustedMatch, replayTrustedActions } from "../lib/relay/replay-trusted-match.js";
 import { compileWasmWithProgress } from "../lib/wasm-loading.js";
 import { createAdaptiveWorkBudget } from "../lib/adaptive-work-budget.js";
-import { createPriorityAnalysisScheduler } from "../lib/priority-analysis-scheduler.js";
+import { createIsolatedPriorityAnalysis } from "../lib/isolated-priority-analysis.js";
 import { createWorkerTaskDiagnostics } from "../lib/worker-task-diagnostics.js";
 import initWasm, { WasmGame } from "../../../wasm_demo/pkg/ironsmith.js";
 import engineWasmUrl from "../../../wasm_demo/pkg/engine_bg.wasm?url";
@@ -46,6 +47,12 @@ let cardIndexPromise = null;
 let embeddedCardIndex = null;
 const registeredCardRoutes = new Set();
 const previewCardSources = new Map();
+// Explicit registrations and custom drafts are session definitions too.
+const analysisRegistrations = [];
+const ANALYSIS_REGISTRATION_METHODS = new Set([
+  'registerCompiledCardArtifact', 'registerCompiledCardSourceArtifacts',
+  'registerExternalCardSources', 'registerExternalCardSourcesJson', 'createCustomCard',
+]);
 let latestTargetPreview;
 let previewWorker = null;
 const targetPreviews = new Map();
@@ -122,21 +129,42 @@ const CARD_ZONE_KEYS = [
 
 // Unknown methods invalidate by default. Presentation reads cannot cancel a
 // long search merely because the user hovered a card or requested a snapshot.
-const ANALYSIS_READ_METHOD = /^(beginPaymentAnalysis|stepPaymentAnalysis|cancelPaymentAnalysis|snapshot|snapshotJson|uiState|last\w*Perf|lastWorkCounters|export\w+|autocompleteCardNames|get\w+|cardsMeetingThreshold|objectDetails|inspectorActions|preview\w+|registrySize|filterKnownCardNames|isKnownCardName|isReplayCheckpointBoundary|cardLoadDiagnostics|validateMatchConfig|createRuntimeSavepoint|releaseRuntimeSavepoint)$/;
+const ANALYSIS_READ_METHOD = /^(beginPaymentAnalysis|stepPaymentAnalysis|cancelPaymentAnalysis|snapshot|snapshotJson|uiState|last\w*Perf|lastWorkCounters|export\w+|autocompleteCardNames|get\w+|cardsMeetingThreshold|objectDetails|inspectorActions|preview\w+|registrySize|filterKnownCardNames|isKnownCardName|isReplayCheckpointBoundary|hiddenCardOpenState|pendingVerifiedHiddenLibraryPosition|runtimeVersion|cardLoadDiagnostics|validateMatchConfig|createRuntimeSavepoint|releaseRuntimeSavepoint)$/;
 let priorityIdentity = null;
 let priorityViewRevision = 0;
 const workerTasks = createWorkerTaskDiagnostics({ publish: message => self.postMessage(message) });
-const priorityAnalysis = createPriorityAnalysisScheduler({
-  game: () => game,
-  busy: () => pendingCallCount > 0,
-  enqueue: enqueueCall,
-  reportStage: (name, details) => workerTasks.phaseActive(name, details),
-  runSetup: (metadata, operation) => workerTasks.runSync(metadata, operation),
-  publish: (analysis) => {
-    priorityIdentity = game.priorityAnalysisIdentity();
-    self.postMessage({ type: "priorityAnalysis", ...analysis });
-  },
-  fail: ({ revision, error }) => self.postMessage({ type: "priorityAnalysisError", revision, error: serializeError(error) }),
+const priorityAnalysis = createIsolatedPriorityAnalysis({
+  identity: () => game?.priorityAnalysisIdentity(),
+  pending: () => game?.priorityAnalysisPending?.() === true,
+  eligible: () => game?.hasPriorityDecision?.() === true,
+  capture: () => enqueueCall(() => ({
+    checkpoint: game.exportSyncCheckpoint(),
+    module: engineModule,
+    registrations: analysisRegistrations.slice(),
+    sources: [...new Map([...previewCardSources].map(([route, source]) => [source, route]))]
+      .map(([source, route]) => [route, source]),
+  }), { kind: 'priority_analysis_capture' }),
+  createWorker: () => new Worker(new URL('./priorityAnalysisWorker.js', import.meta.url), { type: 'module' }),
+  // Check results only after any temporary verification branch has exited.
+  deliver: operation => enqueueCall(operation, { kind: 'priority_analysis_publish' }),
+  publish: analysis => self.postMessage({ type: 'priorityAnalysis', ...analysis }),
+  fail: ({ revision, error }) => self.postMessage({ type: 'priorityAnalysisError', revision, error: serializeError(error) }),
+});
+
+const paymentOptionsAnalysis = createPaymentOptionsAnalysis({
+  capture: (requestHash, planId) => enqueueCall(() => {
+    const request = game.exportManaPaymentOptionsRequest(requestHash, planId);
+    if (request === 'null') return null;
+    return {
+      request,
+      checkpoint: game.exportSyncCheckpoint(),
+      module: engineModule,
+      registrations: analysisRegistrations.slice(),
+      sources: [...new Map([...previewCardSources].map(([route, source]) => [source, route]))]
+        .map(([source, route]) => [route, source]),
+    };
+  }, { kind: 'payment_options_capture' }),
+  createWorker: () => new Worker(new URL('./paymentOptionsWorker.js', import.meta.url), { type: 'module' }),
 });
 
 function nowMs() {
@@ -759,6 +787,7 @@ async function handleInit(msg = {}) {
   try {
     clearBackgroundTimer();
     snapshotEncoder.reset();
+    paymentOptionsAnalysis.cancel();
     previewWorker?.terminate(); previewWorker = null; targetPreviews.clear();
     game = null;
     pendingCallCount = 0;
@@ -769,7 +798,9 @@ async function handleInit(msg = {}) {
     embeddedCardIndex = null;
     knownRuntimeCardNames.clear();
     registeredCardRoutes.clear();
+    priorityAnalysis.dispose();
     previewCardSources.clear();
+    analysisRegistrations.length = 0;
     missingCardRoutes.clear();
     transientMissingCardRoutes.clear();
     const assetBaseUrl = String(msg.assetBaseUrl || "").trim();
@@ -798,6 +829,7 @@ async function handleInit(msg = {}) {
       }
     }
     game.setDeferredPriorityAnalysis(true);
+    game.setDeferredManaOptions?.(true);
     workerTasks.phase(task, 'registry_status');
     const status = readRegistryStatus();
     if (status) {
@@ -877,6 +909,12 @@ function handleTargetPreview(id, args) {
 
 function handleCall(msg) {
   const { id, method, args = [] } = msg;
+  if (msg.runtimeBranch == null && method === "getPaymentActivationOptions") {
+    paymentOptionsAnalysis.run(...args).then(result =>
+      postWorkerResult({ type: "result", id, ok: true, result }), error =>
+      postWorkerResult({ type: "result", id, ok: false, error: serializeError(error) }));
+    return;
+  }
   if (msg.runtimeBranch == null && method === "previewCastTargets") { handleTargetPreview(id, args); return; }
   if (!/^(snapshot|uiState|last\w*Perf|exportSyncCheckpoint|exportPublicAuditCheckpoint|isReplayCheckpointBoundary|autocompleteCardNames|getCardSemanticScore|cardsMeetingThreshold)$/.test(method)) {
     try {
@@ -886,7 +924,7 @@ function handleCall(msg) {
     }
   }
   // A preview promise must never occupy the authoritative command queue.
-  // Its bounded slices use that queue separately, yielding to game commands.
+  // Its analysis runs on a separate worker against the captured state.
   if (msg.runtimeBranch == null && method === "inspectorActions" && game) {
     const task = workerTasks.create({ kind: 'inspector_request', requestId: id, method });
     workerTasks.phase(task, 'analysis_wait');
@@ -921,7 +959,10 @@ function handleCall(msg) {
     return inRuntimeBranch(game, msg.runtimeBranch, async () => {
     if (!game) throw new Error("Game is not initialized yet");
     if (msg.runtimeBranch == null && !ANALYSIS_READ_METHOD.test(method) && method !== "setPerspective") {
-      priorityAnalysis.invalidate();
+      // Publishing a verified branch may copy the identical visible state.
+      // Compare its analysis identity after the copy instead of discarding work.
+      if (method !== "copyRuntimeSavepoint") priorityAnalysis.invalidate();
+      paymentOptionsAnalysis.cancel();
       game?.cancelPaymentAnalysis?.();
       latestTargetPreview = null;
       previewWorker?.postMessage({ type: "cancel" });
@@ -990,10 +1031,17 @@ function handleCall(msg) {
     if (typeof fn !== "function") {
       throw new Error(`Unknown game method: ${method}`);
     }
-    const previousPerspectiveIdentity = method === "setPerspective" ? game.priorityAnalysisIdentity() : null;
+    const previousViewIdentity = (method === "setPerspective" || method === "copyRuntimeSavepoint")
+      && msg.runtimeBranch == null ? game.priorityAnalysisIdentity() : null;
     const wasmStartedAt = nowMs();
     const result = await fn.apply(game, args);
-    if (previousPerspectiveIdentity !== null && previousPerspectiveIdentity !== game.priorityAnalysisIdentity()) priorityAnalysis.invalidate();
+    if (ANALYSIS_REGISTRATION_METHODS.has(method)) {
+      analysisRegistrations.push({ method, args: structuredClone(args) });
+    }
+    if (previousViewIdentity !== null && previousViewIdentity !== game.priorityAnalysisIdentity()) {
+      priorityAnalysis.invalidate();
+      paymentOptionsAnalysis.cancel();
+    }
     rememberCardNamesFromEngineResult(result);
     const wasmCallMs = nowMs() - wasmStartedAt;
     workerTasks.phase(diagnosticTask, 'perf_collection');

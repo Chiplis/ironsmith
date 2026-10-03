@@ -658,6 +658,7 @@ mod tests {
             card: None,
             zone: Zone::Battlefield,
             owner: PlayerId::from_index(0),
+            initial_controller: PlayerId::from_index(0),
             name: name.to_string().into(),
             first_printed_set_name: None,
             mana_cost: None,

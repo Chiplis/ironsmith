@@ -475,6 +475,7 @@ impl GameState {
             world_supertype_since: None,
             colors: crate::color::ColorSet::COLORLESS,
             loyalty: None,
+            defense: None,
             abilities: Vec::new().into(),
             static_abilities: Vec::new().into(),
             ability_gain_prohibitions: Vec::new(),

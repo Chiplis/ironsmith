@@ -796,6 +796,7 @@ mod tests {
             card: None,
             zone: Zone::Battlefield,
             owner: PlayerId::from_index(0),
+            initial_controller: PlayerId::from_index(0),
             name: name.to_string().into(),
             first_printed_set_name: None,
             mana_cost: None,
@@ -1116,12 +1117,15 @@ mod tests {
 
         let mut ring_bearer = make_creature("Bearer", 2, 2);
         ring_bearer.owner = alice;
+        ring_bearer.initial_controller = alice;
 
         let mut equal_power_blocker = make_creature("Equal", 2, 2);
         equal_power_blocker.owner = bob;
+        equal_power_blocker.initial_controller = bob;
 
         let mut larger_blocker = make_creature("Large", 3, 3);
         larger_blocker.owner = bob;
+        larger_blocker.initial_controller = bob;
 
         game.add_object(ring_bearer.clone());
         game.add_object(equal_power_blocker.clone());
@@ -1140,6 +1144,7 @@ mod tests {
         let mut attacker = make_creature("Beebles", 2, 2);
         attacker.id = ObjectId::from_raw(10);
         attacker.owner = alice;
+        attacker.initial_controller = alice;
         add_ability(
             &mut attacker,
             StaticAbility::cant_be_blocked_as_long_as_defending_player_controls_card_type(
@@ -1150,6 +1155,7 @@ mod tests {
         let mut blocker = make_creature("Blocker", 2, 2);
         blocker.id = ObjectId::from_raw(11);
         blocker.owner = bob;
+        blocker.initial_controller = bob;
 
         let mut game_without_artifact = test_game_state();
         game_without_artifact.add_object(attacker.clone());
@@ -1162,6 +1168,7 @@ mod tests {
         let mut artifact = make_creature("Relic", 0, 1);
         artifact.id = ObjectId::from_raw(12);
         artifact.owner = bob;
+        artifact.initial_controller = bob;
         artifact.card_types.push(CardType::Artifact);
 
         let mut game_with_artifact = test_game_state();
@@ -1181,6 +1188,7 @@ mod tests {
         let mut attacker = make_creature("Tanglewalker", 2, 2);
         attacker.id = ObjectId::from_raw(110);
         attacker.owner = alice;
+        attacker.initial_controller = alice;
         add_ability(
             &mut attacker,
             StaticAbility::cant_be_blocked_as_long_as_defending_player_controls_card_types(vec![
@@ -1192,11 +1200,13 @@ mod tests {
         let mut blocker = make_creature("Blocker", 2, 2);
         blocker.id = ObjectId::from_raw(111);
         blocker.owner = bob;
+        blocker.initial_controller = bob;
 
         let mut game_with_only_artifact = test_game_state();
         let mut artifact_only = make_creature("Relic", 0, 1);
         artifact_only.id = ObjectId::from_raw(112);
         artifact_only.owner = bob;
+        artifact_only.initial_controller = bob;
         artifact_only.card_types = vec![CardType::Artifact].into();
         game_with_only_artifact.add_object(attacker.clone());
         game_with_only_artifact.add_object(blocker.clone());
@@ -1210,6 +1220,7 @@ mod tests {
         let mut land_only = make_creature("Field", 0, 1);
         land_only.id = ObjectId::from_raw(113);
         land_only.owner = bob;
+        land_only.initial_controller = bob;
         land_only.card_types = vec![CardType::Land].into();
         game_with_only_land.add_object(attacker.clone());
         game_with_only_land.add_object(blocker.clone());
@@ -1223,6 +1234,7 @@ mod tests {
         let mut artifact_land = make_creature("Seat of Synod", 0, 1);
         artifact_land.id = ObjectId::from_raw(114);
         artifact_land.owner = bob;
+        artifact_land.initial_controller = bob;
         artifact_land.card_types = vec![CardType::Artifact, CardType::Land].into();
         game_with_artifact_land.add_object(attacker);
         game_with_artifact_land.add_object(blocker);
@@ -1252,14 +1264,17 @@ mod tests {
         let mut attacker = make_creature("Attacker", 2, 2);
         attacker.id = ObjectId::from_raw(20);
         attacker.owner = alice;
+        attacker.initial_controller = alice;
 
         let mut other_attacker = make_creature("Other Attacker", 2, 2);
         other_attacker.id = ObjectId::from_raw(21);
         other_attacker.owner = alice;
+        other_attacker.initial_controller = alice;
 
         let mut blocker = make_creature("Blocker", 2, 2);
         blocker.id = ObjectId::from_raw(22);
         blocker.owner = bob;
+        blocker.initial_controller = bob;
 
         game.add_object(attacker.clone());
         game.add_object(other_attacker.clone());
@@ -1299,9 +1314,11 @@ mod tests {
 
         let mut attacker = make_creature("Attacker", 2, 2);
         attacker.owner = alice;
+        attacker.initial_controller = alice;
 
         let mut blocker = make_creature("Blocker", 2, 2);
         blocker.owner = bob;
+        blocker.initial_controller = bob;
 
         game.add_object(attacker.clone());
         game.add_object(blocker.clone());
@@ -1333,6 +1350,7 @@ mod tests {
 
         let mut attacker = make_creature("Serpent", 5, 5);
         attacker.owner = alice;
+        attacker.initial_controller = alice;
         add_ability(
             &mut attacker,
             StaticAbility::cant_attack_unless_defending_player_controls_land_subtype(
@@ -1350,10 +1368,23 @@ mod tests {
         let mut island = make_creature("Island", 0, 0);
         island.id = ObjectId::from_raw(99);
         island.owner = bob;
+        island.initial_controller = bob;
         island.card_types = vec![CardType::Land].into();
         island.subtypes = vec![crate::types::Subtype::Island].into();
         game.add_object(island);
 
+        assert!(can_attack_defending_player(&attacker, bob, &game));
+        let island_id = ObjectId::from_raw(99);
+        assert_eq!(game.object(island_id).unwrap().owner, bob);
+        assert_eq!(game.current_controller(island_id), Some(bob));
+        let effect = game.effect_store.continuous_effects.add_effect(
+            crate::continuous::ContinuousEffect::gain_control(island_id, alice, island_id, alice));
+        game.refresh_continuous_state().expect("Island control change completes");
+        assert_eq!(game.object(island_id).unwrap().owner, bob);
+        assert_eq!(game.current_controller(island_id), Some(alice));
+        assert!(!can_attack_defending_player(&attacker, bob, &game));
+        game.effect_store.continuous_effects.remove_effect(effect);
+        game.refresh_continuous_state().expect("Island control restores");
         assert!(can_attack_defending_player(&attacker, bob, &game));
     }
 
@@ -1501,6 +1532,7 @@ mod tests {
         let mut attacker = make_creature("Rebbec-protected artifact creature", 2, 2);
         attacker.id = ObjectId::from_raw(2100);
         attacker.owner = alice;
+        attacker.initial_controller = alice;
         attacker.card_types.push(CardType::Artifact);
         set_mana_value(&mut attacker, 2);
         add_ability(
@@ -1513,17 +1545,20 @@ mod tests {
         let mut matching_blocker = make_creature("Matching Mana Value Blocker", 2, 2);
         matching_blocker.id = ObjectId::from_raw(2101);
         matching_blocker.owner = bob;
+        matching_blocker.initial_controller = bob;
         set_mana_value(&mut matching_blocker, 2);
 
         let mut nonmatching_blocker = make_creature("Different Mana Value Blocker", 3, 3);
         nonmatching_blocker.id = ObjectId::from_raw(2102);
         nonmatching_blocker.owner = bob;
+        nonmatching_blocker.initial_controller = bob;
         set_mana_value(&mut nonmatching_blocker, 3);
 
         let mut opponents_artifact_with_nonmatching_value =
             make_creature("Opponent Artifact With Mana Value Three", 0, 1);
         opponents_artifact_with_nonmatching_value.id = ObjectId::from_raw(2103);
         opponents_artifact_with_nonmatching_value.owner = bob;
+        opponents_artifact_with_nonmatching_value.initial_controller = bob;
         opponents_artifact_with_nonmatching_value
             .card_types
             .push(CardType::Artifact);
@@ -1543,6 +1578,19 @@ mod tests {
             can_block(&attacker, &nonmatching_blocker, &game),
             "Rebbec, Architect of Ascension should not count artifacts controlled by the defending player for the attacker's mana-value set"
         );
+        let artifact = ObjectId::from_raw(2103);
+        assert_eq!(game.object(artifact).unwrap().owner, bob);
+        assert_eq!(game.current_controller(artifact), Some(bob));
+        let effect = game.effect_store.continuous_effects.add_effect(
+            crate::continuous::ContinuousEffect::gain_control(artifact, alice, artifact, alice));
+        game.refresh_continuous_state().expect("artifact control change completes");
+        assert_eq!(game.object(artifact).unwrap().owner, bob);
+        assert_eq!(game.current_controller(artifact), Some(alice));
+        assert!(!can_block(&attacker, &nonmatching_blocker, &game),
+            "newly controlled artifact contributes its mana value despite Bob's ownership");
+        game.effect_store.continuous_effects.remove_effect(effect);
+        game.refresh_continuous_state().expect("artifact control restores");
+        assert!(can_block(&attacker, &nonmatching_blocker, &game));
     }
 
     #[test]
@@ -1562,10 +1610,12 @@ mod tests {
 
         let mut attacker = make_creature("Pathwalker", 2, 2);
         attacker.owner = alice;
+        attacker.initial_controller = alice;
         add_ability(&mut attacker, StaticAbility::any_landwalk());
 
         let mut blocker = make_creature("Blocker", 2, 2);
         blocker.owner = bob;
+        blocker.initial_controller = bob;
 
         let mut game = test_game_state();
         game.add_object(attacker.clone());
@@ -1574,6 +1624,7 @@ mod tests {
 
         let mut land = make_creature("Plains", 0, 1);
         land.owner = bob;
+        land.initial_controller = bob;
         land.card_types = vec![CardType::Land].into();
         land.subtypes = vec![crate::types::Subtype::Plains].into();
         game.add_object(land);
@@ -1588,19 +1639,23 @@ mod tests {
 
         let mut attacker = make_creature("Boots Walker", 2, 2);
         attacker.owner = alice;
+        attacker.initial_controller = alice;
         add_ability(&mut attacker, StaticAbility::nonbasic_landwalk());
 
         let mut blocker = make_creature("Blocker", 2, 2);
         blocker.owner = bob;
+        blocker.initial_controller = bob;
 
         let mut basic_land = make_creature("Forest", 0, 1);
         basic_land.owner = bob;
+        basic_land.initial_controller = bob;
         basic_land.card_types = vec![CardType::Land].into();
         basic_land.subtypes = vec![crate::types::Subtype::Forest].into();
         basic_land.supertypes = vec![Supertype::Basic].into();
 
         let mut nonbasic_land = make_creature("Maze", 0, 1);
         nonbasic_land.owner = bob;
+        nonbasic_land.initial_controller = bob;
         nonbasic_land.card_types = vec![CardType::Land].into();
         nonbasic_land.subtypes = vec![crate::types::Subtype::Desert].into();
 
@@ -1621,13 +1676,16 @@ mod tests {
 
         let mut attacker = make_creature("Boots Walker", 2, 2);
         attacker.owner = alice;
+        attacker.initial_controller = alice;
         add_ability(&mut attacker, StaticAbility::nonbasic_landwalk());
 
         let mut blocker = make_creature("Blocker", 2, 2);
         blocker.owner = bob;
+        blocker.initial_controller = bob;
 
         let mut land = make_creature("Maze", 0, 1);
         land.owner = bob;
+        land.initial_controller = bob;
         land.card_types = vec![CardType::Land].into();
         land.subtypes = vec![crate::types::Subtype::Desert].into();
         let land_id = land.id;
@@ -1661,6 +1719,7 @@ mod tests {
 
         let mut attacker = make_creature("Snow Scout", 2, 2);
         attacker.owner = alice;
+        attacker.initial_controller = alice;
         add_ability(
             &mut attacker,
             StaticAbility::snow_landwalk(crate::types::Subtype::Forest),
@@ -1668,9 +1727,11 @@ mod tests {
 
         let mut blocker = make_creature("Blocker", 2, 2);
         blocker.owner = bob;
+        blocker.initial_controller = bob;
 
         let mut forest = make_creature("Forest", 0, 1);
         forest.owner = bob;
+        forest.initial_controller = bob;
         forest.card_types = vec![CardType::Land].into();
         forest.subtypes = vec![crate::types::Subtype::Forest].into();
 
@@ -1696,6 +1757,7 @@ mod tests {
 
         let mut attacker = make_creature("Snow Scout", 2, 2);
         attacker.owner = alice;
+        attacker.initial_controller = alice;
         add_ability(
             &mut attacker,
             StaticAbility::snow_landwalk(crate::types::Subtype::Forest),
@@ -1703,9 +1765,11 @@ mod tests {
 
         let mut blocker = make_creature("Blocker", 2, 2);
         blocker.owner = bob;
+        blocker.initial_controller = bob;
 
         let mut forest = make_creature("Forest", 0, 1);
         forest.owner = bob;
+        forest.initial_controller = bob;
         forest.card_types = vec![CardType::Land].into();
         forest.subtypes = vec![crate::types::Subtype::Forest].into();
         let forest_id = forest.id;
@@ -1739,12 +1803,15 @@ mod tests {
 
         let mut attacker = make_creature("Traveler", 2, 2);
         attacker.owner = alice;
+        attacker.initial_controller = alice;
 
         let mut blocker = make_creature("Blocker", 2, 2);
         blocker.owner = bob;
+        blocker.initial_controller = bob;
 
         let mut aura = make_creature("Traveler's Cloak", 0, 0);
         aura.owner = alice;
+        aura.initial_controller = alice;
         aura.card_types = vec![CardType::Enchantment].into();
         aura.subtypes = vec![crate::types::Subtype::Aura].into();
         aura.attached_to = Some(crate::object::AttachmentTarget::Object(attacker.id));
@@ -1757,6 +1824,7 @@ mod tests {
 
         let mut chosen_land = make_creature("Desert", 0, 1);
         chosen_land.owner = bob;
+        chosen_land.initial_controller = bob;
         chosen_land.card_types = vec![CardType::Land].into();
         chosen_land.subtypes = vec![crate::types::Subtype::Desert].into();
 
@@ -1784,6 +1852,7 @@ mod tests {
 
         let mut attacker = make_creature("Bog Raider", 2, 2);
         attacker.owner = alice;
+        attacker.initial_controller = alice;
         add_ability(
             &mut attacker,
             StaticAbility::landwalk(crate::types::Subtype::Swamp),
@@ -1791,14 +1860,17 @@ mod tests {
 
         let mut blocker = make_creature("Blocker", 2, 2);
         blocker.owner = bob;
+        blocker.initial_controller = bob;
 
         let mut swamp = make_creature("Swamp", 0, 1);
         swamp.owner = bob;
+        swamp.initial_controller = bob;
         swamp.card_types = vec![CardType::Land].into();
         swamp.subtypes = vec![crate::types::Subtype::Swamp].into();
 
         let mut quagmire = make_creature("Quagmire", 0, 0);
         quagmire.owner = alice;
+        quagmire.initial_controller = alice;
         quagmire.card_types = vec![CardType::Enchantment].into();
         quagmire
             .abilities_mut()
@@ -1824,12 +1896,15 @@ mod tests {
 
         let mut attacker = make_creature("Vanilla Attacker", 2, 2);
         attacker.owner = alice;
+        attacker.initial_controller = alice;
 
         let mut blocker = make_creature("Blocker", 2, 2);
         blocker.owner = bob;
+        blocker.initial_controller = bob;
 
         let mut quagmire = make_creature("Quagmire", 0, 0);
         quagmire.owner = alice;
+        quagmire.initial_controller = alice;
         quagmire.card_types = vec![CardType::Enchantment].into();
         quagmire
             .abilities_mut()

@@ -44,6 +44,10 @@ fn grant_duration_source(
 
 /// Effect that grants a [`GrantSpec`] to cards matching its filter for a duration.
 impl EffectExecutor for GrantBySpecEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+        crate::grant::visit_spec_owned_effects(&self.spec, visitor);
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

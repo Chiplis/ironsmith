@@ -40,6 +40,10 @@ impl DamageToPlayerMatcher {
 }
 
 impl ReplacementMatcher for DamageToPlayerMatcher {
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -74,6 +78,10 @@ pub struct PreventableDamageToPlayerMatcher {
 }
 
 impl ReplacementMatcher for PreventableDamageToPlayerMatcher {
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -114,6 +122,10 @@ impl DamageToObjectMatcher {
 }
 
 impl ReplacementMatcher for DamageToObjectMatcher {
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -157,6 +169,10 @@ impl DamageToPlayerOrObjectMatcher {
 }
 
 impl ReplacementMatcher for DamageToPlayerOrObjectMatcher {
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -190,6 +206,10 @@ impl ReplacementMatcher for DamageToPlayerOrObjectMatcher {
 pub struct CombatDamageMatcher;
 
 impl ReplacementMatcher for CombatDamageMatcher {
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, _ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -220,6 +240,10 @@ impl PreventableCombatDamageToObjectMatcher {
 }
 
 impl ReplacementMatcher for PreventableCombatDamageToObjectMatcher {
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -267,6 +291,10 @@ impl PreventableNoncombatDamageToObjectMatcher {
 }
 
 impl ReplacementMatcher for PreventableNoncombatDamageToObjectMatcher {
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -306,6 +334,10 @@ impl ReplacementMatcher for PreventableNoncombatDamageToObjectMatcher {
 pub struct NoncombatDamageMatcher;
 
 impl ReplacementMatcher for NoncombatDamageMatcher {
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, _ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -341,6 +373,10 @@ impl DamageFromSourceMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSourceMatcher {
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -388,6 +424,10 @@ impl DamageFromSourceToPlayerMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSourceToPlayerMatcher {
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -495,6 +535,10 @@ impl DamageFromSourceToObjectMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSourceToObjectMatcher {
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -548,6 +592,10 @@ impl Default for DamageFromSelfMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSelfMatcher {
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -594,6 +642,10 @@ impl Default for DamageToOrFromSelfMatcher {
 }
 
 impl ReplacementMatcher for DamageToOrFromSelfMatcher {
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -640,6 +692,10 @@ impl Default for DamageFromSelfCombatMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSelfCombatMatcher {
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -755,6 +811,10 @@ impl PreventableDamageConstraintMatcher {
 }
 
 impl ReplacementMatcher for PreventableDamageConstraintMatcher {
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -837,6 +897,10 @@ impl Default for DamageToSelfMatcher {
 }
 
 impl ReplacementMatcher for DamageToSelfMatcher {
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -878,6 +942,10 @@ impl Default for DamageToAttachedObjectMatcher {
 }
 
 impl ReplacementMatcher for DamageToAttachedObjectMatcher {
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -943,6 +1011,10 @@ impl DamageToSelfConstraintMatcher {
 }
 
 impl ReplacementMatcher for DamageToSelfConstraintMatcher {
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -1013,6 +1085,10 @@ impl Default for DamageToSelfCombatMatcher {
 }
 
 impl ReplacementMatcher for DamageToSelfCombatMatcher {
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -1062,6 +1138,10 @@ impl DamageToOtherCreatureYouControlMatcher {
 }
 
 impl ReplacementMatcher for DamageToOtherCreatureYouControlMatcher {
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -1136,6 +1216,10 @@ impl DamageToSelfFromSourceFilterMatcher {
 }
 
 impl ReplacementMatcher for DamageToSelfFromSourceFilterMatcher {
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;

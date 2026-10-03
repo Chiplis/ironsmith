@@ -716,7 +716,7 @@ export default function GameCard({
   const count = Number(card.count);
   const groupSize = Number.isFinite(count) && count > 1 ? count : 1;
   const summoningSick = variant === "battlefield" && card?.summoning_sick === true;
-  const hasActiveAura = variant === "battlefield" && card?.has_active_aura === true;
+  const ptModifiedByEffect = variant === "battlefield" && card?.pt_modified_by_effect === true;
   const battlefieldStackDepth = variant === "battlefield"
     ? Math.max(0, Math.min(groupSize, 4) - 1)
     : 0;
@@ -1718,9 +1718,9 @@ export default function GameCard({
             <span
               className={cn(
                 "battlefield-pt-badge",
-                hasActiveAura && "battlefield-pt-badge--aura",
+                ptModifiedByEffect && "battlefield-pt-badge--modified",
               )}
-              title={hasActiveAura ? ui("Power/Toughness modified by an active aura") : undefined}
+              title={ptModifiedByEffect ? ui("Power/Toughness modified by an effect") : undefined}
             >
               {battlefieldPowerToughness(card)}
             </span>

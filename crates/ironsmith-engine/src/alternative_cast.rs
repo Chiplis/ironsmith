@@ -48,6 +48,7 @@ pub(crate) fn hand_special_action(
 pub(crate) fn ensure_alternative_battlefield_abilities(
     object: &mut crate::object::Object,
     method: &AlternativeCastingMethod,
+    current_turn: u32,
 ) {
     let (name, blitz) = match method {
         AlternativeCastingMethod::Dash { .. } => ("Dash", false),
@@ -63,7 +64,7 @@ pub(crate) fn ensure_alternative_battlefield_abilities(
     let abilities = object.abilities.iter().filter_map(|ability| match &ability.kind {
         crate::ability::AbilityKind::Static(ability) => Some(ability.clone()),
         _ => None,
-    }).chain(object.temporary_static_ability_grants.iter().filter_map(|grant| grant.materialize()));
+    }).chain(object.temporary_static_ability_grants.iter().filter(|grant| !grant.is_expired(current_turn)).filter_map(|grant| grant.materialize()));
     let mut has_haste = false;
     let mut has_death_draw = false;
     for ability in abilities {

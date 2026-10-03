@@ -1590,7 +1590,20 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     }
 
     const seq = Number(message?.seq);
-    await servicesRef.current.waitForProtocolActionHead?.(message, "Cryptographic material request");
+    const authorizePerf = {
+      request_id: String(message?.requestId || ""),
+      seq,
+      actor: actorIndex,
+      command: summarizePeerCommand(message?.command),
+    };
+    const timeAuthorization = (phase, task) => timePeerSyncPhase(
+      `crypto_material_request:authorize:${phase}`,
+      authorizePerf,
+      task
+    );
+    await timeAuthorization("wait_action_head", () =>
+      servicesRef.current.waitForProtocolActionHead?.(message, "Cryptographic material request")
+    );
     session = multiplayerRef.current;
     assertMatchNotDisputed(session, "Cryptographic material request");
     const expectedSeq = Number(session.lastAppliedSequence || 0) + 1;
@@ -1609,9 +1622,11 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       throw new Error("Cryptographic material request is missing the signed command preview");
     }
 
-    const liveState = gameRef.current && typeof gameRef.current.uiState === "function"
-      ? await gameRef.current.uiState()
-      : stateRef.current;
+    const liveState = await timeAuthorization("read_state", () =>
+      gameRef.current && typeof gameRef.current.uiState === "function"
+        ? gameRef.current.uiState()
+        : stateRef.current
+    );
     const decision = liveState?.decision || null;
     if (
       decision?.player !== null
@@ -1623,20 +1638,20 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     if (!isDecisionCommandCompatible(decision, command)) {
       throw new Error("Cryptographic material request command is not available locally");
     }
-    await verifyCurrentPublicCheckpointHash(
+    await timeAuthorization("verify_checkpoint", () => verifyCurrentPublicCheckpointHash(
       message.publicCheckpointHash,
       "Cryptographic material request public checkpoint does not match local state"
-    );
+    ));
 
     // Authenticate the command before a preview can reserve its shuffle locks.
-      const actionIntent = await verifySignedActionIntent(message.actionIntent, {
+      const actionIntent = await timeAuthorization("verify_intent", () => verifySignedActionIntent(message.actionIntent, {
         matchId: currentAuditMatchId(),
         seq,
         actorIndex,
         prevStateHash: message.prevStateHash,
         preActionPublicCheckpointHash: message.publicCheckpointHash,
         command,
-      });
+      }));
 
     assertMatchNotDisputed(multiplayerRef.current, "Cryptographic material request");
 	    const localSeat = resolveLocalCryptoPlayerIndex();
@@ -1645,16 +1660,16 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 	      liveState,
 	      freshCryptoRequirementsForSequence(
 	        seq,
-	        await previewRequirementsForCommand(command)
+        await timeAuthorization("preview_requirements", () => previewRequirementsForCommand(command))
 	      )
 	    );
     if ((message.shuffleProofs || []).some(isPrivateZiffleEpoch)
       || (message.rngReveals || []).length
       || previewedRequirements.some(requirement => String(requirement.type || "") === "fair_random")) {
-      previewedRequirements = await servicesRef.current.previewZiffleActionRequirements({
+      previewedRequirements = await timeAuthorization("preview_ziffle", () => servicesRef.current.previewZiffleActionRequirements({
         command, seq, shuffleProofs: message.shuffleProofs || [], openings: message.openings || [],
         rngReveals: message.rngReveals || [],
-      }, previewedRequirements);
+      }, previewedRequirements));
     }
 	    const locallyKnownRequestedPublicOpenRequirements = (
 	      Array.isArray(message.requirements) ? message.requirements : []
@@ -1676,12 +1691,12 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       return { requirements: authorizedRequirements, actionIntent };
     } catch (err) {
       assertMatchNotDisputed(multiplayerRef.current, "Cryptographic material request");
-      const postApplyRequirements = await derivePostApplyCryptoRequirementsForRequest({
+      const postApplyRequirements = await timeAuthorization("post_apply_requirements", () => derivePostApplyCryptoRequirementsForRequest({
         command,
         seq,
         actorIndex,
         liveState,
-      });
+      }));
       if (postApplyRequirements.length === 0) {
         throw err;
       }

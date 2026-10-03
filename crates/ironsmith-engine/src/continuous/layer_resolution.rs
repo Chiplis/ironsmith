@@ -39,7 +39,7 @@ pub(super) fn calculate_with_layers(
     use crate::dependency::sort_layer_effects;
     use crate::dependency::sort_layer_effects_with_baseline_and_started_groups;
 
-    let mut chars = initial_characteristics(object);
+    let mut chars = initial_characteristics(object, ctx.game.turn.turn_number);
     if chars.world_supertype_since.is_some() {
         chars.world_supertype_since = ctx.effects.get_entry_timestamp(object.id).or(Some(0));
     }
@@ -75,6 +75,10 @@ pub(super) fn calculate_with_layers(
     let mut next_ability_counter = 0;
 
     for layer in layers {
+        if layer == Layer::Ability {
+            add_intrinsic_abilities(&mut chars);
+            calc_guard.update(&chars);
+        }
         let layer_effects = match effects_by_layer.get(&layer) {
             Some(effects) => effects,
             None => {
@@ -195,6 +199,12 @@ pub(super) fn calculate_with_layers(
                 true
             };
 
+            if effect.has_source_controller_context()
+                && !ctx.objects.contains_key(&effect.source_controller_context_host()) { continue; }
+            let bound_effect = if needs_source_tracking && effect_active {
+                bind_effect_controller_to_layer_frame(effect, &source_state)
+            } else { std::borrow::Cow::Borrowed(effect) };
+            let effect = bound_effect.as_ref();
             if needs_source_tracking && effect_active {
                 advance_layer_source_state(
                     &mut source_state,
@@ -250,6 +260,9 @@ pub(super) fn calculate_with_layers(
                 // Layer 2: Control
                 Modification::ChangeController(new_controller) => {
                     chars.controller = *new_controller;
+                }
+                Modification::ChangeControllerToEffectController => {
+                    chars.controller = effect.controller;
                 }
                 Modification::ChangeText { .. } => {
                     // Text changes are handled separately.
@@ -392,10 +405,12 @@ pub(super) fn calculate_with_layers(
                     force_once_each_turn,
                 } => {
                     use crate::ability::AbilityKind;
-                    use crate::static_ability_processor::get_all_continuous_effects;
-
-                    let effects = get_all_continuous_effects(ctx.game);
-                    let mut candidate_ids: Vec<_> = ctx.objects.keys().copied().collect();
+                    // Reuse this derivation's effect set. Re-entering static
+                    // effect generation here recursively rebuilds the board.
+                    let effects = all_effects.get_or_insert_with(||
+                        effects.iter().map(|effect| (**effect).clone()).collect());
+                    let donor_context = continuous_filter_context(ctx.game, effect.controller, effect.source);
+                    let mut candidate_ids = ability_copy_candidate_ids(ctx.objects, filter, &donor_context);
                     candidate_ids.sort();
 
                     for candidate_id in candidate_ids {
@@ -425,13 +440,8 @@ pub(super) fn calculate_with_layers(
                             continue;
                         };
 
-                        if !filter_matches_with_characteristics(
-                            filter,
-                            candidate,
-                            &candidate_chars,
-                            ctx.game,
-                            effect.controller,
-                            effect.source,
+                        if !filter_matches_with_characteristics_in_context(
+                            filter, candidate, &candidate_chars, ctx.game, &donor_context,
                         ) {
                             continue;
                         }
@@ -479,9 +489,10 @@ pub(super) fn calculate_with_layers(
                     selectors,
                     exclude_source_id,
                 } => {
-                    use crate::static_ability_processor::get_all_continuous_effects;
-
-                    let effects = get_all_continuous_effects(ctx.game);
+                    // Reuse this derivation's effect set. Re-entering static
+                    // effect generation here recursively rebuilds the board.
+                    let effects = all_effects.get_or_insert_with(||
+                        effects.iter().map(|effect| (**effect).clone()).collect());
                     copy_static_ability_variants_into(
                         &mut chars,
                         filter,
@@ -502,10 +513,12 @@ pub(super) fn calculate_with_layers(
                     exclude_source_id,
                 } => {
                     use crate::ability::AbilityKind;
-                    use crate::static_ability_processor::get_all_continuous_effects;
-
-                    let effects = get_all_continuous_effects(ctx.game);
-                    let mut candidate_ids: Vec<_> = ctx.objects.keys().copied().collect();
+                    // Reuse this derivation's effect set. Re-entering static
+                    // effect generation here recursively rebuilds the board.
+                    let effects = all_effects.get_or_insert_with(||
+                        effects.iter().map(|effect| (**effect).clone()).collect());
+                    let donor_context = continuous_filter_context(ctx.game, effect.controller, effect.source);
+                    let mut candidate_ids = ability_copy_candidate_ids(ctx.objects, filter, &donor_context);
                     candidate_ids.sort();
 
                     for candidate_id in candidate_ids {
@@ -530,13 +543,8 @@ pub(super) fn calculate_with_layers(
                             continue;
                         };
 
-                        if !filter_matches_with_characteristics(
-                            filter,
-                            candidate,
-                            &candidate_chars,
-                            ctx.game,
-                            effect.controller,
-                            effect.source,
+                        if !filter_matches_with_characteristics_in_context(
+                            filter, candidate, &candidate_chars, ctx.game, &donor_context,
                         ) {
                             continue;
                         }
@@ -584,8 +592,7 @@ pub(super) fn calculate_with_layers(
                     }
                 }
                 Modification::RemoveAllAbilities => {
-                    chars.abilities.clear();
-                    chars.static_abilities.clear();
+                    remove_all_abilities_for_effect(effect, &mut chars);
                     abilities_removed = true;
                 }
                 Modification::RemoveAllAbilitiesExceptMana => {
@@ -673,7 +680,6 @@ pub(super) fn calculate_with_layers(
         level_pt,
     );
 
-    add_intrinsic_basic_land_mana_abilities(&mut chars);
     prune_ability_gain_prohibitions(&mut chars);
     calc_guard.update(&chars);
 
@@ -812,6 +818,13 @@ pub(super) fn apply_layer_7_effects(
             true
         };
 
+        if effect.has_source_controller_context()
+            && !ctx.objects.contains_key(&effect.source_controller_context_host()) { continue; }
+        let bound_effect = if needs_source_tracking && effect_active {
+            bind_effect_controller_to_layer_frame(effect, &source_state)
+        } else { std::borrow::Cow::Borrowed(*effect) };
+        let effect = bound_effect.as_ref();
+
         if needs_source_tracking && effect_active {
             advance_layer_source_state(
                 &mut source_state,
@@ -947,7 +960,7 @@ pub(super) fn apply_layer_7_effects(
                 std::mem::swap(&mut power, &mut toughness);
             }
             Modification::CopyOf { .. }
-            | Modification::ChangeController(_)
+            | Modification::ChangeController(_) | Modification::ChangeControllerToEffectController
             | Modification::ChangeText { .. }
             | Modification::SetTextBox(_)
             | Modification::SetName(_)
@@ -1451,6 +1464,9 @@ pub(super) fn baseline_scope(effects: &[ContinuousEffect]) -> BaselineScope {
         ids: Vec::new(),
     };
     for effect in effects {
+        if effect.has_source_controller_context() && !scope.ids.contains(&effect.source_controller_context_host()) {
+            scope.ids.push(effect.source_controller_context_host());
+        }
         match &effect.applies_to {
             // An attachment names itself here; whatever it is attached to is a
             // permanent or a player, so the battlefield entry already covers
@@ -1461,7 +1477,7 @@ pub(super) fn baseline_scope(effects: &[ContinuousEffect]) -> BaselineScope {
                 }
             }
             EffectTarget::Source => {
-                if !scope.ids.contains(&effect.source) {
+                if !scope.ids.contains(&effect.source_controller_context_host()) {
                     scope.ids.push(effect.source);
                 }
             }
@@ -1605,27 +1621,46 @@ pub(super) fn layer_needs_source_activity_tracking<'a>(
     all_effects: impl IntoIterator<Item = &'a ContinuousEffect>,
     layer: Layer,
 ) -> bool {
-    layer_effects
-        .iter()
-        .any(|effect| effect.originating_static_ability.is_some())
-        && all_effects.into_iter().any(|effect| {
-            effect.modification.layer() <= layer
-                && effect_can_change_static_ability_presence(effect)
-        })
+    let has_static_sources = layer_effects.iter().any(|effect|
+        effect.originating_static_ability.is_some());
+    has_static_sources && all_effects.into_iter().any(|effect| {
+        // Control affects the context read by a source's static abilities even
+        // when none of those abilities is removed. Track earlier-layer source
+        // facts as well when a later control effect exists.
+        effect.modification.layer() == Layer::Control
+            || (effect.modification.layer() <= layer
+                && effect_can_change_static_ability_presence(effect))
+    })
+}
+
+/// Bind a regenerated static descriptor against a prepared layer frame.
+/// Its active-source check and baseline scope guarantee the host is present;
+/// this internal invariant is not a substitute for discovery error handling.
+pub(crate) fn bind_effect_controller_to_layer_frame<'a>(
+    effect: &'a ContinuousEffect,
+    frame: &HashMap<ObjectId, CalculatedCharacteristics>,
+) -> std::borrow::Cow<'a, ContinuousEffect> {
+    if !effect.has_source_controller_context() {
+        return std::borrow::Cow::Borrowed(effect);
+    }
+    let controller = frame[&effect.source_controller_context_host()].controller;
+    if controller == effect.controller { return std::borrow::Cow::Borrowed(effect); }
+    let mut bound = effect.clone();
+    bound.controller = controller;
+    std::borrow::Cow::Owned(bound)
 }
 
 pub(super) fn tracked_source_ids_for_layer(
     layer_effects: &[&ContinuousEffect],
 ) -> HashSet<ObjectId> {
-    layer_effects
-        .iter()
-        .filter_map(|effect| {
-            effect
-                .originating_static_ability
-                .as_ref()
-                .map(|_| effect.source)
-        })
-        .collect()
+    let mut ids = HashSet::new();
+    for effect in layer_effects {
+        if effect.originating_static_ability.is_some() { ids.insert(effect.source); }
+        if effect.has_source_controller_context() {
+            ids.insert(effect.source_controller_context_host());
+        }
+    }
+    ids
 }
 
 pub(super) fn effect_source_is_active(
@@ -1674,8 +1709,8 @@ pub(super) fn advance_layer_source_state(
         }
 
         let mut updated = chars;
-        crate::dependency::apply_modification_to_chars_for_dependency(
-            &effect.modification,
+        crate::dependency::apply_continuous_effect_to_chars_for_dependency(
+            effect,
             &mut updated,
             object,
             game,
@@ -1722,8 +1757,8 @@ pub(super) fn advance_layer_batch_source_state(
         }
 
         let mut updated = chars;
-        crate::dependency::apply_modification_to_chars_for_dependency(
-            &effect.modification,
+        crate::dependency::apply_continuous_effect_to_chars_for_dependency(
+            effect,
             &mut updated,
             object,
             game,
@@ -1816,8 +1851,15 @@ pub(super) fn apply_ability_counters_through(
 pub(super) fn add_temporary_static_ability_grants(
     object: &Object,
     chars: &mut CalculatedCharacteristics,
+    current_turn: u32,
 ) {
     for (index, grant) in object.temporary_static_ability_grants.iter().enumerate() {
+        // Retained registrations can outlive cleanup, including after restore.
+        // Expiry determines applicability; storage pruning is not a prerequisite.
+        // Keep the original slot so surviving grants retain their exact origin.
+        if grant.is_expired(current_turn) {
+            continue;
+        }
         let Some(ability) = grant.materialize() else {
             continue;
         };

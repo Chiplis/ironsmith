@@ -29,6 +29,11 @@ pub use ironsmith_core::AddManaFromCommanderColorIdentityEffect;
 /// let effect = AddManaFromCommanderColorIdentityEffect::you(1);
 /// ```
 impl EffectExecutor for AddManaFromCommanderColorIdentityEffect {
+    fn mana_production(&self) -> Option<crate::mana_payment::program::ManaProduction<'_>> {
+        use crate::mana_payment::program::ManaProduction;
+        Some(ManaProduction::CommanderIdentity { amount: &self.amount, player: &self.player })
+    }
+
     fn directly_produces_mana(&self) -> bool {
         true
     }
@@ -92,7 +97,7 @@ impl EffectExecutor for AddManaFromCommanderColorIdentityEffect {
             false,
             Some(&available_colors),
             available_colors[0],
-        )
+        )?
         .into_iter()
         .next()
         .unwrap_or(available_colors[0]);

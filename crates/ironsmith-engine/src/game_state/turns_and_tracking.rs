@@ -2532,6 +2532,62 @@ impl GameState {
             .get(&TurnCounterKey::Named(name.to_string()))
     }
 
+    pub(crate) fn announce_exhaust_activation(
+        &mut self, source: ObjectId, ability_index: usize,
+    ) -> Option<ExhaustActivationAnnouncement> {
+        if !self.current_ability(source, ability_index).is_some_and(|ability|
+            matches!(&ability.kind, crate::ability::AbilityKind::Activated(activated) if activated.is_exhaust_ability()))
+        { return None; }
+        let origin = self.current_characteristics(source).and_then(|chars| chars.abilities.origin(ability_index).cloned());
+        let origin_before = origin.as_ref().and_then(|origin| self.turn_store.ability_activations_per_object.get(&(source, origin.clone())).copied());
+        let mut keys = vec![TurnCounterKey::Named(activated_ability_turn_counter_name(source, ability_index))];
+        if let Some(controller) = self.object(source).map(|object| self.controller_of(object)) {
+            keys.push(TurnCounterKey::Named(exhaust_ability_turn_counter_name(controller)));
+        }
+        let counters: Vec<_> = keys.into_iter().map(|key| {
+            let before = self.turn_store.turn_history.turn_counters.counters.get(&key).copied();
+            (key, before)
+        }).collect();
+        let was_activated = self.turn_store.turn_history.activated_abilities_this_turn.contains(&(source, ability_index));
+        let was_exhausted = self.turn_store.exhaust_abilities_activated.contains(&(source, ability_index));
+        let was_in_progress = self.turn_store.exhaust_activations_in_progress.contains(&(source, ability_index));
+        self.begin_exhaust_activation(source, ability_index);
+        let origin = origin.map(|origin| {
+            let after = self.turn_store.ability_activations_per_object.get(&(source, origin.clone())).copied().unwrap_or(0);
+            (origin, origin_before, after.saturating_sub(origin_before.unwrap_or(0)))
+        });
+        let counters = counters.into_iter().map(|(key, before)| {
+            let added = self.turn_store.turn_history.turn_counters.get(&key).saturating_sub(before.unwrap_or(0));
+            (key, before, added)
+        }).collect();
+        Some(ExhaustActivationAnnouncement { source, ability_index, origin, counters, was_activated, was_exhausted, was_in_progress })
+    }
+
+    pub(crate) fn cancel_exhaust_announcement(&mut self, announcement: ExhaustActivationAnnouncement) {
+        let ExhaustActivationAnnouncement { source, ability_index, origin, counters, was_activated, was_exhausted, was_in_progress } = announcement;
+        if let Some((origin, before, added)) = origin {
+            let key = (source, origin);
+            if let Some(current) = self.turn_store.ability_activations_per_object.get(&key).copied() {
+                let remaining = current.saturating_sub(added);
+                if remaining == 0 && before.is_none() { self.turn_store.ability_activations_per_object.remove(&key); }
+                else { self.turn_store.ability_activations_per_object.insert(key, remaining); }
+            }
+        }
+        for (key, before, added) in counters {
+            let tracker = &mut self.turn_store.turn_history.turn_counters;
+            if let Some(current) = tracker.counters.get(&key).copied() {
+                let remaining = current.saturating_sub(added);
+                if remaining == 0 && before.is_none() { tracker.counters.remove(&key); }
+                else { tracker.counters.insert(key, remaining); }
+            }
+        }
+        if self.ability_activation_count_this_turn(source, ability_index) == 0 {
+            if !was_activated { self.turn_store.turn_history.activated_abilities_this_turn.remove(&(source, ability_index)); }
+            if !was_exhausted { self.turn_store.exhaust_abilities_activated.remove(&(source, ability_index)); }
+        }
+        if !was_in_progress { self.turn_store.exhaust_activations_in_progress.remove(&(source, ability_index)); }
+    }
+
     /// CR 702.177b counts beginning an Exhaust activation, including while
     /// paying for it. Action checkpoints roll this fact back on cancellation.
     pub(crate) fn begin_exhaust_activation(&mut self, source: ObjectId, ability_index: usize) {
@@ -2766,6 +2822,9 @@ impl GameState {
 
     /// Pushes a spell or ability onto the stack.
     pub fn push_to_stack(&mut self, mut entry: StackEntry) {
+        if !entry.is_ability {
+            self.stage_initial_controller_for_assembly(entry.object_id, entry.controller);
+        }
         // Costs record their choice before this entry is constructed. Consume
         // it now so countering or copying another activation cannot change it.
         if entry.is_ability && entry.ninjutsu_attack_target.is_none()
@@ -3398,10 +3457,12 @@ impl GameState {
     }
 
     fn tapped_state_change_can_stay_local(&self, id: ObjectId) -> bool {
-        self.characteristic_extension_change_can_stay_local(
-            id,
-            Self::continuous_effect_reads_tapped_state,
-        )
+        // Keyword/static ability presence alone does not make a tap observable
+        // to layers. Use the same conservative dependency proof as payment
+        // projection, including values and copied-ability donor filters.
+        self.continuous_state_is_clean()
+            && self.object(id).is_some_and(|object| object.zone == Zone::Battlefield)
+            && !self.continuous_effects_are_tap_sensitive()
     }
 
     fn characteristic_extension_change_can_stay_local(
@@ -3516,30 +3577,41 @@ impl GameState {
         }
     }
 
-    fn filter_reads_tapped_state(filter: &crate::target::ObjectFilter) -> bool {
-        filter.tapped
+    pub(super) fn filter_reads_tapped_state(filter: &crate::target::ObjectFilter) -> bool {
+        Self::filter_reads_tapped_state_or_activation_history(filter, false)
+    }
+
+    pub(crate) fn filter_reads_tapped_state_or_activation_history(
+        filter: &crate::target::ObjectFilter,
+        include_activation_history: bool,
+    ) -> bool {
+        let reads_nested = |nested: &crate::target::ObjectFilter| {
+            Self::filter_reads_tapped_state_or_activation_history(nested, include_activation_history)
+        };
+        (include_activation_history && filter.ability_activated_this_turn)
+            || filter.tapped
             || filter.untapped
             || filter
                 .targets_object
                 .as_deref()
-                .is_some_and(Self::filter_reads_tapped_state)
+                .is_some_and(reads_nested)
             || filter
                 .targets_only_object
                 .as_deref()
-                .is_some_and(Self::filter_reads_tapped_state)
+                .is_some_and(reads_nested)
             || filter
                 .attached_to_object
                 .as_deref()
-                .is_some_and(Self::filter_reads_tapped_state)
+                .is_some_and(reads_nested)
             || filter
                 .no_shared_creature_types_with
                 .iter()
-                .any(Self::filter_reads_tapped_state)
+                .any(reads_nested)
             || filter
                 .characteristic_relations
                 .iter()
-                .any(|relation| Self::filter_reads_tapped_state(&relation.comparison))
-            || filter.any_of.iter().any(Self::filter_reads_tapped_state)
+                .any(|relation| reads_nested(&relation.comparison))
+            || filter.any_of.iter().any(reads_nested)
     }
 
     pub(super) fn mark_face_down_state_changed(&mut self, id: ObjectId) {

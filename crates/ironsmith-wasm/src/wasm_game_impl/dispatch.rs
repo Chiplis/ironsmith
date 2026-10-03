@@ -931,39 +931,46 @@ impl WasmGame {
             self.mana_activation_inventory_cache.borrow_mut().take();
             return None;
         };
-        let mut inventory_request = context.request.clone();
-        inventory_request.preferences = Default::default();
-        let inventory_key = hash_debug_value(&(
-            &inventory_request, self.game.mutation_revision(), self.game.derived_view_revision(),
-            self.game.zone_revisions().all, &self.game.players, &self.game.turn,
-        ));
+        // A valid proposal must not wait for speculative alternatives. Those are
+        // computed on an isolated runtime after this snapshot reaches the UI.
         let mut cache = self.mana_activation_inventory_cache.borrow_mut();
-        if cache.as_ref().is_none_or(|(key, _)| *key != inventory_key) {
-            *cache = Some((inventory_key, mana_activation_option_views(&self.game, &inventory_request)));
+        if !self.defer_mana_options {
+            let mut inventory_request = context.request.clone();
+            inventory_request.preferences = Default::default();
+            let inventory_key = hash_debug_value(&(
+                &inventory_request, self.game.mutation_revision(), self.game.derived_view_revision(),
+                self.game.zone_revisions().all, &self.game.players, &self.game.turn,
+            ));
+            if cache.as_ref().is_none_or(|(key, _)| *key != inventory_key) {
+                *cache = Some((inventory_key, mana_activation_option_views(&self.game, &inventory_request)));
+            }
         }
-        let options = &cache.as_ref().unwrap().1;
+        let options = if self.defer_mana_options { &[][..] } else { &cache.as_ref().unwrap().1[..] };
         // A cost/effect decision inside a manual mana activation temporarily owns
         // the payment UI. Only reuse the parent's provisional view when it matches.
         let parent = self
             .priority_state
             .pending_cast
             .as_ref()
-            .and_then(|pending| mana_payment_view_from_pending_cast(&self.game, pending, options))
+            .and_then(|pending| mana_payment_view_from_pending_cast(&self.game, pending, options, self.defer_mana_options))
             .or_else(|| {
                 self.priority_state
                     .pending_activation
                     .as_ref()
                     .and_then(|pending| {
-                        mana_payment_view_from_pending_activation(&self.game, pending, options)
+                        mana_payment_view_from_pending_activation(&self.game, pending, options, self.defer_mana_options)
                     })
             });
-        if let Some(view) = parent
+        if let Some(mut view) = parent
             && view.request_hash == context.plan.request_hash.to_string()
             && view.plan_id == context.plan.id.to_string()
         {
+            view.editor.activation_options_complete = !self.defer_mana_options;
             return Some(view);
         }
-        Some(mana_payment_view_from_context(&self.game, context, options))
+        let mut view = mana_payment_view_from_context(&self.game, context, options, self.defer_mana_options);
+        view.editor.activation_options_complete = !self.defer_mana_options;
+        Some(view)
     }
 
     fn pending_priority_decision_is_stale(&self) -> bool {
@@ -1301,6 +1308,7 @@ impl WasmGame {
             manabrew_next_prompt_id: 1,
             manabrew_open_prompt: None,
             cached_snapshot: None,
+            defer_mana_options: false,
             mana_activation_inventory_cache: Default::default(),
         }
     }
@@ -3157,6 +3165,41 @@ impl WasmGame {
         let validation = self.validate_match_setup_input(&config)?;
         serde_wasm_bindgen::to_value(&validation)
             .map_err(|e| JsValue::from_str(&format!("failed to serialize match validation: {e}")))
+    }
+
+    #[wasm_bindgen(js_name = setDeferredManaOptions)]
+    pub fn set_deferred_mana_options(&mut self, enabled: bool) {
+        self.defer_mana_options = enabled;
+        self.cached_snapshot = None;
+    }
+
+    /// Capture the exact request separately from the checkpoint: checkpoints do
+    /// not retain the pending payment decision. This is read-only UI analysis.
+    #[wasm_bindgen(js_name = exportManaPaymentOptionsRequest)]
+    pub fn export_mana_payment_options_request(&self, request_hash: &str, plan_id: &str) -> Result<String, JsValue> {
+        let request = match self.pending_decision.as_ref() {
+            Some(DecisionContext::ManaPayment(context))
+                if context.plan.request_hash.to_string() == request_hash
+                    && context.plan.id.to_string() == plan_id => Some(&context.request),
+            _ => None,
+        };
+        serde_json::to_string(&request)
+            .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+
+    #[wasm_bindgen(js_name = getPaymentActivationOptions)]
+    pub fn get_payment_activation_options(&self, request_json: &str) -> Result<JsValue, JsValue> {
+        let mut request: Option<ironsmith::mana_payment::ManaPaymentRequest> =
+            serde_json::from_str(request_json)
+                .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        let result = request.as_mut().map(|request| {
+            let mana_abilities = manual_mana_ability_views(&self.game, request);
+            request.preferences = Default::default();
+            let activation_options = mana_activation_option_views(&self.game, request);
+            ManaPaymentOptionsView { activation_options, mana_abilities }
+        });
+        serde_wasm_bindgen::to_value(&result)
+            .map_err(|error| JsValue::from_str(&error.to_string()))
     }
 
     /// Return a JS object snapshot of public game state.

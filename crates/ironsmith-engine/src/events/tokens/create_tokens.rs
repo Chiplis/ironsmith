@@ -99,13 +99,18 @@ impl CreateTokensEvent {
             .additional_tokens
             .iter()
             .enumerate()
-            .filter(|(_, (kind, _))| matches(Some(*kind)))
+            .filter(|(_, (kind, count))| *count > 0 && matches(Some(*kind)))
             .map(|(index, _)| index)
             .collect::<Vec<_>>();
-        // The replacement applied to this event, so when no group can be
-        // matched (the original token's characteristics are unknown), it
-        // modifies the original group.
-        let covers_original = matches(None) || covered_added.is_empty();
+        // Only positive groups are part of the modified creation event. An
+        // earlier replacement may remove the original group while leaving
+        // added groups; an increase must use the first surviving covered group.
+        // When the positive original template is unknown and no added group
+        // matches, preserve the existing fallback to that original group.
+        let covers_original = next.count > 0 && (matches(None) || covered_added.is_empty());
+        if !covers_original && covered_added.is_empty() {
+            return next;
+        }
         let total = covered_added
             .iter()
             .fold(
