@@ -27,7 +27,11 @@ pub(super) fn parse_tap_chosen_shape_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<TapChosenShape<'a>> {
     primitives::kw("tap").parse_next(input)?;
-    let count = parse_optional_object_count(input);
+    let count = if opt(primitives::kw("x")).parse_next(input)?.is_some() {
+        ChoiceCount::dynamic_x()
+    } else {
+        ChoiceCount::exactly(parse_optional_object_count(input) as usize)
+    };
     let other = alt((primitives::kw("other"), primitives::kw("another")))
         .parse_next(input)
         .is_ok();

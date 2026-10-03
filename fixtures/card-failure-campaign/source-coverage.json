@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "657aa12ddf4f6d92d4fe718c7034286cddcf02ca",
+  "source_implementation_commit": "c22883225db52cb2fd68d5bf0bdf58adf7db7b41",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 141,
-    "additional_proposed_compile_entries": 141,
+    "additional_proposed_unique_cards": 156,
+    "additional_proposed_compile_entries": 156,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true
   },
@@ -258,6 +258,41 @@
         "Streetwise Negotiator",
         "Temporal Isolation"
       ]
+    },
+    {
+      "id": "unlimited-blocking-capacity",
+      "stage": 15,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/multiblock_permissions.json.fixture",
+      "baseline_entries": [
+        "Avatar of Hope",
+        "Entangler",
+        "Ironfist Crusher",
+        "Palace Guard",
+        "Thoughtweft Trio",
+        "Valor Made Real",
+        "Wall of Glare"
+      ],
+      "implementation_commit": "13287cbd65c701bdf36234ce925f61684af4e45e",
+      "tests": "authored_not_run"
+    },
+    {
+      "id": "x-tap-activation-costs",
+      "stage": 16,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/x_tap_costs.json.fixture",
+      "baseline_entries": [
+        "Aryel, Knight of Windgrace",
+        "Belisarius Cawl",
+        "Glacian, Powerstone Engineer",
+        "Hazel of the Rootbloom",
+        "Merchant's Dockhand",
+        "Necron Overlord",
+        "Resonance Technician",
+        "Secluded Starforge"
+      ],
+      "implementation_commit": "c22883225db52cb2fd68d5bf0bdf58adf7db7b41",
+      "tests": "authored_not_run"
     }
   ],
   "cards": [
@@ -1578,8 +1613,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "x-tap-activation-costs"
+      ]
     },
     {
       "card_name": "As Foretold",
@@ -1944,8 +1981,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "unlimited-blocking-capacity"
+      ]
     },
     {
       "card_name": "Avatar of Slaughter",
@@ -2604,8 +2643,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "x-tap-activation-costs"
+      ]
     },
     {
       "card_name": "Bell Borca, Spectral Sergeant",
@@ -8408,8 +8449,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "unlimited-blocking-capacity"
+      ]
     },
     {
       "card_name": "Enthralling Hold",
@@ -11052,8 +11095,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "x-tap-activation-costs"
+      ]
     },
     {
       "card_name": "Glamdring, Foe-hammer // Gleam of Death",
@@ -12274,8 +12319,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "x-tap-activation-costs"
+      ]
     },
     {
       "card_name": "Hazezon, Shaper of Sand",
@@ -13985,8 +14032,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "unlimited-blocking-capacity"
+      ]
     },
     {
       "card_name": "Isengard Unleashed",
@@ -17359,8 +17408,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "x-tap-activation-costs"
+      ]
     },
     {
       "card_name": "Mercurial Transformation",
@@ -18669,8 +18720,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "x-tap-activation-costs"
+      ]
     },
     {
       "card_name": "Needle Drop",
@@ -19939,8 +19992,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "unlimited-blocking-capacity"
+      ]
     },
     {
       "card_name": "Paladin Elizabeth Taggerdy",
@@ -22407,8 +22462,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "x-tap-activation-costs"
+      ]
     },
     {
       "card_name": "Resourceful Defense",
@@ -23869,8 +23926,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "x-tap-activation-costs"
+      ]
     },
     {
       "card_name": "Second Sunrise",
@@ -28657,8 +28716,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "unlimited-blocking-capacity"
+      ]
     },
     {
       "card_name": "Thran Portal",
@@ -30147,8 +30208,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "unlimited-blocking-capacity"
+      ]
     },
     {
       "card_name": "Vampire Nocturnus",
@@ -31085,8 +31148,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "unlimited-blocking-capacity"
+      ]
     },
     {
       "card_name": "Wall of Nets",

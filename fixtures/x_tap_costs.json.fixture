@@ -1,0 +1,42 @@
+[
+  {
+    "name": "Aryel, Knight of Windgrace",
+    "oracle_id": "9956f9b7-0140-484c-b606-3685690b84cc",
+    "text": "Mana cost: {2}{W}{B}\nType: Legendary Creature — Human Knight\nPower/Toughness: 4/4\nVigilance\n{2}{W}, {T}: Create a 2/2 white Knight creature token with vigilance.\n{B}, {T}, Tap X untapped Knights you control: Destroy target creature with power X or less."
+  },
+  {
+    "name": "Belisarius Cawl",
+    "oracle_id": "6b336228-92c0-4f14-a479-1f97aaeae018",
+    "text": "Mana cost: {2}{W}{U}\nType: Legendary Artifact Creature — Human\nPower/Toughness: 2/4\nUltima Founding — {T}, Tap two untapped artifacts you control: Create a 2/2 white Astartes Warrior creature token with vigilance.\nMaster of Machines — {T}, Tap X untapped creatures you control: Look at the top X cards of your library. You may reveal an artifact card from among them and put it into your hand. Put the rest on the bottom of your library in a random order."
+  },
+  {
+    "name": "Glacian, Powerstone Engineer",
+    "oracle_id": "e96ce18e-b002-4b5b-9560-c1634320e164",
+    "text": "Mana cost: {5}{U}\nType: Legendary Creature — Human Artificer\nPower/Toughness: 3/6\n{T}, Tap X untapped artifacts you control: Look at the top X cards of your library. Put one of those cards into your hand and the rest into your graveyard.\nPartner (You can have two commanders if both have partner.)"
+  },
+  {
+    "name": "Hazel of the Rootbloom",
+    "oracle_id": "845b40b1-dc09-44fa-9910-22544c1424ba",
+    "text": "Mana cost: {2}{B}{G}\nType: Legendary Creature — Squirrel Druid\nPower/Toughness: 3/5\n{T}, Pay 2 life, Tap X untapped tokens you control: Add X mana in any combination of colors.\nAt the beginning of your end step, create a token that's a copy of target token you control. If that token is a Squirrel, instead create two tokens that are copies of it."
+  },
+  {
+    "name": "Merchant's Dockhand",
+    "oracle_id": "7cd95b92-8828-4b84-be58-4ce3e948dc8c",
+    "text": "Mana cost: {1}\nType: Artifact Creature — Construct\nPower/Toughness: 1/2\n{3}{U}, {T}, Tap X untapped artifacts you control: Look at the top X cards of your library. Put one of them into your hand and the rest on the bottom of your library in any order."
+  },
+  {
+    "name": "Necron Overlord",
+    "oracle_id": "2c0de95f-4269-439c-a1bc-faa11348b185",
+    "text": "Mana cost: {2}{B}{B}\nType: Artifact Creature — Necron Noble\nPower/Toughness: 2/5\nRelentless March — {X}, {T}, Tap X untapped artifacts you control: Target opponent loses X life."
+  },
+  {
+    "name": "Resonance Technician",
+    "oracle_id": "ec8a4b26-633a-4e88-aa8a-82e9704b3439",
+    "text": "Mana cost: {3}{U/R}{U/R}\nType: Creature — Weird Detective\nPower/Toughness: 4/4\nFlying\nWhen this creature enters, you may discard a card. If you do, investigate twice.\n{T}, Tap X untapped artifacts you control: Copy target instant or sorcery spell you control with mana value X. You may choose new targets for the copy."
+  },
+  {
+    "name": "Secluded Starforge",
+    "oracle_id": "69f55a7c-6ddf-412e-b63b-b395731a1ff2",
+    "text": "Type: Land\n{T}: Add {C}.\n{2}, {T}, Tap X untapped artifacts you control: Target creature gets +X/+0 until end of turn. Activate only as a sorcery.\n{5}, {T}: Create a 2/2 colorless Robot artifact creature token."
+  }
+]
