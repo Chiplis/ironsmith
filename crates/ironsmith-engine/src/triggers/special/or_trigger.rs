@@ -1172,8 +1172,10 @@ impl OrTrigger {
 impl OrTrigger {
     /// CR 702.29d: "whenever you cycle or discard a card" triggers only once
     /// when a card is cycled. Cycling always discards the card as part of its
-    /// cost, so the cycle branch is subsumed by an unrestricted sibling
-    /// "you discard a card" branch for the same player.
+    /// cost, so a sibling discard branch for the same player subsumes it.
+    /// The same applies to "another card" when both branches carry the
+    /// identical source exclusion. Other filtered/timed branches retain
+    /// their own matching because their equivalence is not established here.
     fn branch_is_subsumed(&self, index: usize) -> bool {
         use crate::triggers::{KeywordActionTrigger, YouDiscardCardTrigger};
         let Some(cycle) = self.triggers[index].downcast_ref::<KeywordActionTrigger>() else {
@@ -1181,7 +1183,9 @@ impl OrTrigger {
         };
         if cycle.action != crate::events::KeywordActionKind::Cycle
             || cycle.source_must_match
-            || cycle.source_filter.is_some()
+            || cycle.source_filter.as_ref().is_some_and(|filter| {
+                *filter != ObjectFilter::default().other()
+            })
             || cycle.tagged_object_filter.is_some()
             || cycle.during_your_turn
             || cycle.during_your_main_phase
@@ -1194,7 +1198,7 @@ impl OrTrigger {
                     .downcast_ref::<YouDiscardCardTrigger>()
                     .is_some_and(|discard| {
                         discard.player == cycle.player
-                            && discard.filter.is_none()
+                            && discard.filter == cycle.source_filter
                             && discard.cause_controller.is_none()
                             && !discard.effect_like_only
                     })

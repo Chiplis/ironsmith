@@ -1,0 +1,14 @@
+[
+  {
+    "name": "Immovable Rod",
+    "text": "Mana cost: {W}\nType: Artifact\nYou may choose not to untap this artifact during your untap step.\nWhenever this artifact becomes untapped, venture into the dungeon.\n{3}{W}, {T}: For as long as this artifact remains tapped, another target permanent loses all abilities and can't attack or block.",
+    "oracle_id": "ec664e13-b7c4-4ca3-80d6-55a564d97937",
+    "source": "https://scryfall.com/card/afc/7/immovable-rod?utm_source=api"
+  },
+  {
+    "name": "Key to the City",
+    "text": "Mana cost: {2}\nType: Artifact\n{T}, Discard a card: Up to one target creature can't be blocked this turn.\nWhenever this artifact becomes untapped, you may pay {2}. If you do, draw a card.",
+    "oracle_id": "a242c9bf-dab6-4996-bb3a-b4356f9ed0c9",
+    "source": "https://scryfall.com/card/fic/348/key-to-the-city?utm_source=api"
+  }
+]

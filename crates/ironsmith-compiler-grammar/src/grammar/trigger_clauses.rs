@@ -26,6 +26,12 @@ use token_helpers::*;
 mod life_loss;
 pub use life_loss::*;
 
+mod passive_damage;
+pub use passive_damage::*;
+
+mod keyword_alternatives;
+pub use keyword_alternatives::*;
+
 #[cfg(test)]
 #[path = "trigger_clauses/tests.rs"]
 mod tests;

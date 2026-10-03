@@ -1,0 +1,26 @@
+[
+  {
+    "name": "Chandra's Spitfire",
+    "text": "Mana cost: {2}{R}\nType: Creature \u2014 Elemental\nPower/Toughness: 1/3\nFlying\nWhenever an opponent is dealt noncombat damage, this creature gets +3/+0 until end of turn.",
+    "oracle_id": "5a0eb270-b142-45da-87a2-2f1c4e25db17",
+    "source": "https://scryfall.com/card/j25/530/chandras-spitfire?utm_source=api"
+  },
+  {
+    "name": "Massacre Girl, Most Wanted",
+    "text": "Mana cost: {4}{B}\nType: Legendary Creature \u2014 Human Assassin\nPower/Toughness: 4/4\nWhenever another creature or planeswalker you control dies, Massacre Girl deals 1 damage to target opponent and you gain 1 life.\nWhenever an opponent is dealt noncombat damage, put a +1/+1 counter on Massacre Girl.",
+    "oracle_id": "81f35914-73bf-429f-ba20-32e23ac30159",
+    "source": "https://scryfall.com/card/fra/234/massacre-girl-most-wanted?utm_source=api"
+  },
+  {
+    "name": "Master of Barbs",
+    "text": "Mana cost: {1}{R}\nType: Creature \u2014 Lizard Bard\nPower/Toughness: 2/1\nMenace\nWhenever one or more opponents are dealt noncombat damage, creatures you control get +1/+0 until end of turn.",
+    "oracle_id": "e8c36337-135c-460d-a1da-cc01743dda71",
+    "source": "https://scryfall.com/card/fra/88/master-of-barbs?utm_source=api"
+  },
+  {
+    "name": "Wildfire Elemental",
+    "text": "Mana cost: {2}{R}{R}\nType: Creature \u2014 Elemental\nPower/Toughness: 3/3\nWhenever an opponent is dealt noncombat damage, creatures you control get +1/+0 until end of turn.",
+    "oracle_id": "76ff6653-f9b9-4bfe-92a9-52bda275b340",
+    "source": "https://scryfall.com/card/j25/616/wildfire-elemental?utm_source=api"
+  }
+]
