@@ -1,0 +1,220 @@
+[
+  {
+    "name": "Nissa, Ascended Animist",
+    "oracle_id": "9c8845d6-fa65-4731-b348-dc724fc2d285",
+    "mana_cost": "{3}{G}{G}{G/P}{G/P}",
+    "type_line": "Legendary Planeswalker — Nissa",
+    "loyalty": "7",
+    "oracle_text": "Compleated ({G/P} can be paid with {G} or 2 life. For each {G/P} paid with life, this planeswalker enters with two fewer loyalty counters.)\n+1: Create an X/X green Phyrexian Horror creature token, where X is Nissa's loyalty.\n−1: Destroy target artifact or enchantment.\n−7: Until end of turn, creatures you control get +1/+1 for each Forest you control and gain trample.",
+    "proposed_coverage": "complete",
+    "baseline": {
+      "card_name": "Nissa, Ascended Animist",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "1157bf755026463b910a9b2ba2354f75c69a7fd36e6fd3cdc1e15bb8ae1062ee",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "Compleated\n+1: Create an X/X green Phyrexian Horror creature token, where X is Nissa's loyalty.\n−1: Destroy target artifact or enchantment.\n−7: Until end of turn, creatures you control get +1/+1 for each Forest you control and gain trample.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "Compleated\n+1: Create an X/X green Phyrexian Horror creature token, where X is Nissa's loyalty.\n−1: Destroy target artifact or enchantment.\n−7: Until end of turn, creatures you control get +1/+1 for each Forest you control and gain trample.",
+      "parse_error": "unsupported where-x clause in create clause (clause: 'an x/x green phyrexian horror creature token where x is this planeswalker's loyalty') [rule-path=complete-create > document-reading]; oracle-only fallback also failed: unsupported where-x clause in create clause (clause: 'an x/x green phyrexian horror creature token where x is this's loyalty') [rule-path=complete-create > document-reading]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported where-x clause in create clause (clause: 'an x/x green phyrexian horror creature token where x is this planeswalker's loyalty') [rule-path=complete-create > document-reading]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "Compleated ({G/P} can be paid with {G} or 2 life. For each {G/P} paid with life, this planeswalker enters with two fewer loyalty counters.)\n+1: Create an X/X green Phyrexian Horror creature token, where X is Nissa's loyalty.\n−1: Destroy target artifact or enchantment.\n−7: Until end of turn, creatures you control get +1/+1 for each Forest you control and gain trample.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported where-x clause in create clause (clause: 'an x/x green phyrexian horror creature token where x is this planeswalker's loyalty') [rule-path=complete-create > document-reading]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported where-x clause in create clause (clause: 'an x/x green phyrexian horror creature token where x is this's loyalty') [rule-path=complete-create > document-reading]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  },
+  {
+    "name": "Rootwire Amalgam",
+    "oracle_id": "7644148f-3b26-447d-9f52-28c94c111b69",
+    "mana_cost": "{5}",
+    "type_line": "Artifact Creature — Golem",
+    "power": "5",
+    "toughness": "5",
+    "oracle_text": "Prototype {1}{G} — 2/3 (You may cast this spell with different mana cost, color, and size. It keeps its abilities and types.)\n{3}{G}{G}, Sacrifice this creature: Create an X/X colorless Golem artifact creature token, where X is three times this creature's power. It gains haste until end of turn. Activate only as a sorcery.",
+    "proposed_coverage": "complete",
+    "baseline": {
+      "card_name": "Rootwire Amalgam",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "40ef5bd6c8f5a7633b33b6317cd9ba82e87d7116af06a6acaf2fad33ff9456d7",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "Prototype {1}{G} — 2/3\n{3}{G}{G}, Sacrifice this creature: Create an X/X colorless Golem artifact creature token, where X is three times this creature's power. It gains haste until end of turn. Activate only as a sorcery.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "Prototype {1}{G} — 2/3\n{3}{G}{G}, Sacrifice this creature: Create an X/X colorless Golem artifact creature token, where X is three times this creature's power. It gains haste until end of turn. Activate only as a sorcery.",
+      "parse_error": "unsupported where-x clause in create clause (clause: 'an x/x colorless golem artifact creature token where x is three times this creature's power') [rule-path=complete-create > document-reading]; oracle-only fallback also failed: unsupported where-x clause in create clause (clause: 'an x/x colorless golem artifact creature token where x is three times this creature's power') [rule-path=complete-create > document-reading]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported where-x clause in create clause (clause: 'an x/x colorless golem artifact creature token where x is three times this creature's power') [rule-path=complete-create > document-reading]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "Prototype {1}{G} — 2/3 (You may cast this spell with different mana cost, color, and size. It keeps its abilities and types.)\n{3}{G}{G}, Sacrifice this creature: Create an X/X colorless Golem artifact creature token, where X is three times this creature's power. It gains haste until end of turn. Activate only as a sorcery.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported where-x clause in create clause (clause: 'an x/x colorless golem artifact creature token where x is three times this creature's power') [rule-path=complete-create > document-reading]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported where-x clause in create clause (clause: 'an x/x colorless golem artifact creature token where x is three times this creature's power') [rule-path=complete-create > document-reading]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  },
+  {
+    "name": "Razorfield Ripper",
+    "oracle_id": "ef842299-8a31-4793-9142-2bcd7a8b2fab",
+    "mana_cost": "{2}{W}",
+    "type_line": "Artifact Creature — Equipment Rhino",
+    "power": "3",
+    "toughness": "3",
+    "oracle_text": "Whenever this creature or equipped creature attacks, you get {E} (an energy counter), then it gets +X/+X until end of turn, where X is the amount of {E} you have.\nReconfigure—Pay {2} or {E}{E}{E}. (Pay {2} or {E}{E}{E}: Attach to target creature you control; or unattach from a creature. Reconfigure only as a sorcery. While attached, this isn't a creature.)",
+    "proposed_coverage": "complete",
+    "baseline": {
+      "card_name": "Razorfield Ripper",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "8badffd2c856eaae15222259e72ef7f8c2ebade1a74ab537ba95644aa00afc35",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "Whenever this creature or equipped creature attacks, you get {E}, then it gets +X/+X until end of turn, where X is the amount of {E} you have.\nReconfigure—Pay {2} or {E}{E}{E}.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "Whenever this creature or equipped creature attacks, you get {E}, then it gets +X/+X until end of turn, where X is the amount of {E} you have.\nReconfigure—Pay {2} or {E}{E}{E}.",
+      "parse_error": "unsupported where-x clause (clause: 'you get {e}, then it gets +x/+x until end of turn, where x is the amount of {e} you have') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported where-x clause (clause: 'you get {e}, then it gets +x/+x until end of turn, where x is the amount of {e} you have') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported where-x clause (clause: 'you get {e}, then it gets +x/+x until end of turn, where x is the amount of {e} you have') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "Whenever this creature or equipped creature attacks, you get {E} (an energy counter), then it gets +X/+X until end of turn, where X is the amount of {E} you have.\nReconfigure—Pay {2} or {E}{E}{E}. (Pay {2} or {E}{E}{E}: Attach to target creature you control; or unattach from a creature. Reconfigure only as a sorcery. While attached, this isn't a creature.)",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported where-x clause (clause: 'you get {e}, then it gets +x/+x until end of turn, where x is the amount of {e} you have') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported where-x clause (clause: 'you get {e}, then it gets +x/+x until end of turn, where x is the amount of {e} you have') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  },
+  {
+    "name": "Vault 12: The Necropolis",
+    "oracle_id": "bc9d75e7-1f64-4376-8e19-f6622ffbeb28",
+    "mana_cost": "{4}{B}{B}",
+    "type_line": "Enchantment — Saga",
+    "oracle_text": "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI — Each player gets three rad counters.\nII — Create X 2/2 black Zombie Mutant creature tokens, where X is the total number of rad counters among players.\nIII — Put two +1/+1 counters on each creature you control that's a Zombie or Mutant.",
+    "proposed_coverage": "complete",
+    "baseline": {
+      "card_name": "Vault 12: The Necropolis",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "862c8b212b83113e1149e8ddaa1339859964d394b8d3549888fde296598da1c2",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "I — Each player gets three rad counters.\nII — Create X 2/2 black Zombie Mutant creature tokens, where X is the total number of rad counters among players.\nIII — Put two +1/+1 counters on each creature you control that's a Zombie or Mutant.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "I — Each player gets three rad counters.\nII — Create X 2/2 black Zombie Mutant creature tokens, where X is the total number of rad counters among players.\nIII — Put two +1/+1 counters on each creature you control that's a Zombie or Mutant.",
+      "parse_error": "unsupported where-x clause in create clause (clause: 'x 2/2 black zombie mutant creature tokens where x is the total number of rad counters among players') [rule-path=complete-create > document-reading]; oracle-only fallback also failed: unsupported where-x clause in create clause (clause: 'x 2/2 black zombie mutant creature tokens where x is the total number of rad counters among players') [rule-path=complete-create > document-reading]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported where-x clause in create clause (clause: 'x 2/2 black zombie mutant creature tokens where x is the total number of rad counters among players') [rule-path=complete-create > document-reading]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI — Each player gets three rad counters.\nII — Create X 2/2 black Zombie Mutant creature tokens, where X is the total number of rad counters among players.\nIII — Put two +1/+1 counters on each creature you control that's a Zombie or Mutant.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported where-x clause in create clause (clause: 'x 2/2 black zombie mutant creature tokens where x is the total number of rad counters among players') [rule-path=complete-create > document-reading]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported where-x clause in create clause (clause: 'x 2/2 black zombie mutant creature tokens where x is the total number of rad counters among players') [rule-path=complete-create > document-reading]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  },
+  {
+    "name": "Toph, Greatest Earthbender",
+    "oracle_id": "3741206f-8ef5-4b8f-ae4c-df3ab0a17683",
+    "mana_cost": "{2}{R}{G}",
+    "type_line": "Legendary Creature — Human Warrior Ally",
+    "power": "3",
+    "toughness": "3",
+    "oracle_text": "When Toph enters, earthbend X, where X is the amount of mana spent to cast her.\nLand creatures you control have double strike.",
+    "proposed_coverage": "pending",
+    "baseline": {
+      "card_name": "Toph, Greatest Earthbender",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "64a9451eea336b75703028f001a32e469852375c92f3958d92f8908de0866e58",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "When Toph enters, earthbend X, where X is the amount of mana spent to cast her.\nLand creatures you control have double strike.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "When Toph enters, earthbend X, where X is the amount of mana spent to cast her.\nLand creatures you control have double strike.",
+      "parse_error": "unsupported where-x clause (clause: 'earthbend x, where x is the amount of mana spent to cast her') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported where-x clause (clause: 'earthbend x, where x is the amount of mana spent to cast her') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported where-x clause (clause: 'earthbend x, where x is the amount of mana spent to cast her') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "When Toph enters, earthbend X, where X is the amount of mana spent to cast her.\nLand creatures you control have double strike.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported where-x clause (clause: 'earthbend x, where x is the amount of mana spent to cast her') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported where-x clause (clause: 'earthbend x, where x is the amount of mana spent to cast her') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    },
+    "remaining_blocker": "Earthbend action stores a fixed u32 counter amount; needs real dynamic action semantics, not only source-pronoun recognition."
+  }
+]

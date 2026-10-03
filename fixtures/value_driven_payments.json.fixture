@@ -1,0 +1,51 @@
+[
+  {
+    "name": "Chthonian Nightmare",
+    "oracle_id": "c7a360f5-725e-4864-93cc-87f96f95975e",
+    "text": "Mana cost: {1}{B}\nType: Enchantment\nWhen this enchantment enters, you get {E}{E}{E} (three energy counters).\nPay X {E}, Sacrifice a creature, Return this enchantment to its owner's hand: Return target creature card with mana value X from your graveyard to the battlefield. Activate only as a sorcery.",
+    "proposed_coverage": "complete"
+  },
+  {
+    "name": "HELIOS One",
+    "oracle_id": "cfb1a656-0bf1-484d-b099-33087914250b",
+    "text": "Type: Land\n{T}: Add {C}.\n{1}, {T}: You get {E} (an energy counter).\n{3}, {T}, Pay X {E}, Sacrifice this land: Destroy target nonland permanent with mana value X. Activate only as a sorcery.",
+    "proposed_coverage": "complete"
+  },
+  {
+    "name": "Sphinx of the Revelation",
+    "oracle_id": "9b8f6c6a-49a1-4061-a2c4-5be612e138fa",
+    "text": "Mana cost: {3}{W}{U}\nType: Artifact Creature — Sphinx\nPower/Toughness: 4/5\nFlying, lifelink\nWhenever you gain life, you get that many {E} (energy counters).\n{W}{U}{U}, {T}, Pay X {E}: Draw X cards.",
+    "proposed_coverage": "complete"
+  },
+  {
+    "name": "Krumar Initiate",
+    "oracle_id": "65a7fb13-77b9-44ea-9e0e-34daef82eb69",
+    "text": "Mana cost: {1}{B}\nType: Creature — Human Cleric\nPower/Toughness: 2/2\n{X}{B}, {T}, Pay X life: This creature endures X. Activate only as a sorcery. (Put X +1/+1 counters on it or create an X/X white Spirit creature token.)",
+    "proposed_coverage": "complete"
+  },
+  {
+    "name": "Lurking Evil",
+    "oracle_id": "81d6b42e-9c41-4d1e-bd28-4662e1fde572",
+    "text": "Mana cost: {B}{B}{B}\nType: Enchantment\nPay half your life, rounded up: This enchantment becomes a 4/4 Phyrexian Horror creature with flying.",
+    "proposed_coverage": "complete"
+  },
+  {
+    "name": "Murderous Betrayal",
+    "oracle_id": "a2fe1e2b-b621-4406-b5e0-f2eebd12c2ba",
+    "text": "Mana cost: {B}{B}{B}\nType: Enchantment\n{B}{B}, Pay half your life, rounded up: Destroy target nonblack creature. It can't be regenerated.",
+    "proposed_coverage": "complete"
+  },
+  {
+    "name": "Tornado",
+    "oracle_id": "dd283473-6423-4a1f-b5a3-77234cdce643",
+    "text": "Mana cost: {4}{G}\nType: Enchantment\nCumulative upkeep {G} (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)\n{2}{G}, Pay 3 life for each velocity counter on this enchantment: Destroy target permanent and put a velocity counter on this enchantment. Activate only once each turn.",
+    "proposed_coverage": "complete"
+  },
+  {
+    "name": "Skeleton Scavengers",
+    "oracle_id": "88782913-bfba-4300-b26c-405e6a45537c",
+    "text": "Mana cost: {2}{B}\nType: Creature — Skeleton\nPower/Toughness: 0/0\nThis creature enters with a +1/+1 counter on it.\nPay {1} for each +1/+1 counter on this creature: Regenerate this creature. When it regenerates this way, put a +1/+1 counter on it.",
+    "proposed_coverage": "partial",
+    "remaining_blocker": "The when-it-regenerates-this-way rider creates a delayed triggered ability. Existing immediate replacement follow-ups do not represent its stack timing."
+  }
+]

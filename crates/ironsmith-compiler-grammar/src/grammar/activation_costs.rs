@@ -56,6 +56,7 @@ pub struct ActivationCostCst {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActivationCostSegmentCst {
     Mana(ManaCost),
+    DynamicMana(ironsmith_core::DynamicManaCost),
     Tap,
     TapChosen {
         count: ChoiceCount,
@@ -70,6 +71,7 @@ pub enum ActivationCostSegmentCst {
     CollectEvidence { amount: Value },
     Life(Value),
     Energy(u32),
+    EnergyValue(Value),
     DiscardSource,
     DiscardHand,
     DiscardCard(u32),
@@ -279,4 +281,14 @@ fn collect_evidence_cost_components_preserve_comma_boundaries_and_thresholds() {
     for text in ["Collect evidence", "Collect evidence three cards", "Collect clues 3"] {
         assert!(parse_activation_cost_tokens(&lex_line(text, 0).unwrap()).is_err());
     }
+}
+
+
+#[test]
+fn half_life_rounding_clause_is_inside_one_cost_segment() {
+    use crate::lexer::lex_line;
+    let parsed = parse_activation_cost_tokens(&lex_line("{B}{B}, Pay half your life, rounded up", 0).unwrap()).unwrap();
+    assert_eq!(parsed.segments.len(), 2);
+    assert!(matches!(parsed.segments[0], ActivationCostSegmentCst::Mana(_)));
+    assert!(matches!(parsed.segments[1], ActivationCostSegmentCst::Life(Value::HalfLifeTotalRoundedUp(_))));
 }

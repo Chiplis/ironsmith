@@ -381,7 +381,12 @@ fn calendar_state_threshold_sacrifices_and_each_opponent_loses_the_full_thousand
                 "an on-stack state trigger cannot duplicate"
             );
             if source_leaves_before_resolution {
-                game.move_object(source, Zone::Exile).unwrap();
+                game.move_object(
+                    source,
+                    Zone::Exile,
+                    ironsmith::events::cause::EventCause::effect(),
+                )
+                .unwrap();
             } else {
                 game.remove_counters(source, CounterType::Time, 1, None, None)
                     .unwrap();

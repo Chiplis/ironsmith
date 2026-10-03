@@ -457,7 +457,7 @@ impl CostPayer for CostEffect {
                 .with_tagged_objects(ctx.tagged_objects.clone());
             exec.replacement = ctx.replacement.clone();
             exec.source_snapshot = ctx.source_snapshot.clone();
-            exec.x_value = ctx.x_value;
+            exec.x_value = ctx.x_value.or(Some(0));
             let payer =
                 crate::effects::helpers::resolve_player_from_spec(game, &life.player, &exec)
                     .map_err(CostPaymentError::ExecutionFailed)?;
@@ -497,7 +497,7 @@ impl CostPayer for CostEffect {
                 .with_tagged_objects(ctx.tagged_objects.clone());
             exec_ctx.replacement = ctx.replacement.clone();
             exec_ctx.source_snapshot = ctx.source_snapshot.clone();
-            exec_ctx.x_value = ctx.x_value;
+            exec_ctx.x_value = ctx.x_value.or(Some(0));
             let payer = crate::effects::helpers::resolve_player_from_spec(
                 game,
                 &pay_energy.player,
