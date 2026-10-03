@@ -5845,6 +5845,7 @@ fn remember_superseded_object_antecedent(env: &ReferenceEnv, frame: &mut Referen
     };
     if previous == current
         || !(is_noun_restricted_object_result_tag(current)
+            || current.as_str().starts_with("destroyed_")
             || is_sacrificed_object_reference_tag(current.as_str()))
     {
         return;

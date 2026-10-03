@@ -4,6 +4,9 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if words.is_empty() {
         return None;
     }
+    if let Some(quantity) = referenced_object_quantities::parse(words) {
+        return Some(quantity);
+    }
     let offset = usize::from(words.first() == Some(&"the"));
     if permission_shapes::starts_at_words(
         words,

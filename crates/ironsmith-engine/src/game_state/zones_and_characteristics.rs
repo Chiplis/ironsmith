@@ -946,8 +946,10 @@ impl GameState {
                 }
                 for tagged_snapshots in entry.tagged_objects.values_mut() {
                     for tagged_snapshot in tagged_snapshots {
-                        if (tagged_snapshot.object_id == old_id
-                            || tagged_snapshot.stable_id == snapshot.stable_id)
+                        // The ability watches this incarnation. An explicit
+                        // movement link may already have updated its object id;
+                        // card identity alone cannot authorize a later blink.
+                        if tagged_snapshot.object_id == old_id
                             && tagged_snapshot.zone == snapshot.zone
                         {
                             *tagged_snapshot = snapshot.clone();
@@ -957,8 +959,9 @@ impl GameState {
                 if entry.is_ability
                     && (entry.object_id == old_id
                         || entry
-                            .source_stable_id
-                            .is_some_and(|id| id == snapshot.stable_id))
+                            .source_snapshot
+                            .as_ref()
+                            .is_some_and(|source| source.object_id == old_id))
                 {
                     let should_update_source_lki = entry
                         .source_snapshot

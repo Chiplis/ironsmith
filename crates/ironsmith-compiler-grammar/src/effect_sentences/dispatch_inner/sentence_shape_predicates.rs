@@ -1159,3 +1159,6 @@ use sentence_shape_predicates_counter_programs::bind_numeric_result_counter_amou
 #[path = "sentence_shape_predicates/sentence_shape_predicates_object_action.rs"]
 mod sentence_shape_predicates_object_action_programs;
 use sentence_shape_predicates_object_action_programs::parse_create_token_then_copy_spell_chain;
+
+#[path = "sentence_shape_predicates/temporary_xy_pump.rs"]
+mod temporary_xy_pump;

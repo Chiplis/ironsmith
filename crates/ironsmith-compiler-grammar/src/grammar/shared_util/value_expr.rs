@@ -554,3 +554,6 @@ use value_expr_core_programs::{
 #[path = "value_expr/value_expr_reference.rs"]
 mod value_expr_reference_programs;
 use value_expr_reference_programs::parse_source_controller_graveyard_filter;
+
+#[path = "value_expr/referenced_object_quantities.rs"]
+mod referenced_object_quantities;
