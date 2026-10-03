@@ -2118,6 +2118,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::PlayerCastSpellsThisTurnOrMore { .. }
         | C::AttackedThisTurn
         | C::AttackedWithNOrMoreCreaturesThisTurn(_)
+        | C::AttackedWithTotalPowerAtLeastThisCombat(_)
         | C::OpponentLostLifeThisTurn
         | C::AnyPlayerLostLifeThisTurnOrMore { .. }
         | C::OpponentWasDealtDamageThisTurn

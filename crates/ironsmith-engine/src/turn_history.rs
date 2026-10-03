@@ -209,6 +209,25 @@ impl TurnHistory {
             .chain(self.staged_event_records.iter())
     }
 
+    /// The power of creatures this player actually declared as attackers in
+    /// one combat, using the immutable event snapshots. Later power changes,
+    /// control changes, leaving the battlefield, or token disappearance do
+    /// not change that fact. Put-onto-the-battlefield-attacking creatures
+    /// produce no declaration events and therefore do not contribute.
+    pub fn declared_attack_power_in_combat(&self, combat_phase: u32, player: PlayerId) -> i64 {
+        let mut seen = HashSet::new();
+        self.projected_records()
+            .filter_map(|record| {
+                let attack = record.event.downcast::<CreatureAttackedEvent>()?;
+                let snapshot = record.object_snapshot.as_ref()?;
+                (attack.combat_phase == Some(combat_phase)
+                    && snapshot.controller == player
+                    && seen.insert(attack.attacker))
+                .then_some(i64::from(snapshot.power.unwrap_or(0)))
+            })
+            .sum()
+    }
+
     pub fn remove_staged_event(&mut self, provenance: ProvNodeId) {
         if provenance == ProvNodeId::default() {
             return;

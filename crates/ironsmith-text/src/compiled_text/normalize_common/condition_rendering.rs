@@ -2122,6 +2122,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             "you attacked with {} or more creatures this turn",
             number_word(*count as i32).unwrap_or_else(|| count.to_string())
         ),
+        Condition::AttackedWithTotalPowerAtLeastThisCombat(power) => format!(
+            "you attacked with creatures with total power {power} or greater this combat"
+        ),
         Condition::OpponentLostLifeThisTurn => "an opponent lost life this turn".to_string(),
         Condition::AnyPlayerLostLifeThisTurnOrMore { count } => {
             format!("a player lost {count} or more life this turn")

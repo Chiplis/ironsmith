@@ -5442,6 +5442,13 @@ fn evaluate_condition_in_context(
             .get(&shared.controller)
             .map_or(0, |creatures| creatures.len()) as u32
             >= *count),
+        Condition::AttackedWithTotalPowerAtLeastThisCombat(power) => Ok(
+            game.turn.phase == crate::game_state::Phase::Combat
+                && game.turn_store.turn_history.declared_attack_power_in_combat(
+                    game.turn_store.combat_phases_started_this_turn,
+                    shared.controller,
+                ) >= i64::from(*power),
+        ),
         Condition::OpponentLostLifeThisTurn => {
             let filter_ctx = game.filter_context_for(shared.controller, shared.filter_source);
             Ok(filter_ctx.opponents.iter().any(|opponent| {

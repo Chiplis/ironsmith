@@ -712,6 +712,9 @@ pub fn resolve_condition_from_predicate(
             TurnEventPredicateAst::YouAttackedWithNOrMoreCreaturesThisTurn(count),
         ) => Condition::AttackedWithNOrMoreCreaturesThisTurn(*count),
         PredicateAst::TurnEvents(
+            TurnEventPredicateAst::YouAttackedWithTotalPowerAtLeastThisCombat(power),
+        ) => Condition::AttackedWithTotalPowerAtLeastThisCombat(*power),
+        PredicateAst::TurnEvents(
             TurnEventPredicateAst::YouAttackedWithExactlyNOtherCreaturesThisCombat(count),
         ) => {
             return Err(CardTextError::ParseError(format!(
