@@ -536,7 +536,7 @@ impl GameState {
             .action_history_by_player
             .get(&player)
             .into_iter()
-            .flat_map(|records| records.iter())
+            .flat_map(|records| records.iter().map(Arc::as_ref))
     }
 
     /// Actions from a player's most recent turn.

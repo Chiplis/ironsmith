@@ -2729,6 +2729,56 @@ pub(super) fn check_x_or_continue(
     continue_to_targeting_or_finalize(game, trigger_queue, state, pending, decision_maker)
 }
 
+fn announce_modal_mana_costs(
+    game: &GameState,
+    pending: &mut PendingCast,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<(), GameLoopError> {
+    if pending.announced_cost_replacements.is_some() { return Ok(()); }
+    let steps = collect_spell_cost_steps(game, pending.spell_id, pending.caster,
+        &pending.casting_method, &pending.optional_costs_paid, &pending.splice_costs,
+        pending.chosen_modes.as_deref(), 0, pending.from_zone);
+    let mut replacements = Vec::new();
+    let mut additional = pending.effect_additional_mana_cost.clone().unwrap_or_default();
+    for step in steps {
+        let ActivationCostStep::Cost(cost) = step else { continue; };
+        let Some(branches) = crate::costs::simple_modal_mana_cost_branches(&cost) else { continue; };
+        let options = branches.iter().enumerate().map(|(index, (label, components))| {
+            let mut context = CostContext::new(pending.spell_id, pending.caster, &mut *decision_maker)
+                .with_reason(crate::costs::PaymentReason::CastSpell);
+            context.x_value = pending.x_value;
+            // Mana is priced only after all announcements and targets. Testing
+            // the raw branch here would hide choices made payable by reductions.
+            // The aggregate payment request remains the authoritative check.
+            let legal = components.iter().all(|component| component.mana_cost_ref().is_some()
+                || component.can_potentially_pay(game, &context).is_ok());
+            crate::decisions::context::SelectableOption::with_legality(index, label.clone(), legal)
+        }).collect();
+        let context = crate::decisions::context::SelectOptionsContext::new(
+            pending.caster, Some(pending.spell_id), "Choose an additional cost", options, 1, 1);
+        let selected = decision_maker.decide_options(game, &context);
+        if decision_maker.awaiting_choice() { return Ok(()); }
+        let [index] = selected.as_slice() else {
+            return Err(GameLoopError::InvalidState("Expected one additional-cost alternative".into()));
+        };
+        if !context.options.get(*index).is_some_and(|option| option.legal) {
+            return Err(GameLoopError::ActionCancelled("Additional-cost alternative is not payable".into()));
+        }
+        let (_, components) = branches.get(*index).ok_or_else(||
+            GameLoopError::InvalidState("Invalid additional-cost alternative".into()))?;
+        let mut non_mana = Vec::new();
+        for component in components {
+            if let Some(mana) = component.mana_cost_ref() {
+                additional = mana_cost_with_effect_additional_cost(&additional, Some(mana));
+            } else { non_mana.push(component.clone()); }
+        }
+        replacements.push((cost, non_mana));
+    }
+    pending.effect_additional_mana_cost = (!additional.is_empty()).then_some(additional);
+    pending.announced_cost_replacements = Some(replacements);
+    Ok(())
+}
+
 /// Continue the casting process to targeting or mana payment.
 ///
 /// Called when there are no optional costs or after optional costs are chosen.
@@ -2740,6 +2790,15 @@ pub(super) fn continue_to_targeting_or_finalize(
     pending: PendingCast,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
+    let mut pending = pending;
+    announce_modal_mana_costs(game, &mut pending, decision_maker)?;
+    if decision_maker.awaiting_choice() {
+        // This is an effect-backed announcement, resumed by its captured root.
+        // It must not be mistaken for the optional-cost ordering response.
+        pending.stage = CastStage::ProcessingCosts;
+        state.pending_cast = Some(pending);
+        return Ok(GameProgress::Continue);
+    }
     // Per MTG 601.2b: Check for hybrid/Phyrexian pips that need announcement BEFORE targets
     // Skip if we already have hybrid choices (coming back from AnnouncingCost stage)
     if pending.hybrid_choices.is_empty()
@@ -4474,6 +4533,19 @@ pub(super) fn continue_to_mana_payment(
             pending.chosen_targets.len(),
             pending.from_zone,
         );
+        if let Some(replacements) = pending.announced_cost_replacements.as_ref() {
+            let mut replacements = replacements.clone();
+            let mut expanded = Vec::new();
+            for step in std::mem::take(&mut pending.remaining_cost_steps) {
+                if let ActivationCostStep::Cost(cost) = &step
+                    && let Some(index) = replacements.iter().position(|(original, _)| std::sync::Arc::ptr_eq(&original.0, &cost.0))
+                {
+                    let (_, components) = replacements.remove(index);
+                    append_activation_cost_steps_from_components(&components, &mut expanded);
+                } else { expanded.push(step); }
+            }
+            pending.remaining_cost_steps = expanded;
+        }
         // CR 601.2f: fix target-derived costs before mana abilities and cost
         // payments can change or remove those targets.
         for step in &mut pending.remaining_cost_steps {

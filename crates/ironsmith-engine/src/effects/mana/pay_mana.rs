@@ -64,9 +64,8 @@ fn try_pay_interactively(
     let mut replans = 0;
     let mut payment_open = false;
     loop {
-        let Some(plan) = crate::mana_payment::plan_mana_payment(game, &request)
+        let Some(plan) = crate::mana_payment::plan_first_mana_payment(game, &request)
             .ok()
-            .and_then(|plans| plans.into_iter().next())
             .or_else(|| {
                 payment_open
                     .then(|| crate::mana_payment::unfunded_mana_payment_plan(game, &request))

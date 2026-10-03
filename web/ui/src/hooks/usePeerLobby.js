@@ -1,5 +1,6 @@
 import { assertMatchNotDisputed, isMatchDisputed } from "./peer-lobby/match-lifecycle.js";
 import { createValueStore } from "../lib/value-store.js";
+import { canReuseEmptyCryptoPreview } from "../lib/preview-crypto-material.js";
 import { createProtocolActionOrder } from "../lib/protocol-action-order.js";
 import { describeSubstitutions, withSupportedCards } from "../lib/unsupported-card-substitution.js";
 import {
@@ -1376,10 +1377,23 @@ export function usePeerLobby({
         // Hydrating a future public card can expose another shuffle (for
         // example a shuffle replacement during mill). Finish that protocol
         // work before executing any part of the authoritative command.
+        const reuseEmptyPreview = canReuseEmptyCryptoPreview({
+          requirements: cryptoRequirements,
+          rngReveals,
+          shuffleProofs,
+          localOpenings: preOpenings,
+          remoteOpenings: remoteCryptoMaterial.openings,
+          remotePrivateViewProofs: remoteCryptoMaterial.privateViewProofs,
+        });
+        if (reuseEmptyPreview) {
+          recordPeerSyncPerf("submit_action:reuse_empty_preview", submitPerf);
+        }
         for (let pass = 0; pass < 256; pass++) {
           assertSubmissionActive();
-          const refreshed = filterCryptoRequirementsForCommand(command, preSubmitState,
-            freshCryptoRequirementsForSequence(nextSequence, await previewRequirementsForCommand(command)));
+          const refreshed = pass === 0 && reuseEmptyPreview
+            ? cryptoRequirements
+            : filterCryptoRequirementsForCommand(command, preSubmitState,
+              freshCryptoRequirementsForSequence(nextSequence, await previewRequirementsForCommand(command)));
           const missing = missingShuffleRequirements(refreshed, shuffleProofs);
           if (!missing.length) {
             cryptoRequirements = refreshed;

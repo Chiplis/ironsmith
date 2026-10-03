@@ -198,3 +198,49 @@ test('an acknowledgement sent before a newer cancellation cannot disarm its dead
   await h.tick();
   assert.equal(worker.terminated, true);
 });
+
+test('snapshot publication reconciles completed analysis before React renders', async () => {
+  const { subscribePriorityAnalysisSnapshots } = await import('../src/lib/priority-analysis-scheduler.js');
+  const jobs = [], stateListeners = new Set(), analysisListeners = new Set();
+  let state = { __priority_revision: 3, decision: { kind: 'priority', player: 1, analysis_complete: false, actions: [] } };
+  let latest = null, writes = 0;
+  const publish = next => { state = next; writes++; for (const callback of stateListeners) callback(); };
+  const game = { latestPriorityAnalysis: () => latest,
+    subscribePriorityAnalysis: callback => { analysisListeners.add(callback); return () => analysisListeners.delete(callback); } };
+  const dispose = subscribePriorityAnalysisSnapshots({ game, getState: () => state, setState: publish,
+    subscribeState: callback => { stateListeners.add(callback); return () => stateListeners.delete(callback); },
+    schedule: callback => jobs.push(callback) });
+  const drain = () => { let count = 0; while (jobs.length) { assert.ok(++count < 10, 'reconciliation must converge'); jobs.shift()(); } };
+  drain();
+  latest = { revision: 4, sequence: 10, decision: { kind: 'priority', player: 1, analysis_complete: true, actions: ['pass', 'cast'] } };
+  for (const callback of analysisListeners) callback(latest);
+  drain();
+  assert.equal(state.__priority_revision, 3, 'future analysis cannot replace an older visible state');
+  const base = { __priority_revision: 4, decision: { kind: 'priority', player: 1, analysis_complete: false, actions: ['pass'] } };
+  publish(base);
+  // Existing publishers can finish assigning their base reference after setState.
+  state = base;
+  drain();
+  assert.equal(state.decision.analysis_complete, true);
+  assert.deepEqual(state.decision.actions, ['pass', 'cast']);
+  publish(base); drain();
+  assert.deepEqual(state.decision.actions, ['pass', 'cast'], 'a delayed base publication must not strand the completed menu');
+  const beforeDispose = writes;
+  publish(base); dispose(); drain();
+  assert.equal(writes, beforeDispose + 1, 'disposed subscriptions cannot publish queued work');
+  assert.equal(stateListeners.size, 0); assert.equal(analysisListeners.size, 0);
+});
+
+test('snapshot reconciliation rejects obsolete analysis after a priority change', async () => {
+  const { subscribePriorityAnalysisSnapshots } = await import('../src/lib/priority-analysis-scheduler.js');
+  const jobs = [];
+  let state = { __priority_revision: 7, decision: { kind: 'priority', player: 0, analysis_complete: false } };
+  const latest = { revision: 7, sequence: 2, decision: { kind: 'priority', player: 0, analysis_complete: true, actions: ['old'] } };
+  const dispose = subscribePriorityAnalysisSnapshots({
+    game: { latestPriorityAnalysis: () => latest, subscribePriorityAnalysis: () => () => {} },
+    getState: () => state, setState: () => assert.fail('stale analysis published'),
+    subscribeState: () => () => {}, schedule: callback => jobs.push(callback),
+  });
+  state = { __priority_revision: 8, decision: { kind: 'priority', player: 1, analysis_complete: false } };
+  jobs.shift()(); dispose();
+});

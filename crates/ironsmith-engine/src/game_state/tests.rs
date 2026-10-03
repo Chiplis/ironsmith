@@ -4,6 +4,47 @@ use crate::ids::CardId;
 use crate::types::CardType;
 
 #[test]
+fn full_game_action_history_shares_records_and_isolates_branch_appends() {
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let record_loss = |game: &mut GameState, player, amount| {
+        game.record_turn_history_event(&crate::triggers::TriggerEvent::new(
+            crate::events::LifeLossEvent::new(player, amount, false),
+            crate::provenance::ProvNodeId::default(),
+        ));
+    };
+    let losses = |game: &GameState, player| {
+        game.action_history_for_player(player)
+            .filter_map(|record| record.event.downcast::<crate::events::LifeLossEvent>())
+            .map(|event| event.amount).collect::<Vec<_>>()
+    };
+    for amount in 1..=130 { record_loss(&mut game, alice, amount); }
+    let mut left = game.clone();
+    let mut right = game.clone();
+    assert!(std::ptr::eq(game.action_history_for_player(alice).next().unwrap(),
+        left.action_history_for_player(alice).next().unwrap()),
+        "cloning a game must share immutable full-game records");
+    record_loss(&mut left, alice, 131);
+    record_loss(&mut right, alice, 132);
+    record_loss(&mut left, bob, 9);
+    assert_eq!(losses(&game, alice), (1..=130).collect::<Vec<_>>());
+    assert_eq!(losses(&left, alice), (1..=131).collect::<Vec<_>>());
+    let mut expected_right = (1..=130).collect::<Vec<_>>();
+    expected_right.push(132);
+    assert_eq!(losses(&right, alice), expected_right);
+    assert_eq!(losses(&left, bob), vec![9]);
+    assert!(losses(&game, bob).is_empty());
+    assert!(losses(&right, bob).is_empty());
+    left.next_turn();
+    assert_eq!(losses(&left, alice), (1..=131).collect::<Vec<_>>(),
+        "completed-turn cleanup must retain the full ordered action history");
+    assert!(std::ptr::eq(game.action_history_for_player(alice).next().unwrap(),
+        left.action_history_for_player(alice).next().unwrap()),
+        "appending to a branch must not copy older snapshots");
+}
+
+#[test]
 fn current_turn_extra_provenance_tracks_the_selected_turn_after_queue_consumption() {
     let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
     let alice = PlayerId::from_index(0);
@@ -218,6 +259,29 @@ fn cloned_state_shares_battlefield_flags_until_mutation() {
     assert!(!game.damage_persists_on(second));
     assert!(hypothetical.damage_persists_on(first));
     assert!(hypothetical.damage_persists_on(second));
+}
+
+#[test]
+fn retained_regeneration_state_is_atomic_and_expires_at_cleanup() {
+    let mut game = GameState::new(vec!["Alice".into()], 20);
+    let alice = PlayerId::from_index(0);
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Regeneration state fixture")
+        .card_types(vec![CardType::Artifact]).build();
+    let object = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+    let departed = ObjectId::from_raw(77_001);
+    game.restore_regeneration_state(vec![(object, 2)], vec![(departed, 3)]).unwrap();
+    let saved = game.regeneration_state();
+    let mut branch = game.clone();
+    assert!(branch.use_regeneration_shield(object));
+    assert_eq!(game.regeneration_state(), saved);
+    let before = branch.regeneration_state();
+    assert!(branch.restore_regeneration_state(vec![(object, 1), (object, 2)], vec![]).is_err());
+    assert!(branch.restore_regeneration_state(vec![(departed, 1)], vec![]).is_err());
+    assert!(branch.restore_regeneration_state(vec![(object, 1)], vec![(departed, 0)]).is_err());
+    assert_eq!(branch.regeneration_state(), before);
+    branch.cleanup_damage_and_regeneration_end_of_turn();
+    assert_eq!(branch.regeneration_state(), (vec![], vec![]));
+    assert_eq!(game.regeneration_state(), saved);
 }
 
 #[test]

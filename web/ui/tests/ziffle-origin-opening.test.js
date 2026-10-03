@@ -1,4 +1,5 @@
 import { isPrivateZiffleEpoch, ziffleInputDeckFields } from "../src/lib/ziffle-private-epochs.js";
+import { hiddenCardMetadataForObjectFromCheckpoint, hiddenCardMetadataAtPositionFromCheckpoint } from "../src/lib/hidden-card-metadata.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -16,7 +17,7 @@ function between(text, start, end) {
   return text.slice(first, last).replaceAll("export function ", "function ");
 }
 
-async function harness() {
+async function harness({ workerMetadata = false } = {}) {
   const deck = Array(61).fill("Mountain");
   deck[2] = deck[4] = "Barbarian Ring";
   const manifest = await buildPrivateDeckManifest({ matchId: "origin-match", owner: 1, deck });
@@ -32,11 +33,17 @@ async function harness() {
   const later = { owner: 1, context: "origin-match:action:42:shuffle", keyContext: "origin-match", deckHash: "later", deckCount: 53,
     beforeOrder: Array.from({ length: 53 }, (_, i) => 70 + i), afterOrder: Array.from({ length: 53 }, (_, i) => 122 - i), authenticatedOrder: true };
   const calls = [];
+  let checkpointReads = 0;
   const ctx = {
     isPrivateZiffleEpoch, ziffleInputDeckFields,
+    hiddenCardMetadataForObjectFromCheckpoint, hiddenCardMetadataAtPositionFromCheckpoint,
     useCallback: fn => fn,
     gameRef: { current: {
-      exportSyncCheckpoint: async () => checkpoint,
+      exportSyncCheckpoint: async () => { checkpointReads++; return checkpoint; },
+      ...(workerMetadata ? {
+        getHiddenCardMetadata: async id => hiddenCardMetadataForObjectFromCheckpoint(checkpoint, id),
+        getHiddenCardMetadataAtPosition: async (...args) => hiddenCardMetadataAtPositionFromCheckpoint(checkpoint, ...args),
+      } : {}),
       ziffleRevealCard: async input => { calls.push(input); return { originalSlot: input.context === initial.context ? 4 : 2 }; },
     } },
     currentAuditMatchId: () => "origin-match",
@@ -58,7 +65,6 @@ async function harness() {
     ziffleOriginAnchorFromOpening, ziffleOriginAnchorFromMetadata, assertZiffleOpeningOriginMatchesMetadata,
   };
   const functions = [
-    between(shared, "export function hiddenCardMetadataForObjectFromCheckpoint(", "export function hiddenMetadataMatchesZifflePosition("),
     between(shared, "export function ziffleRuntimeCommitment(", "export function ziffleContextForCommitment("),
     between(audit, "  const currentZiffleOriginForOpening = useCallback(", "\t\t  const sanitizeObjectBoundOpening = useCallback("),
     between(audit, "\t  const resolveCommittedZiffleRevealSlot = useCallback(", "  async function buildOpeningFromResolvedCommittedSlot("),
@@ -67,8 +73,33 @@ async function harness() {
     between(connections, "\t  function openingNeedsZiffleProof(", "  const localZiffleDiagnostics = useCallback("),
   ].join("\n");
   const helpers = new Function(...Object.keys(ctx), `${functions}\nreturn {ensureZiffleOpeningProof, verifyZiffleOpeningProofForOpening, verifyZiffleOpeningCryptographicProof, currentZiffleOriginForOpening, resolveCommittedSlotForZifflePosition, verifyAuditSatisfiesCryptoRequirements};`)(...Object.values(ctx));
-  return { ...helpers, checkpoint, manifest, calls, later, opening: { ...committed, objectId: 211, position: 51, positionCommitment: currentCommitment, ziffleContext: later.context }, originCommitment };
+  return { ...helpers, checkpoint, manifest, calls, later, checkpointReads: () => checkpointReads, opening: { ...committed, objectId: 211, position: 51, positionCommitment: currentCommitment, ziffleContext: later.context }, originCommitment };
 }
+
+test("worker metadata projection preserves fresh origin binding and ambiguous-position rejection", async () => {
+  const h = await harness({ workerMetadata: true });
+  const opening = await h.ensureZiffleOpeningProof(h.opening);
+  await h.verifyZiffleOpeningProofForOpening(opening);
+  assert.equal(h.checkpointReads(), 0, "Full checkpoints do not cross the worker boundary");
+  h.checkpoint.objects.push({ ...h.checkpoint.objects[0], id: 213 });
+  await assert.rejects(h.ensureZiffleOpeningProof(opening), /ambiguous immutable origin/);
+  h.checkpoint.objects.pop();
+  h.checkpoint.objects[0].hiddenCard.originSlot = 24;
+  h.checkpoint.objects[0].hiddenCard.originCommitment = "ziffle:initial:24";
+  await assert.rejects(h.ensureZiffleOpeningProof(opening), /trusted identity/);
+});
+
+test("proof reuse binds once to current metadata and still verifies the cryptographic slot", async () => {
+  const h = await harness();
+  const opening = await h.ensureZiffleOpeningProof(h.opening);
+  const reads = h.checkpointReads(), calls = h.calls.length;
+  await h.ensureZiffleOpeningProof(opening);
+  assert.equal(h.checkpointReads() - reads, 1);
+  assert.ok(h.calls.length > calls, "Reusing a proof still verifies its ciphertext slot");
+  const duplicate = await buildDeckSlotOpening({ manifest: h.manifest, slot: 2 });
+  await assert.rejects(h.ensureZiffleOpeningProof({ ...opening, ...duplicate }),
+    /Ziffle card opening proof slot mismatch/);
+});
 
 test("a shuffled card's original proof survives both draw and public zone-change IDs", async () => {
   const h = await harness();

@@ -1,3 +1,4 @@
+import { hiddenCardMetadataForObjectFromCheckpoint } from "../src/lib/hidden-card-metadata.js";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -12,11 +13,11 @@ function declaration(name) {
   return shared.slice(start, end).replace(/^export /, '');
 }
 const names = ['ziffleDeckHashFromCommitment', 'zifflePositionFromCommitment',
-  'hiddenCardMetadataForObjectFromCheckpoint', 'hiddenMetadataMatchesZifflePosition',
+  'hiddenMetadataMatchesZifflePosition',
   'hiddenObjectIdForOpeningFromCheckpoint', 'checkpointObjectForId', 'checkpointObjectHiddenCard',
   'checkpointObjectName', 'checkpointObjectOpeningCardName', 'checkpointObjectIsRedactedHidden',
   'knownCheckpointObjectMatchesOpening'];
-const helpers = new Function(`${names.map(declaration).join('\n')}\nreturn {${names.join(',')}};`)();
+const helpers = new Function('hiddenCardMetadataForObjectFromCheckpoint', `${names.map(declaration).join('\n')}\nreturn {hiddenCardMetadataForObjectFromCheckpoint,${names.join(',')}};`)(hiddenCardMetadataForObjectFromCheckpoint);
 const revealStart = audit.indexOf('  const revealAuditOpenings = useCallback(');
 const revealEnd = audit.indexOf('  async function previewRequirementsForCommand(', revealStart);
 assert.ok(revealStart >= 0 && revealEnd > revealStart);

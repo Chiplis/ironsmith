@@ -206,243 +206,17 @@ impl EffectExecutor for RemoveAnyCountersAmongEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let total_available =
-            total_available_with_tags(self, game, ctx.source, ctx.controller, &ctx.tagged_objects);
-        if total_available < self.min_count {
-            return Ok(EffectOutcome::impossible());
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        game.clear_pending_decision_controllers();
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = execute_distributed_counter_removal(self, game, ctx);
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
+            context_checkpoint.restore(ctx);
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
         }
-        let requested_count = if self.dynamic_count {
-            let max_count = self.count.min(total_available);
-            if max_count < self.min_count {
-                return Ok(EffectOutcome::impossible());
-            }
-            let chosen = if self.display_x
-                && let Some(x) = ctx.x_value
-            {
-                if x < self.min_count || x > max_count {
-                    return Ok(EffectOutcome::impossible());
-                }
-                x
-            } else {
-                make_decision_with_fallback(
-                    game,
-                    &mut ctx.decision_maker,
-                    ctx.controller,
-                    Some(ctx.source),
-                    NumberSpec::range(ctx.source, self.min_count, max_count, "counters to remove"),
-                    FallbackStrategy::Maximum,
-                )
-            };
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            chosen.clamp(self.min_count, max_count)
-        } else {
-            self.count
-        };
-
-        if requested_count == 0 {
-            return Ok(EffectOutcome::count(0));
-        }
-
-        let mut valid_targets =
-            valid_targets_with_tags(self, game, ctx.source, ctx.controller, &ctx.tagged_objects);
-        let mut allocations: std::collections::BTreeMap<ObjectId, u32> =
-            std::collections::BTreeMap::new();
-        if self.single_object {
-            valid_targets.retain(|object_id| {
-                game.object(*object_id)
-                    .is_some_and(|object| available_counter_count(self, object) >= requested_count)
-            });
-            let chosen = make_decision_with_fallback(
-                game,
-                &mut ctx.decision_maker,
-                ctx.controller,
-                Some(ctx.source),
-                ChooseObjectsSpec::new(
-                    ctx.source,
-                    "Choose one object to remove counters from",
-                    valid_targets.clone(),
-                    1,
-                    Some(1),
-                ),
-                FallbackStrategy::Maximum,
-            );
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            let Some(object_id) = chosen
-                .into_iter()
-                .find(|object_id| valid_targets.contains(object_id))
-            else {
-                return Ok(EffectOutcome::impossible());
-            };
-            allocations.insert(object_id, requested_count);
-            valid_targets = vec![object_id];
-        } else {
-            let distribute_targets: Vec<Target> =
-                valid_targets.iter().copied().map(Target::Object).collect();
-            let distribution = make_decision_with_fallback(
-                game,
-                &mut ctx.decision_maker,
-                ctx.controller,
-                Some(ctx.source),
-                DistributeSpec::counters(ctx.source, requested_count, distribute_targets),
-                FallbackStrategy::Maximum,
-            );
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            for (target, amount) in distribution {
-                if let Target::Object(object_id) = target {
-                    let available = game
-                        .object(object_id)
-                        .map(|object| available_counter_count(self, object))
-                        .unwrap_or(0);
-                    let already_allocated = allocations.get(&object_id).copied().unwrap_or(0);
-                    let free_capacity = available.saturating_sub(already_allocated);
-                    let total_allocated: u32 = allocations.values().copied().sum();
-                    let remaining_total = requested_count.saturating_sub(total_allocated);
-                    let accepted = amount.min(free_capacity).min(remaining_total);
-                    if accepted > 0 {
-                        *allocations.entry(object_id).or_insert(0) += accepted;
-                    }
-                }
-            }
-        }
-
-        let distributed_total: u32 = allocations.values().copied().sum();
-        if distributed_total > requested_count {
-            return Ok(EffectOutcome::impossible());
-        }
-
-        if distributed_total < requested_count {
-            let mut remaining = requested_count - distributed_total;
-            for object_id in &valid_targets {
-                if remaining == 0 {
-                    break;
-                }
-                let available_total = game
-                    .object(*object_id)
-                    .map(|obj| {
-                        if let Some(counter_type) = self.counter_type {
-                            obj.counters.get(&counter_type).copied().unwrap_or(0)
-                        } else {
-                            obj.counters.values().copied().sum::<u32>()
-                        }
-                    })
-                    .unwrap_or(0);
-                let already_allocated = allocations.get(object_id).copied().unwrap_or(0);
-                let free_capacity = available_total.saturating_sub(already_allocated);
-                if free_capacity == 0 {
-                    continue;
-                }
-                let add = remaining.min(free_capacity);
-                *allocations.entry(*object_id).or_insert(0) += add;
-                remaining -= add;
-            }
-            if remaining > 0 {
-                return Ok(EffectOutcome::impossible());
-            }
-        }
-
-        let mut removed_total = 0u32;
-        let mut outcome = EffectOutcome::count(0);
-        for (object_id, amount_for_target) in allocations {
-            if amount_for_target == 0 {
-                continue;
-            }
-
-            let removed_from_target = if let Some(counter_type) = self.counter_type {
-                let available_total = game
-                    .object(object_id)
-                    .and_then(|obj| obj.counters.get(&counter_type).copied())
-                    .unwrap_or(0);
-                if available_total < amount_for_target {
-                    return Ok(EffectOutcome::impossible());
-                }
-                match game.remove_counters(
-                    object_id,
-                    counter_type,
-                    amount_for_target,
-                    Some(ctx.source),
-                    Some(ctx.controller),
-                ) {
-                    Some((removed, event)) => {
-                        outcome = outcome.with_event(event);
-                        removed
-                    }
-                    None => 0,
-                }
-            } else {
-                let available_counters: Vec<(CounterType, u32)> = game
-                    .object(object_id)
-                    .map(|obj| {
-                        obj.counters
-                            .iter()
-                            .filter(|(_, count)| **count > 0)
-                            .map(|(counter_type, count)| (*counter_type, *count))
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                let available_total: u32 = available_counters.iter().map(|(_, count)| *count).sum();
-                if available_total < amount_for_target {
-                    return Ok(EffectOutcome::impossible());
-                }
-
-                let selections = make_decision_with_fallback(
-                    game,
-                    &mut ctx.decision_maker,
-                    ctx.controller,
-                    Some(ctx.source),
-                    CounterRemovalSpec::new(
-                        ctx.source,
-                        object_id,
-                        amount_for_target,
-                        available_counters,
-                    ),
-                    FallbackStrategy::Maximum,
-                );
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
-                }
-
-                let mut removed_from_target = 0u32;
-                for (counter_type, requested) in selections {
-                    if removed_from_target >= amount_for_target {
-                        break;
-                    }
-                    let remaining = amount_for_target - removed_from_target;
-                    let to_remove = requested.min(remaining);
-                    if to_remove == 0 {
-                        continue;
-                    }
-                    if let Some((removed, event)) = game.remove_counters(
-                        object_id,
-                        counter_type,
-                        to_remove,
-                        Some(ctx.source),
-                        Some(ctx.controller),
-                    ) {
-                        outcome = outcome.with_event(event);
-                        removed_from_target += removed;
-                    }
-                }
-                removed_from_target
-            };
-
-            removed_total += removed_from_target;
-            if removed_from_target != amount_for_target {
-                return Ok(EffectOutcome::impossible());
-            }
-        }
-
-        if removed_total != requested_count {
-            return Ok(EffectOutcome::impossible());
-        }
-
-        outcome.set_value(crate::effect::OutcomeValue::Count(removed_total as i32));
-        Ok(outcome)
+        result
     }
 
     fn cost_description(&self) -> Option<String> {
@@ -685,6 +459,182 @@ fn is_simple_nonland_permanent_you_control_filter(filter: &ObjectFilter) -> bool
     ];
     expected.excluded_card_types = vec![CardType::Land];
     *filter == expected
+}
+
+fn execute_distributed_counter_removal(effect: &RemoveAnyCountersAmongEffect, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<EffectOutcome, ExecutionError> {
+        let total_available =
+            total_available_with_tags(effect, game, ctx.source, ctx.controller, &ctx.tagged_objects);
+        if total_available < effect.min_count {
+            return Ok(EffectOutcome::impossible());
+        }
+        let requested_count = if effect.dynamic_count {
+            let max_count = effect.count.min(total_available);
+            if max_count < effect.min_count {
+                return Ok(EffectOutcome::impossible());
+            }
+            let chosen = if effect.display_x
+                && let Some(x) = ctx.x_value
+            {
+                if x < effect.min_count || x > max_count {
+                    return Ok(EffectOutcome::impossible());
+                }
+                x
+            } else {
+                make_decision_with_fallback(
+                    game,
+                    &mut ctx.decision_maker,
+                    ctx.controller,
+                    Some(ctx.source),
+                    NumberSpec::range(ctx.source, effect.min_count, max_count, "counters to remove"),
+                    FallbackStrategy::Maximum,
+                )
+            };
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            chosen.clamp(effect.min_count, max_count)
+        } else {
+            effect.count
+        };
+
+        if requested_count == 0 {
+            return Ok(EffectOutcome::count(0));
+        }
+
+        let mut valid_targets =
+            valid_targets_with_tags(effect, game, ctx.source, ctx.controller, &ctx.tagged_objects);
+        let mut allocations: std::collections::BTreeMap<ObjectId, u32> =
+            std::collections::BTreeMap::new();
+        if effect.single_object {
+            valid_targets.retain(|object_id| {
+                game.object(*object_id)
+                    .is_some_and(|object| available_counter_count(effect, object) >= requested_count)
+            });
+            let chosen = make_decision_with_fallback(
+                game,
+                &mut ctx.decision_maker,
+                ctx.controller,
+                Some(ctx.source),
+                ChooseObjectsSpec::new(
+                    ctx.source,
+                    "Choose one object to remove counters from",
+                    valid_targets.clone(),
+                    1,
+                    Some(1),
+                ),
+                FallbackStrategy::Maximum,
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            let Some(object_id) = chosen
+                .into_iter()
+                .find(|object_id| valid_targets.contains(object_id))
+            else {
+                return Ok(EffectOutcome::impossible());
+            };
+            allocations.insert(object_id, requested_count);
+            valid_targets = vec![object_id];
+        } else {
+            let distribute_targets: Vec<Target> =
+                valid_targets.iter().copied().map(Target::Object).collect();
+            let distribution = make_decision_with_fallback(
+                game,
+                &mut ctx.decision_maker,
+                ctx.controller,
+                Some(ctx.source),
+                DistributeSpec::counters(ctx.source, requested_count, distribute_targets),
+                FallbackStrategy::Maximum,
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            for (target, amount) in distribution {
+                if let Target::Object(object_id) = target {
+                    let available = game
+                        .object(object_id)
+                        .map(|object| available_counter_count(effect, object))
+                        .unwrap_or(0);
+                    let already_allocated = allocations.get(&object_id).copied().unwrap_or(0);
+                    let free_capacity = available.saturating_sub(already_allocated);
+                    let total_allocated: u32 = allocations.values().copied().sum();
+                    let remaining_total = requested_count.saturating_sub(total_allocated);
+                    let accepted = amount.min(free_capacity).min(remaining_total);
+                    if accepted > 0 {
+                        *allocations.entry(object_id).or_insert(0) += accepted;
+                    }
+                }
+            }
+        }
+
+        let distributed_total: u32 = allocations.values().copied().sum();
+        if distributed_total > requested_count {
+            return Ok(EffectOutcome::impossible());
+        }
+
+        if distributed_total < requested_count {
+            let mut remaining = requested_count - distributed_total;
+            for object_id in &valid_targets {
+                if remaining == 0 {
+                    break;
+                }
+                let available_total = game
+                    .object(*object_id)
+                    .map(|obj| {
+                        if let Some(counter_type) = effect.counter_type {
+                            obj.counters.get(&counter_type).copied().unwrap_or(0)
+                        } else {
+                            obj.counters.values().copied().sum::<u32>()
+                        }
+                    })
+                    .unwrap_or(0);
+                let already_allocated = allocations.get(object_id).copied().unwrap_or(0);
+                let free_capacity = available_total.saturating_sub(already_allocated);
+                if free_capacity == 0 {
+                    continue;
+                }
+                let add = remaining.min(free_capacity);
+                *allocations.entry(*object_id).or_insert(0) += add;
+                remaining -= add;
+            }
+            if remaining > 0 {
+                return Ok(EffectOutcome::impossible());
+            }
+        }
+
+        let mut removed_total = 0u32;
+        let mut outcomes = Vec::new();
+        for (object_id, amount_for_target) in allocations {
+            if amount_for_target == 0 { continue; }
+            let selections = if let Some(kind) = effect.counter_type {
+                vec![(kind, amount_for_target)]
+            } else {
+                let available_counters: Vec<(CounterType, u32)> = game.object(object_id)
+                    .map(|object| object.counters.iter().filter(|(_, count)| **count > 0)
+                        .map(|(kind, count)| (*kind, *count)).collect()).unwrap_or_default();
+                make_decision_with_fallback(game, &mut ctx.decision_maker, ctx.controller, Some(ctx.source),
+                    CounterRemovalSpec::new(ctx.source, object_id, amount_for_target, available_counters), FallbackStrategy::Maximum)
+            };
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            let mut selected_for_target = 0u32;
+            for (kind, requested) in selections {
+                if selected_for_target >= amount_for_target { break; }
+                let amount = requested.min(amount_for_target - selected_for_target);
+                if amount == 0 { continue; }
+                let event = crate::events::Event::remove_counters(object_id, kind, amount).with_provenance(ctx.provenance);
+                let outcome = super::remove_counters::execute_counter_removal_event(game, ctx, event)?;
+                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                let removed = u32::try_from(outcome.count_or_zero()).map_err(|_| ExecutionError::InternalError("invalid counter-removal count".into()))?;
+                removed_total = removed_total.checked_add(removed).ok_or_else(|| ExecutionError::InternalError("counter-removal total overflow".into()))?;
+                selected_for_target += amount;
+                outcomes.push(outcome);
+            }
+            if selected_for_target != amount_for_target { return Err(ExecutionError::Impossible("counter-removal choices did not fulfill the assigned amount".into())); }
+        }
+        let count = i32::try_from(removed_total).map_err(|_| ExecutionError::InternalError("counter-removal total exceeds outcome range".into()))?;
+        let mut outcome = EffectOutcome::aggregate(outcomes);
+        outcome.set_value(crate::effect::OutcomeValue::Count(count));
+        Ok(outcome)
 }
 
 #[cfg(test)]

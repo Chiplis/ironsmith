@@ -10,6 +10,7 @@ mod analysis_probe;
 mod mechanics;
 mod resumable;
 pub use resumable::ManaAnalysisSession;
+pub(super) use resumable::with_checked_query;
 
 pub use mechanics::*;
 
@@ -2772,7 +2773,7 @@ fn mana_cost_can_be_paid_with_view_at_x(
         )
         .with_spend_policy(game.mana_spend_policy(player, Some(spell_id)));
         request.x_value = x_value;
-        return crate::mana_payment::check_mana_payment(game, &request).is_ok();
+        return resumable::check_payment(game, &request);
     }
     let potential = view.potential_mana(player);
     let mana_spend_policy = game.mana_spend_policy(player, Some(spell_id));
@@ -3168,11 +3169,11 @@ pub(crate) fn can_cast_spell_with_context(
     }
 
     let commander_tax_life = commander_tax_life_payment_amount(game, spell, spell.zone);
-    if !can_pay_non_mana_cost_sequence_for_cast(
-        game,
-        player,
-        spell.id,
-        spell_for_checks.additional_non_mana_costs(),
+    let additional_costs = spell_for_checks.additional_non_mana_costs();
+    let has_modal_mana_cost = additional_costs.iter()
+        .any(|cost| crate::costs::simple_modal_mana_cost_branches(cost).is_some());
+    if !has_modal_mana_cost && !can_pay_non_mana_cost_sequence_for_cast(
+        game, player, spell.id, additional_costs.clone(),
     ) {
         ctx.add_total_ms(total_started_at.elapsed_ms());
         return false;
@@ -3262,8 +3263,67 @@ pub(crate) fn can_cast_spell_with_context(
         ctx.add_affordability_ms(affordability_started_at.elapsed_ms());
     }
 
+    if has_modal_mana_cost && !modal_additional_costs_are_payable(
+        game, player, spell_for_checks, casting_method,
+        base_mana_cost.as_ref(), &additional_costs, view,
+    ) {
+        ctx.add_total_ms(total_started_at.elapsed_ms());
+        return false;
+    }
     ctx.add_total_ms(total_started_at.elapsed_ms());
     true
+}
+
+/// Test an entire announced branch, sharing its mana and discard resources
+/// with the spell's base cost. Stop on a witness, without truncating alternatives.
+fn modal_additional_costs_are_payable(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+    base: Option<&crate::mana::ManaCost>,
+    costs: &[crate::costs::Cost],
+    view: &DerivedGameView<'_>,
+) -> bool {
+    fn visit(
+        game: &GameState, player: PlayerId, spell: &crate::object::Object,
+        casting_method: &CastingMethod, base: &crate::mana::ManaCost,
+        costs: &[crate::costs::Cost], selected: &mut Vec<crate::costs::Cost>,
+        view: &DerivedGameView<'_>,
+    ) -> bool {
+        if let Some((cost, rest)) = costs.split_first() {
+            let branches = crate::costs::simple_modal_mana_cost_branches(cost)
+                .unwrap_or_else(|| vec![(String::new(), vec![cost.clone()])]);
+            for (_, branch) in branches {
+                let before = selected.len();
+                selected.extend(branch);
+                let payable = visit(game, player, spell, casting_method, base, rest, selected, view);
+                selected.truncate(before);
+                if payable { return true; }
+            }
+            return false;
+        }
+        let non_mana = selected.iter().filter(|cost| cost.mana_cost_ref().is_none()).cloned().collect();
+        if !can_pay_non_mana_cost_sequence_for_cast(game, player, spell.id, non_mana) { return false; }
+        let mut pips = base.pips().to_vec();
+        for cost in selected.iter().filter_map(|cost| cost.mana_cost_ref()) {
+            pips.extend_from_slice(cost.pips());
+        }
+        let combined = crate::mana::ManaCost::from_pips(pips);
+        let effective = calculate_effective_mana_cost_with_view_for_casting_method(
+            game, player, spell, &combined, casting_method, view);
+        if mana_cost_can_be_paid_by_caster_or_assist_with_view(game, player, spell.id, &effective, view) {
+            return true;
+        }
+        effective_cost_with_affordable_optional_cost_hypothesis(
+            game, player, spell, &combined, casting_method,
+        ).is_some_and(|cost| mana_cost_can_be_paid_by_caster_or_assist_with_view(
+            game, player, spell.id, &cost, view))
+            || affordable_with_max_cost_payment_sacrifice_reduction(
+                game, player, spell, spell.id, &effective, view)
+    }
+    visit(game, player, spell, casting_method, &base.cloned().unwrap_or_default(),
+        costs, &mut Vec::new(), view)
 }
 
 pub(crate) fn can_cast_spell_with_view(
@@ -3581,7 +3641,7 @@ pub(crate) fn can_cast_with_cost_with_context(
                     )
                     .with_spend_policy(game.mana_spend_policy(player, Some(spell_id)));
                     request.reserved_tap_sources = resource.into_iter().collect();
-                    crate::mana_payment::check_mana_payment(game, &request).is_ok()
+                    resumable::check_payment(game, &request)
                 })
         } else {
             mana_cost_can_be_paid_by_caster_or_assist_with_view(

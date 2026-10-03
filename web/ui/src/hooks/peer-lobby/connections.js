@@ -2723,7 +2723,11 @@ export function usePeerLobbyConnections(base, servicesRef) {
       };
       const oldProof = opening.ziffleReveal || opening.ziffleProof || opening.positionOpeningProof;
       if (oldProof && String(oldProof.positionCommitment || "") === trustedOrigin.originPositionCommitment) {
-        await verifyZiffleOpeningProofForOpening(anchoredOpening, options);
+        // No await or game mutation separates this binding from the trusted
+        // lookup above. Validate against that same snapshot, then perform the
+        // full cryptographic check without exporting the checkpoint twice.
+        assertZiffleOpeningOriginMatchesMetadata(anchoredOpening, trustedOrigin.metadata);
+        await verifyZiffleOpeningCryptographicProof(anchoredOpening, options);
         return anchoredOpening;
       }
       const currentGame = gameRef.current;

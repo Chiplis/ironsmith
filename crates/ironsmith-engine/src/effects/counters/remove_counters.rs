@@ -61,17 +61,9 @@ impl EffectExecutor for RemoveCountersEffect {
             let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
             let requested = resolve_value(game, &self.count, ctx)?.max(0) as u32;
             if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            if game.object(target_id).is_none() { return Ok(EffectOutcome::target_invalid()); }
-            if game.is_phased_out(target_id) { return Ok(EffectOutcome::count(0)); }
-            let count = requested.min(game.counter_count(target_id, self.counter_type));
-            if count == 0 { return Ok(EffectOutcome::count(0)); }
-            let event = crate::events::Event::remove_counters(target_id, self.counter_type, count)
+            let event = crate::events::Event::remove_counters(target_id, self.counter_type, requested)
                 .with_provenance(ctx.provenance);
-            let processed = crate::events::processing::process_trait_event_with_execution_context(
-                game, event, ctx,
-            )?;
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            commit_counter_removal(game, ctx, processed)
+            execute_counter_removal_event(game, ctx, event)
         })();
         if result.is_err() || ctx.decision_maker.awaiting_choice() {
             game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
@@ -105,6 +97,43 @@ impl EffectExecutor for RemoveCountersEffect {
 }
 
 
+pub(crate) fn execute_counter_removal_event(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    event: crate::events::Event,
+) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        game.clear_pending_decision_controllers();
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = (|| {
+            let removal = crate::events::downcast_event::<crate::events::RemoveCountersEvent>(event.inner())
+                .ok_or_else(|| ExecutionError::InternalError("counter-removal owner requires a removal event".into()))?;
+            if game.object(removal.target).is_none() { return Ok(EffectOutcome::target_invalid()); }
+            if game.is_phased_out(removal.target) { return Ok(EffectOutcome::count(0)); }
+            let count = removal.count.min(game.counter_count(removal.target, removal.counter_type));
+            if count == 0 { return Ok(EffectOutcome::count(0)); }
+            // The instruction's provenance is a causal parent, not this proposal's identity.
+            // Several counter groups can be removed by one instruction.
+            let parent = event.provenance();
+            let proposal = if game.provenance_graph().node(parent).is_some() {
+                game.alloc_child_event_provenance(parent, crate::events::EventKind::RemoveCounters)
+            } else {
+                game.provenance_graph_mut().alloc_root_event(crate::events::EventKind::RemoveCounters)
+            };
+            let event = event.rewrap(removal.with_count(count)).with_provenance(proposal);
+            let processed = crate::events::processing::process_trait_event_with_execution_context(game, event, ctx)?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            commit_counter_removal(game, ctx, processed)
+        })();
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
+            context_checkpoint.restore(ctx);
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        }
+        result
+}
+
 fn commit_counter_removal(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
@@ -134,7 +163,10 @@ fn commit_counter_removal(
                 Some((removed, mut notification)) => {
                     if removed != actual { return Err(ExecutionError::InternalError(
                         "counter-removal commit disagrees with its resolved amount".into())); }
-                    notification = notification.with_provenance(event.provenance());
+                    // The committed observation is distinct from the replaceable proposal.
+                    let observation = game.alloc_child_event_provenance(
+                        event.provenance(), crate::events::EventKind::MarkersChanged);
+                    notification = notification.with_provenance(observation);
                     if game.object(ctx.source).is_none() && let Some(snapshot) = &ctx.source_snapshot {
                         notification = notification.with_source_snapshot(snapshot.clone());
                     }

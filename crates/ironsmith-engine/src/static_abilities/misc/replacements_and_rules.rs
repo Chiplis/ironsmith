@@ -2188,6 +2188,10 @@ impl DrawExtraCardsReplacement {
 }
 
 impl StaticAbilityKind for DrawExtraCardsReplacement {
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::DrawExtraCardsReplacement
     }
@@ -2242,6 +2246,10 @@ struct WouldDrawInstructionMatcher {
 }
 
 impl ReplacementMatcher for WouldDrawInstructionMatcher {
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Draw
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if !WouldDrawCardMatcher::you().matches_prepared_event(event, ctx) {
             return false;
@@ -3335,6 +3343,10 @@ impl PayLifeOrEnterTappedReplacement {
 }
 
 impl StaticAbilityKind for PayLifeOrEnterTappedReplacement {
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::PayLifeOrEnterTappedReplacement
     }

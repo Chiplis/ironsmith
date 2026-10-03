@@ -53,7 +53,10 @@ pub(crate) fn move_destination_can_receive_counters(
     to_id: ObjectId,
     counter_type: CounterType,
 ) -> bool {
-    game.object(to_id).is_some() && game.can_have_counter_type_placed(to_id, counter_type)
+    // CR 702.26b: an ordinary move cannot use a phased-out destination.
+    game.object(to_id).is_some()
+        && !game.is_phased_out(to_id)
+        && game.can_have_counter_type_placed(to_id, counter_type)
 }
 
 /// The "put" half of moving counters (CR 122.5, 122.8) is an ordinary
@@ -68,4 +71,19 @@ pub(crate) fn put_moved_counters(
     let event = crate::events::Event::put_counters(to_id, counter_type, count, ctx.cause.clone())
         .with_provenance(ctx.provenance);
     execute_object_counter_placement(game, ctx, event)
+}
+
+/// The removal half of a live counter move is independently replaceable.
+/// The caller keeps its preflight movement budget for the placement half;
+/// replacing removal does not rewrite that separately proposed event.
+pub(crate) fn remove_moved_counters(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    from_id: ObjectId,
+    counter_type: CounterType,
+    count: u32,
+) -> Result<crate::effect::EffectOutcome, crate::effects::ExecutionError> {
+    let event = crate::events::Event::remove_counters(from_id, counter_type, count)
+        .with_provenance(ctx.provenance);
+    remove_counters::execute_counter_removal_event(game, ctx, event)
 }

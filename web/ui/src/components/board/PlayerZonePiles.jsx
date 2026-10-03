@@ -394,6 +394,7 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
       const lookHeight = look?.offsetHeight || 0;
       const lookCard = look?.querySelector(".zone-pile");
       const lookCardHeight = lookCard?.offsetHeight || 0;
+      const containerClientTop = container.clientTop;
       const pileWidth = Math.min(56, cardWidth * 0.7);
       piles.style.setProperty("--zone-pile-width", `${pileWidth}px`);
       if (board) {
@@ -411,8 +412,8 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
           - lookChromeHeight;
         look?.style.setProperty("--zone-pile-width", `${Math.min(pileWidth, Math.max(1, lookCardRoom * 63 / 88))}px`);
         const lookTop = lookHeight * (lookScale - 1);
-        const pilesTop = Math.max(0, boardBounds.top + zoneTop - bounds.top - container.clientTop);
-        const nextPilesTop = bounds.top + container.clientTop + pilesTop;
+        const pilesTop = Math.max(0, boardBounds.top + zoneTop - bounds.top - containerClientTop);
+        const nextPilesTop = bounds.top + containerClientTop + pilesTop;
         piles.style.setProperty("--zone-piles-top", `${pilesTop}px`);
         // Chat hangs 6px under Exile; give it whatever the board has left.
         piles.style.setProperty("--exile-chat-room", `${Math.max(0, boardBounds.bottom - nextPilesTop - pilesBounds.height - 12)}px`);

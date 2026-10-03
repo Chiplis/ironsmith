@@ -1234,7 +1234,7 @@ fn apply_trait_modification(
                     damage.with_amount(damage.amount.saturating_mul(*factor))
                 }
                 EventModification::Add(delta) => {
-                    damage.with_amount((damage.amount as i32 + delta).max(0) as u32)
+                    damage.with_amount(damage.amount.saturating_add_signed(*delta))
                 }
                 EventModification::Subtract(delta) => damage.reduced(*delta),
                 EventModification::SetTo(value) => damage.with_amount(*value),
@@ -1256,7 +1256,7 @@ fn apply_trait_modification(
                     life_gain.with_amount(life_gain.amount.saturating_mul(*factor))
                 }
                 EventModification::Add(delta) => {
-                    life_gain.with_amount((life_gain.amount as i32 + delta).max(0) as u32)
+                    life_gain.with_amount(life_gain.amount.saturating_add_signed(*delta))
                 }
                 EventModification::Subtract(delta) => {
                     life_gain.with_amount(life_gain.amount.saturating_sub(*delta))
@@ -1291,7 +1291,7 @@ fn apply_trait_modification(
                     put_counters.with_count(put_counters.count.saturating_mul(*factor))
                 }
                 EventModification::Add(delta) => {
-                    put_counters.with_count((put_counters.count as i32 + delta).max(0) as u32)
+                    put_counters.with_count(put_counters.count.saturating_add_signed(*delta))
                 }
                 EventModification::Subtract(delta) => {
                     put_counters.with_count(put_counters.count.saturating_sub(*delta))
@@ -1375,7 +1375,7 @@ fn apply_trait_modification(
                     draw.with_count(draw.count.saturating_mul(*factor))
                 }
                 EventModification::Add(delta) => {
-                    draw.with_count((draw.count as i32 + delta).max(0) as u32)
+                    draw.with_count(draw.count.saturating_add_signed(*delta))
                 }
                 EventModification::Subtract(delta) => {
                     draw.with_count(draw.count.saturating_sub(*delta))
@@ -2026,4 +2026,76 @@ fn queue_prevention_follow_up(
     game.effect_store.prevention_effects.queue_follow_up_with_source_snapshot(
         follow_up, damage, provenance, source_snapshot,
     );
+}
+
+
+#[cfg(test)]
+mod quantitative_addition_range_tests {
+    use super::*;
+    fn event_for(family:u8,source:crate::ids::ObjectId,player:crate::ids::PlayerId,amount:u32)->crate::events::Event {
+        match family {
+            0=>crate::events::Event::damage(source,crate::events::DamageTarget::Player(player),amount,false,crate::events::EventCause::effect()),
+            1=>crate::events::Event::life_gain(player,amount),
+            2=>crate::events::Event::put_counters(source,crate::object::CounterType::Charge,amount,crate::events::EventCause::effect()),
+            _=>crate::events::Event::draw(player,amount,false),
+        }
+    }
+    fn quantity(family:u8,event:&crate::events::Event)->u32 {
+        match family {
+            0=>crate::events::downcast_event::<crate::events::DamageEvent>(event.inner()).unwrap().amount,
+            1=>crate::events::downcast_event::<crate::events::LifeGainEvent>(event.inner()).unwrap().amount,
+            2=>crate::events::downcast_event::<crate::events::PutCountersEvent>(event.inner()).unwrap().count,
+            _=>crate::events::downcast_event::<crate::events::DrawEvent>(event.inner()).unwrap().count,
+        }
+    }
+    fn resolved(result:crate::events::processing::TraitEventResult)->crate::events::Event {
+        match result {
+            crate::events::processing::TraitEventResult::Proceed(event)|crate::events::processing::TraitEventResult::Modified(event)=>event,
+            _=>panic!("numeric modification must yield a resolved typed event"),
+        }
+    }
+    fn check(family:u8,amount:u32,delta:i32,expected:u32) {
+        let mut game=crate::tests::test_helpers::setup_two_player_game();
+        let alice=crate::ids::PlayerId::from_index(0);
+        let definition=crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(),"Quantitative range source")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let source=game.create_object_from_definition(&definition,alice,crate::zone::Zone::Battlefield);
+        let action=crate::replacement::ReplacementAction::Modify(crate::replacement::EventModification::Add(delta));
+        let effect=match family {
+            0=>crate::replacement::ReplacementEffect::with_matcher(source,alice,crate::events::damage::matchers::DamageToPlayerMatcher::to_you(),action),
+            1=>crate::replacement::ReplacementEffect::with_matcher(source,alice,crate::events::life::matchers::WouldGainLifeMatcher::you(),action),
+            2=>crate::replacement::ReplacementEffect::with_matcher(source,alice,crate::events::counters::matchers::WouldPutCountersMatcher::any(),action),
+            _=>crate::replacement::ReplacementEffect::with_matcher(source,alice,crate::events::cards::matchers::WouldDrawCardMatcher::you(),action),
+        };
+        let shield=game.effect_store.replacement_effects.add_one_shot_effect(effect);
+        let mut dm=crate::decision::SelectFirstDecisionMaker;
+        let result=crate::events::processing::process_with_dm(&mut game,event_for(family,source,alice,amount),&mut dm).unwrap();
+        assert_eq!(quantity(family,&resolved(result)),expected,"replacement addition must preserve the unsigned carrier range");
+        assert_eq!(game.effect_store.replacement_effects.get_effect(shield).is_none(),amount>0);
+        // This processor fixture resolves a proposal; it does not claim a physical
+        // world commit of quantities outside the owning outcome's supported range.
+        assert_eq!(game.player(alice).unwrap().life,20);
+        assert_eq!(game.counter_count(source,crate::object::CounterType::Charge),0);
+        if amount>0 {
+            let next=crate::events::processing::process_with_dm(&mut game,event_for(family,source,alice,2),&mut dm).unwrap();
+            assert_eq!(quantity(family,&resolved(next)),2,"consumed one-shot must not modify the next event");
+        }
+    }
+    #[test]fn damage_add_zero_preserves_large_unsigned_amount(){check(0,u32::MAX,0,u32::MAX);}
+    #[test]fn life_gain_add_zero_preserves_large_unsigned_amount(){check(1,u32::MAX,0,u32::MAX);}
+    #[test]fn counter_add_zero_preserves_large_unsigned_count(){check(2,u32::MAX,0,u32::MAX);}
+    #[test]fn draw_add_zero_preserves_large_unsigned_count(){check(3,u32::MAX,0,u32::MAX);}
+    #[test]fn damage_add_one_crosses_signed_boundary_without_panicking(){check(0,i32::MAX as u32,1,i32::MAX as u32+1);}
+    #[test]fn life_gain_add_one_crosses_signed_boundary_without_panicking(){check(1,i32::MAX as u32,1,i32::MAX as u32+1);}
+    #[test]fn counter_add_one_crosses_signed_boundary_without_panicking(){check(2,i32::MAX as u32,1,i32::MAX as u32+1);}
+    #[test]fn draw_add_one_crosses_signed_boundary_without_panicking(){check(3,i32::MAX as u32,1,i32::MAX as u32+1);}
+    #[test]fn unsigned_addition_saturation_negative_and_zero_controls(){
+        for family in 0..4 {
+            check(family,u32::MAX,1,u32::MAX);
+            check(family,u32::MAX,-1,u32::MAX-1);
+            check(family,1,i32::MIN,0);
+            check(family,0,i32::MAX,0);
+            check(family,2,-1,1);
+        }
+    }
 }

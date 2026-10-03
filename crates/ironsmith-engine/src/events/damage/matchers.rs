@@ -355,6 +355,21 @@ impl ReplacementMatcher for NoncombatDamageMatcher {
     }
 }
 
+
+/// CR 608.2h/609.7b: current source properties are authoritative while the
+/// source is present. A failed current match cannot fall back to older LKI.
+/// Phased-out sources are absent for this query (CR 702.26b).
+fn damage_source_matches_filter(source: ObjectId, filter: &ObjectFilter, ctx: &EventContext) -> bool {
+    if !ctx.game.is_phased_out(source) {
+        if let Some(object) = ctx.game.object(source) {
+            return filter.matches(object, &ctx.filter_ctx, ctx.game);
+        }
+    }
+    ctx.event_source_snapshot
+        .filter(|snapshot| snapshot.object_id == source)
+        .is_some_and(|snapshot| filter.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game))
+}
+
 /// Matches damage events from a source matching the filter.
 #[derive(Debug, Clone)]
 pub struct DamageFromSourceMatcher {
@@ -386,16 +401,7 @@ impl ReplacementMatcher for DamageFromSourceMatcher {
             return false;
         };
 
-        ctx.game
-            .object(damage.source)
-            .is_some_and(|obj| self.filter.matches(obj, &ctx.filter_ctx, ctx.game))
-            || ctx
-                .event_source_snapshot
-                .filter(|snapshot| snapshot.object_id == damage.source)
-                .is_some_and(|snapshot| {
-                    self.filter
-                        .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
-                })
+        damage_source_matches_filter(damage.source, &self.filter, ctx)
     }
 
     fn display(&self) -> String {
@@ -451,16 +457,7 @@ impl ReplacementMatcher for DamageFromSourceToPlayerMatcher {
             return false;
         }
 
-        ctx.game.object(damage.source).is_some_and(|source_obj| {
-            self.source_filter
-                .matches(source_obj, &ctx.filter_ctx, ctx.game)
-        }) || ctx
-            .event_source_snapshot
-            .filter(|snapshot| snapshot.object_id == damage.source)
-            .is_some_and(|snapshot| {
-                self.source_filter
-                    .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
-            })
+        damage_source_matches_filter(damage.source, &self.source_filter, ctx)
     }
 
     fn priority(&self) -> ReplacementPriority {
@@ -502,16 +499,7 @@ impl DamageFromSourceToObjectMatcher {
     }
 
     fn source_matches(&self, damage: &DamageEvent, ctx: &EventContext) -> bool {
-        ctx.game
-            .object(damage.source)
-            .is_some_and(|obj| self.source_filter.matches(obj, &ctx.filter_ctx, ctx.game))
-            || ctx
-                .event_source_snapshot
-                .filter(|snapshot| snapshot.object_id == damage.source)
-                .is_some_and(|snapshot| {
-                    self.source_filter
-                        .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
-                })
+        damage_source_matches_filter(damage.source, &self.source_filter, ctx)
     }
 
     fn target_matches(
@@ -745,19 +733,7 @@ impl DamageSourceConstraint {
         source: ObjectId,
         ctx: &crate::events::EventContext,
     ) -> bool {
-        let filter_matches = |filter: &ObjectFilter| {
-            let matches_current = ctx
-                .game
-                .object(source)
-                .is_some_and(|obj| filter.matches(obj, &ctx.filter_ctx, ctx.game));
-            matches_current
-                || ctx
-                    .event_source_snapshot
-                    .filter(|snapshot| snapshot.object_id == source)
-                    .is_some_and(|snapshot| {
-                        filter.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
-                    })
-        };
+        let filter_matches = |filter: &ObjectFilter| damage_source_matches_filter(source, filter, ctx);
         match self {
             DamageSourceConstraint::Specific(id) => source == *id,
             DamageSourceConstraint::Filter(filter) => filter_matches(filter),
@@ -1042,16 +1018,7 @@ impl ReplacementMatcher for DamageToSelfConstraintMatcher {
         }
 
         if let Some(source_filter) = &self.source_filter {
-            let matches_current = ctx.game.object(damage.source).is_some_and(|source_obj| {
-                source_filter.matches(source_obj, &ctx.filter_ctx, ctx.game)
-            });
-            let matches_lki = ctx
-                .event_source_snapshot
-                .filter(|snapshot| snapshot.object_id == damage.source)
-                .is_some_and(|snapshot| {
-                    source_filter.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
-                });
-            if !matches_current && !matches_lki {
+            if !damage_source_matches_filter(damage.source, source_filter, ctx) {
                 return false;
             }
         }
@@ -1253,16 +1220,7 @@ impl ReplacementMatcher for DamageToSelfFromSourceFilterMatcher {
             return false;
         }
 
-        ctx.game.object(damage.source).is_some_and(|source_obj| {
-            self.source_filter
-                .matches(source_obj, &ctx.filter_ctx, ctx.game)
-        }) || ctx
-            .event_source_snapshot
-            .filter(|snapshot| snapshot.object_id == damage.source)
-            .is_some_and(|snapshot| {
-                self.source_filter
-                    .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
-            })
+        damage_source_matches_filter(damage.source, &self.source_filter, ctx)
     }
 
     fn priority(&self) -> ReplacementPriority {
@@ -1578,5 +1536,50 @@ mod tests {
             DamageToSelfConstraintMatcher::from_source_filter(ObjectFilter::creature())
                 .matches_event(&from_creature, &ctx).expect("finite matcher fixture evaluates successfully")
         );
+    }
+}
+
+#[cfg(test)]
+mod authoritative_damage_source_filter_tests {
+    use super::*;
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::color::ColorSet;
+    use crate::ids::{CardId, PlayerId};
+    use crate::zone::Zone;
+    #[test]
+    fn all_source_property_owners_select_current_or_lki_without_fallback() {
+        for state in 0..5 {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+            let card = CardBuilder::new(CardId::new(), "Source property selection fixture")
+                .card_types(vec![crate::types::CardType::Creature])
+                .color_indicator(if state == 1 { ColorSet::BLUE } else { ColorSet::RED })
+                .power_toughness(PowerToughness::fixed(3, 9)).build();
+            let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+            let target = game.create_object_from_card(&card, alice, Zone::Battlefield);
+            let mut snapshot = crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(game.object(source).unwrap(), &game);
+            if state == 0 { game.object_mut(source).unwrap().color_override = Some(ColorSet::BLUE); }
+            if state == 1 { game.object_mut(source).unwrap().color_override = Some(ColorSet::RED); }
+            if state == 2 || state == 4 { game.move_object(source, Zone::Exile, crate::events::cause::EventCause::effect()).unwrap(); }
+            if state == 3 { game.phase_out(source); }
+            if state == 4 { snapshot.object_id = target; }
+            let expected = state != 0 && state != 4;
+            let ctx = EventContext::for_replacement_effect(alice, target, &game).with_event_source_snapshot(Some(&snapshot));
+            let filter = ObjectFilter::creature().with_colors(ColorSet::RED);
+            let object_event = DamageEvent::with_cause(source, DamageTarget::Object(target), 3, false, crate::events::cause::EventCause::effect());
+            let player_event = DamageEvent::with_cause(source, DamageTarget::Player(bob), 3, false, crate::events::cause::EventCause::effect());
+            let owners: Vec<(Box<dyn ReplacementMatcher>, &DamageEvent)> = vec![
+                (Box::new(DamageFromSourceMatcher::new(filter.clone())), &object_event),
+                (Box::new(DamageFromSourceToPlayerMatcher::new(filter.clone(), PlayerFilter::Specific(bob))), &player_event),
+                (Box::new(DamageFromSourceToObjectMatcher::new(filter.clone(), ObjectFilter::specific(target))), &object_event),
+                (Box::new(PreventableDamageConstraintMatcher::from_filter(filter.clone(), DamageTargetConstraint::Any)), &object_event),
+                (Box::new(DamageToSelfConstraintMatcher::from_source_filter(filter.clone())), &object_event),
+                (Box::new(DamageToSelfFromSourceFilterMatcher::new(filter.clone())), &object_event),
+            ];
+            for (index, (owner, event)) in owners.iter().enumerate() {
+                assert_eq!(owner.matches_event(*event, &ctx).unwrap(), expected, "source owner {index}, state {state}");
+            }
+            assert_eq!(DamageSourceConstraint::SpecificMatching { source, filter }.matches_damage_source(source, &ctx), expected);
+        }
     }
 }

@@ -202,55 +202,47 @@ impl EffectExecutor for MoveAllCountersEffect {
                 return Ok(EffectOutcome::count(0));
             }
 
+            // Bind live movement versus historical placement once, before
+            // replacement programs can change the source's incarnation/zone.
+            // A live source that later departs must not turn into an LKI placement.
+            let live_source = from_id.filter(|id| {
+                game.object(*id).is_some_and(|obj| {
+                    if from_is_source && source_reference_uses_lki(ctx, *id, obj.zone) {
+                        return false;
+                    }
+                    from_tag.and_then(|tag| {
+                        ctx.get_tagged_all(tag).and_then(|snapshots| snapshots.iter()
+                            .find(|snapshot| snapshot.object_id == *id).or_else(|| snapshots.first()))
+                    }).is_none_or(|snapshot| snapshot.zone == obj.zone)
+                })
+            }).and_then(|id| game.object(id).map(|object| (id, object.zone)));
+            if live_source.is_some_and(|(id, _)| id == to_id) {
+                return Ok(EffectOutcome::count(0));
+            }
             let mut total_moved = 0u32;
             let mut outcome = EffectOutcome::count(0);
-
-            // Move each counter type using centralized methods
             for (counter_type, count) in counters_to_move {
-                // Remove from source
-                let removed = if let Some(from_id) = from_id.filter(|id| {
-                    game.object(*id).is_some_and(|obj| {
-                        if from_is_source && source_reference_uses_lki(ctx, *id, obj.zone) {
-                            return false;
-                        }
-                        from_tag
-                            .and_then(|tag| {
-                                ctx.get_tagged_all(tag).and_then(|snapshots| {
-                                    snapshots
-                                        .iter()
-                                        .find(|snapshot| snapshot.object_id == *id)
-                                        .or_else(|| snapshots.first())
-                                })
-                            })
-                            .is_none_or(|snapshot| snapshot.zone == obj.zone)
-                    })
-                }) {
-                    if let Some((removed, remove_event)) = game.remove_counters(
-                        from_id,
-                        counter_type,
-                        count,
-                        Some(ctx.source),
-                        Some(ctx.controller),
-                    ) {
-                        outcome = outcome.with_event(remove_event);
-                        removed
-                    } else {
-                        0
+                let budget = if let Some((from_id, zone)) = live_source {
+                    if game.is_phased_out(from_id)
+                        || !game.object(from_id).is_some_and(|object| object.zone == zone)
+                        || !super::move_destination_can_receive_counters(game, to_id, counter_type)
+                    {
+                        continue;
                     }
+                    let budget = count.min(game.counter_count(from_id, counter_type));
+                    if budget == 0 { continue; }
+                    let removed = super::remove_moved_counters(game, ctx, from_id, counter_type, budget)?;
+                    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                    outcome = EffectOutcome::aggregate([outcome, removed]);
+                    budget
                 } else {
+                    // CR 122.8/122.9: historical counters are placement only.
                     count
                 };
-                if removed == 0 {
-                    continue;
-                }
-                total_moved += removed;
-
-                // Add to destination (only the amount actually removed). Putting
-                // the moved counters is an ordinary placement (CR 122.5, 122.8).
-                let placed = super::put_moved_counters(game, ctx, to_id, counter_type, removed)?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
-                }
+                if budget == 0 { continue; }
+                total_moved = total_moved.saturating_add(budget);
+                let placed = super::put_moved_counters(game, ctx, to_id, counter_type, budget)?;
+                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
                 outcome = EffectOutcome::aggregate([outcome, placed]);
             }
 
@@ -258,7 +250,7 @@ impl EffectExecutor for MoveAllCountersEffect {
             Ok(outcome)
         })();
         if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            *game = checkpoint;
+            game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
             context_checkpoint.restore(ctx);
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
@@ -494,5 +486,33 @@ mod tests {
                 .copied(),
             Some(2)
         );
+    }
+}
+
+#[cfg(test)]
+mod same_object_snapshot_placement_tests {
+    use super::*;
+    #[test]
+    fn departed_tagged_snapshot_can_place_on_the_current_object_without_moving() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = crate::ids::PlayerId::from_index(0);
+        let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Snapshot placement source")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let old = game.create_object_from_definition(&definition, alice, crate::zone::Zone::Battlefield);
+        game.object_mut(old).unwrap().counters.insert(CounterType::Charge, 2);
+        let mut snapshot = crate::snapshot::ObjectSnapshot::from_object(game.object(old).unwrap(), &game);
+        let current = game.move_object_by_effect(old, crate::zone::Zone::Graveyard).unwrap();
+        assert_ne!(old, current);
+        snapshot.object_id = current;
+        let tag = crate::tag::TagKey::from("departed-counter-source");
+        let effect = crate::effect::Effect::new(MoveAllCountersEffect::new(
+            ChooseSpec::Tagged(tag.clone()), ChooseSpec::SpecificObject(current)));
+        let mut ctx = ExecutionContext::new_default(old, alice);
+        ctx.set_tagged_objects(tag, vec![snapshot]);
+        let outcome = crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap();
+        assert_eq!(game.counter_count(current, CounterType::Charge), 2,
+            "placing former counters from a departed snapshot is not a same-object move");
+        assert_eq!(outcome.count_or_zero(), 2);
+        assert_eq!(outcome.events_of_type::<crate::events::MarkersChangedEvent>().count(), 1);
     }
 }

@@ -10,7 +10,7 @@ import {
 } from "@/lib/action-diagnostics";
 import { setJournalPolicy } from "@/lib/engine-journal";
 import { captureEngineRestorePoint, restoreEngineRestorePoint } from "@/lib/engine-restore-point";
-import { mergePriorityAnalysis } from "@/lib/priority-analysis-scheduler.js";
+import { subscribePriorityAnalysisSnapshots } from "@/lib/priority-analysis-scheduler.js";
 import { castingMethodChoiceForAction, finishExplicitCastingMethod } from "@/lib/casting-method-choice";
 import { startTransition, useContext, useState, useCallback, useRef, useMemo, useEffect, useSyncExternalStore } from "react";
 import { useGameSnapshot } from "@/hooks/useGameSnapshot";
@@ -1912,19 +1912,13 @@ export function GameProvider({ children }) {
 
   useEffect(() => {
     if (!game?.subscribePriorityAnalysis) return;
-    const apply = (analysis) => {
-      const previous = stateRef.current;
-      const next = mergePriorityAnalysis(previous, analysis);
-      if (next === previous) return;
-      stateRef.current = next;
-      setState(next);
-    };
-    const unsubscribe = game.subscribePriorityAnalysis(apply);
-    apply(game.latestPriorityAnalysis());
-    return unsubscribe;
-  }, [setState, stateRef, game, state?.__priority_revision, state?.decision]);
+    return subscribePriorityAnalysisSnapshots({
+      game, getState: () => stateRef.current, setState, subscribeState,
+    });
+  }, [setState, stateRef, subscribeState, game]);
 
-  usePaymentOptions({ game, state, stateRef, setState });
+  usePaymentOptions({ game, state, stateRef, setState,
+    enabled: samePlayerId(state?.decision?.player, state?.perspective) });
 
   const automatedAnalysisRevisionRef = useRef(null);
   useEffect(() => {
@@ -2778,11 +2772,15 @@ export function GameProvider({ children }) {
         ? {
             snapshot_id: state.snapshot_id,
             perspective: state.perspective,
+            turn_number: state.turn_number,
+            active_player: state.active_player,
             phase: state.phase,
             step: state.step,
             priority_revision: state.__priority_revision,
             priority_analysis_complete: state.decision?.analysis_complete,
             decision: summarizeDecision(state.decision || null),
+            decisionDetail: state.decision,
+            combat: state.combat,
             decisionActions: state.decision?.kind === "priority"
               ? (state.decision.actions || []).map((action, actionIndex) => ({
                   index: Number.isFinite(Number(action.index))
@@ -2822,6 +2820,8 @@ export function GameProvider({ children }) {
               id: player.id,
               name: player.name,
               life: player.life,
+              mana_pool: player.mana_pool,
+              hand_cards: (player.hand_cards || []).map(card => ({ id: card.id, name: card.name })),
               hand_size: Number.isFinite(Number(player.hand_size))
                 ? Number(player.hand_size)
                 : (player.hand_cards || []).length,
@@ -2852,6 +2852,8 @@ export function GameProvider({ children }) {
 
     const e2eApi = {
       snapshot,
+      priorityAnalysis: () => game?.latestPriorityAnalysis?.() || null,
+      runtimeState: () => gameRef.current?.uiState?.() || null,
       checkpoint: () => gameRef.current?.exportSyncCheckpoint?.() || null,
       publicCheckpoint: () => gameRef.current?.exportPublicAuditCheckpoint?.() || null,
       auditTranscript: () => exportAuditTranscript?.({ includeLiveCheckpoint: false }) || null,

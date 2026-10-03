@@ -1123,19 +1123,29 @@ export default function Workspace({
     state,
   ]);
 
-  useLayoutEffect(() => {
-    previousCardRectsRef.current = collectVisibleCardRects(cardVisualSnapshots);
-  });
-
-  useEffect(() => {
-    const refreshVisibleCardRects = () => {
+  const visibleCardRectFrameRef = useRef(null);
+  const refreshVisibleCardRects = useCallback(() => {
+    if (visibleCardRectFrameRef.current != null) return;
+    // Child rows can fit repeatedly during the same commit. Read geometry once
+    // after those writes, retaining the previous visible frame for transitions.
+    visibleCardRectFrameRef.current = window.requestAnimationFrame(() => {
+      visibleCardRectFrameRef.current = null;
       previousCardRectsRef.current = collectVisibleCardRects(cardVisualSnapshots);
-    };
+    });
+  }, [cardVisualSnapshots]);
+
+  useLayoutEffect(refreshVisibleCardRects);
+
+  useLayoutEffect(() => {
     window.addEventListener("ironsmith:battlefield-layout-fitted", refreshVisibleCardRects);
     return () => {
       window.removeEventListener("ironsmith:battlefield-layout-fitted", refreshVisibleCardRects);
+      if (visibleCardRectFrameRef.current != null) {
+        window.cancelAnimationFrame(visibleCardRectFrameRef.current);
+        visibleCardRectFrameRef.current = null;
+      }
     };
-  }, [cardVisualSnapshots]);
+  }, [refreshVisibleCardRects]);
 
   useEffect(() => {
     if (!combatDeclarationActive) return;

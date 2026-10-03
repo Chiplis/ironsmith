@@ -196,6 +196,44 @@ impl GameState {
             .unwrap_or(0)
     }
 
+    /// Retain all regeneration state, including this-turn counts for departed
+    /// object incarnations. Their history remains meaningful until cleanup.
+    pub fn regeneration_state(&self) -> (Vec<(ObjectId, u32)>, Vec<(ObjectId, u32)>) {
+        let mut shields: Vec<_> = self.battlefield_flags.regeneration_shields.iter()
+            .map(|(&id, &count)| (id, count)).collect();
+        let mut used: Vec<_> = self.battlefield_flags.regenerated_this_turn.iter()
+            .map(|(&id, &count)| (id, count)).collect();
+        shields.sort_unstable_by_key(|entry| entry.0);
+        used.sort_unstable_by_key(|entry| entry.0);
+        (shields, used)
+    }
+
+    /// Restore bookkeeping without consuming shields or emitting events.
+    /// Validate complete tables before publishing either one.
+    pub fn restore_regeneration_state(
+        &mut self, shields: Vec<(ObjectId, u32)>, used: Vec<(ObjectId, u32)>,
+    ) -> Result<(), String> {
+        let mut shield_map = std::collections::HashMap::new();
+        for (id, count) in shields {
+            if count == 0 || shield_map.insert(id, count).is_some() {
+                return Err("invalid or duplicate regeneration shield count".into());
+            }
+            if !self.object(id).is_some_and(|object| object.zone == crate::zone::Zone::Battlefield) {
+                return Err("regeneration shield belongs to a battlefield incarnation".into());
+            }
+        }
+        let mut used_map = std::collections::HashMap::new();
+        for (id, count) in used {
+            if count == 0 || used_map.insert(id, count).is_some() {
+                return Err("invalid or duplicate regenerated-this-turn count".into());
+            }
+        }
+        let flags = self.battlefield_flags_mut();
+        flags.regeneration_shields = shield_map;
+        flags.regenerated_this_turn = used_map;
+        Ok(())
+    }
+
     /// Add regeneration shields to an object.
     pub fn add_regeneration_shield(&mut self, id: ObjectId, count: u32) {
         if count > 0 {
@@ -3480,7 +3518,7 @@ impl GameState {
         self.turn_store
             .turn_history
             .record_event(event, object_snapshot, source_snapshot);
-        let Some(record) = self.turn_store.turn_history.event_records.last().cloned() else {
+        let Some(record) = self.turn_store.turn_history.event_records.last_shared() else {
             return;
         };
         let involved_players = self
@@ -3494,7 +3532,7 @@ impl GameState {
                 .action_history_by_player
                 .entry(player)
                 .or_default()
-                .push(record.clone());
+                .push_back(record.clone());
         }
     }
 

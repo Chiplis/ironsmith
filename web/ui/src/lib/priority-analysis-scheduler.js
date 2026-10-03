@@ -19,3 +19,28 @@ export function mergePriorityAnalysis(state, analysis) {
     __priority_analysis_sequence: analysis.sequence ?? 0,
   };
 }
+
+/** Reconcile either arrival order without waiting for a React render. */
+export function subscribePriorityAnalysisSnapshots({ game, getState, setState, subscribeState,
+  schedule = queueMicrotask }) {
+  let queued = false, disposed = false;
+  const reconcile = () => {
+    if (queued || disposed) return;
+    queued = true;
+    schedule(() => {
+      queued = false;
+      if (disposed) return;
+      const previous = getState();
+      const next = mergePriorityAnalysis(previous, game.latestPriorityAnalysis());
+      if (next !== previous) setState(next);
+    });
+  };
+  const unsubscribeAnalysis = game.subscribePriorityAnalysis(reconcile);
+  const unsubscribeState = subscribeState(reconcile);
+  reconcile();
+  return () => {
+    disposed = true;
+    unsubscribeAnalysis();
+    unsubscribeState();
+  };
+}

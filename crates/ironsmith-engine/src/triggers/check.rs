@@ -561,6 +561,39 @@ pub fn compute_trigger_identity(trigger_ability: &TriggeredAbility) -> TriggerId
     TriggerIdentity(hasher.finish())
 }
 
+// An ability collection is immutable while its Arc is shared. Any mutable
+// access through Arc::make_mut invalidates Weak identities, including when
+// only one strong owner remains. Cache addresses never enter the public hash.
+thread_local! {
+    static SHARED_TRIGGER_IDENTITIES: std::cell::RefCell<HashMap<(usize, usize),
+        (std::sync::Weak<Vec<crate::ability::Ability>>, TriggerIdentity)>> = Default::default();
+}
+
+fn shared_trigger_identity(
+    abilities: &std::sync::Arc<Vec<crate::ability::Ability>>,
+    index: usize,
+) -> Option<TriggerIdentity> {
+    let AbilityKind::Triggered(triggered) = &abilities.get(index)?.kind else { return None; };
+    let key = (std::sync::Arc::as_ptr(abilities) as usize, index);
+    if let Some(identity) = SHARED_TRIGGER_IDENTITIES.with(|cache| {
+        cache.borrow().get(&key).and_then(|(weak, identity)| {
+            weak.upgrade().filter(|live| std::sync::Arc::ptr_eq(live, abilities))
+                .map(|_| *identity)
+        })
+    }) { return Some(identity); }
+    let identity = compute_trigger_identity(triggered);
+    SHARED_TRIGGER_IDENTITIES.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        // Disposable cache capacity, not a bound on trigger discovery.
+        if cache.len() >= 4096 {
+            cache.retain(|_, (weak, _)| weak.strong_count() != 0);
+            if cache.len() >= 4096 { cache.clear(); }
+        }
+        cache.insert(key, (std::sync::Arc::downgrade(abilities), identity));
+    });
+    Some(identity)
+}
+
 /// Compute a structural identity for a delayed trigger.
 pub fn compute_delayed_trigger_identity(delayed: &DelayedTrigger) -> TriggerIdentity {
     let mut hasher = DefaultHasher::new();
@@ -2234,7 +2267,8 @@ fn check_battlefield_trigger_subscriber(
     let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
         return;
     };
-    let trigger_identity = compute_trigger_identity(trigger_ability);
+    let Some(trigger_identity) = shared_trigger_identity(&calculated_abilities, subscriber.ability_index)
+        else { return; };
     let ctx = TriggerContext::for_source(obj_id, controller, game)
         .with_trigger_identity(trigger_identity)
         .with_ability_index(subscriber.ability_index);
@@ -3702,11 +3736,6 @@ fn check_triggers_in_zone(
         let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
             continue;
         };
-        let trigger_identity = compute_trigger_identity(trigger_ability);
-        let ctx = TriggerContext::for_source(obj_id, game.controller_of(obj), game)
-            .with_trigger_identity(trigger_identity)
-            .with_ability_index(ability_index);
-
         if !ability.functions_in(&obj.zone) {
             continue;
         }
@@ -3714,6 +3743,12 @@ fn check_triggers_in_zone(
         if skip_post_event_source_discovery(trigger_event, trigger_ability, obj.stable_id) {
             continue;
         }
+
+        let Some(trigger_identity) = shared_trigger_identity(&calculated_abilities, ability_index)
+            else { continue; };
+        let ctx = TriggerContext::for_source(obj_id, game.controller_of(obj), game)
+            .with_trigger_identity(trigger_identity)
+            .with_ability_index(ability_index);
 
         if trigger_event_is_in_range(game, trigger_event, game.controller_of(obj), obj_id, None)
             && trigger_ability.trigger.matches(trigger_event, &ctx)
@@ -4090,8 +4125,7 @@ pub(crate) fn first_time_this_turn_event(
         .turn_history
         .simultaneous_batch_start
         .map_or(end, |start| end.min(start));
-    !records[..end]
-        .iter()
+    !records.iter().take(end)
         .any(|record| trigger_ability.trigger.matches(&record.event, ctx))
 }
 
@@ -4227,6 +4261,76 @@ mod tests {
     #[cfg(ironsmith_runtime_parser_tests)]
     use crate::types::Subtype;
     use crate::zone::Zone;
+
+    #[test]
+    fn zone_trigger_identity_preserves_zone_eligibility_and_branch_mutations() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let mut active = crate::Ability::triggered(
+            Trigger::spell_cast(None, PlayerFilter::You), vec![Effect::gain_life(2)]);
+        active.functional_zones = vec![Zone::Graveyard];
+        let inactive = crate::Ability::triggered(
+            Trigger::spell_cast(None, PlayerFilter::You), vec![Effect::gain_life(3)]);
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Zone observer")
+            .card_types(vec![CardType::Creature]).with_ability(active).with_ability(inactive).build();
+        let source = game.create_object_from_definition(&definition, alice, Zone::Graveyard);
+        let spell = game.create_object_from_definition(&definition, alice, Zone::Hand);
+        let event = TriggerEvent::new_with_provenance(
+            SpellCastEvent::new(spell, alice, Zone::Hand), Default::default());
+        let identities = |game: &GameState| check_triggers(game, &event).into_iter()
+            .filter(|entry| entry.source == source).map(|entry| entry.trigger_identity).collect::<Vec<_>>();
+        let expected = |game: &GameState| {
+            let AbilityKind::Triggered(triggered) = &game.object(source).unwrap().abilities[0].kind else { unreachable!() };
+            compute_trigger_identity(triggered)
+        };
+        let baseline = expected(&game);
+        assert_eq!(identities(&game), vec![baseline]);
+        assert_eq!(identities(&game), vec![baseline]);
+        let mut branch = game.clone();
+        let AbilityKind::Triggered(triggered) = &mut branch.object_mut(source).unwrap().abilities_mut()[0].kind else { unreachable!() };
+        triggered.effects = vec![Effect::gain_life(5)].into();
+        assert_ne!(expected(&branch), baseline);
+        assert_eq!(identities(&branch), vec![expected(&branch)]);
+        assert_eq!(identities(&game), vec![baseline]);
+        branch.object_mut(source).unwrap().abilities_mut()[0].functional_zones = vec![Zone::Hand];
+        assert!(identities(&branch).is_empty());
+        assert_eq!(identities(&game), vec![baseline]);
+    }
+
+    #[test]
+    fn shared_trigger_identity_preserves_structural_hash_across_mutation_and_branches() {
+        use std::sync::Arc;
+        let mut abilities = Arc::new(vec![
+            crate::Ability::triggered(Trigger::this_dies(), vec![Effect::gain_life(2)]),
+            crate::Ability::triggered(Trigger::this_dies(), vec![Effect::gain_life(3)]),
+        ]);
+        let expected = |abilities: &Arc<Vec<crate::Ability>>, index: usize| {
+            let AbilityKind::Triggered(triggered) = &abilities[index].kind else { unreachable!() };
+            let actual = shared_trigger_identity(abilities, index).unwrap();
+            assert_eq!(actual, compute_trigger_identity(triggered));
+            actual
+        };
+        let original = expected(&abilities, 0);
+        assert_ne!(original, expected(&abilities, 1));
+        assert_eq!(original, expected(&abilities, 0));
+        let weak = Arc::downgrade(&abilities);
+        let AbilityKind::Triggered(triggered) = &mut Arc::make_mut(&mut abilities)[0].kind else { unreachable!() };
+        triggered.effects = vec![Effect::gain_life(4)].into();
+        assert!(weak.upgrade().is_none());
+        assert_ne!(original, expected(&abilities, 0));
+        let rollback = abilities.clone();
+        let baseline = expected(&rollback, 0);
+        let mut sibling = abilities.clone();
+        let AbilityKind::Triggered(triggered) = &mut Arc::make_mut(&mut sibling)[0].kind else { unreachable!() };
+        triggered.trigger = Trigger::this_attacks();
+        assert_ne!(baseline, expected(&sibling, 0));
+        assert_eq!(baseline, expected(&abilities, 0));
+        abilities = rollback;
+        assert_eq!(baseline, expected(&abilities, 0));
+        let weak = Arc::downgrade(&abilities);
+        drop(abilities);
+        assert!(weak.upgrade().is_none(), "cache must not retain ability collections");
+    }
 
     fn make_battlefield_creature(
         game: &mut GameState,

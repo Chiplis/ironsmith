@@ -41505,7 +41505,7 @@ mod self_replacement_rendering_tests {
                 assert_eq!(returned.owner, owner);
                 assert_eq!(returned.zone, Zone::Hand);
                 assert_ne!(returned.id, target);
-                let moves = game.turn_store.turn_history.event_records[before_records..].iter()
+                let moves = game.turn_store.turn_history.event_records.iter().skip(before_records)
                     .filter_map(|record| record.event.downcast::<crate::events::ZoneChangeEvent>())
                     .map(|event| (event.from, event.to)).collect::<Vec<_>>();
                 assert_eq!(moves, if has_unearth {

@@ -133,3 +133,18 @@ test("nested reshuffle metadata cannot reinterpret another shuffle's index as a 
   assert.equal(result.slot, 6);
   assert.equal(result.card, "Bloodstained Mire");
 });
+
+test("batched cryptographic reveal preserves reshuffle identity and propagates proof failure", async () => {
+  const h = await harness();
+  const args = { owner: 1, ceremony: h.ceremony, position: 51, objectId: 192,
+    manifest: h.manifest, card: "Bloodstained Mire" };
+  let calls = 0;
+  const result = await h.resolveCommittedSlotForZifflePosition({ ...args,
+    revealPosition: async position => { calls++; assert.equal(position, 51); return { originalSlot: 33 }; } });
+  assert.equal(result.resolvedRevealSlot.slot, 6);
+  assert.equal(result.resolvedRevealSlot.card, "Bloodstained Mire");
+  assert.equal(calls, 1);
+  assert.equal(h.calls.length, 0, "batch replaces per-card cryptographic RPC only");
+  await assert.rejects(h.resolveCommittedSlotForZifflePosition({ ...args,
+    revealPosition: async () => { throw new Error("invalid cryptographic reveal"); } }), /invalid cryptographic reveal/);
+});

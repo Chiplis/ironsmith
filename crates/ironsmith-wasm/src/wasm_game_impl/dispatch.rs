@@ -1,3 +1,56 @@
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HiddenCardMetadata {
+    object_id: u64,
+    owner: u8,
+    zone: String,
+    slot: u16,
+    commitment: String,
+    public_slot: Option<u16>,
+    public_commitment: String,
+    origin_slot: Option<u16>,
+    origin_commitment: String,
+}
+
+impl WasmGame {
+    fn hidden_metadata_for_checkpoint_object(&self, id: ObjectId) -> Option<HiddenCardMetadata> {
+        let object = self.game.object(id)?;
+        let info = self.game.hidden_card_info(id)?;
+        Some(HiddenCardMetadata {
+            object_id: id.0,
+            owner: info.owner.0,
+            zone: sync_zone_name(object.zone).to_string(),
+            slot: info.slot,
+            commitment: info.commitment.clone(),
+            public_slot: info.public_slot,
+            public_commitment: info.public_commitment.clone().unwrap_or_default(),
+            origin_slot: info.origin_slot,
+            origin_commitment: info.origin_commitment.clone().unwrap_or_default(),
+        })
+    }
+
+    // Match exportSyncCheckpoint's object set and committed game, including
+    // proposed/resolving stack objects. Never substitute pending_decision_game.
+    fn checkpoint_hidden_metadata(&self, id: ObjectId) -> Option<HiddenCardMetadata> {
+        self.sync_checkpoint_object_ids().binary_search(&id).ok()?;
+        self.hidden_metadata_for_checkpoint_object(id)
+    }
+
+    fn checkpoint_hidden_metadata_at_position(
+        &self, owner: u8, position: u16, commitment: &str,
+    ) -> Vec<HiddenCardMetadata> {
+        self.sync_checkpoint_object_ids().into_iter()
+            .filter(|id| self.game.hidden_card_info(*id).is_some_and(|info| {
+                info.owner.0 == owner
+                    && info.public_slot.unwrap_or(info.slot) == position
+                    && info.public_commitment.as_deref().filter(|value| !value.is_empty())
+                        .unwrap_or(&info.commitment) == commitment
+            }))
+            .filter_map(|id| self.hidden_metadata_for_checkpoint_object(id))
+            .collect()
+    }
+}
+
 #[derive(Debug)]
 enum ForceFaceUpError {
     ContinuousDiscovery(ironsmith::static_ability_processor::StaticEffectDiscoveryError),
@@ -25,7 +78,67 @@ impl std::fmt::Display for SnapshotJsonError {
     }
 }
 
+#[cfg(feature = "dynamic-compile")]
+#[derive(serde::Deserialize)]
+struct BakedBuiltinDungeon {
+    artifact: CompiledCardArtifact,
+    card_id_allocation: u32,
+    relocations: Vec<BakedDungeonCardRelocation>,
+}
+
+#[cfg(feature = "dynamic-compile")]
+#[derive(serde::Deserialize)]
+struct BakedDungeonCardRelocation {
+    pointer: String,
+    original: u32,
+    offset: u32,
+}
+
 impl WasmGame {
+    #[cfg(feature = "dynamic-compile")]
+    fn materialize_baked_builtin_dungeon(baked: &BakedBuiltinDungeon) -> Result<CardDefinition, String> {
+        if baked.card_id_allocation == 0 {
+            return Err("builtin dungeon must reserve its definition identity".into());
+        }
+        baked.artifact.validate().map_err(|error| error.to_string())?;
+        let mut payload = serde_json::to_value(&baked.artifact.payload.definition).map_err(|error| error.to_string())?;
+        for relocation in &baked.relocations {
+            if relocation.offset >= baked.card_id_allocation
+                || payload.pointer(&relocation.pointer).and_then(serde_json::Value::as_u64) != Some(u64::from(relocation.original)) {
+                return Err("invalid builtin dungeon identity relocation".into());
+            }
+        }
+        // Reserve precisely the legacy compiler's allocation, including nested
+        // token definitions. Never rewind live counters or retain build IDs.
+        let identities: Vec<_> = (0..baked.card_id_allocation).map(|_| CardId::new()).collect();
+        for relocation in &baked.relocations {
+            *payload.pointer_mut(&relocation.pointer).expect("validated relocation") =
+                serde_json::json!(identities[relocation.offset as usize].0);
+        }
+        let mut artifact = baked.artifact.clone();
+        artifact.payload.definition = serde_json::from_value(payload).map_err(|error| error.to_string())?;
+        // The original envelope was validated above; only its typed identities
+        // changed, so materialize the rebased payload without recompilation.
+        let definition = ironsmith_runtime_catalog::artifact_materializer::materialize_artifact(&artifact)
+            .map_err(|error| error.to_string())?;
+        Ok(definition)
+    }
+
+    #[cfg(feature = "dynamic-compile")]
+    fn register_baked_builtin_dungeons() -> Result<usize, String> {
+        static REGISTERED: std::sync::OnceLock<Result<usize, String>> = std::sync::OnceLock::new();
+        REGISTERED.get_or_init(|| {
+            let artifacts: Vec<BakedBuiltinDungeon> = serde_json::from_str(include_str!(concat!(
+                env!("OUT_DIR"), "/builtin_dungeon_artifacts.json"
+            ))).map_err(|error| format!("invalid builtin dungeon artifacts: {error}"))?;
+            let mut definitions = Vec::with_capacity(artifacts.len());
+            // Each independently compiled source owns its own local face IDs.
+            for artifact in &artifacts {
+                definitions.push(Self::materialize_baked_builtin_dungeon(artifact)?);
+            }
+            Self::register_dungeon_definitions(&definitions)
+        }).clone()
+    }
     /// Complete discovery before a snapshot can inspect payment choices, reuse
     /// a cached response, advance its serial, or consume transition/audit data.
     /// Keeping the typed boundary separate from JS encoding also lets native
@@ -429,6 +542,74 @@ struct ValidatedHiddenPositionReveal {
 #[cfg(test)]
 mod dispatch_tests {
     use super::*;
+
+    #[cfg(feature = "dynamic-compile")]
+    #[test]
+    fn baked_builtin_dungeons_match_source_and_initialize_default_games_once() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        // Separately constructed static abilities intentionally get fresh local
+        // occurrence IDs. Compare their alias pattern, not global allocation
+        // serials; card identities below must still match exactly.
+        fn occurrence_shape(mut text: &str) -> String {
+            let mut ordinals = std::collections::HashMap::new();
+            let mut result = String::new();
+            let prefix = "StaticAbilityInstanceId(";
+            while let Some(start) = text.find(prefix) {
+                result.push_str(&text[..start]);
+                text = &text[start + prefix.len()..];
+                let end = text.find(')').expect("static identity debug terminator");
+                let next = ordinals.len();
+                let ordinal = *ordinals.entry(text[..end].to_owned()).or_insert(next);
+                result.push_str(&format!("StaticAbilityInstanceId({ordinal})"));
+                text = &text[end + 1..];
+            }
+            result.push_str(text);
+            result
+        }
+        let sources: serde_json::Value = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"), "/../ironsmith-card-source/data/dungeons.json"
+        ))).unwrap();
+        let artifacts: Vec<BakedBuiltinDungeon> = serde_json::from_str(include_str!(concat!(
+            env!("OUT_DIR"), "/builtin_dungeon_artifacts.json"
+        ))).unwrap();
+        let sources = sources["dungeons"].as_array().unwrap();
+        assert!(!sources.is_empty());
+        assert_eq!(artifacts.len(), sources.len());
+        let _first = WasmGame::new();
+        let mut installed = Vec::new();
+        for source in sources {
+            let name = source["name"].as_str().unwrap();
+            let text = format!("Type: {}\n{}", source["type_line"].as_str().unwrap(), source["oracle_text"].as_str().unwrap());
+            let counters_before = snapshot_id_counters();
+            let compiled = ironsmith_dynamic_compile::compile_to_runtime_definition(name, text, false).unwrap();
+            let compiled_counters = snapshot_id_counters();
+            restore_id_counters(counters_before);
+            let artifact = artifacts.iter().find(|entry| entry.artifact.card.name == name).unwrap();
+            let baked = WasmGame::materialize_baked_builtin_dungeon(artifact).unwrap();
+            let baked_counters = snapshot_id_counters();
+            assert_eq!((compiled_counters.player, compiled_counters.object, compiled_counters.card),
+                (baked_counters.player, baked_counters.object, baked_counters.card), "builtin ID allocation parity for {name}");
+            assert_eq!(baked.card.id, compiled.card.id, "builtin definition identity for {name}");
+            assert_eq!(baked.canonical_text, compiled.canonical_text);
+            let expected = ironsmith::dungeon::DungeonDefinition::from_card_definition(&compiled).unwrap();
+            let rebased = ironsmith::dungeon::DungeonDefinition::from_card_definition(&baked).unwrap();
+            assert_eq!(occurrence_shape(&format!("{rebased:?}")), occurrence_shape(&format!("{expected:?}")), "rebased source/effect identity parity for {name}");
+            let actual = ironsmith::dungeon::lookup_dungeon(name).expect("default constructor provides every builtin dungeon");
+            assert_eq!(actual.entry_restriction, expected.entry_restriction);
+            assert_eq!(actual.rooms.len(), expected.rooms.len());
+            for (actual_room, expected_room) in actual.rooms.iter().zip(&expected.rooms) {
+                assert_eq!(actual_room.name, expected_room.name);
+                assert_eq!(actual_room.leads_to, expected_room.leads_to);
+            }
+            assert!(ironsmith::dungeon::venture_dungeon_names(expected.entry_restriction.as_deref()).contains(&name.to_owned()));
+            installed.push((name.to_owned(), actual));
+        }
+        let _second = WasmGame::new();
+        for (name, original) in installed {
+            assert!(std::sync::Arc::ptr_eq(&original, &ironsmith::dungeon::lookup_dungeon(&name).unwrap()),
+                "a second constructor must not rematerialize or replace the builtin catalog");
+        }
+    }
 
     #[test]
     fn verified_library_epoch_is_installed_into_nested_replay_checkpoints() {
@@ -1202,11 +1383,11 @@ impl WasmGame {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
         let priority_state = PriorityLoopState::new(2);
-        // Builds that compile source in-process compile the dungeon cards
-        // themselves; lean builds register them from their baked routes.
+        // Source-enabled hosts retain the builtin dungeon catalog, baked at
+        // build time so fresh worker creation does not invoke the compiler.
         #[cfg(feature = "dynamic-compile")]
-        if let Err(error) = ironsmith_dynamic_compile::register_builtin_dungeons() {
-            eprintln!("[ironsmith] dungeon cards failed to compile: {error}");
+        if let Err(error) = Self::register_baked_builtin_dungeons() {
+            eprintln!("[ironsmith] builtin dungeon artifacts failed to load: {error}");
         }
         #[cfg(test)]
         let registry = {
@@ -2677,6 +2858,35 @@ impl WasmGame {
         })
     }
 
+    /// Read only the identity fields needed by opening verification. This is
+    /// not a checkpoint export or an authorization to disclose a card's name.
+    #[wasm_bindgen(js_name = getHiddenCardMetadata)]
+    pub fn get_hidden_card_metadata(&self, object_id: f64) -> Result<JsValue, JsValue> {
+        if !object_id.is_finite() || object_id < 0.0
+            || object_id > 9_007_199_254_740_991.0 || object_id.fract() != 0.0 {
+            return Ok(JsValue::NULL);
+        }
+        self.checkpoint_hidden_metadata(ObjectId::from_raw(object_id as u64))
+            .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|error| JsValue::from_str(&format!("hidden metadata encode failed: {error}")))
+    }
+
+    /// Return every matching object so duplicate positions remain detectable.
+    #[wasm_bindgen(js_name = getHiddenCardMetadataAtPosition)]
+    pub fn get_hidden_card_metadata_at_position(
+        &self, owner: f64, position: f64, commitment: String,
+    ) -> Result<JsValue, JsValue> {
+        let result = if owner.is_finite() && owner >= 0.0 && owner <= u8::MAX as f64
+            && owner.fract() == 0.0 && position.is_finite() && position >= 0.0
+            && position <= u16::MAX as f64 && position.fract() == 0.0 {
+            self.checkpoint_hidden_metadata_at_position(owner as u8, position as u16, &commitment)
+        } else {
+            Vec::new()
+        };
+        result.serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|error| JsValue::from_str(&format!("hidden metadata encode failed: {error}")))
+    }
+
     /// Whether `object_id` is tracked by the mental-poker layer, who owns it,
     /// and whether this engine can name it (opened here, privately or
     /// publicly). Used to check that a forced public reveal or an
@@ -3192,12 +3402,7 @@ impl WasmGame {
         let mut request: Option<ironsmith::mana_payment::ManaPaymentRequest> =
             serde_json::from_str(request_json)
                 .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        let result = request.as_mut().map(|request| {
-            let mana_abilities = manual_mana_ability_views(&self.game, request);
-            request.preferences = Default::default();
-            let activation_options = mana_activation_option_views(&self.game, request);
-            ManaPaymentOptionsView { activation_options, mana_abilities }
-        });
+        let result = request.as_mut().map(|request| mana_payment_options_view(&self.game, request));
         serde_wasm_bindgen::to_value(&result)
             .map_err(|error| JsValue::from_str(&error.to_string()))
     }
@@ -5384,5 +5589,77 @@ mod replacement_entry_boundary_tests {
             assert_eq!(wasm.game.battlefield.len(), battlefield_count + 1);
             assert!(wasm.game.effect_store.replacement_effects.get_effect(replacement).is_none());
         }
+    }
+}
+
+#[cfg(test)]
+mod narrow_hidden_metadata_tests {
+    use super::*;
+
+    #[test]
+    fn narrow_hidden_metadata_matches_checkpoint_without_using_pending_game() {
+        let _guard = crate::test_id_counter_guard();
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let owner = PlayerId::from_index(1);
+        let id = wasm.game.create_hidden_card_placeholder(owner, Zone::Hand, 9, "initial-9".into());
+        let mut info = wasm.game.hidden_card_info(id).unwrap().clone();
+        info.public_slot = Some(4);
+        info.public_commitment = Some("public-4".into());
+        wasm.game.set_hidden_card_info(id, info);
+        let before = serde_json::to_value(wasm.build_sync_checkpoint()).unwrap();
+        let object = before["objects"].as_array().unwrap().iter()
+            .find(|object| object["id"].as_u64() == Some(id.0)).unwrap();
+        let hidden = &object["hiddenCard"];
+        let expected = serde_json::json!({
+            "objectId": id.0, "owner": hidden["owner"], "zone": object["zone"],
+            "slot": hidden["slot"], "commitment": hidden["commitment"],
+            "publicSlot": hidden["publicSlot"],
+            "publicCommitment": hidden["publicCommitment"].as_str().unwrap_or_default(),
+            "originSlot": hidden["originSlot"],
+            "originCommitment": hidden["originCommitment"].as_str().unwrap_or_default(),
+        });
+        let mut pending = wasm.game.clone();
+        let mut other = pending.hidden_card_info(id).unwrap().clone();
+        other.public_commitment = Some("uncommitted-other".into());
+        pending.set_hidden_card_info(id, other);
+        wasm.pending_decision_game = Some(Box::new(pending));
+        assert_eq!(serde_json::to_value(wasm.checkpoint_hidden_metadata(id)).unwrap(), expected);
+        let matches = wasm.checkpoint_hidden_metadata_at_position(1, 4, "public-4");
+        assert_eq!(matches.len(), 1);
+        assert_eq!(serde_json::to_value(&matches[0]).unwrap(), expected);
+        assert!(wasm.checkpoint_hidden_metadata_at_position(1, 4, "uncommitted-other").is_empty());
+        assert_eq!(serde_json::to_value(wasm.build_sync_checkpoint()).unwrap(), before);
+    }
+
+    #[test]
+    fn narrow_hidden_metadata_preserves_duplicates_and_reads_current_identity() {
+        let _guard = crate::test_id_counter_guard();
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let owner = PlayerId::from_index(0);
+        let first = wasm.game.create_hidden_card_placeholder(owner, Zone::Hand, 7, "same".into());
+        let second = wasm.game.create_hidden_card_placeholder(owner, Zone::Library, 7, "same".into());
+        let mut info = wasm.game.hidden_card_info(second).unwrap().clone();
+        info.public_commitment = Some(String::new());
+        wasm.game.set_hidden_card_info(second, info);
+        assert_eq!(wasm.checkpoint_hidden_metadata_at_position(0, 7, "same").len(), 2);
+        assert!(wasm.checkpoint_hidden_metadata_at_position(1, 7, "same").is_empty());
+        assert!(wasm.checkpoint_hidden_metadata_at_position(0, 8, "same").is_empty());
+        assert!(wasm.checkpoint_hidden_metadata_at_position(0, 7, "other").is_empty());
+        let moved = wasm.game.move_object_by_game_rule(first, Zone::Graveyard).unwrap();
+        assert!(wasm.checkpoint_hidden_metadata(first).is_none());
+        assert_eq!(wasm.checkpoint_hidden_metadata(moved).unwrap().zone, "graveyard");
+        assert_eq!(wasm.checkpoint_hidden_metadata(second).unwrap().public_slot, None);
+        // Proposed/resolving spells retain identity while absent from game.stack.
+        let stack_id = wasm.game.move_object_by_game_rule(moved, Zone::Stack).unwrap();
+        assert!(wasm.game.stack.is_empty());
+        assert!(wasm.checkpoint_hidden_metadata(moved).is_none());
+        assert_eq!(wasm.checkpoint_hidden_metadata(stack_id).unwrap().zone, "stack");
+        // An object in the map but outside the exported checkpoint must stay absent.
+        wasm.game.player_mut(owner).unwrap().library.retain(|id| *id != second);
+        assert!(wasm.game.object(second).is_some());
+        assert!(wasm.checkpoint_hidden_metadata(second).is_none());
+        assert_eq!(wasm.checkpoint_hidden_metadata_at_position(0, 7, "same").len(), 1);
     }
 }

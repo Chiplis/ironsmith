@@ -1,4 +1,5 @@
 import { createPaymentOptionsAnalysis } from "../lib/payment-options-analysis.js";
+import { hiddenCardMetadataForObjectFromCheckpoint, hiddenCardMetadataAtPositionFromCheckpoint } from "../lib/hidden-card-metadata.js";
 import { createAsyncLimiter } from "../lib/bounded-async.js";
 import { inRuntimeBranch } from "../lib/runtime-branches.js";
 import { CARD_ASSET_MISSING, fetchCardAssetJson, versionedCardAssetUrl } from "../lib/card-asset-cache.js";
@@ -1027,6 +1028,8 @@ function handleCall(msg) {
     const fn = method === "replayTrustedMatch" ? (config, actions, perspective) => replayTrustedMatch(game, config, actions, perspective, replayOptions)
       : method === "replayTrustedActions" ? (actions, sequence) => replayTrustedActions(game, actions, sequence, replayOptions)
       : method === "previewCryptoRequirementsWithMaterial" ? (command, material) => previewCryptoRequirementsWithMaterial(game, command, material)
+      : method === "getHiddenCardMetadata" && typeof game.getHiddenCardMetadata !== "function" ? objectId => hiddenCardMetadataForObjectFromCheckpoint(game.exportSyncCheckpoint(), objectId)
+      : method === "getHiddenCardMetadataAtPosition" && typeof game.getHiddenCardMetadataAtPosition !== "function" ? (owner, position, commitment) => hiddenCardMetadataAtPositionFromCheckpoint(game.exportSyncCheckpoint(), owner, position, commitment)
       : game[method];
     if (typeof fn !== "function") {
       throw new Error(`Unknown game method: ${method}`);

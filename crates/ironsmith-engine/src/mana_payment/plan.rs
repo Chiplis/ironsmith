@@ -164,6 +164,8 @@ impl ManaPaymentRequest {
 /// A single mana ability activation selected by a plan.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlannedManaActivation {
+    /// Exact production decisions captured by the planner, including fallback simulation.
+    pub production_witnesses: Option<Vec<super::ManaProductionWitness>>,
     /// Exact server-selected production outputs and replacement decisions,
     /// grouped by the original nonempty mana event for authoritative replay.
     pub replacement_witnesses: Option<Vec<super::ManaReplacementWitness>>,

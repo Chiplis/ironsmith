@@ -1385,6 +1385,10 @@ impl StaticAbilityKind for EntersTappedUnlessControlTwoOrMoreOtherLands {
 pub struct EntersTappedUnlessControlTwoOrFewerOtherLands;
 
 impl StaticAbilityKind for EntersTappedUnlessControlTwoOrFewerOtherLands {
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::EntersTappedUnlessControlTwoOrFewerOtherLands
     }
@@ -1532,6 +1536,10 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrMoreOtherLands
 struct ThisWouldEnterTappedUnlessControlTwoOrFewerOtherLandsMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrFewerOtherLandsMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::ZoneChange | crate::events::EventKind::EnterBattlefield)
+    }
+
     fn applies_from_entering_source(&self) -> bool {
         true
     }

@@ -14,6 +14,39 @@ fn dynamic_value_test_game() -> GameState {
 }
 
 #[test]
+fn batched_effect_filter_context_preserves_source_tags_and_refreshes_between_passes() {
+    let mut game = dynamic_value_test_game();
+    let alice = PlayerId::from_index(0);
+    let card = CardBuilder::new(CardId::new(), "Tagged recipient")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+    let first = game.create_object_from_card(&card, alice, Zone::Battlefield);
+    let second = game.create_object_from_card(&card, alice, Zone::Battlefield);
+    let order = vec![source, first, second];
+    let effect = ContinuousEffect::new(source, alice,
+        EffectTarget::Filter(ObjectFilter::tagged("selected")),
+        Modification::AddSubtypes(vec![Subtype::Ninja]));
+    for (expected_index, selected) in [(1, first), (2, second)] {
+        let snapshot = crate::snapshot::ObjectSnapshot::from_object(game.object(selected).unwrap(), &game);
+        game.object_mut(source).unwrap().cast_tagged_objects.insert("selected".into(), vec![snapshot]);
+        let chars: HashMap<_, _> = order.iter().map(|id| (*id,
+            initial_characteristics(game.object(*id).unwrap(), game.turn.turn_number))).collect();
+        let result = affected_objects_for_effect(&effect, Layer::Type, &order, game.objects_map(),
+            &chars, &HashSet::new(), true, false, true, &game, &mut Vec::new());
+        assert_eq!(result, vec![(expected_index, selected)]);
+        // The single-object path independently constructs its context. Both
+        // paths must agree, including after the source's retained tag changes.
+        let independent: Vec<_> = order.iter().enumerate().filter_map(|(index, id)| {
+            effect_target_applies_to_direct(&effect, game.object(*id).unwrap(), &chars[id],
+                game.objects_map(), &game, &std::cell::OnceCell::new()).then_some((index, *id))
+        }).collect();
+        assert_eq!(result, independent);
+    }
+}
+
+#[test]
 fn affected_object_counter_duration_tracks_the_resolved_specific_object() {
     let mut game = dynamic_value_test_game();
     let alice = PlayerId::from_index(0);

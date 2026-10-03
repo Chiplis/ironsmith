@@ -31,6 +31,9 @@ const protocolResponseTimeoutClaimFromError = compile(between(source("peer-lobby
 // Host-only verified-resync checkpoint capture (crypto-resync.js) has no
 // bearing on dispute handling, so the harness makes it a no-op.
 const helpers = { assertMatchNotDisputed, compactMatchDisputeEvidence, isMatchDisputed,
+  // Optional protocol-order/optimistic-state services live outside these
+  // extracted lifecycle functions; individual scenarios can override them.
+  servicesRef: { current: {} },
   protocolResponseTimeoutClaimFromError, captureResyncReplayCheckpointIfDue() {} };
 
 test("dispute stops the clock effect without erasing locally accepted hash, balance, or sequence; idle still resets", () => {
@@ -201,7 +204,9 @@ test("local submission checks suspension after asynchronous work and uses its ro
     return { sequence: 517 };
   }), (failure) => { error = failure; return failure.code === "MATCH_DISPUTED"; });
   let restored = 0, cancelled = 0;
-  const submit = between(lobby, "  const submitMultiplayerCommand =", "  const submitMultiplayerAddCardCheat");
+  const submit = between(lobby, lobby.includes("  const submitVerifiedMultiplayerCommand =")
+    ? "  const submitVerifiedMultiplayerCommand =" : "  const submitMultiplayerCommand =",
+  "  const submitMultiplayerAddCardCheat");
   const catchBody = between(submit, "        stopLocalActionIntentProgress();\n        clearLocalActionWait();\n        let restoredLocalSubmissionSnapshot", "        const protocolTimeoutClaim =");
   await compile("return (async () => {" + catchBody + "})();", { ...helpers,
     multiplayerRef, err: error, localSubmissionSnapshot: { lastAppliedSequence: 516 },

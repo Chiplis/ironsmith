@@ -5,7 +5,7 @@ import { createPaymentOptionsAnalysis, paymentOptionsKey, mergePaymentOptions } 
 function fixture(capture = async () => ({ request: '{}' })) {
   const workers = [];
   const analysis = createPaymentOptionsAnalysis({ capture, createWorker: () => {
-    const worker = { terminated: false, postMessage() {}, terminate() { this.terminated = true; } };
+    const worker = { terminated: false, postMessage(input) { this.input = input; }, terminate() { this.terminated = true; } };
     workers.push(worker); return worker;
   } });
   return { analysis, workers };
@@ -22,11 +22,13 @@ test('a pending alternatives search does not disable the valid proposal', async 
   const pending = analysis.run();
   await tick();
   assert.equal(proposal.mana_payment.can_confirm, true);
-  workers[0].onmessage({ data: { result: { activation_options: [{ source_id: '2' }], mana_abilities: [] } } });
+  workers[0].onmessage({ data: { token: workers[0].input.token, result: { activation_options: [{ source_id: '2' }], mana_abilities: [] } } });
   const merged = mergePaymentOptions(proposal, key, await pending);
   assert.equal(merged.mana_payment.can_confirm, true);
   assert.equal(merged.mana_payment.planned_sources, proposal.mana_payment.planned_sources);
   assert.equal(merged.mana_payment.activation_options_complete, true);
+  assert.equal(workers[0].terminated, false);
+  analysis.dispose();
   assert.equal(workers[0].terminated, true);
 });
 
@@ -35,7 +37,7 @@ test('Pay or Cancel terminates an in-flight worker; late replies cannot apply', 
   const pending = analysis.run(); await tick();
   analysis.cancel();
   assert.equal(workers[0].terminated, true);
-  workers[0].onmessage({ data: { result: ['obsolete'] } });
+  workers[0].onmessage({ data: { token: workers[0].input.token, result: ['obsolete'] } });
   assert.equal(await pending, null);
 });
 
@@ -64,4 +66,24 @@ test('worker failure rejects analysis and releases the runtime', async () => {
   const rejected = assert.rejects(pending, /failed/);
   await tick(); workers[0].onerror({ message: 'failed' });
   await rejected; assert.equal(workers[0].terminated, true);
+});
+
+
+test('completed runtime survives state changes, but obsolete tokens cannot finish its next request', async () => {
+  const { analysis, workers } = fixture();
+  const first = analysis.run(); await tick();
+  const oldToken = workers[0].input.token;
+  workers[0].onmessage({ data: { token: oldToken, result: ['first'] } });
+  assert.deepEqual(await first, ['first']);
+  analysis.cancel();
+  assert.equal(workers[0].terminated, false);
+  let settled = false;
+  const second = analysis.run().then(value => { settled = true; return value; }); await tick();
+  assert.equal(workers.length, 1);
+  workers[0].onmessage({ data: { token: oldToken, result: ['stale'] } }); await tick();
+  assert.equal(settled, false);
+  workers[0].onmessage({ data: { token: workers[0].input.token, result: ['second'] } });
+  assert.deepEqual(await second, ['second']);
+  analysis.dispose();
+  assert.equal(workers[0].terminated, true);
 });

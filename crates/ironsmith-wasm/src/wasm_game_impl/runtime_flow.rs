@@ -599,6 +599,33 @@ impl WasmGame {
         self.advance_until_decision()
     }
 
+    fn record_completed_live_priority_action_for_undo(
+        &mut self,
+        action_checkpoint: Option<&ReplayCheckpoint>,
+    ) {
+        if let Some(root_response) = self.pending_live_action_root.take() {
+            self.priority_epoch_has_undoable_action |=
+                Self::response_starts_cancelable_action_chain(&root_response);
+
+            if let Some(checkpoint) = self
+                .pending_action_checkpoint
+                .as_ref()
+                .or(action_checkpoint)
+            {
+                let root = ReplayRoot::Response(root_response);
+                if Self::replay_root_has_irreversible_mana_activation(
+                    &checkpoint.game,
+                    &root,
+                ) || self.replay_root_mana_activation_added_to_stack(checkpoint, &root)
+                {
+                    self.priority_epoch_undo_locked_by_mana = true;
+                }
+                self.priority_epoch_undo_land_stable_id =
+                    self.committed_undo_land_stable_id(checkpoint, &root);
+            }
+        }
+    }
+
     pub(super) fn finish_live_priority_dispatch(
         &mut self,
         progress: GameProgress,
@@ -609,6 +636,11 @@ impl WasmGame {
             GameProgress::NeedsDecisionCtx(next_ctx) => {
                 let action_still_pending = self.priority_action_chain_still_pending();
                 let next_is_priority = matches!(next_ctx, DecisionContext::Priority(_));
+                if !action_still_pending && next_is_priority {
+                    // Completing directly into a priority context must retain the
+                    // same undo safety checks as the ordinary progress path.
+                    self.record_completed_live_priority_action_for_undo(action_checkpoint.as_ref());
+                }
                 if action_still_pending {
                     self.clear_active_resolving_stack_object();
                 } else {
@@ -659,27 +691,7 @@ impl WasmGame {
             progress => {
                 self.clear_active_resolving_stack_object();
                 self.priority_state.pending_continuation = None;
-                if let Some(root_response) = self.pending_live_action_root.take() {
-                    self.priority_epoch_has_undoable_action |=
-                        Self::response_starts_cancelable_action_chain(&root_response);
-
-                    if let Some(checkpoint) = self
-                        .pending_action_checkpoint
-                        .as_ref()
-                        .or(action_checkpoint.as_ref())
-                    {
-                        let root = ReplayRoot::Response(root_response);
-                        if Self::replay_root_has_irreversible_mana_activation(
-                            &checkpoint.game,
-                            &root,
-                        ) || self.replay_root_mana_activation_added_to_stack(checkpoint, &root)
-                        {
-                            self.priority_epoch_undo_locked_by_mana = true;
-                        }
-                        self.priority_epoch_undo_land_stable_id =
-                            self.committed_undo_land_stable_id(checkpoint, &root);
-                    }
-                }
+                self.record_completed_live_priority_action_for_undo(action_checkpoint.as_ref());
 
                 self.pending_action_checkpoint = None;
                 self.pending_live_continuation = None;
@@ -776,7 +788,10 @@ impl WasmGame {
 
         if let Some(next_ctx) = pending_context {
             self.sync_active_resolving_stack_object_for_prompt(Some(&step_checkpoint));
-            if self.priority_action_chain_still_pending() {
+            // An effect choice can outlive the engine's pending activation.
+            // Keep the original costs until its live continuation commits so
+            // irreversible mana costs are still classified against that state.
+            if self.priority_action_chain_still_pending() || self.pending_live_action_root.is_some() {
                 if let Some(checkpoint) = action_checkpoint {
                     self.pending_action_checkpoint.get_or_insert(checkpoint);
                 }
@@ -2064,6 +2079,379 @@ mod live_action_rollback_tests {
         }
     }
 
+    #[test]
+    fn sacrifice_trigger_target_prompt_resumes_cost_instead_of_targeting_activation() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let (mut wasm, _) = manual_payment_fixture();
+        let compile = |name, text| {
+            ironsmith_registry_test::compile_to_runtime_definition(name, text, false).unwrap()
+        };
+        let oven = wasm.game.create_object_from_definition(
+            &compile(
+                "Probe Oven",
+                "Type: Artifact\n{T}, Sacrifice a creature: Create a Food token.",
+            ),
+            alice,
+            Zone::Battlefield,
+        );
+        let victim = wasm.game.create_object_from_definition(
+            &compile("Probe Victim", "Type: Creature\nPower/Toughness: 1/1"),
+            alice,
+            Zone::Battlefield,
+        );
+        let victim_stable = wasm.game.object(victim).unwrap().stable_id;
+        let devil = wasm.game.create_object_from_definition(
+            &compile("Probe Devil", "Type: Creature\nPower/Toughness: 3/3\nWhenever a player sacrifices a permanent, this creature deals 1 damage to any target."),
+            alice, Zone::Battlefield);
+        wasm.pending_decision = Some(DecisionContext::Priority(
+            PriorityContext::new(
+                &wasm.game,
+                alice,
+                compute_legal_actions(&wasm.game, alice).unwrap(),
+            )
+            .unwrap(),
+        ));
+        dispatch_priority_action_matching(&mut wasm, |action| {
+            matches!(action,
+            LegalAction::ActivateAbility { source, .. } if *source == oven)
+        });
+        assert!(matches!(
+            wasm.pending_decision,
+            Some(DecisionContext::SelectObjects(_))
+        ));
+        dispatch_manual_payment_command(
+            &mut wasm,
+            UiCommand::SelectObjects {
+                object_ids: vec![victim.0],
+                object_stable_ids: Vec::new(),
+                object_hidden_refs: Vec::new(),
+            },
+        );
+        let Some(DecisionContext::Targets(targets)) = wasm.pending_decision.as_ref() else {
+            panic!(
+                "expected sacrifice trigger targets, got {:?}",
+                wasm.pending_decision
+            );
+        };
+        assert_eq!(targets.source, devil);
+        assert!(
+            wasm.pending_live_continuation.is_some(),
+            "the captured trigger choice belongs to replay of the sacrifice, not Oven's announcement"
+        );
+        dispatch_manual_payment_command(
+            &mut wasm,
+            UiCommand::SelectTargets {
+                targets: vec![crate::TargetInput::Player { player: bob.0 }],
+            },
+        );
+        let grave_victim = wasm.game.find_object_by_stable_id(victim_stable).unwrap();
+        assert_eq!(
+            wasm.game.object(grave_victim).unwrap().zone,
+            Zone::Graveyard
+        );
+        assert!(wasm.game.is_tapped(oven));
+        for _ in 0..8 {
+            if wasm.game.stack_is_empty() {
+                break;
+            }
+            dispatch_pass_priority(&mut wasm);
+        }
+        assert!(wasm.game.stack_is_empty());
+        assert_eq!(wasm.game.player(bob).unwrap().life, 19);
+        assert_eq!(
+            wasm.game
+                .battlefield
+                .iter()
+                .filter(|id| wasm
+                    .game
+                    .object(**id)
+                    .is_some_and(|object| object.name == "Food"))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn target_announcements_route_directly_only_for_their_pending_source() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        for activated in [false, true] {
+            let (mut wasm, unrelated) = manual_payment_fixture();
+            let definition = ironsmith_registry_test::compile_to_runtime_definition(
+                "Probe Damage",
+                if activated {
+                    "Type: Artifact\n{0}: This artifact deals 1 damage to any target."
+                } else {
+                    "Mana Cost: {0}\nType: Instant\nProbe Damage deals 1 damage to any target."
+                },
+                false,
+            )
+            .unwrap();
+            let source = wasm.game.create_object_from_definition(
+                &definition,
+                alice,
+                if activated {
+                    Zone::Battlefield
+                } else {
+                    Zone::Hand
+                },
+            );
+            wasm.pending_decision = Some(DecisionContext::Priority(
+                PriorityContext::new(
+                    &wasm.game,
+                    alice,
+                    compute_legal_actions(&wasm.game, alice).unwrap(),
+                )
+                .unwrap(),
+            ));
+            dispatch_priority_action_matching(&mut wasm, |action| match action {
+                LegalAction::ActivateAbility { source: id, .. } => activated && *id == source,
+                LegalAction::CastSpell { spell_id, .. } => !activated && *spell_id == source,
+                _ => false,
+            });
+            let context = wasm.pending_decision.as_ref().expect("target announcement");
+            assert!(matches!(context, DecisionContext::Targets(_)));
+            assert!(wasm.decision_uses_live_priority_response(context));
+            let mut unrelated_context = context.clone();
+            if let DecisionContext::Targets(targets) = &mut unrelated_context {
+                targets.source = unrelated;
+            }
+            assert!(!wasm.decision_uses_live_priority_response(&unrelated_context));
+        }
+    }
+
+    #[test]
+    fn additional_mana_alternative_legality_prices_the_complete_cost() {
+        let _guard = crate::test_id_counter_guard();
+        for (land_count, discardable, reduced, expected) in [
+            (2, false, false, false), (3, false, false, true),
+            (1, true, false, true), (1, false, true, true),
+        ] {
+            let (mut wasm, _) = manual_payment_fixture();
+            let alice = PlayerId::from_index(0);
+            for _ in 1..land_count {
+                wasm.game.create_object_from_definition(
+                    &ironsmith_registry_test::cards::definitions::basic_mountain(), alice, Zone::Battlefield);
+            }
+            let definition = ironsmith_registry_test::compile_to_runtime_definition(
+                "Whole additional cost legality probe",
+                "Mana Cost: {R}\nType: Sorcery\nAs an additional cost to cast this spell, discard a card or pay {2}.\nYou gain 1 life.", false).unwrap();
+            let spell = wasm.game.create_object_from_definition(&definition, alice, Zone::Hand);
+            if discardable {
+                wasm.game.create_object_from_definition(
+                    &CardDefinitionBuilder::new(CardId::new(), "Discardable additional cost card")
+                        .card_types(vec![CardType::Sorcery]).build(), alice, Zone::Hand);
+            }
+            if reduced {
+                let reducer = ironsmith_registry_test::compile_to_runtime_definition(
+                    "Whole cost reducer", "Type: Artifact\nSorcery spells you cast cost {2} less to cast.", false).unwrap();
+                wasm.game.create_object_from_definition(&reducer, alice, Zone::Battlefield);
+            }
+            let actions = compute_legal_actions(&wasm.game, alice).unwrap();
+            let offered = actions.iter().any(|action| matches!(action,
+                LegalAction::CastSpell { spell_id, .. } if *spell_id == spell));
+            assert_eq!(offered, expected,
+                "base R and additional2 must compete for the same {land_count} lands; the spell cannot discard itself");
+        }
+    }
+
+    #[test]
+    fn alternative_additional_mana_cost_commits_spell_without_rolling_back() {
+        run_additional_mana_cost_probe(false, true, false);
+    }
+
+    #[test]
+    fn additional_mana_alternative_is_included_before_cost_reduction() {
+        run_additional_mana_cost_probe(true, true, false);
+    }
+
+    #[test]
+    fn additional_mana_alternative_preserves_discard_branch() {
+        run_additional_mana_cost_probe(false, false, false);
+    }
+
+    #[test]
+    fn additional_mana_alternative_can_cancel_after_announcement() {
+        run_additional_mana_cost_probe(false, true, true);
+    }
+
+    fn run_additional_mana_cost_probe(reduced: bool, pay_mana: bool, cancel: bool) {
+        let _guard = crate::test_id_counter_guard();
+        let (mut wasm, first_land) = manual_payment_fixture();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut lands = vec![first_land];
+        for _ in 0..if reduced { 0 } else { 2 } {
+            lands.push(wasm.game.create_object_from_definition(
+                &ironsmith_registry_test::cards::definitions::basic_mountain(), alice, Zone::Battlefield));
+        }
+        let compile = |name, text| ironsmith_registry_test::compile_to_runtime_definition(name, text, false).unwrap();
+        let spell = wasm.game.create_object_from_definition(&compile("Additional mana probe",
+            "Mana Cost: {R}\nType: Instant\nAs an additional cost to cast this spell, discard a card or pay {2}.\nThis spell deals 5 damage to target creature."), alice, Zone::Hand);
+        let spell_stable = wasm.game.object(spell).unwrap().stable_id;
+        let fodder = wasm.game.create_object_from_definition(
+            &CardDefinitionBuilder::new(CardId::new(), "Discard option card").card_types(vec![CardType::Sorcery]).build(),
+            alice, Zone::Hand);
+        let fodder_stable = wasm.game.object(fodder).unwrap().stable_id;
+        let victim = wasm.game.create_object_from_definition(
+            &compile("Additional cost target", "Type: Creature\nPower/Toughness: 3/3"), bob, Zone::Battlefield);
+        let victim_stable = wasm.game.object(victim).unwrap().stable_id;
+        if reduced {
+            wasm.game.create_object_from_definition(&compile("Additional cost reducer",
+                "Type: Artifact\nInstant spells you cast cost {2} less to cast."), alice, Zone::Battlefield);
+        }
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+            &wasm.game, alice, compute_legal_actions(&wasm.game, alice).unwrap(),
+        ).unwrap()));
+        dispatch_priority_action_matching(&mut wasm, |action| matches!(action,
+            LegalAction::CastSpell { spell_id, .. } if *spell_id == spell));
+        let Some(DecisionContext::SelectOptions(options)) = wasm.pending_decision.as_ref() else {
+            panic!("expected additional cost alternatives, got {:?}", wasm.pending_decision);
+        };
+        let mana_option = options.options.iter().find(|option| option.description.contains(if pay_mana { "{2}" } else { "discard" }))
+            .expect("extra mana alternative must be offered").index;
+        dispatch_manual_payment_command(&mut wasm, UiCommand::SelectOptions { option_indices: vec![mana_option] });
+        assert!(matches!(wasm.pending_decision, Some(DecisionContext::Targets(_))));
+        assert!(lands.iter().all(|id| !wasm.game.is_tapped(*id)), "announcements must not pay costs");
+        if cancel {
+            wasm.cancel_decision().expect("cancel after announcing additional cost");
+            assert!(wasm.game.stack_is_empty());
+            assert!(lands.iter().all(|id| !wasm.game.is_tapped(*id)));
+            let spell = wasm.game.find_object_by_stable_id(spell_stable).unwrap();
+            assert_eq!(wasm.game.object(spell).unwrap().zone, Zone::Hand);
+            assert_eq!(wasm.game.object(fodder).unwrap().zone, Zone::Hand);
+            assert!(matches!(wasm.pending_decision, Some(DecisionContext::Priority(_))));
+            return;
+        }
+        dispatch_manual_payment_command(&mut wasm, UiCommand::SelectTargets {
+            targets: vec![crate::TargetInput::Object { object: victim.0 }],
+        });
+        assert!(matches!(wasm.pending_decision, Some(DecisionContext::ManaPayment(_))));
+        confirm_pending_mana_payment(&mut wasm);
+        if !pay_mana {
+            for _ in 0..4 {
+                match wasm.pending_decision.as_ref() {
+                    Some(DecisionContext::SelectOptions(options)) => {
+                        let index = options.options.iter().find(|option| option.legal).unwrap().index;
+                        dispatch_manual_payment_command(&mut wasm, UiCommand::SelectOptions { option_indices: vec![index] });
+                    }
+                    Some(DecisionContext::SelectObjects(_)) => dispatch_manual_payment_command(&mut wasm,
+                        UiCommand::SelectObjects { object_ids: vec![fodder.0], object_stable_ids: Vec::new(), object_hidden_refs: Vec::new() }),
+                    Some(DecisionContext::Priority(_)) => break,
+                    other => panic!("unexpected discard-cost decision: {other:?}"),
+                }
+            }
+        }
+        assert!(matches!(wasm.pending_decision, Some(DecisionContext::Priority(_))));
+        assert_eq!(wasm.game.stack.len(), 1, "confirming the extra cost must commit the spell");
+        assert_eq!(lands.iter().filter(|id| wasm.game.is_tapped(**id)).count(), if !pay_mana || reduced { 1 } else { 3 });
+        let fodder = wasm.game.find_object_by_stable_id(fodder_stable).unwrap();
+        assert_eq!(wasm.game.object(fodder).unwrap().zone, if pay_mana { Zone::Hand } else { Zone::Graveyard });
+        for _ in 0..4 {
+            if wasm.game.stack_is_empty() { break; }
+            dispatch_pass_priority(&mut wasm);
+        }
+        let victim = wasm.game.find_object_by_stable_id(victim_stable).unwrap();
+        assert_eq!(wasm.game.object(victim).unwrap().zone, Zone::Graveyard);
+        assert!(wasm.game.stack_is_empty());
+    }
+
+    #[test]
+    fn paid_mana_effect_option_resumes_its_effect_and_pays_only_once() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut wasm, _) = manual_payment_fixture();
+        let alice = PlayerId::from_index(0);
+        let mut ability = ironsmith::ability::Ability::mana(
+            ironsmith::cost::TotalCost::from_costs(vec![
+                ironsmith::costs::Cost::mana(ManaCost::new().add_generic(2)),
+                ironsmith::costs::Cost::tap(),
+            ]), vec![ManaSymbol::Green; 3],
+        );
+        let ironsmith::ability::AbilityKind::Activated(activated) = &mut ability.kind else { unreachable!() };
+        activated.mana_output = None;
+        activated.effects = ironsmith::resolution::ResolutionProgram::from_effects(vec![
+            ironsmith::effect::Effect::choose_color(ironsmith::target::PlayerFilter::You),
+            ironsmith::effect::Effect::add_mana(vec![ManaSymbol::Green; 3]),
+        ]);
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Paid color-choice mana probe")
+            .card_types(vec![CardType::Land]).with_ability(ability).build();
+        let source = wasm.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        wasm.game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Colorless, 2);
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+            &wasm.game, alice, compute_legal_actions(&wasm.game, alice).unwrap(),
+        ).unwrap()));
+        dispatch_priority_action_matching(&mut wasm, |action| matches!(action,
+            LegalAction::ActivateManaAbility { source: candidate, ability_index: 0 } if *candidate == source
+        ));
+        assert!(matches!(wasm.pending_decision, Some(DecisionContext::SelectOptions(_))));
+        assert!(wasm.pending_live_continuation.is_some(),
+            "an effect's generic color choice must resume its captured execution");
+        dispatch_manual_payment_command(&mut wasm, UiCommand::SelectOptions { option_indices: vec![4] });
+        assert!(matches!(wasm.pending_decision, Some(DecisionContext::Priority(_))));
+        assert_eq!(wasm.game.chosen_color(source), Some(ironsmith::color::Color::Green));
+        let pool = &wasm.game.player(alice).unwrap().mana_pool;
+        assert_eq!((pool.colorless, pool.green), (0, 3));
+        assert!(wasm.game.is_tapped(source));
+        assert!(wasm.game.stack_is_empty());
+        assert!(wasm.priority_state.pending_mana_ability.is_none());
+    }
+
+    #[test]
+    fn completed_tap_only_mana_returns_to_priority_with_undo() {
+        let _guard = crate::test_id_counter_guard();
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let alice = PlayerId::from_index(0);
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.phase = Phase::FirstMain;
+        wasm.game.turn.step = None;
+        wasm.runner_awaiting_priority = true;
+
+        let source_definition = CardDefinitionBuilder::new(CardId::new(), "Fixed Mana Undo Probe")
+            .card_types(vec![CardType::Land])
+            .parse_text("{T}: Add {G}{U}.")
+            .expect("fixed tap-only mana should parse");
+        let source = wasm.game.create_object_from_definition(
+            &source_definition, alice, Zone::Battlefield,
+        );
+        let stable_id = wasm.game.object(source).unwrap().stable_id.0.0;
+        // A preexisting resource must survive undo; only the activation is reversed.
+        wasm.game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Red, 1);
+        assert!(ironsmith::game_loop::mana_ability_is_undo_safe(&wasm.game, source, 0));
+        wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+        wasm.pending_decision = Some(DecisionContext::Priority(
+            PriorityContext::new(
+                &wasm.game,
+                alice,
+                compute_legal_actions(&wasm.game, alice).expect("complete replacement state"),
+            ).expect("complete replacement state"),
+        ));
+
+        dispatch_priority_action_matching(&mut wasm, |action| matches!(
+            action,
+            LegalAction::ActivateManaAbility { source: candidate, ability_index: 0 }
+                if *candidate == source
+        ));
+        assert!(matches!(wasm.pending_decision, Some(DecisionContext::Priority(_))));
+        assert!(wasm.game.is_tapped(source));
+        assert!(wasm.game.stack.is_empty());
+        let pool = &wasm.game.player(alice).unwrap().mana_pool;
+        assert_eq!((pool.red, pool.green, pool.blue), (1, 1, 1));
+        assert!(wasm.is_cancelable(), "completed safe mana must remain undoable at priority");
+        assert_eq!(wasm.visible_undo_land_stable_id(true), Some(stable_id));
+
+        wasm.cancel_decision().expect("undo unspent fixed mana");
+        assert!(matches!(wasm.pending_decision, Some(DecisionContext::Priority(_))));
+        assert!(!wasm.game.is_tapped(source));
+        let pool = &wasm.game.player(alice).unwrap().mana_pool;
+        assert_eq!((pool.red, pool.green, pool.blue), (1, 0, 0));
+        assert!(wasm.game.stack.is_empty());
+        assert!(!wasm.is_cancelable(), "undo should not manufacture another undoable action");
+    }
+
     fn manual_payment_fixture() -> (WasmGame, ObjectId) {
         let alice = PlayerId::from_index(0);
         let mut wasm = WasmGame::new();
@@ -2821,6 +3209,8 @@ mod live_action_rollback_tests {
             compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
         ).expect("fixture has complete replacement state")));
 
+        wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+
         dispatch_priority_action_matching(
             &mut wasm,
             |action| matches!(action, LegalAction::ActivateManaAbility { source, .. } if *source == lotus),
@@ -2842,6 +3232,7 @@ mod live_action_rollback_tests {
             Some(DecisionContext::Priority(priority)) => assert_eq!(priority.player, alice),
             other => panic!("expected priority after Black Lotus color choice, got {other:?}"),
         }
+        assert!(!wasm.is_cancelable(), "completed sacrifice mana must not become undoable");
         assert!(
             wasm.pending_live_continuation.is_none(),
             "completed Black Lotus mana ability should not keep a replay continuation"

@@ -2448,3 +2448,30 @@ fn intrinsic_starting_counter_models_round_trip_with_rule_identity_and_action_pa
         assert!(serde_json::from_value::<Action>(serde_json::json!({"EnterWithIntrinsicStartingCounters": "Poison"})).is_err());
     }
 }
+
+#[test]
+fn fastland_replacement_scope_preserves_entry_threshold() {
+    let player = PlayerId::from_index(0);
+    for other_lands in 0..=4 {
+        let mut game = GameState::new(vec!["Alice".into()], 20);
+        let card = CardBuilder::new(CardId::new(), "Threshold land")
+            .card_types(vec![CardType::Land]).build();
+        for _ in 0..other_lands {
+            game.create_object_from_card(&card, player, Zone::Battlefield);
+        }
+        let source = game.create_object_from_card(&card, player, Zone::Hand);
+        let ability = EntersTappedUnlessControlTwoOrFewerOtherLands;
+        assert!(!ability.may_generate_continuous_effects());
+        let replacement = ability.generate_replacement_effect(source, player).unwrap();
+        let matcher = replacement.matcher.as_ref().unwrap();
+        for kind in [EventKind::BecomeTapped, EventKind::ManaAdded, EventKind::AbilityActivated] {
+            assert!(!matcher.may_match_event_kind(kind));
+        }
+        let event = ZoneChangeEvent::with_cause(source, Zone::Hand, Zone::Battlefield,
+            EventCause::effect(), None);
+        let ctx = EventContext::for_replacement_effect(player, source, &game);
+        assert!(matcher.may_match_event_kind(EventKind::ZoneChange));
+        assert!(matcher.may_match_event_kind(EventKind::EnterBattlefield));
+        assert_eq!(matcher.matches_event(&event, &ctx).unwrap(), other_lands > 2);
+    }
+}

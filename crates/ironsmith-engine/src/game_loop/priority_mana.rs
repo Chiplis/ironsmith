@@ -275,6 +275,8 @@ fn execute_planned_mana_activations(
         .get(payment.next_activation)
         .cloned()
     {
+        let mut replay = crate::mana_payment::WitnessDecisionMaker::for_activation(
+            step.replacement_witnesses.as_deref(), step.production_witnesses.as_deref(), decision_maker);
         let activation_cost_has_tap =
             activated_ability_has_tap_cost(game, step.source, step.ability_index);
         let events =
@@ -284,7 +286,7 @@ fn execute_planned_mana_activations(
                 step.source,
                 step.ability_index,
                 step.color_restriction.clone(),
-                decision_maker,
+                &mut replay,
             )
             .map_err(|error| match error {
                 crate::special_actions::ActionError::ExecutionFailure { error, .. } => {
@@ -294,7 +296,7 @@ fn execute_planned_mana_activations(
                     "planned mana ability is no longer legal: {error}"
                 )),
             })?;
-        if decision_maker.awaiting_choice() {
+        if replay.awaiting_choice() {
             // Replay-based decision makers will rerun this same activation
             // from the enclosing action checkpoint with the captured answer.
             // Do not advance the plan cursor until that replay completes.
@@ -306,13 +308,19 @@ fn execute_planned_mana_activations(
         queue_ability_activated_event(
             game,
             trigger_queue,
-            decision_maker,
+            &mut replay,
             step.source,
             payer,
             true,
             None,
             activation_cost_has_tap,
         );
+        if replay.awaiting_choice() {
+            return Ok(true);
+        }
+        if !replay.complete() {
+            return Err(GameLoopError::InvalidState("unused planned mana decision witness".into()));
+        }
         *undo_locked_by_mana |= !step.undo_safe;
         payment.next_activation += 1;
         drain_pending_trigger_events(game, trigger_queue);
@@ -5009,4 +5017,112 @@ mod retained_effect_model_stack_program_proposal_tests {
         assert!(object.splice_cast_state.is_none());
     }
 
+}
+
+#[cfg(test)]
+mod planned_mana_witness_tests {
+    use super::*;
+    use crate::mana::{ManaCost, ManaSymbol};
+    struct WhiteChooser { prompts: usize }
+    impl DecisionMaker for WhiteChooser {
+        fn decide_colors(&mut self, _game: &GameState, ctx: &crate::decisions::context::ColorsContext) -> Vec<crate::color::Color> {
+            self.prompts += 1;
+            vec![crate::color::Color::White; ctx.count as usize]
+        }
+        fn decide_options(&mut self, _game: &GameState, _ctx: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> {
+            panic!("confirmed mana witnesses must not request replacement ordering");
+        }
+    }
+
+    #[test]
+    fn prepared_production_plan_replays_green_and_manual_override_stays_white() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Choice producer")
+            .card_types(vec![crate::types::CardType::Artifact])
+            .with_ability(crate::Ability::mana_with_effects(crate::cost::TotalCost::free(),
+                vec![crate::effect::Effect::add_mana_of_any_color_restricted(1,
+                    vec![crate::color::Color::Green, crate::color::Color::White])])).build();
+        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let request = crate::mana_payment::ManaPaymentRequest::new(alice, source,
+            crate::costs::PaymentReason::Effect, ManaCost::from_pips(vec![vec![ManaSymbol::Green]]));
+        let mut manual_game = game.clone();
+        let plan = crate::mana_payment::plan_first_mana_payment(&game, &request).unwrap();
+        assert!(plan.mana_ability_steps[0].production_witnesses.as_ref().is_some_and(|records| !records.is_empty()));
+        let mut payment = crate::mana_payment::PendingManaPayment::new(request, plan);
+        let mut dm = WhiteChooser { prompts: 0 };
+        assert!(!execute_planned_mana_activations(&mut game, &mut TriggerQueue::new(), alice,
+            &mut payment, &mut false, &mut dm).unwrap());
+        assert_eq!(game.player(alice).unwrap().mana_pool.green, 1);
+        assert_eq!(dm.prompts, 0);
+        crate::special_actions::perform_activate_mana_ability(&mut manual_game, alice, source, 0, &mut dm).unwrap();
+        assert_eq!(dm.prompts, 1);
+        assert_eq!(manual_game.player(alice).unwrap().mana_pool.white, 1);
+        assert_eq!(manual_game.player(alice).unwrap().mana_pool.green, 0);
+    }
+
+    #[test]
+    fn fallback_source_keeps_nonfirst_color_under_opponents_search_control() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.add_scoped_player_control(bob, alice, None);
+        let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Costly W/U producer")
+            .card_types(vec![crate::types::CardType::Artifact])
+            .with_ability(crate::Ability::mana_with_effects(
+                crate::cost::TotalCost::from_cost(crate::costs::Cost::life(1)),
+                vec![crate::effect::Effect::add_mana_of_any_color_restricted(1,
+                    vec![crate::color::Color::White, crate::color::Color::Blue])])).build();
+        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let request = crate::mana_payment::ManaPaymentRequest::new(alice, source,
+            crate::costs::PaymentReason::Effect, ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]));
+        let plan = crate::mana_payment::plan_first_mana_payment(&game, &request).unwrap();
+        let step = &plan.mana_ability_steps[0];
+        assert!(step.replacement_witnesses.is_none(), "life-cost source must retain simulation fallback");
+        assert_eq!(step.color_restriction, Some(vec![crate::color::Color::Blue]));
+        let records = step.production_witnesses.as_ref().unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].output, vec![ManaSymbol::Blue]);
+        assert_eq!(records[0].chooser, bob);
+        let mut dm = WhiteChooser { prompts: 0 };
+        assert_eq!(crate::mana_payment::execute_mana_payment_plan(&mut game, &request, &plan, &mut dm).unwrap(),
+            crate::mana_payment::ManaPaymentExecution::Paid);
+        assert_eq!(dm.prompts, 0);
+        assert_eq!(game.player(alice).unwrap().life, 19);
+        assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0);
+        assert!(game.is_tapped(source));
+    }
+
+    #[test]
+    fn staged_payment_replays_noncommuting_replacement_order() {
+        use crate::replacement::{EventModification, ReplacementAction, ReplacementEffect};
+        for amount in [1, 3] {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let alice = PlayerId::from_index(0);
+            let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Ordered mana source")
+                .card_types(vec![crate::types::CardType::Artifact])
+                .with_ability(crate::Ability::mana(crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()),
+                    vec![ManaSymbol::Green; 2])).build();
+            let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+            for action in [ReplacementAction::ReplaceManaExact(vec![ManaSymbol::Blue]),
+                ReplacementAction::Modify(EventModification::Multiply(3))] {
+                game.effect_store.replacement_effects.add_effect(ReplacementEffect::with_matcher(source, alice,
+                    crate::events::mana::matchers::ManaProducedBySourceMatcher::new(ObjectFilter::default()), action));
+            }
+            game.refresh_continuous_state().unwrap();
+            let request = crate::mana_payment::ManaPaymentRequest::new(alice, source,
+                crate::costs::PaymentReason::Effect, ManaCost::from_pips(vec![vec![ManaSymbol::Blue]; amount]));
+            let plan = crate::mana_payment::plan_first_mana_payment(&game, &request).unwrap();
+            assert_eq!(plan.expected_pool_after_activations.blue, amount as u32);
+            assert!(plan.mana_ability_steps[0].replacement_witnesses.is_some());
+            let mut payment = crate::mana_payment::PendingManaPayment::new(request, plan);
+            let mut dm = WhiteChooser { prompts: 0 };
+            assert!(!execute_planned_mana_activations(&mut game, &mut TriggerQueue::new(), alice,
+                &mut payment, &mut false, &mut dm).unwrap());
+            assert_eq!(game.player(alice).unwrap().mana_pool.blue, amount as u32);
+            assert_eq!(game.player(alice).unwrap().mana_pool.green, 0);
+            assert!(game.is_tapped(source));
+            assert_eq!(dm.prompts, 0);
+        }
+    }
 }

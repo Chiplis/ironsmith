@@ -1723,6 +1723,12 @@ pub type RetainedOccurrenceAlternativeCast =
 pub type RetainedOccurrenceOptionalCost = RetainedCardPayload<wire::WireOptionalCost>;
 pub type RetainedOccurrenceTotalCost =
     RetainedCardPayload<ironsmith_core::TotalCost<wire::WireCost>>;
+pub type RetainedOccurrenceGrantable = RetainedCardPayload<ironsmith_core::Grantable<
+    StaticAbilityOccurrenceRef,
+    wire::WireEffect,
+    wire::WireCost,
+    ironsmith_core::ThisSpellCostCondition,
+>>;
 
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2263,6 +2269,33 @@ impl StaticAbilityOccurrenceEncoder {
     ) -> Result<RetainedOccurrenceAlternativeCast, OccurrenceBindingError> {
         self.transaction(|table| {
             let encoded = table.encode_alternative_cast(value)?;
+            let bound = table.bind_payload(encoded, &mut card)?;
+            table.bind_shared_models(&mut card)?;
+            Ok(bound)
+        })
+    }
+    pub fn encode_grantable_with_card_graph<I: serde::Serialize>(
+        &mut self,
+        value: crate::grant::Grantable,
+        mut card: impl FnMut(crate::ids::CardId) -> Result<I, OccurrenceBindingError>,
+    ) -> Result<RetainedOccurrenceGrantable, OccurrenceBindingError> {
+        self.transaction(|table| {
+            let encoded = {
+                let table = std::cell::RefCell::new(&mut *table);
+                let embedded = std::cell::RefCell::new(Vec::new());
+                let model = value.try_map(
+                    |ability| table.borrow_mut().retain(ability),
+                    |effect| table.borrow_mut().encode_effect_with_occurrences(
+                        effect, &mut embedded.borrow_mut()),
+                    |cost| table.borrow_mut().encode_cost_with_occurrences(
+                        cost, &mut embedded.borrow_mut()),
+                )?;
+                RetainedCardPayload {
+                    card_references: RetainedModelCardReferences::Native,
+                    model,
+                    embedded_definitions: embedded.into_inner(),
+                }
+            };
             let bound = table.bind_payload(encoded, &mut card)?;
             table.bind_shared_models(&mut card)?;
             Ok(bound)
@@ -2866,6 +2899,22 @@ impl StaticAbilityOccurrenceDecoder {
         Self::finish_embedded_definitions(&embedded.into_inner())?;
         Ok(result)
     }
+    pub fn restore_grantable(
+        &self,
+        value: RetainedOccurrenceGrantable,
+    ) -> Result<crate::grant::Grantable, OccurrenceBindingError> {
+        let value = self.bind_retained_payload_with_definitions(value)?;
+        let embedded = std::cell::RefCell::new(value.embedded_definitions.into());
+        let result = value.model.try_map(
+            |reference| self.ability(reference),
+            |effect| self.restore_effect_with_embedded_definitions(
+                effect, &mut embedded.borrow_mut()),
+            |cost| self.restore_cost_with_embedded_definitions(
+                cost, &mut embedded.borrow_mut()),
+        )?;
+        Self::finish_embedded_definitions(&embedded.into_inner())?;
+        Ok(result)
+    }
     pub fn restore_optional_cost(
         &self,
         value: RetainedOccurrenceOptionalCost,
@@ -3354,6 +3403,66 @@ impl StaticAbilityOccurrenceDecoder {
                 |face| (*card.borrow_mut())(face),
             )?
             .into())
+    }
+}
+
+pub type RetainedOccurrenceGrant<I> = crate::grant_registry::RetainedGrant<
+    RetainedOccurrenceGrantable,
+    RetainedOccurrenceGrantPermission<I>,
+    StaticAbilityOccurrenceRef,
+>;
+pub type RetainedOccurrenceGrantRegistry<I> =
+    crate::grant_registry::RegisteredGrantState<RetainedOccurrenceGrant<I>>;
+
+impl StaticAbilityOccurrenceEncoder {
+    pub fn encode_grant_registry<I: serde::Serialize>(
+        &mut self,
+        state: crate::grant_registry::RegisteredGrantState,
+        card: impl FnMut(crate::ids::CardId) -> Result<I, OccurrenceBindingError>,
+    ) -> Result<RetainedOccurrenceGrantRegistry<I>, OccurrenceBindingError> {
+        self.transaction(|table| {
+            let table = std::cell::RefCell::new(table);
+            let card = std::cell::RefCell::new(card);
+            // Retain every program before resolving permission provenance, so
+            // references to later roots share the same occurrence identity.
+            let retained = state.try_map_grants(|grant| {
+                crate::grant_registry::NativeRetainedGrant::from(grant).try_map_payloads(
+                    |grantable| table.borrow_mut().encode_grantable_with_card_graph(
+                        grantable, |id| (*card.borrow_mut())(id)),
+                    Ok::<_, OccurrenceBindingError>,
+                    |ability| table.borrow_mut().retain(ability),
+                )
+            })?;
+            let result = retained.try_map_grants(|grant| grant.try_map_payloads(
+                Ok::<_, OccurrenceBindingError>,
+                |permission| table.borrow_mut().encode_permission_identity(
+                    permission, |id| (*card.borrow_mut())(id)),
+                Ok::<_, OccurrenceBindingError>,
+            ))?;
+            table.borrow_mut().bind_shared_models(&mut *card.borrow_mut())?;
+            Ok(result)
+        })
+    }
+}
+impl StaticAbilityOccurrenceDecoder {
+    pub fn restore_grant_registry<I>(
+        &self,
+        state: RetainedOccurrenceGrantRegistry<I>,
+        card: impl FnMut(I) -> Result<crate::ids::CardId, OccurrenceBindingError>,
+    ) -> Result<crate::grant_registry::RegisteredGrantState, OccurrenceBindingError> {
+        let card = std::cell::RefCell::new(card);
+        let state = state.try_map_grants(|grant| {
+            grant.try_map_payloads(
+                |grantable| self.restore_grantable(grantable),
+                |permission| self.restore_permission_identity(
+                    permission, |id| (*card.borrow_mut())(id)),
+                |reference| self.ability(reference),
+            ).map(crate::grant_registry::Grant::from)
+        })?;
+        let mut registry = crate::grant_registry::GrantRegistry::new();
+        registry.restore_registered_state(state.clone())
+            .map_err(|detail| OccurrenceBindingError::InvalidModel { detail })?;
+        Ok(state)
     }
 }
 

@@ -4,11 +4,8 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
-/// A synchronous caller has no slice to yield to, so the search still needs an
-/// upper bound. Realistic costs settle well under this; reaching it means the
-/// query is pathological and the action is withheld rather than hanging the
-/// engine. Mirrors the general planner's `MAX_SEARCH_NODES` in spirit.
-const SYNC_SEARCH_NODE_LIMIT: usize = 500_000;
+/// Work chunk for synchronous finite-source queries, not a legality cutoff.
+const SYNC_SEARCH_NODE_CHUNK: usize = 65_536;
 
 #[derive(Debug, Clone)]
 struct Node {
@@ -185,12 +182,25 @@ pub(crate) struct SnapshotFactContext {
     pub(crate) mana_cost: Option<crate::mana::ManaCost>,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum PaymentQueryContext {
+    #[default]
+    Root,
+    ContinuousCheckedRoot,
+}
+
 /// Owned by a single immutable priority snapshot. Completed queries are reused
 /// across menu passes; unfinished queries retain their frontier without restart.
 #[derive(Debug, Default)]
 pub struct ManaAnalysisSession {
     searches: HashMap<u64, Vec<(ManaQuery, Search)>>,
     facts: HashMap<SnapshotFactKey, Vec<(SnapshotFactContext, bool)>>,
+    payment_searches: Vec<(PaymentQueryContext, crate::mana_payment::ManaPaymentRequest, crate::mana_payment::ManaPaymentAnalysis)>,
+    /// Identity checks only: these addresses are never dereferenced. The owner
+    /// must retain its immutable snapshot for the session's lifetime.
+    bound_root: Option<usize>,
+    active_root: Option<usize>,
+    active_context: PaymentQueryContext,
     remaining: usize,
     pending: bool,
     /// Incremented whenever a query suspends, so a caller can tell whether the
@@ -206,6 +216,22 @@ thread_local! {
 
 impl ManaAnalysisSession {
     pub fn run<T>(&mut self, budget: usize, compute: impl FnOnce() -> T) -> (T, bool) {
+        self.run_with_root(None, budget, compute)
+    }
+
+    /// Bind full payment queries to this exact immutable game. Hypothetical
+    /// clones cannot reuse its frontier, even if their payment requests match.
+    pub fn run_for_game<T>(&mut self, game: &GameState, budget: usize, compute: impl FnOnce() -> T) -> (T, bool) {
+        self.run_with_root(Some(game as *const GameState as usize), budget, compute)
+    }
+
+    fn run_with_root<T>(&mut self, root: Option<usize>, budget: usize, compute: impl FnOnce() -> T) -> (T, bool) {
+        if root.is_some() && self.bound_root != root {
+            *self = Self::default();
+            self.bound_root = root;
+        }
+        self.active_root = root;
+        self.active_context = PaymentQueryContext::Root;
         struct Restore<'a>(&'a mut ManaAnalysisSession);
         impl Drop for Restore<'_> {
             fn drop(&mut self) {
@@ -228,6 +254,7 @@ impl ManaAnalysisSession {
             !session.pending
         });
         drop(restore);
+        self.active_root = None;
         (result, complete)
     }
 
@@ -237,6 +264,76 @@ impl ManaAnalysisSession {
     /// to size the next slice.
     pub fn last_slice_nodes(&self) -> usize {
         self.last_slice_nodes
+    }
+}
+
+/// The legal-action boundary has just successfully computed this exact
+/// continuous-query snapshot from the immutable root. Give that deterministic
+/// view its own cache namespace; no arbitrary hypothetical clone is admitted.
+pub(crate) fn with_checked_query<T>(root: &GameState, checked: &GameState, compute: impl FnOnce() -> T) -> T {
+    let previous = SESSION.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        let session = slot.as_mut()?;
+        if session.active_root != Some(root as *const GameState as usize)
+            || session.active_context != PaymentQueryContext::Root { return None; }
+        let previous = (session.active_root, session.active_context);
+        session.active_root = Some(checked as *const GameState as usize);
+        session.active_context = PaymentQueryContext::ContinuousCheckedRoot;
+        Some(previous)
+    });
+    struct Restore(Option<(Option<usize>, PaymentQueryContext)>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            if let Some((root, context)) = self.0 {
+                SESSION.with(|slot| {
+                    if let Some(session) = slot.borrow_mut().as_mut() {
+                        session.active_root = root;
+                        session.active_context = context;
+                    }
+                });
+            }
+        }
+    }
+    let _restore = Restore(previous);
+    compute()
+}
+
+/// Use the authoritative planner's resumable search for a query against the
+/// bound root. Pending remains provisional and prevents publishing a complete
+/// menu. Other games retain the synchronous oracle, never a cached root answer.
+pub(super) fn check_payment(game: &GameState, request: &crate::mana_payment::ManaPaymentRequest) -> bool {
+    let bound = SESSION.with(|slot| slot.borrow().as_ref().is_some_and(|session|
+        session.active_root == Some(game as *const GameState as usize)));
+    // Nested affordability checks inside one planner work unit must remain
+    // exact; they must not turn a suspended inner solver into a negative veto.
+    struct Restore(Option<ManaAnalysisSession>);
+    impl Drop for Restore {
+        fn drop(&mut self) { SESSION.with(|slot| *slot.borrow_mut() = self.0.take()); }
+    }
+    let mut restore = Restore(SESSION.with(|slot| slot.borrow_mut().take()));
+    if !bound { return crate::mana_payment::check_mana_payment(game, request).is_ok(); }
+    let session = restore.0.as_mut().unwrap();
+    let context = session.active_context;
+    let index = session.payment_searches.iter().position(|(kind, key, _)| *kind == context && key == request)
+        .unwrap_or_else(|| {
+            session.payment_searches.push((context, request.clone(), crate::mana_payment::ManaPaymentAnalysis::check(game, request.clone())));
+            session.payment_searches.len() - 1
+        });
+    if session.remaining == 0 {
+        session.pending = true;
+        session.suspensions = session.suspensions.saturating_add(1);
+        return false;
+    }
+    let search = &mut session.payment_searches[index].2;
+    let result = search.step(session.remaining);
+    session.remaining = session.remaining.saturating_sub(search.last_slice_units());
+    match result {
+        Some(result) => result.is_ok(),
+        None => {
+            session.pending = true;
+            session.suspensions = session.suspensions.saturating_add(1);
+            false
+        }
     }
 }
 
@@ -383,19 +480,14 @@ pub(super) fn solve(
             }
         } else {
             let mut search = initial();
-            let mut remaining = SYNC_SEARCH_NODE_LIMIT;
-            advance(
-                &mut search,
-                pips,
-                sources,
-                max_life,
-                policy,
-                source_policies,
-                &mut remaining,
-            );
-            // Withhold rather than hang: an unsettled search at this depth is
-            // pathological, and execution revalidates payment regardless.
-            search.result.unwrap_or(false)
+            // Every source is used at most once in this solver, so its state
+            // space is finite. Exhaustion of a work chunk is not unpayability.
+            while search.result.is_none() {
+                let mut remaining = SYNC_SEARCH_NODE_CHUNK;
+                advance(&mut search, pips, sources, max_life, policy,
+                    source_policies, &mut remaining);
+            }
+            search.result.unwrap()
         }
     })
 }
@@ -486,6 +578,77 @@ fn advance(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn full_payment_queries_resume_without_publishing_pending_as_unpayable() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Life-cost mana source")
+            .card_types(vec![crate::types::CardType::Land])
+            .with_ability(crate::Ability::mana_with_effects(
+                crate::cost::TotalCost::from_cost(crate::costs::Cost::life(1)),
+                vec![crate::effect::Effect::add_mana_of_any_color_restricted(1,
+                    vec![crate::color::Color::White, crate::color::Color::Blue])])).build();
+        let source = game.create_object_from_definition(&definition, alice, crate::zone::Zone::Battlefield);
+        game.create_object_from_definition(&definition, alice, crate::zone::Zone::Battlefield);
+        for amount in [1, 2, 3] {
+            let request = crate::mana_payment::ManaPaymentRequest::new(alice, source,
+                crate::costs::PaymentReason::Effect,
+                crate::mana::ManaCost::from_pips(vec![vec![ManaSymbol::Blue]; amount]));
+            let expected = crate::mana_payment::check_mana_payment(&game, &request).is_ok();
+            let mut session = ManaAnalysisSession::default();
+            let mut completed = false;
+            let mut suspended = false;
+            for _ in 0..1000 {
+                let (actual, complete) = session.run_for_game(&game, 1, || check_payment(&game, &request));
+                assert!(session.last_slice_nodes() <= 1);
+                if complete {
+                    assert_eq!(actual, expected, "cost {amount}");
+                    completed = true;
+                    break;
+                }
+                suspended = true;
+            }
+            assert!(completed, "full search must finish its frontier for cost {amount}");
+            if amount <= 2 {
+                assert!(expected && suspended, "payable fallback must retain and resume its frontier for cost {amount}");
+            } else {
+                // Three pips exceed these two fixed, single-use sources. A
+                // sound finite-production proof may finish without suspension.
+                assert!(!expected);
+            }
+            let (again, complete) = session.run_for_game(&game, 1, || check_payment(&game, &request));
+            assert!(complete);
+            assert_eq!(again, expected);
+            assert_eq!(session.last_slice_nodes(), 0, "completed exact query is reusable");
+            assert_eq!(game.player(alice).unwrap().life, 20);
+            assert!(!game.is_tapped(source));
+        }
+    }
+
+    #[test]
+    fn full_payment_root_cache_does_not_alias_hypothetical_game_or_request() {
+        let game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let request = crate::mana_payment::ManaPaymentRequest::new(alice, ObjectId::from_raw(999),
+            crate::costs::PaymentReason::Effect,
+            crate::mana::ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]));
+        let mut hypothetical = game.clone();
+        hypothetical.player_mut(alice).unwrap().mana_pool.blue = 1;
+        let mut session = ManaAnalysisSession::default();
+        let (actual, complete) = session.run_for_game(&game, 100, || {
+            let root = check_payment(&game, &request);
+            let alternate = check_payment(&hypothetical, &request);
+            let mut free = request.clone();
+            free.cost = crate::mana::ManaCost::new();
+            let changed_request = check_payment(&game, &free);
+            (root, alternate, changed_request)
+        });
+        assert!(complete);
+        assert_eq!(actual, (false, true, true));
+        let (actual, complete) = session.run_for_game(&hypothetical, 100, || check_payment(&hypothetical, &request));
+        assert!(complete && actual, "binding a different root must discard old root facts");
+    }
 
     #[test]
     fn resumable_search_matches_recursive_oracle() {

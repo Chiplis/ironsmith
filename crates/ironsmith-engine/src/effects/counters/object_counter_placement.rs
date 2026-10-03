@@ -43,6 +43,15 @@ pub(crate) fn execute_object_counter_placement(
         if !game.can_have_counter_type_placed(object, proposed.counter_type) {
             return Ok(prevented());
         }
+        // Each placement has its own proposal identity, even when an instruction
+        // places multiple counter groups under the same causal parent.
+        let parent = event.provenance();
+        let proposal = if game.provenance_graph().node(parent).is_some() {
+            game.alloc_child_event_provenance(parent, crate::events::EventKind::PutCounters)
+        } else {
+            game.provenance_graph_mut().alloc_root_event(crate::events::EventKind::PutCounters)
+        };
+        let event = event.with_provenance(proposal);
         // Entry-counter programs already participate in the enclosing entry
         // replacement event. Do not apply the same modifiers a second time.
         let processed = if ctx.replacement.entry_counter_source == Some(object) {
@@ -130,7 +139,9 @@ fn commit_object_counter_placement(
                     "object counter outcome exceeds the supported count range".into(),
                 )
             })?;
-            notification = notification.with_provenance(event.provenance());
+            let observation = game.alloc_child_event_provenance(
+                event.provenance(), crate::events::EventKind::MarkersChanged);
+            notification = notification.with_provenance(observation);
             if game.object(ctx.source).is_none()
                 && let Some(snapshot) = &ctx.source_snapshot
             {
@@ -425,4 +436,126 @@ mod removed_counter_expansion_resume_tests {
     fn zero_counter_placement_preserves_prior_additional_action_and_its_lifetime() { check_removed_placement(false); }
     #[test]
     fn captured_counter_choices_preserve_additional_action_when_placement_disappears() { check_removed_placement(true); }
+}
+
+#[cfg(test)]
+mod placement_observation_identity_tests {
+    use super::*;
+    fn check(rooted: bool, history_first: bool) {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = crate::ids::PlayerId::from_index(0);
+        let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Placement observation source")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let source = game.create_object_from_definition(&definition, alice, crate::zone::Zone::Battlefield);
+        let parent = if rooted {
+            game.provenance_graph_mut().alloc_root(crate::provenance::ProvenanceNodeKind::EffectExecution { source, controller: alice })
+        } else { crate::provenance::ProvNodeId::default() };
+        let mut ctx = ExecutionContext::new_default(source, alice).with_provenance(parent);
+        let effect = crate::effect::Effect::new(crate::effects::PutCountersEffect::new(
+            crate::object::CounterType::Charge, 1, crate::target::ChooseSpec::Source));
+        let first = crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap();
+        let second = crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap();
+        assert_eq!(first.count_or_zero() + second.count_or_zero(), 2);
+        assert_eq!(game.counter_count(source, crate::object::CounterType::Charge), 2);
+        let events: Vec<_> = first.events.into_iter().chain(second.events).collect();
+        let kind = crate::events::EventKind::MarkersChanged;
+        assert_eq!(events.len(), 2);
+        assert!(events.iter().all(|event| event.kind() == kind));
+        if history_first {
+            assert_eq!(game.turn_store.turn_history.event_kind_count(kind), 2,
+                "each committed placement must remain visible before queuing");
+        }
+        assert_ne!(events[0].provenance(), events[1].provenance(),
+            "separate placements cannot reuse their instruction parent as observation identity");
+        assert_eq!(game.turn_store.turn_history.event_kind_count(kind), 2);
+        for event in &events {
+            let observation = game.provenance_graph().node(event.provenance()).unwrap();
+            assert_eq!(observation.kind, crate::provenance::ProvenanceNodeKind::DerivedEvent { kind });
+            let proposal = game.provenance_graph().node(observation.parent.unwrap()).unwrap();
+            assert!(matches!(proposal.kind,
+                crate::provenance::ProvenanceNodeKind::RootEvent { kind: crate::events::EventKind::PutCounters }
+                | crate::provenance::ProvenanceNodeKind::DerivedEvent { kind: crate::events::EventKind::PutCounters }));
+            assert_eq!(proposal.parent, rooted.then_some(parent));
+        }
+        for event in events { game.queue_trigger_event(parent, event); }
+        let queued = game.take_pending_trigger_events();
+        assert_eq!(queued.len(), 2);
+        assert_eq!(game.turn_store.turn_history.event_kind_count(kind), 2);
+        for event in &queued { game.record_turn_history_event(event); }
+        assert_eq!(game.turn_store.turn_history.event_kind_count(kind), 2);
+    }
+    #[test] fn successive_placements_have_distinct_observation_ids() { check(true, false); }
+    #[test] fn successive_placements_preserve_each_staged_observation() { check(true, true); }
+    #[test] fn anonymous_placement_observation_control() { check(false, false); }
+}
+
+#[cfg(test)]
+mod phased_counter_placement_event_tests {
+    use super::*;
+    #[test]
+    fn phased_recipient_does_not_consume_a_counter_placement_replacement() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = crate::ids::PlayerId::from_index(0);
+        let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Phased placement recipient")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let recipient = game.create_object_from_definition(&definition, alice, crate::zone::Zone::Battlefield);
+        let sponsor = game.create_object_from_definition(&definition, alice, crate::zone::Zone::Battlefield);
+        let kind = crate::object::CounterType::Charge;
+        game.object_mut(recipient).unwrap().counters.insert(kind, 3);
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(
+            crate::replacement::ReplacementEffect::with_matcher(sponsor, alice,
+                crate::events::counters::matchers::WouldPutCountersMatcher::any(),
+                crate::replacement::ReplacementAction::Modify(crate::replacement::EventModification::Multiply(2))));
+        game.phase_out(recipient);
+        let effect = crate::effect::Effect::new(crate::effects::PutCountersEffect::new(kind, 1, crate::target::ChooseSpec::Source));
+        let mut ctx = ExecutionContext::new_default(recipient, alice);
+        let outcome = crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap();
+        assert_eq!(game.counter_count(recipient, kind), 3);
+        assert_eq!(outcome.count_or_zero(), 0);
+        assert!(outcome.events.is_empty());
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_some(),
+            "an absent phased recipient has no placement event to replace");
+        game.phase_in(recipient);
+        let next = crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap();
+        assert_eq!(next.count_or_zero(), 2);
+        assert_eq!(game.counter_count(recipient, kind), 5);
+        assert_eq!(next.events_of_type::<crate::events::MarkersChangedEvent>().count(), 1);
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+    }
+}
+
+#[cfg(test)]
+mod phased_counter_owner_event_tests {
+    use super::*;
+    #[test]
+    fn phased_recipient_owner_does_not_consume_a_counter_placement_replacement() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = crate::ids::PlayerId::from_index(0);
+        let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Phased placement recipient")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let recipient = game.create_object_from_definition(&definition, alice, crate::zone::Zone::Battlefield);
+        let sponsor = game.create_object_from_definition(&definition, alice, crate::zone::Zone::Battlefield);
+        let kind = crate::object::CounterType::Charge;
+        game.object_mut(recipient).unwrap().counters.insert(kind, 3);
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(
+            crate::replacement::ReplacementEffect::with_matcher(sponsor, alice,
+                crate::events::counters::matchers::WouldPutCountersMatcher::any(),
+                crate::replacement::ReplacementAction::Modify(crate::replacement::EventModification::Multiply(2))));
+        game.phase_out(recipient);
+        let event = crate::events::Event::put_counters(recipient, kind, 1,
+            crate::events::cause::EventCause::from_effect(sponsor, alice));
+        let mut ctx = ExecutionContext::new_default(recipient, alice);
+        let outcome = execute_object_counter_placement(&mut game, &mut ctx, event.clone()).unwrap();
+        assert_eq!(game.counter_count(recipient, kind), 3);
+        assert_eq!(outcome.count_or_zero(), 0);
+        assert!(outcome.events.is_empty());
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_some(),
+            "an absent phased recipient has no placement event to replace");
+        game.phase_in(recipient);
+        let next = execute_object_counter_placement(&mut game, &mut ctx, event.clone()).unwrap();
+        assert_eq!(next.count_or_zero(), 2);
+        assert_eq!(game.counter_count(recipient, kind), 5);
+        assert_eq!(next.events_of_type::<crate::events::MarkersChangedEvent>().count(), 1);
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+    }
 }

@@ -1,3 +1,4 @@
+import { hiddenCardMetadataForObjectFromCheckpoint } from "../src/lib/hidden-card-metadata.js";
 import { acceptedZiffleEpochs, assertZiffleEpochInputs, assertZiffleEpochVerification, isPrivateZiffleEpoch, ziffleEpochMaterial, ziffleInputDeckFields } from "../src/lib/ziffle-private-epochs.js";
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -11,7 +12,7 @@ function declaration(name) {
   return shared.slice(start, end).replace(/^export /, '');
 }
 const helpers = ['ziffleDeckHashFromCommitment', 'zifflePositionFromCommitment', 'zifflePublicPositionFromSources',
-  'normalizeShuffleOrder', 'hiddenCardMetadataForObjectFromCheckpoint', 'hiddenMetadataMatchesZifflePosition',
+  'normalizeShuffleOrder', 'hiddenMetadataMatchesZifflePosition',
   'hiddenObjectIdForOpeningFromCheckpoint', 'checkpointObjectOpeningCardName'];
 const visibleStart = source.indexOf('  async function authorizedZiffleRevealPositionsForOwner(');
 const visibleEnd = source.indexOf('  async function waitForAuthorizedZiffleRevealPositions(', visibleStart);
@@ -44,6 +45,7 @@ export function authorizationHarness({ requirements = [], stored = [], checkpoin
   };
   const materialCalls = [];
   const context = {
+    hiddenCardMetadataForObjectFromCheckpoint,
     isPrivateZiffleEpoch, ziffleInputDeckFields, assertZiffleEpochInputs, assertZiffleEpochVerification, ziffleEpochMaterial,
     acceptedEpochsForProof: (owner, _seq, preceding) => acceptedZiffleEpochs(match, history, owner, preceding),
     rememberLocalZiffleCeremonyForLookup: () => {},

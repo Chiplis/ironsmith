@@ -1198,7 +1198,10 @@ fn add_non_battlefield_ability_actions(
 
 pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
     let checked = game.continuous_query_snapshot().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
-    let game = &checked;
+    super::mana::with_checked_query(game, &checked, || compute_legal_actions_checked(&checked, player))
+}
+
+fn compute_legal_actions_checked(game: &GameState, player: PlayerId) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
     let total_started_at = PerfTimer::start();
     let mut perf = ComputeLegalActionsPerfMetrics::default();
     let empty_zone: &[ObjectId] = &[];

@@ -1,12 +1,12 @@
 import { useEffect, useRef } from 'react';
 import { paymentOptionsKey, mergePaymentOptions } from '../lib/payment-options-analysis.js';
 
-export function usePaymentOptions({ game, state, stateRef, setState }) {
+export function usePaymentOptions({ game, state, stateRef, setState, enabled = true }) {
   const cached = useRef(null);
   const pending = useRef(null);
   const key = paymentOptionsKey(state);
   useEffect(() => {
-    if (!key || state?.mana_payment?.activation_options_complete !== false
+    if (!enabled || !key || state?.mana_payment?.activation_options_complete !== false
         || !game?.getPaymentActivationOptions) return;
     let disposed = false;
     const apply = options => {
@@ -29,5 +29,5 @@ export function usePaymentOptions({ game, state, stateRef, setState }) {
       });
     }
     return () => { disposed = true; };
-  }, [game, key, state?.mana_payment, stateRef, setState]);
+  }, [enabled, game, key, state?.mana_payment, stateRef, setState]);
 }

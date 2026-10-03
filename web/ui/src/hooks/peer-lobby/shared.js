@@ -1,3 +1,4 @@
+export { hiddenCardMetadataForObjectFromCheckpoint } from "../../lib/hidden-card-metadata.js";
 import { actionRefObjectId, actionRefWithObjectId, hiddenObjectIdForHiddenRefFromCheckpoint } from "../../lib/sync-object-identity.js";
 export { actionRefObjectId, actionRefWithObjectId, hiddenObjectIdForHiddenRefFromCheckpoint };
 import { WebSocketPeer } from '../../lib/relay/websocket-peer.js';
@@ -1768,27 +1769,6 @@ export function hiddenOpeningMatchesExport(opening, exported) {
     return false;
   }
   return true;
-}
-
-export function hiddenCardMetadataForObjectFromCheckpoint(checkpoint, objectId) {
-  const normalized = Number(objectId);
-  if (!Number.isSafeInteger(normalized) || normalized < 0) return null;
-  const object = (checkpoint?.objects || []).find(
-    (entry) => Number(entry?.id) === normalized
-  );
-  const hidden = object?.hiddenCard || object?.hidden_card || null;
-  if (!hidden) return null;
-  return {
-    objectId: normalized,
-    owner: hidden.owner == null ? null : Number(hidden.owner),
-    zone: String(object?.zone || ""),
-    slot: hidden.slot == null ? null : Number(hidden.slot),
-    commitment: String(hidden.commitment || ""),
-    publicSlot: hidden.publicSlot ?? hidden.public_slot ?? null,
-    publicCommitment: String(hidden.publicCommitment || hidden.public_commitment || ""),
-    originSlot: hidden.originSlot ?? hidden.origin_slot ?? null,
-    originCommitment: String(hidden.originCommitment || hidden.origin_commitment || ""),
-  };
 }
 
 export function hiddenMetadataMatchesZifflePosition(metadata, position, positionCommitment = "") {

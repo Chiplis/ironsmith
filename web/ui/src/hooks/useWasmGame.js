@@ -38,6 +38,8 @@ const WORKER_METHODS = [
   "endOfMatchDisclosureObligations",
   "hiddenCardOpenState",
   "hiddenObjectViewableBy",
+  "getHiddenCardMetadata",
+  "getHiddenCardMetadataAtPosition",
   "exportHiddenCardOpening",
   "exportPublicAuditCheckpoint",
   "exportRedactedSyncCheckpoint",

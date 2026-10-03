@@ -1,3 +1,4 @@
+import { createOperationRevealBatch } from "../../lib/ziffle-operation-reveal-batch.js";
 import { assertMatchNotDisputed, isMatchDisputed } from "./match-lifecycle.js";
 import { acceptedZiffleEpochs, assertZiffleEpochInputs, assertZiffleEpochVerification, buildZiffleInputDeck, isPrivateZiffleEpoch, ziffleEpochMaterial, ziffleInputDeckFields } from "../../lib/ziffle-private-epochs.js";
 import { assertRuntimeVersion } from "../../lib/runtime-version.js";
@@ -4374,6 +4375,28 @@ export function usePeerLobbyValidation(base, servicesRef) {
 
 	    for (const { ceremony, entries } of ziffleGroups.values()) {
 	      if (ziffleCeremonyHasObjectOrder(ceremony)) {
+          const positions = [...new Set(entries.map(entry => Number(entry.position)))];
+          const revealPosition = createOperationRevealBatch(positions, Number(ceremony.deckCount), async () => {
+            // Preserve each position's authorization route: a newly drawn card can
+            // require the pending action while existing hand cards use visible state.
+            const tokenGroups = await Promise.all(positions.map(async position => {
+              const positionOptions = await ziffleRevealTokenOptionsForLocalHandReveal({
+                ceremony, positions: [position], options, localIndex,
+              });
+              return collectZiffleRevealTokensBatch(ceremony, [position], positionOptions);
+            }));
+            const tokens = tokenGroups.flat();
+            return currentGame.ziffleRevealCards({
+              deckCount: Number(ceremony.deckCount),
+              context: String(ceremony.context || ""),
+              keyContext: ziffleKeyContextForCeremony(ceremony),
+              keys: cloneMultiplayerPayload(ceremony.keys || []),
+              steps: cloneMultiplayerPayload(ceremony.steps || []),
+              ...ziffleInputDeckFields(ceremony),
+              cardPositions: positions,
+              tokens,
+            });
+          });
 	        for (const entry of entries) {
 	          const position = Number(entry.position);
 	          const positionCommitment =
@@ -4396,6 +4419,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	            manifest,
 	            payload,
 	            options: revealTokenOptions,
+            revealPosition,
 	          });
 	          if (!resolvedRevealSlot) {
 	            throw new Error(

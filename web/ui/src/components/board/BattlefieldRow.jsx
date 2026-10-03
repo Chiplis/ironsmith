@@ -1343,6 +1343,8 @@ export default function BattlefieldRow({
   const fitRafRef = useRef(null);
   const deferredFitRafRef = useRef(null);
   const settledFitRafRef = useRef(null);
+  const positionCaptureRafRef = useRef(null);
+  const positionCaptureRef = useRef(null);
   const pendingForceFitRef = useRef(false);
   const lastLayoutRef = useRef({
     width: -1,
@@ -1849,20 +1851,41 @@ export default function BattlefieldRow({
     return () => window.removeEventListener("resize", onResize);
   }, [scheduleFitCards]);
 
+  const captureLivePositions = useCallback(() => {
+    const row = rowRef.current;
+    if (!row || placementPreviewCard || !isPaperBattlefieldLayout || shouldFreezePaperLayout) return;
+    previousPositionsRef.current = measureLiveCardPositions(row);
+    previousCardsRef.current = displayCards;
+    previousPaperLayoutRef.current = paperLayout;
+  }, [displayCards, isPaperBattlefieldLayout, paperLayout, placementPreviewCard, shouldFreezePaperLayout]);
+
+  useLayoutEffect(() => {
+    // A freeze or preview can begin before a previously scheduled frame runs.
+    positionCaptureRef.current = captureLivePositions;
+  }, [captureLivePositions]);
+
+  const schedulePositionCapture = useCallback(() => {
+    // Keep the card metadata and geometry from the same visible frame. Multiple
+    // publications and fit notifications before that frame need only one read.
+    if (positionCaptureRafRef.current != null) return;
+    positionCaptureRafRef.current = window.requestAnimationFrame(() => {
+      positionCaptureRafRef.current = null;
+      positionCaptureRef.current?.();
+    });
+  }, []);
+
   useEffect(() => {
     if (!isPaperBattlefieldLayout || typeof window === "undefined") return undefined;
     const handleBattlefieldLayoutFitted = () => {
       const row = rowRef.current;
       if (!row || placementPreviewCard || shouldFreezePaperLayout || layoutSettleMotionsRef.current.size > 0) return;
-      previousPositionsRef.current = measureLiveCardPositions(row);
-      previousCardsRef.current = displayCards;
-      previousPaperLayoutRef.current = paperLayout;
+      schedulePositionCapture();
     };
     window.addEventListener("ironsmith:battlefield-layout-fitted", handleBattlefieldLayoutFitted);
     return () => {
       window.removeEventListener("ironsmith:battlefield-layout-fitted", handleBattlefieldLayoutFitted);
     };
-  }, [displayCards, isPaperBattlefieldLayout, paperLayout, placementPreviewCard, shouldFreezePaperLayout]);
+  }, [isPaperBattlefieldLayout, placementPreviewCard, schedulePositionCapture, shouldFreezePaperLayout]);
 
   useLayoutEffect(() => {
     const wasFrozen = previousFreezePaperLayoutRef.current;
@@ -1878,6 +1901,11 @@ export default function BattlefieldRow({
   }, [isPaperBattlefieldLayout, shouldFreezePaperLayout]);
 
   useEffect(() => () => {
+    if (positionCaptureRafRef.current != null) {
+      window.cancelAnimationFrame(positionCaptureRafRef.current);
+      positionCaptureRafRef.current = null;
+    }
+    positionCaptureRef.current = null;
     if (fitRafRef.current != null) {
       window.cancelAnimationFrame(fitRafRef.current);
       fitRafRef.current = null;
@@ -1964,11 +1992,7 @@ export default function BattlefieldRow({
       snapshotId
     ));
 
-    if (!shouldFreezePaperLayout) {
-      previousPositionsRef.current = measureLiveCardPositions(row);
-      previousCardsRef.current = displayCards;
-      previousPaperLayoutRef.current = paperLayout;
-    }
+    // The position capture below updates card metadata together with geometry.
     lastProcessedSnapshotIdRef.current = snapshotId;
     // Only removing provisional leave holds changes the rendered layout. A
     // phase-only snapshot must not force a second synchronous board render
@@ -1998,17 +2022,24 @@ export default function BattlefieldRow({
     }
     if (pendingLayoutSettlePositionsRef.current) {
       fitCards();
+      // Layout-settle animation consumes the fitted positions synchronously.
+      if (positionCaptureRafRef.current != null) {
+        window.cancelAnimationFrame(positionCaptureRafRef.current);
+        positionCaptureRafRef.current = null;
+      }
+      captureLivePositions();
+    } else {
+      schedulePositionCapture();
     }
-    previousPositionsRef.current = measureLiveCardPositions(row);
-    previousCardsRef.current = displayCards;
-    previousPaperLayoutRef.current = paperLayout;
   }, [
+    captureLivePositions,
     displayCards,
     fitCards,
     isPaperBattlefieldLayout,
     paperLayout,
     placementPreviewCard,
     shouldFreezePaperLayout,
+    schedulePositionCapture,
     state?.snapshot_id,
   ]);
 

@@ -34,14 +34,37 @@ impl EffectExecutor for RemoveUpToAnyCountersEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let max_count = resolve_value(game, &self.max_count, ctx)?.max(0) as u32;
-        if let ChooseSpec::All(filter) = self.target.unhinted() {
-            let min_count = if self.up_to { 0 } else { max_count };
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        game.clear_pending_decision_controllers();
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = execute_up_to_any_counter_removal(self, game, ctx);
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
+            context_checkpoint.restore(ctx);
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        }
+        result
+    }
+
+    fn get_target_spec(&self) -> Option<&ChooseSpec> {
+        Some(&self.target)
+    }
+
+    fn target_description(&self) -> &'static str {
+        "target to remove counters from"
+    }
+}
+
+fn execute_up_to_any_counter_removal(effect: &RemoveUpToAnyCountersEffect, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<EffectOutcome, ExecutionError> {
+        let max_count = resolve_value(game, &effect.max_count, ctx)?.max(0) as u32;
+        if let ChooseSpec::All(filter) = effect.target.unhinted() {
+            let min_count = if effect.up_to { 0 } else { max_count };
             let distributed =
                 RemoveAnyCountersAmongEffect::dynamic(min_count, max_count, filter.clone(), false);
             return distributed.execute(game, ctx);
         }
-        let target = match self.target.base() {
+        let target = match effect.target.base() {
             ChooseSpec::Player(_)
             | ChooseSpec::SpecificPlayer(_)
             | ChooseSpec::AnyTarget
@@ -52,9 +75,9 @@ impl EffectExecutor for RemoveUpToAnyCountersEffect {
             | ChooseSpec::SourceController
             | ChooseSpec::SourceOwner
             | ChooseSpec::EachPlayer(_) => {
-                resolve_single_target_from_spec(game, &self.target, ctx)?
+                resolve_single_target_from_spec(game, &effect.target, ctx)?
             }
-            _ => ResolvedTarget::Object(resolve_single_object_for_effect(game, ctx, &self.target)?),
+            _ => ResolvedTarget::Object(resolve_single_object_for_effect(game, ctx, &effect.target)?),
         };
 
         // Get available counters on the target
@@ -78,7 +101,8 @@ impl EffectExecutor for RemoveUpToAnyCountersEffect {
         .unwrap_or_default();
 
         // Count total counters available
-        let total_counters: u32 = available_counters.iter().map(|(_, c)| c).sum();
+        let total_counters: u32 = available_counters.iter().try_fold(0u32, |total, (_, count)| total.checked_add(*count)
+            .ok_or_else(|| ExecutionError::InternalError("available counter total overflow".into())))?;
 
         // The actual maximum we can remove is the lesser of max_count and total available
         let actual_max = max_count.min(total_counters);
@@ -89,7 +113,7 @@ impl EffectExecutor for RemoveUpToAnyCountersEffect {
         }
 
         // Ask the player which counters to remove using the spec-based system
-        let min_count = if self.up_to { 0 } else { actual_max };
+        let min_count = if effect.up_to { 0 } else { actual_max };
         let decision_target = match target {
             ResolvedTarget::Object(id) => Target::Object(id),
             ResolvedTarget::Player(id) => Target::Player(id),
@@ -113,55 +137,43 @@ impl EffectExecutor for RemoveUpToAnyCountersEffect {
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
         }
-        if selections.iter().map(|(_, count)| *count).sum::<u32>() < min_count {
+        if selections.iter().try_fold(0u32, |total, (_, count)| total.checked_add(*count)
+            .ok_or_else(|| ExecutionError::InternalError("selected counter total overflow".into())))? < min_count {
             selections = mandatory_fallback;
         }
 
-        // Validate and apply the selections using centralized method
-        let mut total_removed = 0u32;
-        let mut outcome = EffectOutcome::count(0);
-
-        for (counter_type, to_remove) in selections {
-            // Validate: can't remove more than max_total
-            if total_removed >= actual_max {
-                break;
-            }
-            let remaining = actual_max - total_removed;
-            let amount_to_remove = to_remove.min(remaining);
-
-            let removal = match target {
-                ResolvedTarget::Object(target_id) => game.remove_counters(
-                    target_id,
-                    counter_type,
-                    amount_to_remove,
-                    Some(ctx.source),
-                    Some(ctx.controller),
-                ),
-                ResolvedTarget::Player(target_player) => game.remove_player_counters_with_source(
-                    target_player,
-                    counter_type,
-                    amount_to_remove,
-                    Some(ctx.source),
-                    Some(ctx.controller),
-                ),
+        let mut selected_total = 0u32;
+        let mut removed_total = 0u32;
+        let mut outcomes = Vec::new();
+        for (counter_type, requested) in selections {
+            if selected_total >= actual_max { break; }
+            let amount = requested.min(actual_max - selected_total);
+            if amount == 0 { continue; }
+            let outcome = match target {
+                ResolvedTarget::Object(target_id) => {
+                    let event = crate::events::Event::remove_counters(target_id, counter_type, amount)
+                        .with_provenance(ctx.provenance);
+                    super::remove_counters::execute_counter_removal_event(game, ctx, event)?
+                }
+                // Player-counter removal still lacks a replaceable player carrier.
+                // Preserve its existing primitive path until that model is migrated.
+                ResolvedTarget::Player(player) => {
+                    if let Some((removed, event)) = game.remove_player_counters_with_source(player, counter_type, amount, Some(ctx.source), Some(ctx.controller)) {
+                        let count = i32::try_from(removed).map_err(|_| ExecutionError::InternalError("player removal exceeds the supported outcome range".into()))?;
+                        EffectOutcome::count(count).with_event(event)
+                    } else { EffectOutcome::count(0) }
+                }
             };
-            if let Some((removed, event)) = removal {
-                outcome = outcome.with_event(event);
-                total_removed += removed;
-            }
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            let removed = u32::try_from(outcome.count_or_zero()).map_err(|_| ExecutionError::InternalError("invalid counter-removal count".into()))?;
+            removed_total = removed_total.checked_add(removed).ok_or_else(|| ExecutionError::InternalError("counter-removal total overflow".into()))?;
+            selected_total += amount;
+            outcomes.push(outcome);
         }
-
-        outcome.set_value(crate::effect::OutcomeValue::Count(total_removed as i32));
+        let count = i32::try_from(removed_total).map_err(|_| ExecutionError::InternalError("counter-removal total exceeds outcome range".into()))?;
+        let mut outcome = EffectOutcome::aggregate(outcomes);
+        outcome.set_value(crate::effect::OutcomeValue::Count(count));
         Ok(outcome)
-    }
-
-    fn get_target_spec(&self) -> Option<&ChooseSpec> {
-        Some(&self.target)
-    }
-
-    fn target_description(&self) -> &'static str {
-        "target to remove counters from"
-    }
 }
 
 #[cfg(test)]

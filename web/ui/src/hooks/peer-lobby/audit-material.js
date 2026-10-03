@@ -1,4 +1,5 @@
 import { isPrivateZiffleEpoch, ziffleInputDeckFields } from "../../lib/ziffle-private-epochs.js";
+import { hiddenCardMetadataAtPositionFromCheckpoint } from "../../lib/hidden-card-metadata.js";
 import { findZiffleDisclosureOrigin, ziffleDisclosureDueForPlayer } from '../../lib/ziffle-disclosure-origin.js';
 import {
   INITIAL_AUDIT_STATE_HASH,
@@ -227,6 +228,9 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
     }
 	    let checkpoint = null;
 	    try {
+        if (typeof currentGame.getHiddenCardMetadata === "function") {
+          return await currentGame.getHiddenCardMetadata(normalized);
+        }
 	      checkpoint = await currentGame.exportSyncCheckpoint();
 	    } catch {
 	      return null;
@@ -243,16 +247,17 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
     if (!Number.isSafeInteger(owner) || owner < 0 || position == null) return null;
     const currentGame = gameRef.current;
     if (typeof currentGame?.exportSyncCheckpoint !== "function") return null;
-    const checkpoint = await currentGame.exportSyncCheckpoint();
+    const candidates = typeof currentGame.getHiddenCardMetadataAtPosition === "function"
+      ? await currentGame.getHiddenCardMetadataAtPosition(owner, position, commitment)
+      : hiddenCardMetadataAtPositionFromCheckpoint(await currentGame.exportSyncCheckpoint(), owner, position, commitment);
     const matches = [];
-    for (const object of checkpoint?.objects || []) {
-      const metadata = hiddenCardMetadataForObjectFromCheckpoint(checkpoint, object.id);
+    for (const metadata of candidates) {
       if (!metadata || Number(metadata.owner) !== owner) continue;
       const currentCommitment = String(metadata.publicCommitment || metadata.commitment || "");
       const currentPosition = metadata.publicSlot ?? metadata.slot;
       if (currentCommitment !== commitment || Number(currentPosition) !== position) continue;
       const anchor = ziffleOriginAnchorFromMetadata(metadata);
-      if (anchor) matches.push({ ...anchor, objectId: Number(object.id), metadata });
+      if (anchor) matches.push({ ...anchor, objectId: Number(metadata.objectId), metadata });
     }
     if (matches.length > 1) throw new Error("Ziffle position has ambiguous immutable origin metadata");
     if (matches[0]) return matches[0];
@@ -903,6 +908,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
     manifest = null,
     payload = null,
     options = {},
+    revealPosition = null,
   } = {}) {
     const normalizedPosition = Number(position);
     const normalizedObjectId = Number(objectId);
@@ -962,17 +968,23 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
       && normalizedPosition >= 0
       && ceremony?.deckHash
     ) {
-      const tokens = await collectZiffleRevealTokens(ceremony, normalizedPosition, options);
-      const reveal = await currentGame.ziffleRevealCard({
-        deckCount: Number(ceremony.deckCount),
-        context: String(ceremony.context || ""),
-        keyContext: ziffleKeyContextForCeremony(ceremony),
-        keys: cloneMultiplayerPayload(ceremony.keys || []),
-        steps: cloneMultiplayerPayload(ceremony.steps || []),
-        ...ziffleInputDeckFields(ceremony),
-        cardPosition: normalizedPosition,
-        tokens,
-      });
+      // The callback is a same-operation batch of cryptographically checked reveals,
+      // never a caller-supplied slot or a cache across checkpoint changes.
+      const reveal = typeof revealPosition === "function"
+        ? await revealPosition(normalizedPosition)
+        : await (async () => {
+          const tokens = await collectZiffleRevealTokens(ceremony, normalizedPosition, options);
+          return currentGame.ziffleRevealCard({
+            deckCount: Number(ceremony.deckCount),
+            context: String(ceremony.context || ""),
+            keyContext: ziffleKeyContextForCeremony(ceremony),
+            keys: cloneMultiplayerPayload(ceremony.keys || []),
+            steps: cloneMultiplayerPayload(ceremony.steps || []),
+            ...ziffleInputDeckFields(ceremony),
+            cardPosition: normalizedPosition,
+            tokens,
+          });
+        })();
       const revealedSlot = Number(reveal?.originalSlot);
       if (Number.isSafeInteger(revealedSlot) && revealedSlot >= 0) {
         cryptographicShuffleOriginalSlot = revealedSlot;

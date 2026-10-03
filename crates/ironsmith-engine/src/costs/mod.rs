@@ -649,6 +649,49 @@ pub(crate) fn total_cost_to_payment_effects(
         .collect()
 }
 
+/// Recognize a plain, single-choice cost program. The selected mana component
+/// belongs to the spell's total cost, not an independently funded effect payment.
+/// More elaborate modal programs retain their normal effect execution path.
+pub(crate) fn simple_modal_mana_cost_branches(cost: &crate::costs::Cost)
+    -> Option<Vec<(String, Vec<crate::costs::Cost>)>>
+{
+    let modal = cost.effect_ref()?.downcast_ref::<crate::effects::ChooseModeEffect>()?;
+    // Effect's PartialEq intentionally returns false, even for a clone. Check
+    // the choice policy independently of the effects retained in its branches.
+    let mut policy = modal.clone();
+    policy.modes.clear();
+    policy.mode_point_costs.clear();
+    if modal.mode_point_costs.iter().any(|points| *points != 1)
+        || policy != crate::effects::ChooseModeEffect::choose_one(Vec::new())
+    {
+        return None;
+    }
+    let mut has_mana = false;
+    let mut branches = Vec::new();
+    for mode in &modal.modes {
+        // Multi-effect programs can carry ordered outcome dependencies. Leave
+        // them intact until their payment contributions can preserve those facts.
+        if mode.effects.len() != 1 { return None; }
+        let mut components = Vec::new();
+        for effect in &mode.effects {
+            if let Some(payment) = effect.downcast_ref::<crate::effects::PayManaEffect>() {
+                if payment.player != crate::target::ChooseSpec::Player(crate::target::PlayerFilter::You)
+                    || payment.x_value.is_some() || payment.x_maximum.is_some()
+                    || payment.cost.pips().iter().flatten().any(|symbol| matches!(symbol, crate::mana::ManaSymbol::X))
+                {
+                    return None;
+                }
+                has_mana = true;
+                components.push(crate::costs::Cost::mana(payment.cost.clone()));
+            } else {
+                components.push(crate::costs::Cost::validated_effect(effect.clone()));
+            }
+        }
+        branches.push((mode.source_text.clone(), components));
+    }
+    has_mana.then_some(branches)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

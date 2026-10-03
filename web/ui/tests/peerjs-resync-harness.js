@@ -478,7 +478,8 @@ export async function waitForFullUiSync(hostPage, guestPage, label, timeoutMs = 
   );
 }
 
-export async function waitForFullUiPair(hostPage, guestPage, predicate, label, timeoutMs = 60000) {
+export async function waitForFullUiPair(hostPage, guestPage, predicate, label, timeoutMs = 60000, pollIntervalMs = 250) {
+  assert.ok(Number.isFinite(pollIntervalMs) && pollIntervalMs > 0, 'Positive UI observation interval required');
   const started = Date.now();
   let lastHost = null;
   let lastGuest = null;
@@ -490,7 +491,7 @@ export async function waitForFullUiPair(hostPage, guestPage, predicate, label, t
     if (lastHost && lastGuest && predicate(lastHost, lastGuest)) {
       return { host: lastHost, guest: lastGuest };
     }
-    await sleep(250);
+    await sleep(pollIntervalMs);
   }
   const summarize = (snap) => ({
     status: snap?.status,

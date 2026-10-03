@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use crate::color::ColorSet;
 use crate::events::EnterBattlefieldEvent;
@@ -55,6 +56,39 @@ impl TurnEventRecord {
     }
 }
 
+/// Ordered immutable observations shared by speculative game branches. An
+/// append/retain/truncate changes only this collection; recorded snapshots are
+/// never edited through the collection's API.
+#[derive(Clone, Default)]
+pub struct TurnEventRecords(im::Vector<Arc<TurnEventRecord>>);
+
+impl std::fmt::Debug for TurnEventRecords {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.debug_list().entries(self.iter()).finish()
+    }
+}
+
+impl TurnEventRecords {
+    pub fn len(&self) -> usize { self.0.len() }
+    pub fn is_empty(&self) -> bool { self.0.is_empty() }
+    pub fn iter(&self) -> impl DoubleEndedIterator<Item = &TurnEventRecord> + ExactSizeIterator {
+        self.0.iter().map(Arc::as_ref)
+    }
+    pub fn last(&self) -> Option<&TurnEventRecord> { self.0.back().map(Arc::as_ref) }
+    pub(crate) fn last_shared(&self) -> Option<Arc<TurnEventRecord>> { self.0.back().cloned() }
+    pub fn push(&mut self, record: TurnEventRecord) { self.0.push_back(Arc::new(record)); }
+    pub fn clear(&mut self) { self.0.clear(); }
+    pub fn truncate(&mut self, len: usize) { self.0.truncate(len); }
+    pub fn retain(&mut self, mut keep: impl FnMut(&TurnEventRecord) -> bool) {
+        self.0.retain(|record| keep(record));
+    }
+}
+
+impl std::ops::Index<usize> for TurnEventRecords {
+    type Output = TurnEventRecord;
+    fn index(&self, index: usize) -> &Self::Output { &self.0[index] }
+}
+
 /// Unified owner for turn-scoped bookkeeping and history.
 #[derive(Debug, Clone, Default)]
 pub struct TurnHistory {
@@ -108,8 +142,8 @@ pub struct TurnHistory {
     pub spell_warped_this_turn: bool,
     /// Spells each player has cast this game (never cleared between turns).
     pub spells_cast_this_game: HashMap<PlayerId, u32>,
-    pub event_records: Vec<TurnEventRecord>,
-    pub staged_event_records: Vec<TurnEventRecord>,
+    pub event_records: TurnEventRecords,
+    pub staged_event_records: TurnEventRecords,
     /// Index into `event_records` where the simultaneous action whose events
     /// are being matched began (CR 603.2c: e.g. all combat damage of one
     /// step, CR 510.2). Records from that index on are the same event, not
@@ -1838,6 +1872,56 @@ mod tests {
             SpellCastEvent::new_with_snapshot(spell, caster, Zone::Hand, snapshot),
             ProvNodeId::default(),
         )
+    }
+
+    #[test]
+    fn persistent_turn_records_preserve_staging_batches_and_branch_isolation() {
+        let mut game = GameState::new(vec!["Alice".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let card = CardDefinitionBuilder::new(CardId::new(), "Recorded object")
+            .card_types(vec![CardType::Creature]).build();
+        let object = game.create_object_from_definition(&card, alice, Zone::Battlefield);
+        let snapshot = ObjectSnapshot::from_object(game.object(object).unwrap(), &game);
+        let mut provenance = ProvenanceGraph::default();
+        let mut history = TurnHistory::default();
+        for amount in 1..=130 {
+            let event = TriggerEvent::new_with_provenance(LifeLossEvent::from_effect(alice, amount),
+                provenance.alloc_root_event(EventKind::LifeLoss));
+            history.record_event(&event, Some(snapshot.clone()), Some(snapshot.clone()));
+        }
+        let previous = history.clone();
+        let mut branch = history.clone();
+        assert!(std::ptr::eq(&history.event_records[64], &branch.event_records[64]));
+        assert!(std::ptr::eq(history.event_records[64].object_snapshot.as_ref().unwrap(),
+            branch.event_records[64].object_snapshot.as_ref().unwrap()));
+        let mark = history.begin_simultaneous_batch();
+        assert_eq!(mark, None);
+        assert_eq!(history.simultaneous_batch_start, Some(130));
+        assert_eq!(branch.simultaneous_batch_start, None);
+        let staged_id = provenance.alloc_root_event(EventKind::LifeLoss);
+        let staged = TriggerEvent::new_with_provenance(LifeLossEvent::from_effect(alice, 2), staged_id);
+        history.stage_event(&staged, Some(snapshot.clone()), None);
+        let replacement = TriggerEvent::new_with_provenance(LifeLossEvent::from_effect(alice, 3), staged_id);
+        history.stage_event(&replacement, Some(snapshot.clone()), None);
+        assert_eq!(history.staged_event_records.len(), 1);
+        assert_eq!(history.projected_records().count(), 131);
+        let staged_branch = history.clone();
+        history.record_event(&replacement, Some(snapshot.clone()), None);
+        assert!(history.staged_event_records.is_empty());
+        assert_eq!(staged_branch.staged_event_records.len(), 1);
+        assert_eq!(history.event_kind_count(EventKind::LifeLoss), 131);
+        assert_eq!(history.total_life_lost_for_players(&[alice]), 8518);
+        history.end_simultaneous_batch(mark);
+        assert_eq!(history.simultaneous_batch_start, None);
+        branch.event_records.truncate(65);
+        assert_eq!(branch.event_records.len(), 65);
+        assert_eq!(previous.event_records.len(), 130);
+        assert_eq!(previous.event_records.iter().rev().next().unwrap().event
+            .downcast::<LifeLossEvent>().unwrap().amount, 130);
+        history.clear_for_new_turn();
+        assert!(history.event_records.is_empty());
+        assert_eq!(previous.total_life_lost_for_players(&[alice]), 8515);
+        assert_eq!(staged_branch.projected_records().count(), 131);
     }
 
     #[test]

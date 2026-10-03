@@ -533,12 +533,14 @@ struct SyncExecutableState {
     objects:
         Vec<ironsmith_runtime_catalog::artifact_materializer::RetainedOccurrenceLiveObject<u32>>,
     continuous: ironsmith_runtime_catalog::artifact_materializer::RetainedGraphRegisteredState<u32>,
+    grants: ironsmith_runtime_catalog::artifact_materializer::RetainedOccurrenceGrantRegistry<u32>,
 }
 
 struct RestoredSyncExecutableState {
     definitions: Vec<CardDefinition>,
     objects: Vec<Object>,
     continuous: ironsmith::continuous::RegisteredContinuousEffectState,
+    grants: ironsmith::grant_registry::RegisteredGrantState,
 }
 
 impl SyncExecutableState {
@@ -550,6 +552,7 @@ impl SyncExecutableState {
         registry: &ironsmith::cards::CardRegistry,
         objects: Vec<Object>,
         continuous: ironsmith::continuous::RegisteredContinuousEffectState,
+        grants: ironsmith::grant_registry::RegisteredGrantState,
     ) -> Result<Self, String> {
         use ironsmith_runtime_catalog::artifact_materializer::{
             OccurrenceBindingError, StaticAbilityOccurrenceEncoder,
@@ -600,6 +603,8 @@ impl SyncExecutableState {
         probe
             .encode_registered_state_with_card_graph(continuous.clone(), &mut discover)
             .map_err(|e| e.to_string())?;
+        probe.encode_grant_registry(grants.clone(), &mut discover)
+            .map_err(|e| e.to_string())?;
         drop(discover);
         let graph: Vec<_> = graph.into_iter().collect();
         let graph_card_count =
@@ -634,12 +639,15 @@ impl SyncExecutableState {
         let continuous = encoder
             .encode_registered_state_with_card_graph(continuous, bind)
             .map_err(|e| e.to_string())?;
+        let grants = encoder.encode_grant_registry(grants, bind)
+            .map_err(|e| e.to_string())?;
         Ok(Self {
             graph_card_count,
             occurrences: encoder.into_table(),
             definitions,
             objects,
             continuous,
+            grants,
         })
     }
 
@@ -704,6 +712,8 @@ impl SyncExecutableState {
         let continuous = decoder
             .restore_registered_state_with_card_graph(self.continuous.clone(), bind)
             .map_err(|e| e.to_string())?;
+        let grants = decoder.restore_grant_registry(self.grants.clone(), bind)
+            .map_err(|e| e.to_string())?;
         // Validate descriptor identity, allocators, chronology and latches now,
         // rather than leaving a partially decoded world for the owner to reject.
         let mut manager = ironsmith::continuous::ContinuousEffectManager::new();
@@ -712,8 +722,42 @@ impl SyncExecutableState {
             definitions,
             objects,
             continuous,
+            grants,
         })
     }
+}
+
+// Scalar descriptors have no executable payloads or native CardId references.
+// Keep the complete registration state (including allocator gaps and latches),
+// but fail closed until an owning, perspective-approved executable graph exists.
+type SyncScalarModification = ironsmith::continuous::ContinuousModification<(), (), (), (), (), ()>;
+type SyncRegisteredContinuousState = ironsmith::continuous::RegisteredContinuousEffectState<
+    ironsmith::continuous::ContinuousEffect<SyncScalarModification, (), ()>>;
+
+fn unsupported_checkpoint_effect_payload<T, U>(_: T) -> Result<U, String> {
+    Err("registered continuous effect requires an approved executable identity graph".into())
+}
+
+fn retain_scalar_registered_effects(
+    state: ironsmith::continuous::RegisteredContinuousEffectState,
+) -> Result<SyncRegisteredContinuousState, String> {
+    state.try_map_effects(|effect| effect.try_map_payloads(
+        |modification| modification.try_map_payloads(
+            unsupported_checkpoint_effect_payload, unsupported_checkpoint_effect_payload,
+            unsupported_checkpoint_effect_payload, unsupported_checkpoint_effect_payload,
+            unsupported_checkpoint_effect_payload, unsupported_checkpoint_effect_payload),
+        unsupported_checkpoint_effect_payload, unsupported_checkpoint_effect_payload))
+}
+
+fn restore_scalar_registered_effects(
+    state: SyncRegisteredContinuousState,
+) -> Result<ironsmith::continuous::RegisteredContinuousEffectState, String> {
+    state.try_map_effects(|effect| effect.try_map_payloads(
+        |modification| modification.try_map_payloads(
+            unsupported_checkpoint_effect_payload, unsupported_checkpoint_effect_payload,
+            unsupported_checkpoint_effect_payload, unsupported_checkpoint_effect_payload,
+            unsupported_checkpoint_effect_payload, unsupported_checkpoint_effect_payload),
+        unsupported_checkpoint_effect_payload, unsupported_checkpoint_effect_payload))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -723,6 +767,9 @@ pub(crate) struct SyncCheckpoint {
     /// Absent only in legacy checkpoints that did not preserve chronology.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     continuous_timestamps: Option<SyncContinuousTimestamps>,
+    /// Missing only in legacy checkpoints; never infer descriptors from final colors/control.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    registered_continuous: Option<SyncRegisteredContinuousState>,
     format: MatchFormatInput,
     perspective: u8,
     snapshot_serial: u64,
@@ -805,6 +852,11 @@ struct SyncRestartBattlefieldEntry {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SyncRulesState {
+    /// Plain public counts, keyed by exact incarnation (never stable card id).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    regeneration_shields: Vec<(u64, u32)>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    regenerated_this_turn: Vec<(u64, u32)>,
     /// Main-game combat. Grand Melee lanes carry their own combat instead.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     combat: Option<SyncGrandMeleeCombat>,
@@ -2950,6 +3002,9 @@ impl WasmGame {
         Ok(SyncCheckpoint {
             version: SYNC_CHECKPOINT_VERSION,
             continuous_timestamps: Some(SyncContinuousTimestamps::from_game(&self.game)),
+            registered_continuous: Some(retain_scalar_registered_effects(
+                self.game.effect_store.continuous_effects.registered_state())
+                .map_err(|error| JsValue::from_str(&error))?),
             format: self.match_format,
             perspective: self.perspective.0,
             snapshot_serial: self.snapshot_serial,
@@ -3208,7 +3263,10 @@ impl WasmGame {
                 })
             })
             .collect::<Result<Vec<_>, String>>()?;
+        let (regeneration_shields, regenerated_this_turn) = self.game.regeneration_state();
         Ok(SyncRulesState {
+            regeneration_shields: regeneration_shields.into_iter().map(|(id, count)| (id.0, count)).collect(),
+            regenerated_this_turn: regenerated_this_turn.into_iter().map(|(id, count)| (id.0, count)).collect(),
             combat: if grand_melee {
                 None
             } else {
@@ -4678,6 +4736,10 @@ impl WasmGame {
         }
         self.game.set_deploy_creatures(checkpoint.deploy_creatures);
         self.restore_sync_rules_state(&checkpoint.rules, checkpoint.grand_melee.is_some());
+        self.game.restore_regeneration_state(
+            checkpoint.rules.regeneration_shields.iter().map(|&(id, count)| (ObjectId::from_raw(id), count)).collect(),
+            checkpoint.rules.regenerated_this_turn.iter().map(|&(id, count)| (ObjectId::from_raw(id), count)).collect(),
+        )?;
         self.restore_hidden_claim_state(&checkpoint.rules)?;
 
         for object in checkpoint.objects.iter() {
@@ -4760,7 +4822,19 @@ impl WasmGame {
             // must come from actual effects, never a reconstructed assignment.
         }
 
-        if let Some(timestamps) = checkpoint.continuous_timestamps {
+        if let Some(registered) = checkpoint.registered_continuous {
+            let registered = restore_scalar_registered_effects(registered)?;
+            if registered.effects.iter().any(|effect| !player_ids.contains(&effect.controller.0)) {
+                return Err("registered continuous effect has invalid captured controller".into());
+            }
+            if let Some(timestamps) = checkpoint.continuous_timestamps {
+                if timestamps.into_runtime()? != registered.timestamps {
+                    return Err("registered continuous state contradicts checkpoint chronology".into());
+                }
+            }
+            self.game.effect_store.continuous_effects.restore_registered_state(registered)
+                .map_err(|error| format!("invalid registered continuous state: {error}"))?;
+        } else if let Some(timestamps) = checkpoint.continuous_timestamps {
             self.game
                 .restore_continuous_timestamp_state(timestamps.into_runtime()?)
                 .map_err(|error| format!("invalid continuous chronology: {error}"))?;
@@ -4902,6 +4976,56 @@ impl WasmGame {
 #[cfg(test)]
 mod sync_checkpoint_tests {
     use super::*;
+
+    #[test]
+    fn public_audit_is_independent_of_local_definition_registration_order() {
+        let _guard = crate::test_id_counter_guard();
+        fn build(reverse: bool) -> (WasmGame, Vec<ObjectId>) {
+            let mut wasm = WasmGame::new();
+            wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+            let flying = ironsmith::static_abilities::StaticAbility::flying();
+            let definitions: Vec<_> = ["Public graph A", "Public graph B"].into_iter()
+                .enumerate().map(|(index, name)| {
+                    let raw = if reverse { 9001 - index as u32 } else { 8000 + index as u32 };
+                    ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::from_raw(raw), name)
+                        .card_types(vec![CardType::Creature])
+                        .power_toughness(ironsmith::card::PowerToughness::fixed(1, 1))
+                        .with_ability(ironsmith::Ability::static_ability(flying.clone()))
+                        .build()
+                }).collect();
+            if reverse {
+                wasm.registry.register(ironsmith::cards::builders::CardDefinitionBuilder::new(
+                    CardId::from_raw(9900), "Private unobserved registration")
+                    .card_types(vec![CardType::Sorcery]).with_spell_effect(vec![Effect::gain_life(7777)])
+                    .build());
+                for definition in definitions.iter().rev() { wasm.registry.register(definition.clone()); }
+            } else {
+                for definition in &definitions { wasm.registry.register(definition.clone()); }
+            }
+            let ids = definitions.iter().map(|definition| wasm.game.create_object_from_definition(
+                definition, PlayerId::from_index(0), Zone::Battlefield)).collect();
+            wasm.game.refresh_continuous_state().unwrap();
+            (wasm, ids)
+        }
+        let (left, left_ids) = build(false);
+        let (mut right, right_ids) = build(true);
+        assert_eq!(left_ids, right_ids, "same public gameplay identities");
+        assert_ne!(left.game.object(left_ids[0]).unwrap().card,
+            right.game.object(right_ids[0]).unwrap().card);
+        let public = serde_json::to_value(left.build_public_audit_checkpoint()).unwrap();
+        assert_eq!(public, serde_json::to_value(right.build_public_audit_checkpoint()).unwrap());
+        right.apply_sync_checkpoint(serde_json::from_value(
+            serde_json::to_value(left.build_sync_checkpoint()).unwrap()).unwrap()).unwrap();
+        assert_eq!(public, serde_json::to_value(right.build_public_audit_checkpoint()).unwrap());
+        let static_id = |id| right.game.object(id).unwrap().abilities.iter().find_map(|ability| {
+            match &ability.kind {
+                AbilityKind::Static(value) => Some(value.instance_id()),
+                _ => None,
+            }
+        }).unwrap();
+        assert_eq!(static_id(right_ids[0]), static_id(right_ids[1]),
+            "shared receiver occurrences must remain shared");
+    }
 
     #[test]
     fn ninjutsu_destination_survives_stack_checkpoint_serialization() {
@@ -7693,6 +7817,118 @@ mod sync_checkpoint_tests {
     }
 
     #[test]
+    fn sync_checkpoint_preserves_structured_token_abilities_without_text_reparsing() {
+        let _guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let definition = ironsmith::cards::builders::CardDefinitionBuilder::new(
+            CardId::new(), "Structured checkpoint token")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .power_toughness(ironsmith::card::PowerToughness::fixed(1, 1))
+            .with_ability(ironsmith::Ability::static_ability(
+                ironsmith::static_abilities::StaticAbility::flying()))
+            .with_ability(ironsmith::Ability::mana(ironsmith::TotalCost::free(),
+                vec![ironsmith::mana::ManaSymbol::Blue]))
+            .build();
+        host.registry.register(definition.clone());
+        let token = host.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        // Display text is deliberately not a program: checkpoint correctness
+        // must preserve the structured ability graph and its choices/costs.
+        host.game.object_mut(token).unwrap().compiled_card_text = "Display only".into();
+        assert_eq!(host.game.object(token).unwrap().abilities.len(), 2);
+        let checkpoint: SyncCheckpoint = serde_json::from_value(
+            serde_json::to_value(host.build_sync_checkpoint()).unwrap()).unwrap();
+        let mut guest = WasmGame::new();
+        guest.apply_sync_checkpoint(checkpoint).expect("token checkpoint imports");
+        let restored = guest.game.object(token).unwrap();
+        assert_eq!(restored.kind, ironsmith::object::ObjectKind::Token);
+        assert_eq!(restored.abilities.len(), 2,
+            "successful checkpoint import must retain both static and activated token abilities");
+        assert_eq!(restored.compiled_card_text.as_ref(), "Display only");
+        assert!(matches!(&restored.abilities[0].kind, ironsmith::ability::AbilityKind::Static(_)));
+        assert!(matches!(&restored.abilities[1].kind, ironsmith::ability::AbilityKind::Activated(_)));
+    }
+
+    #[test]
+    fn sync_checkpoint_preserves_granted_public_zone_permissions_and_expiry() {
+        let _guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let definition = CardDefinition::new(ironsmith::CardBuilder::new(
+            CardId::new(), "Granted checkpoint spell")
+            .card_types(vec![CardType::Sorcery]).build());
+        host.registry.register(definition.clone());
+        let card = host.game.create_object_from_definition(&definition, alice, Zone::Exile);
+        host.game.effect_store.grant_registry.grant_play_from_to_card(
+            card, Zone::Exile, alice, Default::default(),
+            ironsmith::grant_registry::GrantSource::Effect {
+                source_id: card, expires_end_of_turn: host.game.turn.turn_number,
+            });
+        let original = host.game.effect_store.grant_registry.granted_play_from_for_card(
+            &host.game, card, Zone::Exile, alice);
+        assert_eq!(original.len(), 1);
+        let checkpoint: SyncCheckpoint = serde_json::from_value(
+            serde_json::to_value(host.build_sync_checkpoint()).unwrap()).unwrap();
+        let mut guest = WasmGame::new();
+        guest.registry.register(definition);
+        guest.apply_sync_checkpoint(checkpoint).expect("permission checkpoint imports");
+        let imported = guest.game.effect_store.grant_registry.granted_play_from_for_card(
+            &guest.game, card, Zone::Exile, alice);
+        assert_eq!(imported.len(), 1,
+            "successful import must not remove a live public-zone cast permission");
+        assert_eq!(imported[0].permission_identity, original[0].permission_identity);
+        guest.game.turn.turn_number += 1;
+        assert!(guest.game.effect_store.grant_registry.granted_play_from_for_card(
+            &guest.game, card, Zone::Exile, alice).is_empty(), "expiry remains effective");
+        assert_eq!(host.game.effect_store.grant_registry.granted_play_from_for_card(
+            &host.game, card, Zone::Exile, alice).len(), 1, "receiver expiry does not mutate sender");
+    }
+
+    #[test]
+    fn sync_checkpoint_preserves_regeneration_shields_and_departed_turn_counts() {
+        let _guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let definition = CardDefinition::new(ironsmith::CardBuilder::new(
+            CardId::new(), "Regeneration checkpoint permanent")
+            .card_types(vec![CardType::Artifact]).build());
+        host.registry.register(definition.clone());
+        let permanent = host.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let departed = host.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        host.game.add_regeneration_shield(permanent, 2);
+        host.game.add_regeneration_shield(departed, 1);
+        assert!(host.game.use_regeneration_shield(permanent));
+        assert!(host.game.use_regeneration_shield(departed));
+        host.game.move_object(departed, Zone::Graveyard,
+            ironsmith::events::cause::EventCause::effect()).unwrap();
+        assert_eq!(host.game.regenerated_this_turn_count(departed), 1);
+        let checkpoint: SyncCheckpoint = serde_json::from_value(
+            serde_json::to_value(host.build_sync_checkpoint()).unwrap()).unwrap();
+        let mut guest = WasmGame::new();
+        guest.registry.register(definition);
+        guest.apply_sync_checkpoint(checkpoint.clone()).unwrap();
+        assert_eq!(guest.game.regeneration_state(), host.game.regeneration_state());
+        assert!(guest.game.use_regeneration_shield(permanent));
+        assert!(!guest.game.use_regeneration_shield(permanent));
+        assert_eq!(guest.game.regenerated_this_turn_count(permanent), 2);
+        assert_eq!(guest.game.regeneration_shield_count(permanent), 0);
+        assert_eq!(host.game.regeneration_shield_count(permanent), 1,
+            "receiver consumption must not mutate sender");
+        assert_eq!(guest.game.regenerated_this_turn_count(departed), 1,
+            "departed incarnation history remains available until cleanup");
+        let before = guest.game.regeneration_state();
+        let mut malformed = checkpoint;
+        malformed.rules.regeneration_shields.push((permanent.0, 9));
+        assert!(guest.apply_sync_checkpoint(malformed).unwrap_err().contains("duplicate regeneration"));
+        assert_eq!(guest.game.regeneration_state(), before,
+            "invalid checkpoint must not partially replace either count table");
+    }
+
+    #[test]
     fn sync_checkpoint_preserves_registered_color_effect_and_its_turn_anchor() {
         let _id_counter_guard = crate::test_id_counter_guard();
         let alice = PlayerId::from_index(0);
@@ -7709,7 +7945,8 @@ mod sync_checkpoint_tests {
         host.game.refresh_continuous_state().expect("registered color completes");
         assert_eq!(host.game.current_colors(permanent), Some(ColorSet::RED));
         let expected_effects = host.game.effect_store.continuous_effects.registered_state();
-        let checkpoint = host.build_sync_checkpoint();
+        let checkpoint: SyncCheckpoint = serde_json::from_value(
+            serde_json::to_value(host.build_sync_checkpoint()).unwrap()).unwrap();
         let mut guest = WasmGame::new();
         guest.registry.register(definition);
         guest.apply_sync_checkpoint(checkpoint).expect("color effect checkpoint imports");
@@ -7722,6 +7959,50 @@ mod sync_checkpoint_tests {
             peer.game.refresh_continuous_state().expect("effect removal completes");
             assert_eq!(peer.game.current_colors(permanent), Some(ColorSet::COLORLESS));
         }
+    }
+
+    #[test]
+    fn registered_checkpoint_carrier_rejects_executable_payloads_without_dropping_them() {
+        let _guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let source = ObjectId::from_raw(9001);
+        let mut manager = ironsmith::continuous::ContinuousEffectManager::new();
+        manager.add_effect(ironsmith::continuous::ContinuousEffect::from_resolution(
+            source, alice, vec![source], ironsmith::continuous::Modification::SetColors(ColorSet::RED)));
+        let scalar = manager.registered_state();
+        let wire = retain_scalar_registered_effects(scalar.clone()).unwrap();
+        assert_eq!(restore_scalar_registered_effects(wire).unwrap(), scalar);
+        manager.add_effect(ironsmith::continuous::ContinuousEffect::from_resolution(
+            source, alice, vec![source], ironsmith::continuous::Modification::AddAbilityGeneric(
+                ironsmith::Ability::mana(ironsmith::TotalCost::free(), vec![ironsmith::mana::ManaSymbol::Green]))));
+        let original = manager.registered_state();
+        assert!(retain_scalar_registered_effects(original.clone()).unwrap_err().contains("approved executable identity graph"));
+        assert_eq!(manager.registered_state(), original, "unsupported effects stay in the authoritative state");
+    }
+
+    #[test]
+    fn sync_checkpoint_registered_control_is_preserved_and_remains_removable() {
+        let _guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let definition = CardDefinition::new(ironsmith::CardBuilder::new(CardId::new(), "Registered control roundtrip fixture")
+            .card_types(vec![CardType::Artifact]).build());
+        host.registry.register(definition.clone());
+        let permanent = host.game.create_object_from_definition(&definition, bob, Zone::Battlefield);
+        let effect = host.game.effect_store.continuous_effects.add_effect(
+            ironsmith::continuous::ContinuousEffect::gain_control(permanent, alice, permanent, alice));
+        host.game.refresh_continuous_state().unwrap();
+        let mut guest = WasmGame::new();
+        guest.registry.register(definition);
+        guest.apply_sync_checkpoint(host.build_sync_checkpoint()).unwrap();
+        assert_eq!(guest.game.current_controller(permanent), Some(alice));
+        assert_eq!(guest.game.object(permanent).unwrap().initial_controller, bob);
+        guest.game.effect_store.continuous_effects.remove_effect(effect);
+        guest.game.refresh_continuous_state().unwrap();
+        assert_eq!(guest.game.current_controller(permanent), Some(bob));
+        assert_eq!(host.game.current_controller(permanent), Some(alice), "receiver removal cannot mutate sender");
     }
 
     #[test]
@@ -7740,7 +8021,8 @@ mod sync_checkpoint_tests {
             permanent, alice, permanent, alice));
         host.game.refresh_continuous_state().expect("captured control completes");
         assert_eq!(host.game.current_controller(permanent), Some(alice));
-        let checkpoint = host.build_sync_checkpoint();
+        let mut checkpoint = host.build_sync_checkpoint();
+        checkpoint.registered_continuous = None; // Legacy payload has no actual effect.
         let mut guest = WasmGame::new();
         guest.initialize_empty_match(vec!["Carol".into(), "Dan".into()], 20, 2);
         guest.registry.register(definition);
@@ -8833,8 +9115,27 @@ mod owning_sync_executable_tests {
                 artifact,
                 alice,
                 vec![spell],
-                Modification::AddAbility(flying),
+                Modification::AddAbility(flying.clone()),
             ));
+        game.effect_store.grant_registry.grant_to_card(
+            spell, Zone::Graveyard, alice, ironsmith::grant::Grantable::Ability(flying),
+            ironsmith::grant_registry::GrantSource::until_end_of_turn(artifact, 7),
+        );
+        let budget = game.effect_store.grant_registry.create_shared_usage_budget(1);
+        game.effect_store.grant_registry.grant_play_from_to_card_in_shared_budget(
+            spell, None, Zone::Exile, alice, Default::default(),
+            ironsmith::grant_registry::GrantSource::until_end_of_turn(artifact, 7), budget,
+        );
+        assert!(game.effect_store.grant_registry.consume_shared_usage(budget));
+        game.effect_store.grant_registry.grant_to_card(
+            spell, Zone::Graveyard, alice,
+            ironsmith::grant::Grantable::AlternativeCast(
+                ironsmith::alternative_cast::AlternativeCastingMethod::Overload {
+                    cost: ironsmith::mana::ManaCost::new(),
+                    effects: vec![active.clone()],
+                }),
+            ironsmith::grant_registry::GrantSource::until_end_of_turn(artifact, 7),
+        );
         game.refresh_continuous_state().unwrap();
         assert_eq!(game.current_colors(artifact), Some(ColorSet::RED));
         let objects = vec![
@@ -8859,6 +9160,7 @@ mod owning_sync_executable_tests {
             &registry,
             objects,
             game.effect_store.continuous_effects.registered_state(),
+            game.effect_store.grant_registry.registered_state(),
         )
         .unwrap();
         let json = serde_json::to_value(&encoded).unwrap();
@@ -8915,6 +9217,10 @@ mod owning_sync_executable_tests {
             .continuous_effects
             .restore_registered_state(restored.continuous.clone())
             .unwrap();
+        peer.effect_store.grant_registry.restore_registered_state(restored.grants.clone()).unwrap();
+        assert_eq!(restored.grants.grants.len(), 3);
+        let exhausted = restored.grants.grants[1].shared_usage_id.unwrap();
+        assert!(!peer.effect_store.grant_registry.consume_shared_usage(exhausted));
         peer.refresh_continuous_state().unwrap();
         assert_eq!(peer.current_colors(artifact), Some(ColorSet::RED));
         let reencoded = SyncExecutableState::retain(
@@ -8922,6 +9228,7 @@ mod owning_sync_executable_tests {
             &peer_registry,
             restored.objects,
             restored.continuous.clone(),
+            restored.grants.clone(),
         )
         .unwrap();
         assert_eq!(
@@ -8989,6 +9296,7 @@ mod owning_sync_executable_tests {
             &registry,
             objects,
             game.effect_store.continuous_effects.registered_state(),
+            game.effect_store.grant_registry.registered_state(),
         )
         .unwrap();
         let peers = peer_bindings(&state);
@@ -8998,6 +9306,7 @@ mod owning_sync_executable_tests {
             "definitions",
             "objects",
             "continuous",
+            "grants",
         ] {
             let mut missing = serde_json::to_value(&state).unwrap();
             missing.as_object_mut().unwrap().remove(field);
@@ -9034,6 +9343,13 @@ mod owning_sync_executable_tests {
         let mut bad = state.clone();
         bad.continuous.next_id = u64::MAX;
         assert!(bad.restore(&peers).is_err());
+        let mut bad = state.clone();
+        bad.grants.next_permission_identity = 0;
+        assert!(bad.restore(&peers).is_err());
+        let mut bad = state.clone();
+        let budget = bad.grants.shared_usage_remaining[0];
+        bad.grants.shared_usage_remaining.push(budget);
+        assert!(bad.restore(&peers).is_err());
         assert!(
             state.restore(&peers).is_ok(),
             "valid immutable state remains usable after every rejection"
@@ -9068,6 +9384,7 @@ mod owning_sync_executable_tests {
             &registry,
             vec![original.clone()],
             game.effect_store.continuous_effects.registered_state(),
+            game.effect_store.grant_registry.registered_state(),
         )
         .unwrap();
         assert!(
@@ -9082,6 +9399,7 @@ mod owning_sync_executable_tests {
             &registry,
             vec![placeholder],
             game.effect_store.continuous_effects.registered_state(),
+            game.effect_store.grant_registry.registered_state(),
         )
         .unwrap();
         assert_eq!(redacted.graph_card_count, 0);
@@ -9123,5 +9441,64 @@ mod owning_sync_executable_tests {
     fn owning_sync_executable_compiled_approved_hidden_placeholder_does_not_enroll_private_program()
     {
         check_approved_hidden_root(true);
+    }
+}
+
+#[cfg(test)]
+#[test]
+#[ignore = "developer diagnostic requires IRONSMITH_PAYMENT_CHECKPOINT"]
+fn inspect_payment_projection_checkpoint() {
+    let _id_counter_guard = crate::test_id_counter_guard();
+    let path = std::env::var("IRONSMITH_PAYMENT_CHECKPOINT").unwrap();
+    let value: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let mut checkpoint: SyncCheckpoint = serde_json::from_value(value.get("checkpoint").unwrap_or(&value).clone()).unwrap();
+    checkpoint.turn.priority_player = None;
+    let ids: Vec<_> = checkpoint.objects.iter().map(|object| ObjectId::from_raw(object.id)).collect();
+    let mut wasm = WasmGame::new();
+    eprintln!("Loading checkpoint card definitions");
+    let names: Vec<_> = checkpoint.objects.iter().map(|object| object.name.clone()).collect();
+    let payloads = ironsmith_tools::load_card_payloads_by_names(
+        ironsmith_tools::default_cards_path().to_str().unwrap(), &names,
+    ).unwrap();
+    for payload in payloads.values().flatten() {
+        wasm.registry.register(ironsmith_tools::compile_runtime_definition_from_payload(payload).unwrap());
+    }
+    eprintln!("Importing checkpoint");
+    wasm.apply_sync_checkpoint(checkpoint).unwrap();
+    for object in ids.iter().filter_map(|id| wasm.game.object(*id)) {
+        for ability in object.abilities.iter().filter(|ability| ability.functions_in(&object.zone)) {
+            if let ironsmith::ability::AbilityKind::Static(ability) = &ability.kind {
+                eprintln!("STATIC {} {:?}: {:?}", object.name, object.zone, ability);
+            }
+        }
+    }
+    let replacements = ironsmith::replacement_ability_processor::generate_replacement_effects_from_abilities(&wasm.game).unwrap();
+    for effect in replacements {
+        let relevant = effect.matcher.as_ref().map(|matcher| [ironsmith::events::EventKind::BecomeTapped, ironsmith::events::EventKind::ManaAdded, ironsmith::events::EventKind::AbilityActivated].map(|kind| matcher.may_match_event_kind(kind)));
+        eprintln!("REPLACEMENT source={:?} mana_relevance={relevant:?} {effect:?}", wasm.game.object(effect.source).map(|object| &object.name));
+    }
+    eprintln!("CONTINUOUS {:?}", wasm.game.try_all_continuous_effects().unwrap());
+    if let Ok(source) = std::env::var("IRONSMITH_PAYMENT_SOURCE") {
+        let source = ObjectId::from_raw(source.parse().unwrap());
+        let object = wasm.game.object(source).unwrap();
+        let generic = std::env::var("IRONSMITH_PAYMENT_GENERIC").ok().map(|value| value.parse::<u32>().unwrap());
+        let mut request = ironsmith::mana_payment::ManaPaymentRequest::new(
+            wasm.game.controller_of(object), source,
+            if generic.is_some() { ironsmith::costs::PaymentReason::ActivateAbility } else { ironsmith::costs::PaymentReason::CastSpell },
+            generic.map(|amount| ironsmith::mana::ManaCost::new().add_generic(amount)).unwrap_or_else(|| object.mana_cost_owned().unwrap()),
+        );
+        if generic.is_some() { request.reserved_tap_sources.push(source); }
+        if std::env::var("IRONSMITH_PAYMENT_REASON").as_deref() == Ok("mana_ability") {
+            request.reason = ironsmith::costs::PaymentReason::ActivateManaAbility;
+        }
+        if std::env::var("IRONSMITH_PAYMENT_MANUAL").is_ok() {
+            let start = std::time::Instant::now();
+            let manual = ironsmith::mana_payment::manual_mana_abilities(&wasm.game, &request);
+            eprintln!("MANUAL {:?} options={}", start.elapsed(), manual.len());
+        }
+        let start = std::time::Instant::now();
+        let result = ironsmith::mana_payment::plan_first_mana_payment(&wasm.game, &request);
+        eprintln!("PAYMENT {:?} {:?} {:?}", start.elapsed(), result.as_ref().map(|plan| (plan.payable, plan.mana_ability_steps.len())), ironsmith::mana_payment::last_mana_payment_perf());
+        assert!(result.unwrap().payable);
     }
 }
