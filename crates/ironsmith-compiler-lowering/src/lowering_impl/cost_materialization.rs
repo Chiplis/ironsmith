@@ -529,10 +529,10 @@ fn lower_materialization_costs(
                 if matches!(amount, crate::effect::Value::Fixed(_)) {
                     costs.push(Cost::life(amount.clone()));
                 } else {
-                    costs.push(Cost::validated_effect(Effect::lose_life_player(
-                        amount.clone(),
-                        PlayerFilter::You,
-                    )));
+                    // Dynamic life is still a payment, not an ordinary
+                    // life-loss instruction. PayLife retains cost validation
+                    // and its source snapshot (notably Ward after departure).
+                    costs.push(Cost::validated_effect(Effect::pay_life(amount.clone())));
                 }
             }
             MaterializationCost::Energy(amount) => {
@@ -1133,4 +1133,34 @@ fn lower_materialization_costs(
     }
     flush_pending_mana(&mut costs, &mut pending_mana_pips);
     Ok(TotalCost::from_costs(costs))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dynamic_life_materializes_as_payment_with_its_exact_typed_amount() {
+        for amount in [
+            crate::effect::Value::SourcePower,
+            crate::effect::Value::PowerOf(Box::new(crate::target::ChooseSpec::Source)),
+            crate::effect::Value::CardsInHand(PlayerFilter::You),
+        ] {
+            let cost = lower_materialization_costs(&[MaterializationCost::Life(amount.clone())])
+                .expect("dynamic payment lowers");
+            let [component] = cost.costs() else {
+                panic!("one life cost");
+            };
+            let effect = component.effect_ref().expect("dynamic cost effect");
+            let payment = effect
+                .downcast_ref::<crate::effects::PayLifeEffect>()
+                .expect("life cost must retain payment semantics");
+            assert_eq!(payment.amount, amount);
+            assert!(
+                effect
+                    .downcast_ref::<crate::effects::LoseLifeEffect>()
+                    .is_none()
+            );
+        }
+    }
 }

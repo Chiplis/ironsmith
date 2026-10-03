@@ -3499,6 +3499,20 @@ fn parse_conditional_source_prevention_and_grant(
 pub fn parse_filter_has_granted_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    // A complete attack-permission effect owns its hypothetical `have`.
+    // In particular, `this turn` belongs to the duration, not to a subject
+    // that may be recovered as the suffix `it didn't`. Do not let either
+    // broad grant reader reinterpret that comparison as granting defender.
+    if crate::grammar::effects::clause_pattern_shapes::parse_can_attack_no_defender_subject_tokens(tokens)
+        .is_some_and(|subject| {
+            // A preceding real grant still owns a compound tail, e.g.
+            // `it has trample and can attack as though ...`. Only a
+            // hypothetical `have` without such a grant is inapplicable.
+            !subject.iter().any(|token| token.is_any_word(&["has", "have"]))
+        })
+    {
+        return Ok(None);
+    }
     // "You and <permanents> have protection from ..." carries a player half
     // this production would drop; the granted-keyword production owns it.
     if matches!(parse_you_and_subject_protection_grant_line(tokens), Ok(Some(_))) {
@@ -5084,4 +5098,27 @@ fn source_attachment_disjunction_is_a_static_attack_condition() {
     let tokens = crate::lexer::lex_line("As long as this creature is enchanted or equipped, it can attack as though it didn't have defender.", 0).unwrap();
     let parsed = parse_as_long_as_condition_can_attack_as_though_no_defender_line(&tokens).unwrap();
     assert!(matches!(parsed, Some(StaticAbilityAst::ConditionalStaticAbility { .. })), "{parsed:#?}");
+}
+
+#[cfg(test)]
+#[test]
+fn hypothetical_no_defender_have_is_never_a_static_grant_subject() {
+    for text in [
+        "can attack this turn as though it didn't have defender",
+        "this creature can attack this turn as though it didn't have defender",
+        "this creature gets +3/-1 until end of turn and can attack this turn as though it didn't have defender",
+        "can attack as though it did not have defender",
+    ] {
+        let tokens = crate::lexer::lex_line(text, 0).unwrap();
+        let (result, loss) = crate::parse_loss::capture(|| {
+            (
+                parse_filter_has_granted_ability_line(&tokens),
+                parse_granted_keyword_static_line(&tokens),
+            )
+        });
+        assert!(matches!(result, (Ok(None), Ok(None))), "{text}: {result:?}");
+        assert!(!loss.is_lossy(), "{text}: {}", loss.reasons_text());
+    }
+    let tokens = crate::lexer::lex_line("Creatures you control have defender", 0).unwrap();
+    assert!(parse_filter_has_granted_ability_line(&tokens).unwrap().is_some());
 }

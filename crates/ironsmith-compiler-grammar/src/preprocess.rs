@@ -1369,6 +1369,54 @@ fn rewrite_any_type_cast_rider_line(text: &str) -> String {
 /// "him" is left alone for the same reason as "her" — the operand grammar
 /// reads `it | him | her` directly, and rewriting only the masculine form
 /// erased the authored surface that the feminine one keeps.
+fn personal_pronoun_replacement(core: &str, opens_activated_effect: bool) -> Option<&'static str> {
+    match core {
+        // The effect-opening pronoun names the ability's source, not a cost object.
+        "he" | "she" if opens_activated_effect => Some("this"),
+        "he" | "she" => Some("it"),
+        "he's" | "she's" => Some("it's"),
+        "himself" | "herself" => Some("itself"),
+        _ => None,
+    }
+}
+
+/// Contextual recognition may revisit the authored stream to recover a card
+/// name. Retain the same pronoun vocabulary as preprocessing without rendering
+/// and re-lexing that stream or replacing its original source spans.
+pub(super) fn rewrite_personal_pronouns_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let mut previous_ends_activation_cost = false;
+    tokens
+        .iter()
+        .enumerate()
+        .map(|(index, token)| {
+            // The text pass leaves quote-adjacent words untouched, including
+            // literal names such as `named "He"`.
+            let quote_adjacent = index
+                .checked_sub(1)
+                .and_then(|previous| tokens.get(previous))
+                .is_some_and(|previous| previous.kind == TokenKind::Quote)
+                || tokens
+                    .get(index + 1)
+                    .is_some_and(|next| next.kind == TokenKind::Quote);
+            let replacement = (!quote_adjacent)
+                .then(|| {
+                    token.as_word().and_then(|word| {
+                        personal_pronoun_replacement(
+                            &word.to_ascii_lowercase(),
+                            previous_ends_activation_cost,
+                        )
+                    })
+                })
+                .flatten();
+            previous_ends_activation_cost = token.kind == TokenKind::Colon;
+            replacement.map_or_else(
+                || token.clone(),
+                |word| OwnedLexToken::word(word, token.span),
+            )
+        })
+        .collect()
+}
+
 fn rewrite_personal_pronouns_line(text: &str) -> String {
     let words: Vec<&str> = text.split(' ').collect();
     if !words.iter().any(|word| {
@@ -1389,18 +1437,7 @@ fn rewrite_personal_pronouns_line(text: &str) -> String {
         let (core, trailing) = word.split_at(word.len() - trailing_len);
         let opens_activated_effect = previous_ends_activation_cost;
         previous_ends_activation_cost = trailing.contains(':');
-        let replacement = match core {
-            // A gendered subject pronoun names the character the card
-            // depicts. Opening an activated ability's effect, the only
-            // earlier objects are cost objects, which it never names ("{3},
-            // Unattach an Equipment from Captain America: He deals damage
-            // ..."); read it exactly like the card's own name there.
-            "he" | "she" if opens_activated_effect => Some("this"),
-            "he" | "she" => Some("it"),
-            "he's" | "she's" => Some("it's"),
-            "himself" | "herself" => Some("itself"),
-            _ => None,
-        };
+        let replacement = personal_pronoun_replacement(core, opens_activated_effect);
         match replacement {
             Some(replacement) => rewritten.push(format!("{replacement}{trailing}")),
             None => rewritten.push(word.to_string()),
@@ -2466,3 +2503,18 @@ mod tests {
 #[cfg(test)]
 #[path = "preprocess_unicode_tests.rs"]
 mod unicode_tests;
+
+#[cfg(test)]
+#[test]
+fn authored_pronoun_retry_keeps_original_spans_and_literal_names() {
+    let tokens = lex_line("When Madame Masque enters, she connives.", 7).unwrap();
+    let rewritten = rewrite_personal_pronouns_tokens(&tokens);
+    assert_eq!(tokens.len(), rewritten.len());
+    for (before, after) in tokens.iter().zip(&rewritten) {
+        assert_eq!(before.span, after.span);
+    }
+    assert!(rewritten.iter().any(|token| token.is_word("it")));
+    assert!(!rewritten.iter().any(|token| token.is_word("she")));
+    let tokens = lex_line("Create a token named \"He\".", 0).unwrap();
+    assert_eq!(rewrite_personal_pronouns_tokens(&tokens), tokens);
+}

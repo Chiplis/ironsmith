@@ -143,6 +143,7 @@ pub(super) fn try_parse_modal_bullet_block(
             break;
         }
         bullet_modes.push(recognize_modal_mode(
+            &preprocessed.card,
             next_line,
             header_has_common_target_suffix,
         )?);
