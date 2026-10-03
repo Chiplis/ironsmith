@@ -1,0 +1,51 @@
+[
+  {
+    "name": "Camellia, the Seedmiser",
+    "oracle_id": "312c7a7b-2084-42b0-9b13-0a6d3e43a73d",
+    "text": "Mana cost: {1}{B}{G}\nType: Legendary Creature — Squirrel Warlock\nPower/Toughness: 3/3\nMenace\nOther Squirrels you control have menace.\nWhenever you sacrifice one or more Foods, create a 1/1 green Squirrel creature token.\n{2}, Forage: Put a +1/+1 counter on each other Squirrel you control. (To forage, exile three cards from your graveyard or sacrifice a Food.)",
+    "proposed_coverage": "complete"
+  },
+  {
+    "name": "Champion of the Weird",
+    "oracle_id": "1726f9cd-6f18-4509-b95b-bca82ba795a4",
+    "text": "Mana cost: {3}{B}\nType: Creature — Goblin Berserker\nPower/Toughness: 5/5\nAs an additional cost to cast this spell, behold a Goblin and exile it. (Exile a Goblin you control or a Goblin card from your hand.)\nPay 1 life, Blight 2: Target opponent blights 2. Activate only as a sorcery.\nWhen this creature leaves the battlefield, return the exiled card to its owner's hand.",
+    "proposed_coverage": "complete"
+  },
+  {
+    "name": "Dawnhand Dissident",
+    "oracle_id": "2cabf7a4-17af-45c7-b314-a84f5dc0d070",
+    "text": "Mana cost: {B}\nType: Creature — Elf Warlock\nPower/Toughness: 1/2\n{T}, Blight 1: Surveil 1.\n{T}, Blight 2: Exile target card from a graveyard.\nDuring your turn, you may cast creature spells from among cards you own exiled with this creature by removing three counters from among creatures you control in addition to paying their other costs.",
+    "proposed_coverage": "partial",
+    "remaining_blocker": "Source-exiled casting permission with a remove-counters-among additional cost is outside this cost-component repair."
+  },
+  {
+    "name": "Evershrike's Gift",
+    "oracle_id": "b5bc4adf-9105-4901-989c-63612314af5c",
+    "text": "Mana cost: {W}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature gets +1/+0 and has flying.\n{1}{W}, Blight 2: Return this card from your graveyard to your hand. Activate only as a sorcery. (To blight 2, put two -1/-1 counters on a creature you control.)",
+    "proposed_coverage": "complete"
+  },
+  {
+    "name": "Gristle Glutton",
+    "oracle_id": "b7163800-41fc-410a-9650-50ae90842170",
+    "text": "Mana cost: {1}{R}\nType: Creature — Goblin Scout\nPower/Toughness: 1/3\n{T}, Blight 1: Discard a card. If you do, draw a card. (To blight 1, put a -1/-1 counter on a creature you control.)",
+    "proposed_coverage": "complete"
+  },
+  {
+    "name": "Spiral into Solitude",
+    "oracle_id": "d8599f06-f030-4575-8497-307a4d7ec182",
+    "text": "Mana cost: {1}{W}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature can't attack or block.\n{1}{W}, Blight 1, Sacrifice this Aura: Exile enchanted creature. (To blight 1, put a -1/-1 counter on a creature you control.)",
+    "proposed_coverage": "complete"
+  },
+  {
+    "name": "Sting-Slinger",
+    "oracle_id": "945a4a4d-fdfd-4c39-9975-5b22d17a4e70",
+    "text": "Mana cost: {2}{R}\nType: Creature — Goblin Warrior\nPower/Toughness: 3/3\n{1}{R}, {T}, Blight 1: This creature deals 2 damage to each opponent. (To blight 1, put a -1/-1 counter on a creature you control.)",
+    "proposed_coverage": "complete"
+  },
+  {
+    "name": "Thornvault Forager",
+    "oracle_id": "7b18cfad-a1cf-46c2-bcdd-7762c13d50e5",
+    "text": "Mana cost: {1}{G}\nType: Creature — Squirrel Ranger\nPower/Toughness: 2/2\n{T}: Add {G}.\n{T}, Forage: Add two mana in any combination of colors. (To forage, exile three cards from your graveyard or sacrifice a Food.)\n{3}{G}, {T}: Search your library for a Squirrel card, reveal it, put it into your hand, then shuffle.",
+    "proposed_coverage": "complete"
+  }
+]
