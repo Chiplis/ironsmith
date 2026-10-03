@@ -304,9 +304,20 @@ pub fn parse_if_result_predicate_lexed_tokens(
     {
         return Some(IfResultPredicate::DiesThisWay);
     }
+    if matches_phrase(
+        &normalized,
+        &["excess", "damage", "was", "dealt", "this", "way"],
+    ) || matches_phrase(
+        &normalized,
+        &["excess", "damage", "is", "dealt", "this", "way"],
+    ) {
+        return Some(IfResultPredicate::ExcessDamageDealt);
+    }
     if (starts_with_phrase(&normalized, &["excess", "damage", "was", "dealt", "to"])
         || starts_with_phrase(&normalized, &["excess", "damage", "is", "dealt", "to"]))
-        && has_phrase(&normalized, &["creature"])
+        && (has_phrase(&normalized, &["creature"])
+            || has_phrase(&normalized, &["permanent"])
+            || has_phrase(&normalized, &["planeswalker"]))
         && ends_with_phrase(&normalized, &["this", "way"])
     {
         return Some(IfResultPredicate::ExcessDamageDealt);

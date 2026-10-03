@@ -109,10 +109,13 @@ fn parses_dynamic_top_and_single_bottom_library_shapes() {
         .unwrap();
     assert_eq!(
         excess.count.unhinted(),
-        &Value::PendingEffectMetric {
-            source: ironsmith_core::EffectMetricSource::Outcome,
-            metric: ironsmith_core::EffectMetric::ExcessDamage,
-        }
+        &Value::PendingPriorEffectMetric(
+            ironsmith_core::PriorEffectMetricQuery::new(
+                ironsmith_core::EffectMetricSource::Outcome,
+                ironsmith_core::EffectMetric::ExcessDamage,
+            )
+            .with_action(ironsmith_core::PriorEffectAction::DealtDamage)
+        )
     );
     assert!(excess.count.has_surface_hint(ValueSurfaceHint::EqualTo));
 

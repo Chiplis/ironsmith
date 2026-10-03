@@ -23,9 +23,6 @@ const EVENT_AMOUNT_PREFIXES: &[(&[&str], usize)] = &[
     (&["that", "amount"], 2),
     (&["the", "amount", "of", "e", "paid", "this", "way"], 7),
     (&["amount", "of", "e", "paid", "this", "way"], 6),
-    (&["that", "amount", "of", "excess", "damage"], 5),
-    (&["that", "much", "excess", "damage"], 4),
-    (&["the", "excess"], 2),
 ];
 
 const DAMAGE_EVENT_AMOUNT_PREFIXES: &[(&[&str], usize)] = &[

@@ -236,6 +236,7 @@ pub struct ReferenceFrame {
     pub auto_tag_object_targets: bool,
     pub force_auto_tag_object_targets: bool,
     pub allow_life_event_value: bool,
+    pub allow_excess_damage_event_value: bool,
     pub bind_unbound_x_to_last_effect: bool,
 }
 
@@ -257,6 +258,7 @@ impl ReferenceFrame {
             auto_tag_object_targets: frame.auto_tag_object_targets,
             force_auto_tag_object_targets: frame.force_auto_tag_object_targets,
             allow_life_event_value: frame.allow_life_event_value,
+            allow_excess_damage_event_value: frame.allow_excess_damage_event_value,
             bind_unbound_x_to_last_effect: frame.bind_unbound_x_to_last_effect,
         }
     }
@@ -283,6 +285,7 @@ impl ReferenceFrame {
             auto_tag_object_targets: self.auto_tag_object_targets,
             force_auto_tag_object_targets: self.force_auto_tag_object_targets,
             allow_life_event_value: self.allow_life_event_value,
+            allow_excess_damage_event_value: self.allow_excess_damage_event_value,
             bind_unbound_x_to_last_effect: self.bind_unbound_x_to_last_effect,
         }
     }
@@ -393,6 +396,7 @@ pub struct ReferenceEnv {
     pub iterated_player: bool,
     pub iterated_object: bool,
     pub allow_life_event_value: bool,
+    pub allow_excess_damage_event_value: bool,
     pub bind_unbound_x_to_last_effect: bool,
 }
 
@@ -411,6 +415,7 @@ impl Default for ReferenceEnv {
             iterated_player: false,
             iterated_object: false,
             allow_life_event_value: false,
+            allow_excess_damage_event_value: false,
             bind_unbound_x_to_last_effect: false,
         }
     }
@@ -441,6 +446,7 @@ impl ReferenceEnv {
             iterated_player,
             iterated_object: imports.iterated_object,
             allow_life_event_value,
+            allow_excess_damage_event_value: false,
             bind_unbound_x_to_last_effect,
         }
     }
@@ -461,6 +467,7 @@ impl ReferenceEnv {
             iterated_player: frame.iterated_player,
             iterated_object: frame.iterated_object,
             allow_life_event_value: frame.allow_life_event_value,
+            allow_excess_damage_event_value: frame.allow_excess_damage_event_value,
             bind_unbound_x_to_last_effect: frame.bind_unbound_x_to_last_effect,
         }
     }
@@ -490,6 +497,7 @@ impl ReferenceEnv {
             auto_tag_object_targets: auto_tag_object_targets || force_auto_tag_object_targets,
             force_auto_tag_object_targets,
             allow_life_event_value: self.allow_life_event_value,
+            allow_excess_damage_event_value: self.allow_excess_damage_event_value,
             bind_unbound_x_to_last_effect: self.bind_unbound_x_to_last_effect,
         }
     }

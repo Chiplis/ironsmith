@@ -84,3 +84,19 @@ fn parses_dual_for_each_counter_entry_to_typed_value() {
     assert_eq!(second.colors, Some(crate::color::ColorSet::GREEN));
     assert!(first.other && second.other);
 }
+
+
+#[test]
+fn shared_counter_clause_keeps_battlefield_and_graveyard_counts_separate() {
+    let tokens = lex_line("This creature enters with a +1/+1 counter on it for each other Zombie you control and each Zombie card in your graveyard.", 0).unwrap();
+    let shape = parse_enters_with_dual_for_each_counter_tokens(&tokens).unwrap();
+    assert_eq!(shape.counter_type, CounterType::PlusOnePlusOne);
+    let Value::Add(first, second) = shape.count else { panic!("additive count required") };
+    let (Value::Count(first), Value::Count(second)) = (*first, *second) else { panic!("two typed filters required") };
+    assert!(first.other);
+    assert_eq!(first.controller, Some(crate::target::PlayerFilter::You));
+    assert_eq!(second.zone, Some(crate::zone::Zone::Graveyard));
+    assert_eq!(second.owner, Some(crate::target::PlayerFilter::You));
+    assert!(first.subtypes.contains(&crate::types::Subtype::Zombie));
+    assert!(second.subtypes.contains(&crate::types::Subtype::Zombie));
+}

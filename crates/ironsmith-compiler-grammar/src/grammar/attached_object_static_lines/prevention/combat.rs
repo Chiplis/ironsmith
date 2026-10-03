@@ -34,7 +34,7 @@ pub(super) fn parse_general_put_counter_prevention_lexed<'a>(
     } else {
         None
     };
-    let (_, effect_tokens) = alt((
+    let (prevents_damage, effect_tokens) = alt((
         (
             semantic_phrase(&[
                 "prevent", "that", "damage", "and", "put", "that", "many", "+1/+1", "counters",
@@ -42,18 +42,19 @@ pub(super) fn parse_general_put_counter_prevention_lexed<'a>(
             ]),
             parse_counter_destination,
         )
-            .void(),
+            .value(true),
         (
             semantic_phrase(&["put", "that", "many", "+1/+1", "counters", "on"]),
             parse_counter_destination,
             semantic_kw("instead"),
         )
-            .void(),
+            .value(false),
     ))
     .with_taken()
     .parse_next(input)?;
     semantic_finish(input)?;
     Ok(PutCounterPreventionSpec::General {
+        prevents_damage,
         condition_tokens,
         display_prefix_tokens: trim_lexed_commas(display_prefix_tokens),
         effect_tokens: trim_lexed_commas(effect_tokens),
@@ -107,4 +108,23 @@ pub(super) fn parse_creature_combat_put_counter_prevention_lexed<'a>(
     .parse_next(input)?;
     semantic_finish(input)?;
     Ok(PutCounterPreventionSpec::CreatureCombat)
+}
+
+/// The additional counter effect scales with actual prevented damage, not the
+/// original unpreventable amount. Signed and named counters share this grammar.
+pub(super) fn parse_per_prevented_amount_counter_prevention_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<PutCounterPreventionSpec<'a>> {
+    semantic_phrase(&["if", "damage", "would", "be", "dealt", "to"]).parse_next(input)?;
+    parse_this_source(input)?;
+    semantic_phrase(&["prevent", "that", "damage"]).parse_next(input)?;
+    opt(semantic_kw("and")).parse_next(input)?;
+    semantic_kw("put").parse_next(input)?;
+    alt((semantic_kw("a"), semantic_kw("an"))).parse_next(input)?;
+    let counter_type = parse_counter_type_before_counter_noun(input, "per-prevented damage counter")?;
+    semantic_kw("on").parse_next(input)?;
+    parse_counter_destination(input)?;
+    semantic_phrase(&["for", "each", "1", "damage", "prevented", "this", "way"]).parse_next(input)?;
+    semantic_finish(input)?;
+    Ok(PutCounterPreventionSpec::PerPreventedAmount { counter_type })
 }

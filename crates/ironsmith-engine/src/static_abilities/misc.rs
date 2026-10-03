@@ -3598,7 +3598,7 @@ impl StaticAbilityKind for PreventDamageToSelfRemoveCounter {
             source,
             controller,
             crate::events::DamageToSelfMatcher::new(),
-            ReplacementAction::Instead(effects),
+            ReplacementAction::PreventDamageThenFromProposedAmount(effects),
         ))
     }
 }
@@ -3637,7 +3637,7 @@ impl StaticAbilityKind for PreventDamageToSelfPutCountersInstead {
             source,
             controller,
             crate::events::DamageToSelfMatcher::new(),
-            ReplacementAction::PreventDamageThen(vec![Effect::put_counters_on_source(
+            ReplacementAction::Instead(vec![Effect::put_counters_on_source(
                 self.counter_type,
                 Value::EventValue(EventValueSpec::Amount),
             )]),

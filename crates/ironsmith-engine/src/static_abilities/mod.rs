@@ -4098,6 +4098,12 @@ impl StaticAbility {
         ))
     }
 
+    pub fn prevent_matching_damage_with_follow_up(
+        spec: ironsmith_core::StaticDamagePreventionFollowUp<crate::effect::Effect>,
+    ) -> Self {
+        Self::new(PreventMatchingDamageWithFollowUp { spec })
+    }
+
     pub fn prevent_matching_damage(spec: ironsmith_core::PreventMatchingDamageSpec) -> Self {
         Self::new(PreventMatchingDamage { spec })
     }

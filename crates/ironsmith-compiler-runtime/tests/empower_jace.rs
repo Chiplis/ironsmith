@@ -212,7 +212,7 @@ fn empower_jace_complete_candidates_strict_compile_and_round_trip_with_typed_amo
             .iter()
             .filter(|card| card["proposed_coverage"] == "partial")
             .count(),
-        4
+        3
     );
     for card in cards
         .into_iter()

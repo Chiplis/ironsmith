@@ -207,6 +207,7 @@ pub struct LoweringFrame {
     pub auto_tag_object_targets: bool,
     pub force_auto_tag_object_targets: bool,
     pub allow_life_event_value: bool,
+    pub allow_excess_damage_event_value: bool,
     pub bind_unbound_x_to_last_effect: bool,
 }
 
@@ -360,6 +361,7 @@ impl EffectLoweringContext {
         self.iterated_player = frame.iterated_player;
         self.iterated_object = frame.iterated_object;
         self.allow_life_event_value = frame.allow_life_event_value;
+        self.allow_excess_damage_event_value = frame.allow_excess_damage_event_value;
         self.bind_unbound_x_to_last_effect = frame.bind_unbound_x_to_last_effect;
     }
 

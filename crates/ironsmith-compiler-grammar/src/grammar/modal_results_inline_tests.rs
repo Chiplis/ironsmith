@@ -241,3 +241,29 @@ fn passive_no_matching_results_preserves_filter_and_negation() {
         }
     }
 }
+
+#[test]
+fn excess_damage_result_accepts_bare_and_permanent_scopes() {
+    for text in [
+        "excess damage was dealt this way",
+        "excess damage is dealt this way",
+        "excess damage was dealt to that permanent this way",
+        "excess damage was dealt to that creature this way",
+    ] {
+        assert_eq!(
+            parse_if_result_predicate_lexed_tokens(&lex_line(text, 0).unwrap()),
+            Some(IfResultPredicate::ExcessDamageDealt),
+            "{text}"
+        );
+    }
+    for text in [
+        "damage was dealt this way",
+        "excess damage was dealt last turn",
+    ] {
+        assert_ne!(
+            parse_if_result_predicate_lexed_tokens(&lex_line(text, 0).unwrap()),
+            Some(IfResultPredicate::ExcessDamageDealt),
+            "{text}"
+        );
+    }
+}

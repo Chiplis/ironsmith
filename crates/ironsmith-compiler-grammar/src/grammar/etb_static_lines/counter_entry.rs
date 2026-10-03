@@ -223,13 +223,22 @@ fn parse_enters_with_dual_for_each_counter(
     let (first_counter_type, first_multiplier) = parse_fixed_counter_clause(input)?;
     primitives::phrase(&["on", "it", "for", "each"]).parse_next(input)?;
     let first_filter_tokens =
-        repeat_till(1.., any.void(), peek(parse_second_for_each_counter_start))
+        repeat_till(1.., any.void(), peek(alt((
+            parse_second_for_each_counter_start,
+            primitives::phrase(&["and", "each"]).void(),
+        ))))
             .map(|((), _)| ())
             .take()
             .parse_next(input)?;
     primitives::kw("and").parse_next(input)?;
-    let (second_counter_type, second_multiplier) = parse_fixed_counter_clause(input)?;
-    primitives::phrase(&["on", "it", "for", "each"]).parse_next(input)?;
+    let (second_counter_type, second_multiplier) = if opt(primitives::kw("each")).parse_next(input)?.is_some() {
+        // The omitted counter clause distributes over both quantified groups.
+        (first_counter_type, first_multiplier)
+    } else {
+        let second = parse_fixed_counter_clause(input)?;
+        primitives::phrase(&["on", "it", "for", "each"]).parse_next(input)?;
+        second
+    };
     let second_filter_tokens = repeat_till(1.., any.void(), peek(primitives::sentence_end()))
         .map(|((), _)| ())
         .take()

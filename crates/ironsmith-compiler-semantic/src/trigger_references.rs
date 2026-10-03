@@ -239,3 +239,40 @@ fn watched_permanent(trigger: &TriggerSpec) -> Option<WatchedPermanent> {
     })
     .map(|tag| WatchedPermanent::Attached(tag.bind().into()))
 }
+
+/// Only these typed triggers export excess, rather than ordinary damage/life,
+/// as their ambient amount. This capability survives reference-frame scopes.
+pub fn trigger_binds_excess_damage_amount(trigger: &TriggerSpec) -> bool {
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => trigger_binds_excess_damage_amount(trigger),
+        TriggerSpec::Either(left, right) => {
+            trigger_binds_excess_damage_amount(left) && trigger_binds_excess_damage_amount(right)
+        }
+        TriggerSpec::IsDealtExcessNoncombatDamage(_) => true,
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod excess_damage_amount_tests {
+    use super::*;
+    #[test]
+    fn only_excess_triggers_export_excess_amounts() {
+        let excess = TriggerSpec::IsDealtExcessNoncombatDamage(ObjectFilter::creature());
+        assert!(trigger_binds_excess_damage_amount(&excess));
+        assert!(!trigger_binds_excess_damage_amount(
+            &TriggerSpec::ThisIsDealtDamage
+        ));
+        assert!(!trigger_binds_excess_damage_amount(
+            &TriggerSpec::YouGainLife
+        ));
+        assert!(trigger_binds_excess_damage_amount(&TriggerSpec::Either(
+            Box::new(excess.clone()),
+            Box::new(excess.clone())
+        )));
+        assert!(!trigger_binds_excess_damage_amount(&TriggerSpec::Either(
+            Box::new(excess),
+            Box::new(TriggerSpec::ThisIsDealtDamage)
+        )));
+    }
+}

@@ -52,15 +52,15 @@ impl EffectExecutor for TagTriggeringSourceEffect {
                 return Ok(EffectOutcome::count(1));
             }
         }
-        let Some(source) = game.object(source_id) else {
+        let snapshot = game.object(source_id)
+            .filter(|_| !game.is_phased_out(source_id))
+            .map(|source| ObjectSnapshot::from_object_with_calculated_characteristics(source, game))
+            .or_else(|| event.source_snapshot().filter(|snapshot| snapshot.object_id == source_id).cloned())
+            .or_else(|| game.turn_store.turn_history.departed_object_snapshot(source_id).cloned());
+        let Some(snapshot) = snapshot else {
             return Ok(EffectOutcome::count(0));
         };
-        ctx.set_tagged_objects(
-            self.tag.as_str(),
-            vec![ObjectSnapshot::from_object_with_calculated_characteristics(
-                source, game,
-            )],
-        );
+        ctx.set_tagged_objects(self.tag.as_str(), vec![snapshot]);
         Ok(EffectOutcome::count(1))
     }
 }

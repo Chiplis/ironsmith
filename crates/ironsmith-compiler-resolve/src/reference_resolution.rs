@@ -60,6 +60,7 @@ pub struct BoundEffectsAst {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct EffectReferenceResolutionConfig {
     pub allow_life_event_value: bool,
+    pub allow_excess_damage_event_value: bool,
     pub bind_unbound_x_to_last_effect: bool,
     pub initial_last_effect_id: Option<EffectId>,
     pub initial_iterated_player: bool,
@@ -92,6 +93,7 @@ struct EffectReferenceResolutionState<'a> {
     /// rather than a resolution-program EffectId.
     last_exile_cost_tag_index: Option<u32>,
     allow_life_event_value: bool,
+    allow_excess_damage_event_value: bool,
     bind_unbound_x_to_last_effect: bool,
     /// Inside a delayed trigger's body: the result id of the registering
     /// instruction's last producer. The delayed ability resolves later with
@@ -186,13 +188,14 @@ pub fn annotate_effect_sequence_owned(
     config: EffectReferenceResolutionConfig,
     id_gen: IdGenContext,
 ) -> Result<AnnotatedEffectSequence, CardTextError> {
-    let env = ReferenceEnv::from_imports(
+    let mut env = ReferenceEnv::from_imports(
         imports,
         config.initial_iterated_player,
         config.allow_life_event_value,
         config.bind_unbound_x_to_last_effect,
         config.initial_last_effect_id,
     );
+    env.allow_excess_damage_event_value = config.allow_excess_damage_event_value;
     let mut id_gen = id_gen;
     let mut effects = effects;
     // Persist result identities before transparent wrappers are traversed again
@@ -3357,6 +3360,7 @@ fn effect_reference_resolution_state(env: &ReferenceEnv) -> EffectReferenceResol
         last_sacrifice_cost_tag_index: cost_tag_index_from_env(env, "sacrifice_cost_"),
         last_exile_cost_tag_index: cost_tag_index_from_env(env, "exile_cost_"),
         allow_life_event_value: env.allow_life_event_value,
+        allow_excess_damage_event_value: env.allow_excess_damage_event_value,
         bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
         delayed_registration_effect_id: None,
     }
@@ -4095,6 +4099,7 @@ fn typed_result_gate_action(effect: &EffectAst) -> Option<PriorEffectAction> {
     let (predicate, _) = result_gate_surface(effect)?;
     match predicate {
         IfResultPredicate::PriorEffectResult(surface) => Some(surface.action),
+        IfResultPredicate::ExcessDamageDealt => Some(PriorEffectAction::DealtDamage),
         _ => None,
     }
 }
@@ -4401,6 +4406,10 @@ fn effect_can_supply_event_derived_amount_for(effect: &EffectAst, consumer: &Eff
 fn value_references_pending_metric_action(value: &Value, action: PriorEffectAction) -> bool {
     match value {
         Value::PendingPriorEffectMetric(query) => query.action == Some(action),
+        Value::PendingEffectMetric {
+            source: EffectMetricSource::Outcome,
+            metric: EffectMetric::ExcessDamage,
+        } => action == PriorEffectAction::DealtDamage,
         Value::SurfaceHinted { value, .. }
         | Value::Scaled(value, _)
         | Value::DividedRoundedDown(value, _)
@@ -4793,8 +4802,10 @@ fn typed_result_branch_pinned_metric_id(
     effects: &[EffectAst],
     condition: EffectId,
 ) -> Option<EffectId> {
-    (matches!(predicate, IfResultPredicate::PriorEffectResult(_))
-        && effects.iter().any(effect_references_pending_effect_metric))
+    (matches!(
+        predicate,
+        IfResultPredicate::PriorEffectResult(_) | IfResultPredicate::ExcessDamageDealt
+    ) && effects.iter().any(effect_references_pending_effect_metric))
     .then_some(condition)
 }
 
@@ -5262,6 +5273,7 @@ fn resolve_effect_references_in_effect(
                 last_sacrifice_cost_tag_index: state.last_sacrifice_cost_tag_index,
                 last_exile_cost_tag_index: state.last_exile_cost_tag_index,
                 allow_life_event_value: state.allow_life_event_value,
+                allow_excess_damage_event_value: state.allow_excess_damage_event_value,
                 bind_unbound_x_to_last_effect: predicate != IfResultPredicate::AcceptedChoice,
                 delayed_registration_effect_id: state.delayed_registration_effect_id,
             },
@@ -5294,6 +5306,7 @@ fn resolve_effect_references_in_effect(
                 last_sacrifice_cost_tag_index: state.last_sacrifice_cost_tag_index,
                 last_exile_cost_tag_index: state.last_exile_cost_tag_index,
                 allow_life_event_value: state.allow_life_event_value,
+                allow_excess_damage_event_value: state.allow_excess_damage_event_value,
                 bind_unbound_x_to_last_effect: true,
                 delayed_registration_effect_id: state.delayed_registration_effect_id,
             },
@@ -5352,6 +5365,7 @@ fn resolve_effect_references_in_effect(
             last_sacrifice_cost_tag_index: state.last_sacrifice_cost_tag_index,
             last_exile_cost_tag_index: state.last_exile_cost_tag_index,
             allow_life_event_value: true,
+            allow_excess_damage_event_value: false,
             bind_unbound_x_to_last_effect: state.bind_unbound_x_to_last_effect,
             delayed_registration_effect_id: state.delayed_registration_effect_id,
         };
@@ -5376,6 +5390,10 @@ fn resolve_effect_references_in_effect(
             last_sacrifice_cost_tag_index: state.last_sacrifice_cost_tag_index,
             last_exile_cost_tag_index: state.last_exile_cost_tag_index,
             allow_life_event_value: trigger_supports_event_amount(trigger),
+            allow_excess_damage_event_value:
+                ironsmith_compiler_semantic::trigger_references::trigger_binds_excess_damage_amount(
+                    trigger,
+                ),
             bind_unbound_x_to_last_effect: state.bind_unbound_x_to_last_effect,
             delayed_registration_effect_id: state.pinned_effect_metric_id.or(state.last_effect_id),
         };
@@ -5442,6 +5460,7 @@ fn resolve_effect_sequence_references_with_state_in_place(
             id_gen,
             EffectReferenceResolutionConfig {
                 allow_life_event_value: state.allow_life_event_value,
+                allow_excess_damage_event_value: state.allow_excess_damage_event_value,
                 ..Default::default()
             },
         );
@@ -5635,6 +5654,7 @@ fn advance_reference_env_for_effect(
                     iterated_player: env.iterated_player,
                     iterated_object: env.iterated_object,
                     allow_life_event_value: env.allow_life_event_value,
+                    allow_excess_damage_event_value: env.allow_excess_damage_event_value,
                     bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
                 });
             }
@@ -5669,6 +5689,7 @@ fn advance_reference_env_for_effect(
                 iterated_player: env.iterated_player,
                 iterated_object: env.iterated_object,
                 allow_life_event_value: env.allow_life_event_value,
+                allow_excess_damage_event_value: env.allow_excess_damage_event_value,
                 bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
             })
         }
@@ -6784,7 +6805,18 @@ fn resolve_effect_result_value(
         }
         Value::PendingEffectMetric { source, metric } => {
             let producer_id = state.pinned_effect_metric_id.or(state.last_effect_id);
-            if producer_id.is_none()
+            if state.allow_excess_damage_event_value
+                && state.pinned_effect_metric_id.is_none()
+                && matches!(
+                    (*source, *metric),
+                    (EffectMetricSource::Outcome, EffectMetric::ExcessDamage)
+                )
+            {
+                // Bare "that excess damage" refers to an excess-damage
+                // trigger even after an unrelated body instruction. Explicit
+                // "this way" values use PendingPriorEffectMetric instead.
+                *value = Value::EventValue(EventValueSpec::Amount);
+            } else if producer_id.is_none()
                 && state.allow_life_event_value
                 && matches!(
                     (*source, *metric),
@@ -6834,9 +6866,26 @@ fn resolve_effect_result_value(
             {
                 *value = tagged_metric;
             } else if let Some(id) = state.pinned_effect_metric_id.or(state.last_effect_id) {
-                *value = Value::PriorEffectMetric {
-                    effect_id: id,
-                    query: query.clone(),
+                // The action-qualified query selects the damage producer at
+                // compile time. Once bound, this unfiltered numeric fact has
+                // the same runtime/rendering representation as legacy excess.
+                *value = if query.source == EffectMetricSource::Outcome
+                    && query.metric == EffectMetric::ExcessDamage
+                    && query.action == Some(PriorEffectAction::DealtDamage)
+                    && query.filter.is_none()
+                    && query.player.is_none()
+                    && query.counter_type.is_none()
+                {
+                    Value::EffectMetric {
+                        effect_id: id,
+                        source: query.source,
+                        metric: query.metric,
+                    }
+                } else {
+                    Value::PriorEffectMetric {
+                        effect_id: id,
+                        query: query.clone(),
+                    }
                 };
             } else if let Some(index) = state.last_sacrifice_cost_tag_index
                 && let Some(tagged_metric) = resolve_sacrifice_cost_tagged_metric(query, index)
@@ -9180,6 +9229,7 @@ mod tests {
                 last_sacrifice_cost_tag_index: None,
                 last_exile_cost_tag_index: None,
                 allow_life_event_value: true,
+                allow_excess_damage_event_value: false,
                 bind_unbound_x_to_last_effect: false,
                 delayed_registration_effect_id: None,
             },
@@ -9205,6 +9255,7 @@ mod tests {
                 last_sacrifice_cost_tag_index: None,
                 last_exile_cost_tag_index: None,
                 allow_life_event_value: true,
+                allow_excess_damage_event_value: false,
                 bind_unbound_x_to_last_effect: false,
                 delayed_registration_effect_id: None,
             },
@@ -9231,6 +9282,7 @@ mod tests {
                 last_sacrifice_cost_tag_index: None,
                 last_exile_cost_tag_index: None,
                 allow_life_event_value: true,
+                allow_excess_damage_event_value: false,
                 bind_unbound_x_to_last_effect: false,
                 delayed_registration_effect_id: None,
             },
@@ -11067,5 +11119,92 @@ fn comparison_references_without_an_antecedent_are_rejected() {
             super::reference_helpers::resolve_value_it_tag(&value, &ReferenceEnv::default())
                 .is_err()
         );
+    }
+}
+
+#[cfg(test)]
+mod excess_damage_binding_tests {
+    use super::*;
+
+    fn state() -> EffectReferenceResolutionState<'static> {
+        EffectReferenceResolutionState {
+            last_value_comparison: None,
+            last_effect_id: None,
+            pinned_effect_metric_id: None,
+            last_library_search_effect_id: None,
+            last_sacrifice_cost_tag_index: None,
+            last_exile_cost_tag_index: None,
+            allow_life_event_value: true,
+            allow_excess_damage_event_value: false,
+            bind_unbound_x_to_last_effect: false,
+            delayed_registration_effect_id: None,
+        }
+    }
+    fn bare() -> Value {
+        Value::PendingEffectMetric {
+            source: EffectMetricSource::Outcome,
+            metric: EffectMetric::ExcessDamage,
+        }
+    }
+    #[test]
+    fn bare_excess_requires_excess_capability_not_any_damage_or_life_amount() {
+        assert!(resolve_effect_result_value(&mut bare(), state()).is_err());
+        let mut state = state();
+        state.allow_excess_damage_event_value = true;
+        // A body instruction unrelated to the triggering damage must not steal
+        // its amount. Both the first action and a later action read the event.
+        for producer in [None, Some(EffectId(7))] {
+            state.last_effect_id = producer;
+            let mut value = bare();
+            resolve_effect_result_value(&mut value, state).unwrap();
+            assert_eq!(value, Value::EventValue(EventValueSpec::Amount));
+        }
+    }
+    #[test]
+    fn explicit_this_way_and_result_branch_pin_to_their_damage_instruction() {
+        let mut state = state();
+        state.allow_excess_damage_event_value = true;
+        state.last_effect_id = Some(EffectId(7));
+        let query = ironsmith_core::PriorEffectMetricQuery::new(
+            EffectMetricSource::Outcome,
+            EffectMetric::ExcessDamage,
+        )
+        .with_action(PriorEffectAction::DealtDamage);
+        let mut explicit = Value::PendingPriorEffectMetric(query.clone());
+        resolve_effect_result_value(&mut explicit, state).unwrap();
+        assert_eq!(
+            explicit,
+            Value::EffectMetric {
+                effect_id: EffectId(7),
+                source: EffectMetricSource::Outcome,
+                metric: EffectMetric::ExcessDamage,
+            }
+        );
+        state.pinned_effect_metric_id = Some(EffectId(3));
+        let mut value = bare();
+        resolve_effect_result_value(&mut value, state).unwrap();
+        assert_eq!(
+            value,
+            Value::EffectMetric {
+                effect_id: EffectId(3),
+                source: EffectMetricSource::Outcome,
+                metric: EffectMetric::ExcessDamage,
+            }
+        );
+    }
+    #[test]
+    fn excess_consumer_demands_a_damage_producer() {
+        assert!(value_references_pending_metric_action(
+            &bare(),
+            PriorEffectAction::DealtDamage
+        ));
+        assert!(!value_references_pending_metric_action(
+            &bare(),
+            PriorEffectAction::Drawn
+        ));
+        assert!(!value_references_pending_metric_action(
+            &bare(),
+            PriorEffectAction::Sacrificed
+        ));
     }
 }
