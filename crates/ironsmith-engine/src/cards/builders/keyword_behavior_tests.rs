@@ -272,3 +272,47 @@ fn parse_self_enters_with_opponent_lost_life_is_typed_static() {
         "self etb opponent-life-loss conditional should not remain placeholder fallback: {static_ids:?}"
     );
 }
+
+#[test]
+fn job_select_adds_etb_create_and_attach_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Job Select Variant")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .job_select()
+        .build();
+    let [ability] = def.abilities.as_slice() else {
+        panic!("job select contributes one ability");
+    };
+    let AbilityKind::Triggered(triggered) = &ability.kind else {
+        panic!("job select is triggered");
+    };
+    let [segment] = triggered.effects.segments.as_slice() else {
+        panic!("job select uses one sequential program");
+    };
+    let [create, attach] = segment.default_effects.as_slice() else {
+        panic!("create then attach");
+    };
+    let tagged = create
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .unwrap();
+    let create = tagged
+        .effect
+        .downcast_ref::<crate::effects::CreateTokenEffect>()
+        .unwrap();
+    assert_eq!(create.count, Value::Fixed(1));
+    assert_eq!(create.controller, PlayerFilter::You);
+    assert_eq!(create.token.card.name, "Hero");
+    assert_eq!(create.token.card.subtypes, vec![Subtype::Hero]);
+    assert!(create.token.card.colors().is_empty());
+    assert_eq!(
+        create.token.card.power_toughness,
+        Some(PowerToughness::fixed(1, 1))
+    );
+    assert_eq!(
+        attach
+            .downcast_ref::<crate::effects::AttachToEffect>()
+            .unwrap()
+            .target,
+        ChooseSpec::Tagged(tagged.tag.clone())
+    );
+}
