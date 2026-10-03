@@ -54,6 +54,12 @@ fn assemble_segment(segment: &ActivationCostSegmentCst) -> CompilerCost {
             filter: filter.clone(),
         },
         ActivationCostSegmentCst::Untap => CompilerCost::Untap,
+        ActivationCostSegmentCst::Forage => CompilerCost::ValidatedEffect(Box::new(
+            crate::cards::builders::EffectAst::subject_verb_emit_keyword_action(
+                crate::events::KeywordActionKind::Forage,
+                1,
+            ),
+        )),
         ActivationCostSegmentCst::Life(amount) => CompilerCost::Life(amount.clone()),
         ActivationCostSegmentCst::Energy(amount) => CompilerCost::Energy(*amount),
         ActivationCostSegmentCst::DiscardSource => CompilerCost::DiscardSource,

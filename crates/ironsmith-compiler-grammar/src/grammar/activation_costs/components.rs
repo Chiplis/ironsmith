@@ -22,7 +22,7 @@ use super::super::primitives;
 use super::{
     ActivationCostCst, ActivationCostSegmentCst, ActivationCostSegmentKind,
     parse_activation_cost_segment_kind_tokens, parse_bare_symbol_segment_tokens,
-    parse_behold_segment_tokens, parse_blight_segment_tokens, parse_discard_segment_tokens,
+    parse_behold_segment_tokens, parse_blight_segment_tokens, parse_forage_segment_tokens, parse_discard_segment_tokens,
     parse_exert_segment_tokens, parse_exile_segment_tokens as parse_typed_exile_segment_tokens,
     parse_mill_segment_tokens, parse_move_source_to_library_bottom_cost_tokens,
     parse_move_to_library_top_cost_tokens, parse_pay_segment_tokens,
@@ -143,6 +143,7 @@ fn parse_activation_cost_segment_tokens(
         ActivationCostSegmentKind::TapChosen => Some(parse_tap_chosen_segment_tokens(tokens)),
         ActivationCostSegmentKind::Behold => Some(parse_behold_segment_tokens(tokens)),
         ActivationCostSegmentKind::Blight => Some(parse_blight_segment_tokens(tokens)),
+        ActivationCostSegmentKind::Forage => Some(parse_forage_segment_tokens(tokens)),
         ActivationCostSegmentKind::Exile => {
             Some(parse_typed_exile_segment_tokens(tokens, |words| {
                 is_source_reference_words(words) || named_source(words).is_some()
@@ -315,6 +316,8 @@ fn parse_activation_cost_segment_head_lexed<'a>(input: &mut LexStream<'a>) -> WR
                     primitives::kw("put"),
                     primitives::kw("remove"),
                     primitives::kw("behold"),
+                    primitives::kw("blight"),
+                    primitives::kw("forage"),
                 ))
                 .void(),
                 alt((

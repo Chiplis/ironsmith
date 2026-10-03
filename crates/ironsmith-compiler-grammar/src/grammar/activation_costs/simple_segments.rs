@@ -47,6 +47,16 @@ pub fn parse_blight_segment_tokens(
     parse_simple_segment(tokens, parse_blight_segment_lexed, "blight")
 }
 
+pub fn parse_forage_segment_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<ActivationCostSegmentCst, CardTextError> {
+    parse_simple_segment(tokens, |input: &mut LexStream<'_>| {
+        primitives::kw("forage").parse_next(input)?;
+        eof.parse_next(input)?;
+        Ok(ActivationCostSegmentCst::Forage)
+    }, "forage")
+}
+
 pub fn parse_exert_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {

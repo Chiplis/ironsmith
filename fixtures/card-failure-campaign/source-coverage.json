@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "c22883225db52cb2fd68d5bf0bdf58adf7db7b41",
+  "source_implementation_commit": "3dd2efae7f695ead80d797a23c417201f8b916c2",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 156,
-    "additional_proposed_compile_entries": 156,
+    "additional_proposed_unique_cards": 163,
+    "additional_proposed_compile_entries": 163,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true
   },
@@ -292,6 +292,29 @@
         "Secluded Starforge"
       ],
       "implementation_commit": "c22883225db52cb2fd68d5bf0bdf58adf7db7b41",
+      "tests": "authored_not_run"
+    },
+    {
+      "id": "compound-blight-forage-costs",
+      "stage": 17,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/compound_keyword_costs.json.fixture",
+      "baseline_entries": [
+        "Camellia, the Seedmiser",
+        "Champion of the Weird",
+        "Evershrike's Gift",
+        "Gristle Glutton",
+        "Spiral into Solitude",
+        "Sting-Slinger",
+        "Thornvault Forager"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "Dawnhand Dissident",
+          "remaining_blocker": "Source-exiled casting permission with a remove-counters-among additional cost is outside this cost-component repair."
+        }
+      ],
+      "implementation_commit": "3dd2efae7f695ead80d797a23c417201f8b916c2",
       "tests": "authored_not_run"
     }
   ],
@@ -3929,8 +3952,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "compound-blight-forage-costs"
+      ]
     },
     {
       "card_name": "Camouflage",
@@ -4351,8 +4376,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "compound-blight-forage-costs"
+      ]
     },
     {
       "card_name": "Chandra Ablaze",
@@ -6391,8 +6418,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "compound-blight-forage-costs"
+      ]
     },
     {
       "card_name": "Dazzling Beauty",
@@ -8851,8 +8881,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "compound-blight-forage-costs"
+      ]
     },
     {
       "card_name": "Everything Pizza",
@@ -11869,8 +11901,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "compound-blight-forage-costs"
+      ]
     },
     {
       "card_name": "Grothama, All-Devouring",
@@ -25846,8 +25880,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "compound-blight-forage-costs"
+      ]
     },
     {
       "card_name": "Spire Phantasm",
@@ -26176,8 +26212,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "compound-blight-forage-costs"
+      ]
     },
     {
       "card_name": "Stingerquill Voxmancer // Vicious Verse",
@@ -28684,8 +28722,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "compound-blight-forage-costs"
+      ]
     },
     {
       "card_name": "Thorough Investigation",
