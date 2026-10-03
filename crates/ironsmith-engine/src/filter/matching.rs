@@ -1026,8 +1026,8 @@ pub(super) fn matches_subject(
         if partners.is_empty()
             || !partners.iter().any(|partner| {
                 crate::combat_state::get_blockers(combat, *partner).contains(&subject.object_id())
-                    || crate::combat_state::get_blocked_attacker(combat, *partner)
-                        .is_some_and(|attacker| attacker == subject.object_id())
+                    || combat.blockers.get(&subject.object_id())
+                        .is_some_and(|blockers| blockers.contains(partner))
             })
         {
             return false;

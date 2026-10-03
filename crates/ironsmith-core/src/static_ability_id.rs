@@ -370,6 +370,8 @@ pub enum StaticAbilityId {
     BlockingAsThoughNoLandwalk,
     /// Unbounded blocker capacity; appended to preserve serialized variant ordinals.
     CanBlockAnyNumber,
+    /// Additional capacity scaled by a live typed permanent filter.
+    CanBlockAdditionalForEach,
 }
 
 impl StaticAbilityId {
@@ -450,6 +452,7 @@ impl StaticAbilityId {
             | CanBlockOnlyFlying
             | CanBlockAdditionalCreatureEachCombat
             | CanBlockAnyNumber
+            | CanBlockAdditionalForEach
             | MaxCreaturesCanAttackEachCombat
             | MaxCreaturesCanAttackYouEachCombat
             | MaxCreaturesCanBlockEachCombat
@@ -848,6 +851,7 @@ impl StaticAbilityId {
                 | BlockingAsThoughNoLandwalk
                 | CanBlockOnlyFlying
                 | CanBlockAnyNumber
+                | CanBlockAdditionalForEach
                 | MaxCreaturesCanAttackEachCombat
                 | MaxCreaturesCanBlockEachCombat
                 | CantBeBlockedByPowerOrLess

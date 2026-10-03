@@ -1312,6 +1312,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     EntersUnderChosenControl(PlayerFilter),
     // Append new payloads so existing serialized variant positions stay stable.
     BlockingAsThoughNoLandwalk(BlockingAsThoughNoLandwalkSpec),
+    CanBlockAdditionalForEach { additional: u32, filter: ObjectFilter },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1915,6 +1916,9 @@ where
             }
             StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(count) => {
                 StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(count)
+            }
+            StaticAbilityPayload::CanBlockAdditionalForEach { additional, filter } => {
+                StaticAbilityPayload::CanBlockAdditionalForEach { additional, filter }
             }
             StaticAbilityPayload::CanBlockAsThoughReachForSubtype(subtype) => {
                 StaticAbilityPayload::CanBlockAsThoughReachForSubtype(subtype)
@@ -3779,6 +3783,14 @@ impl<
             id: Some(StaticAbilityId::Ward),
             label: "ward".to_string(),
             payload: StaticAbilityPayload::Ward(amount.into()),
+        }
+    }
+
+    pub fn can_block_additional_for_each(additional: u32, filter: ObjectFilter) -> Self {
+        Self {
+            id: Some(StaticAbilityId::CanBlockAdditionalForEach),
+            label: "can block additional creatures per matching permanent".to_string(),
+            payload: StaticAbilityPayload::CanBlockAdditionalForEach { additional, filter },
         }
     }
 

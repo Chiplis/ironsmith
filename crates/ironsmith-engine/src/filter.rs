@@ -2411,8 +2411,7 @@ fn object_is_in_combat_with_source_lki(
     );
     source_ids.into_iter().any(|source_id| {
         crate::combat_state::get_blockers(combat, source_id).contains(&object_id)
-            || crate::combat_state::get_blocked_attacker(combat, source_id)
-                .is_some_and(|attacker| attacker == object_id)
+            || combat.blockers.get(&object_id).is_some_and(|blockers| blockers.contains(&source_id))
             // A source that left the battlefield was removed from combat
             // (CR 506.4), but its ability still refers to the creatures it
             // was in combat with through last known information (CR 608.2h).

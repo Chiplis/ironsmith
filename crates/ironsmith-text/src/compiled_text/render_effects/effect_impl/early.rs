@@ -5988,11 +5988,12 @@
     if let Some(grant_target) = effect.downcast_ref::<crate::effects::GrantAbilitiesTargetEffect>()
     {
         if grant_target.abilities.len() == 1
-            && grant_target.abilities[0].id() == crate::static_abilities::StaticAbilityId::CanBlockAnyNumber
+            && matches!(grant_target.abilities[0].id(), crate::static_abilities::StaticAbilityId::CanBlockAnyNumber | crate::static_abilities::StaticAbilityId::CanBlockAdditionalCreatureEachCombat)
             && matches!(grant_target.duration, Until::EndOfTurn)
         {
             let target = capitalize_first(&describe_choose_spec(&grant_target.target));
-            return format!("{target} can block any number of creatures this turn");
+            let rule = lowercase_first(&grant_target.abilities[0].display());
+            return format!("{target} {} this turn", rule.trim_end_matches(" each combat"));
         }
         if grant_target.abilities.len() == 1
             && grant_target.abilities[0].id()

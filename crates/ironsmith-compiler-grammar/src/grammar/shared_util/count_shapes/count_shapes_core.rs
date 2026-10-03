@@ -652,6 +652,21 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
         }
     }
 
+    // The creature referred to by "it" is the blocker, not the candidate.
+    // Count current attacking combat partners, not historical blocked objects
+    // or the number of blockers of the source. Reference resolution binds the
+    // nested pronoun to a source or previously selected creature as appropriate.
+    if !head.other && exact_one_of(count_words, &[
+        &["creature", "it's", "blocking"], &["creatures", "it's", "blocking"],
+        &["creature", "its", "blocking"], &["creatures", "its", "blocking"],
+        &["creature", "it", "is", "blocking"], &["creatures", "it", "is", "blocking"],
+    ]) {
+        let mut filter = ObjectFilter::creature();
+        filter.attacking = true;
+        filter.in_combat_with = Some(crate::filter::ObjectRef::Tagged(crate::tag::CompilerReferenceTag::It.bind()));
+        return Some((Value::Count(filter), filter_end));
+    }
+
     let filter = parse_for_each_object_filter_words(&words[idx..filter_end], head.other)?;
     Some((Value::Count(filter), filter_end))
 }
@@ -852,4 +867,22 @@ pub fn parse_cards_drawn_count_words(count_words: &[&str]) -> Option<Value> {
         ));
     }
     None
+}
+
+#[cfg(test)]
+mod current_blocked_attacker_count_tests {
+    use super::*;
+
+    #[test]
+    fn count_keeps_the_blocker_antecedent_and_current_attacking_role() {
+        let words = ["for", "each", "creature", "it's", "blocking"];
+        let (Value::Count(filter), consumed) = parse_for_each_count_value_words(&words).unwrap() else {
+            panic!("expected a typed current-object count");
+        };
+        assert_eq!(consumed, words.len());
+        assert!(filter.attacking);
+        assert!(!filter.blocking);
+        assert!(matches!(filter.in_combat_with, Some(crate::filter::ObjectRef::Tagged(tag)) if tag == crate::tag::CompilerReferenceTag::It.bind()));
+        assert!(!filter.blocked_by_source, "do not substitute an implicit source for the antecedent");
+    }
 }

@@ -2614,7 +2614,7 @@ fn modeled_filter_static_grant(
 fn is_can_block_additional_each_combat_rule(
     ability: &crate::static_abilities::StaticAbility,
 ) -> bool {
-    ability.id() == crate::static_abilities::StaticAbilityId::CanBlockAnyNumber
+    matches!(ability.id(), crate::static_abilities::StaticAbilityId::CanBlockAnyNumber | crate::static_abilities::StaticAbilityId::CanBlockAdditionalForEach)
         || ability.compiled_model().is_some_and(|model| {
             matches!(
                 model.payload,

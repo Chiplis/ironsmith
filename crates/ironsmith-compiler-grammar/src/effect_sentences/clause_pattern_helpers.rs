@@ -1752,13 +1752,13 @@ pub fn parse_redirect_next_damage_sentence(
     };
     Ok(Some(vec![effect]))
 }
-pub fn parse_can_block_any_number_this_turn_clause(
+pub fn parse_blocking_capacity_this_turn_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let Some(shape) = crate::grammar::blocking_permissions::parse_can_block_any_number(tokens) else {
+    let Some(shape) = crate::grammar::blocking_permissions::parse_blocking_capacity(tokens) else {
         return Ok(None);
     };
-    if !shape.this_turn { return Ok(None); }
+    if !shape.this_turn || shape.for_each_tokens.is_some() { return Ok(None); }
     let target = if shape.subject_tokens.is_empty() {
         TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), Some(TextSpan::synthetic()))
     } else {
@@ -1767,7 +1767,10 @@ pub fn parse_can_block_any_number_this_turn_clause(
     Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
         target,
         vec![GrantedAbilityAst::StaticAbility(Box::new(
-            crate::cards::builders::StaticAbilityAst::Static(crate::static_abilities::StaticAbility::can_block_any_number()),
+            crate::cards::builders::StaticAbilityAst::Static(match shape.capacity {
+                crate::grammar::blocking_permissions::BlockingCapacity::AnyNumber => crate::static_abilities::StaticAbility::can_block_any_number(),
+                crate::grammar::blocking_permissions::BlockingCapacity::Additional(count) => crate::static_abilities::StaticAbility::can_block_additional_creature_each_combat(count as usize),
+            }),
         ))],
         Until::EndOfTurn,
     )))
