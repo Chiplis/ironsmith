@@ -19,7 +19,6 @@ pub enum UnsupportedRewriteLineKind {
     MarkerKeywordWithTail,
     SameNameDiscard,
     MixedEntersTappedUntap,
-    PreventCombatDamageTail,
     DefendingPlayerChoice,
     SacrificeIslandThisWay,
     AuraCopyAttachment,
@@ -55,7 +54,6 @@ impl UnsupportedRewriteLineKind {
             Self::MixedEntersTappedUntap => {
                 "unsupported mixed enters-tapped and negated-untap clause"
             }
-            Self::PreventCombatDamageTail => "unsupported prevent-all-combat-damage clause tail",
             Self::DefendingPlayerChoice => "unsupported defending-players-choice clause",
             Self::SacrificeIslandThisWay => {
                 "unsupported if-you-sacrifice-an-island-this-way clause"
@@ -188,26 +186,6 @@ const RULES: &[UnsupportedRule] = &[
             "enters", "tapped", "and", "doesnt", "untap", "during", "your", "untap", "step",
         ],
         kind: UnsupportedRewriteLineKind::MixedEntersTappedUntap,
-    },
-    UnsupportedRule {
-        match_kind: UnsupportedRuleMatch::Contains,
-        phrase: &[
-            "prevent",
-            "all",
-            "combat",
-            "damage",
-            "that",
-            "would",
-            "be",
-            "dealt",
-            "this",
-            "turn",
-            "by",
-            "creatures",
-            "with",
-            "power",
-        ],
-        kind: UnsupportedRewriteLineKind::PreventCombatDamageTail,
     },
     UnsupportedRule {
         match_kind: UnsupportedRuleMatch::Contains,
@@ -561,6 +539,47 @@ fn parse_legendary_copy_exception(
 mod tests {
     use super::*;
     use crate::lexer::lex_line;
+
+    #[test]
+    fn power_filtered_combat_prevention_has_a_typed_reading_instead_of_a_guard() {
+        use crate::cards::builders::{DamagePreventionActionAst, EffectAst, SubjectVerbActionAst};
+        for threshold in [0, 3, 4, 7] {
+            let tokens = lex_line(
+                &format!("Prevent all combat damage that would be dealt this turn by creatures with power {threshold} or less."),
+                0,
+            )
+            .unwrap();
+            assert_eq!(parse_unsupported_rewrite_line_kind(&tokens), None);
+            let parsed = crate::grammar::effects::parse_prevent_damage_sentence_lexed(&tokens)
+                .expect("power-qualified prevention should parse")
+                .expect("prevention should have a typed AST");
+            let EffectAst::SubjectVerb(subject) = parsed else {
+                panic!("expected a typed prevention action");
+            };
+            let SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllCombatDamageFromSourceFilter {
+                    duration,
+                    source_filter,
+                    excluded_source_target,
+                    source_of_your_choice,
+                },
+            ) = subject.action
+            else {
+                panic!("the source restriction must remain a dynamic filter");
+            };
+            assert_eq!(duration, crate::effect::Until::EndOfTurn);
+            assert_eq!(
+                source_filter.card_types,
+                vec![crate::types::CardType::Creature]
+            );
+            assert_eq!(
+                source_filter.power,
+                Some(crate::filter::Comparison::LessThanOrEqual(threshold)),
+            );
+            assert!(excluded_source_target.is_none());
+            assert!(!source_of_your_choice);
+        }
+    }
 
     #[test]
     fn classifies_prefix_exact_contains_and_composed_unsupported_shapes() {

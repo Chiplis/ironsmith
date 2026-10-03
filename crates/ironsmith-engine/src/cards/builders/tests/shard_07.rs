@@ -1673,15 +1673,24 @@ pub(super) fn parse_prevent_all_combat_damage_to_players_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-pub(super) fn parse_prevent_all_combat_damage_requires_supported_tail() {
-    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Unsupported Fog Tail Variant")
-            .parse_text("Prevent all combat damage that would be dealt this turn by creatures with power 4 or less.")
-            .expect_err("unsupported prevent-all tail must fail parse");
-    let message = format!("{err:?}");
-    assert!(
-        message.contains("unsupported prevent-all-combat-damage clause tail")
-            || message.contains("unsupported prevent-all source target"),
-        "expected strict prevent-all tail error, got {message}"
+pub(super) fn parse_prevent_all_combat_damage_with_power_filtered_sources() {
+    let definition = CardDefinitionBuilder::new(CardId::from_raw(1), "Power-Filtered Fog Variant")
+        .parse_text("Prevent all combat damage that would be dealt this turn by creatures with power 4 or less.")
+        .expect("power-filtered combat prevention has a typed dynamic source filter");
+    let prevention = definition
+        .spell_effect
+        .as_ref()
+        .unwrap()
+        .all_effects()
+        .into_iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::PreventAllDamageEffect>())
+        .expect("the power-qualified clause must lower to filtered prevention");
+    assert!(prevention.damage_filter.combat_only);
+    let source_filter = prevention.damage_filter.from_source.as_ref().unwrap();
+    assert_eq!(source_filter.card_types, vec![CardType::Creature]);
+    assert_eq!(
+        source_filter.power,
+        Some(crate::filter::Comparison::LessThanOrEqual(4))
     );
 }
 
