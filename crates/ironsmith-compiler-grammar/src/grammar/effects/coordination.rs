@@ -670,6 +670,7 @@ fn classify_boundary<'a>(
             matches!(
                 verb.kind,
                 ChainVerbKind::Destroy
+                    | ChainVerbKind::Return
                     | ChainVerbKind::Exile
                     | ChainVerbKind::Sacrifice
                     | ChainVerbKind::Tap
@@ -838,13 +839,7 @@ fn classify_boundary<'a>(
                     .and_then(crate::util::parse_subtype_word)
                     .is_some()
         })
-        && after.first().is_some_and(|token| {
-            token_is_card_type_noun(token)
-                || token
-                    .as_word()
-                    .and_then(crate::util::parse_subtype_word)
-                    .is_some()
-        })
+        && starts_modified_type_filter_arm(after, true)
     {
         // A card-type union is one object operand even when a later action
         // follows in the same sentence. Do not let the typed clause-head
@@ -1147,7 +1142,7 @@ fn token_is_card_type_noun(token: &OwnedLexToken) -> bool {
     })
 }
 
-fn starts_card_type_list_arm(tokens: &[OwnedLexToken]) -> bool {
+pub(crate) fn starts_card_type_list_arm(tokens: &[OwnedLexToken]) -> bool {
     let tokens = trim_lexed_commas(tokens);
     let tokens = if tokens.first().is_some_and(|token| {
         token.is_word("and")
@@ -1158,17 +1153,38 @@ fn starts_card_type_list_arm(tokens: &[OwnedLexToken]) -> bool {
     } else {
         tokens
     };
-    let tokens = if tokens.first().is_some_and(|token| {
-        token.is_word("basic")
-            || token.is_word("nonbasic")
-            || token.is_word("token")
-            || token.is_word("nontoken")
+    starts_modified_type_filter_arm(tokens, false)
+}
+
+/// A qualified noun arm is still an object selector: `non-Aura enchantment`,
+/// `tapped creature`, or `legendary land`. Prove its head with the existing
+/// filter grammar instead of maintaining another list of allowed adjectives.
+/// Only inspect through the first type noun; later `counters`, relative verbs,
+/// and coordinated actions must not decide whether this noun starts an effect.
+fn starts_modified_type_filter_arm(tokens: &[OwnedLexToken], allow_subtype: bool) -> bool {
+    if tokens.first().is_some_and(|token| {
+        token.is_any_word(&[
+            "a", "an", "all", "another", "target", "this", "that", "each",
+        ])
     }) {
-        &tokens[1..]
-    } else {
-        tokens
+        return false;
+    }
+    let Some(noun_index) = tokens.iter().position(|token| {
+        token_is_card_type_noun(token)
+            || (allow_subtype
+                && token
+                    .as_word()
+                    .and_then(crate::util::parse_subtype_word)
+                    .is_some())
+    }) else {
+        return false;
     };
-    tokens.first().is_some_and(token_is_card_type_noun)
+    // Preserve the existing bare-noun recognition, including negated card
+    // types. Modified heads must be complete simple filters, so an explicit
+    // action such as `draw a creature card` cannot become a target union.
+    noun_index == 0
+        || crate::grammar::filters::parse_simple_object_filter_lexed(&tokens[..=noun_index], false)
+            .is_some()
 }
 
 fn or_continues_explicit_target_domain(before_words: &[&str], after_words: &[&str]) -> bool {
@@ -1408,3 +1424,7 @@ fn sacrifices_object_union(tokens: &[OwnedLexToken]) -> bool {
             )
         })
 }
+
+#[cfg(test)]
+#[path = "coordination_tests.rs"]
+mod tests;
