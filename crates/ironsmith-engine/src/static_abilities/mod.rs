@@ -2749,6 +2749,12 @@ impl StaticAbility {
         Self::new(CanBlockAsThoughNoShadow)
     }
 
+    pub fn blocking_as_though_no_landwalk(
+        spec: ironsmith_core::static_ability_model::BlockingAsThoughNoLandwalkSpec,
+    ) -> Self {
+        Self::new(BlockingAsThoughNoLandwalk { spec })
+    }
+
     pub fn targeting_as_though_no_ability(
         spec: ironsmith_core::static_ability_model::TargetingAsThoughNoAbilitySpec,
     ) -> Self {

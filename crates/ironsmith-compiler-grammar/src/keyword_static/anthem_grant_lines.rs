@@ -402,7 +402,7 @@ pub fn parse_landwalk_as_though_block_override_line(
     let Some(parsed) = parse_landwalk_block_override_clause(tokens) else {
         return Ok(None);
     };
-    if !is_landwalk_ability_word(parsed.ability_word) {
+    if !parsed.all_landwalk && !is_landwalk_ability_word(parsed.ability_word) {
         return Ok(None);
     }
 
@@ -410,9 +410,35 @@ pub fn parse_landwalk_as_though_block_override_line(
         return Ok(None);
     };
 
-    let removed = StaticAbility::keyword_marker(parsed.ability_word);
+    let landwalk = if parsed.all_landwalk {
+        None
+    } else if let Some(KeywordAction::Landwalk(kind)) =
+        parse_single_word_keyword_action(parsed.ability_word)
+    {
+        Some(kind)
+    } else {
+        return Ok(None);
+    };
+    let display = if parsed.all_landwalk {
+        format!(
+            "{} with landwalk abilities can be blocked as though they didn't have those abilities",
+            render_token_slice(parsed.subject_tokens)
+        )
+    } else {
+        format!(
+            "{} can be blocked as though they didn't have {}",
+            render_token_slice(parsed.subject_tokens),
+            parsed.ability_word
+        )
+    };
     Ok(Some(StaticAbilityAst::Static(
-        StaticAbility::remove_ability(filter, removed),
+        StaticAbility::blocking_as_though_no_landwalk(
+            ironsmith_core::static_ability_model::BlockingAsThoughNoLandwalkSpec {
+                objects: filter,
+                landwalk,
+                display,
+            },
+        ),
     )))
 }
 

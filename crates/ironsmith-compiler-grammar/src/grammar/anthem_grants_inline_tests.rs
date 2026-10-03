@@ -2,6 +2,33 @@ use super::super::super::lexer::lex_line;
 use super::*;
 
 #[test]
+fn landwalk_override_plural_reference_requires_its_landwalk_antecedent() {
+    let all = lex_line("Creatures with landwalk abilities can be blocked as though they didn't have those abilities.", 0).unwrap();
+    let parsed = parse_landwalk_block_override_clause(&all).unwrap();
+    assert!(parsed.all_landwalk);
+    assert_eq!(
+        crate::lexer::token_word_refs(parsed.subject_tokens),
+        ["Creatures"]
+    );
+
+    let one = lex_line(
+        "Creatures with islandwalk can be blocked as though they didn't have islandwalk.",
+        0,
+    )
+    .unwrap();
+    let parsed = parse_landwalk_block_override_clause(&one).unwrap();
+    assert!(!parsed.all_landwalk);
+    assert_eq!(parsed.ability_word, "islandwalk");
+
+    let unrelated = lex_line(
+        "Creatures with flying can be blocked as though they didn't have those abilities.",
+        0,
+    )
+    .unwrap();
+    assert!(parse_landwalk_block_override_clause(&unrelated).is_none());
+}
+
+#[test]
 fn recognizes_only_the_complete_defending_player_most_creatures_condition() {
     let exact = lex_line(
         "defending player controls the most creatures or is tied for the most.",

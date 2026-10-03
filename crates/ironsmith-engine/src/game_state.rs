@@ -1674,6 +1674,9 @@ pub struct CantEffectTracker {
     /// removing it or widening permissions for other source controllers.
     pub targeting_as_though_overrides: Vec<TargetingAsThoughOverride>,
 
+    /// Blocking-only landwalk permissions, without changing characteristics.
+    pub blocking_as_though_landwalk_overrides: Vec<BlockingAsThoughLandwalkOverride>,
+
     /// Creatures that can't attack.
     /// Example: Pacifism, Propaganda (if unpaid), Maze of Ith
     pub cant_attack: HashSet<ObjectId>,
@@ -1891,6 +1894,13 @@ pub struct PlayerCantBeTargetedFrom {
 pub struct ObjectCantBeTargetedFrom {
     pub object: ObjectId,
     pub source_filter: crate::target::ObjectFilter,
+    pub controller: PlayerId,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BlockingAsThoughLandwalkOverride {
+    pub spec: ironsmith_core::static_ability_model::BlockingAsThoughNoLandwalkSpec,
+    pub source: ObjectId,
     pub controller: PlayerId,
 }
 
@@ -2153,6 +2163,54 @@ impl CantEffectTracker {
         Self::default()
     }
 
+    pub fn ignores_landwalk_for_blocking(
+        &self,
+        game: &GameState,
+        attacker: ObjectId,
+        landwalk: crate::static_abilities::LandwalkKind,
+    ) -> bool {
+        let Some(object) = game.object(attacker) else {
+            return false;
+        };
+        self.blocking_as_though_landwalk_overrides
+            .iter()
+            .any(|permission| {
+                permission
+                    .spec
+                    .landwalk
+                    .is_none_or(|ignored| match (ignored, landwalk) {
+                        (
+                            ironsmith_core::LandwalkKind::Subtype {
+                                subtype: left,
+                                snow: left_snow,
+                            },
+                            crate::static_abilities::LandwalkKind::Subtype {
+                                subtype: right,
+                                snow: right_snow,
+                            },
+                        ) => left == right && left_snow == right_snow,
+                        (
+                            ironsmith_core::LandwalkKind::AnyLand,
+                            crate::static_abilities::LandwalkKind::AnyLand,
+                        )
+                        | (
+                            ironsmith_core::LandwalkKind::NonbasicLand,
+                            crate::static_abilities::LandwalkKind::NonbasicLand,
+                        )
+                        | (
+                            ironsmith_core::LandwalkKind::ArtifactLand,
+                            crate::static_abilities::LandwalkKind::ArtifactLand,
+                        ) => true,
+                        _ => false,
+                    })
+                    && permission.spec.objects.matches(
+                        object,
+                        &game.filter_context_for(permission.controller, Some(permission.source)),
+                        game,
+                    )
+            })
+    }
+
     pub fn ignores_target_ability_for_object(
         &self,
         game: &GameState,
@@ -2235,6 +2293,8 @@ impl CantEffectTracker {
             .extend(other.cant_search_own_library_from_own_effects);
         self.targeting_as_though_overrides
             .extend(other.targeting_as_though_overrides);
+        self.blocking_as_though_landwalk_overrides
+            .extend(other.blocking_as_though_landwalk_overrides);
         self.cant_attack.extend(other.cant_attack);
         for (creature, defenders) in other.cant_attack_defenders {
             self.cant_attack_defenders
@@ -2349,6 +2409,7 @@ impl CantEffectTracker {
         self.cant_search.clear();
         self.cant_search_own_library_from_own_effects.clear();
         self.targeting_as_though_overrides.clear();
+        self.blocking_as_though_landwalk_overrides.clear();
         self.cant_attack.clear();
         self.cant_attack_defenders.clear();
         self.cant_attack_players.clear();

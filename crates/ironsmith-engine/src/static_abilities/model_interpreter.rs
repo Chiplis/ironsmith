@@ -1180,6 +1180,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::CanAttackPlayersWhoAttackedControllerLastTurnAsThoughNoDefender => {
                 StaticAbility::can_attack_players_who_attacked_controller_last_turn_as_though_no_defender()
             }
+            ironsmith_core::StaticAbilityPayload::BlockingAsThoughNoLandwalk(spec) => {
+                StaticAbility::blocking_as_though_no_landwalk(spec.clone())
+            }
             ironsmith_core::StaticAbilityPayload::TargetingAsThoughNoAbility(spec) => {
                 StaticAbility::targeting_as_though_no_ability(spec.clone())
             }
