@@ -104,12 +104,16 @@ pub(crate) fn apply_processed_damage_outcome_opts(
             return Ok(EffectOutcome::count(0));
         }
 
+        // A single recipient can still be one assignment in a surrounding
+        // simultaneous object/player action. Outcome events leave this scope
+        // before they are queued, so retain its batch identity at production.
+        let simultaneous_batch = game.simultaneous_action_batch();
         apply_processed_damage_results(
             game,
             source,
             source_snapshot,
             std::iter::once(processed),
-            None,
+            simultaneous_batch,
             source_is_combat,
             provenance,
             cause,
@@ -1087,6 +1091,35 @@ mod replacement_scope_tests {
             ));
         }
         game.create_object_from_definition(&card.build(), alice, Zone::Battlefield)
+    }
+
+    #[test]
+    fn single_recipient_damage_retains_only_its_enclosing_action_batch() {
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let first_source = source(&mut game, alice, false);
+        let second_source = source(&mut game, alice, false);
+        let opened = game.open_simultaneous_action();
+        assert!(opened);
+        let expected_batch = game.simultaneous_action_batch().unwrap();
+        for damage_source in [first_source, second_source] {
+            let mut ctx = ExecutionContext::new_default(damage_source, alice);
+            let outcome = DealDamageEffect::new(1, ChooseSpec::SpecificPlayer(bob))
+                .execute(&mut game, &mut ctx).unwrap();
+            let event = outcome.events.iter()
+                .find(|event| event.downcast::<DamageEvent>().is_some()).unwrap();
+            assert_eq!(event.simultaneous_batch(), Some(expected_batch));
+        }
+        game.close_simultaneous_action(opened);
+        let mut ctx = ExecutionContext::new_default(first_source, alice);
+        let outcome = DealDamageEffect::new(1, ChooseSpec::SpecificPlayer(bob))
+            .execute(&mut game, &mut ctx).unwrap();
+        let event = outcome.events.iter()
+            .find(|event| event.downcast::<DamageEvent>().is_some()).unwrap();
+        assert_eq!(event.simultaneous_batch(), None,
+            "a later independent damage instruction must not inherit the old batch");
+        assert_eq!(game.player(bob).unwrap().life, 17);
     }
 
     #[test]

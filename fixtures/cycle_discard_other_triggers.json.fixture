@@ -1,0 +1,20 @@
+[
+  {
+    "name": "Archfiend of Ifnir",
+    "text": "Mana cost: {3}{B}{B}\nType: Creature \u2014 Demon\nPower/Toughness: 5/4\nFlying\nWhenever you cycle or discard another card, put a -1/-1 counter on each creature your opponents control.\nCycling {2} ({2}, Discard this card: Draw a card.)",
+    "oracle_id": "535e2af0-7b08-4026-b1bf-87626407dd42",
+    "source": "https://scryfall.com/card/ecc/70/archfiend-of-ifnir?utm_source=api"
+  },
+  {
+    "name": "Curator of Mysteries",
+    "text": "Mana cost: {2}{U}{U}\nType: Creature \u2014 Sphinx\nPower/Toughness: 4/4\nFlying\nWhenever you cycle or discard another card, scry 1.\nCycling {U} ({U}, Discard this card: Draw a card.)",
+    "oracle_id": "04858b93-0a2a-44d0-942d-7fadf589cbb7",
+    "source": "https://scryfall.com/card/afc/81/curator-of-mysteries?utm_source=api"
+  },
+  {
+    "name": "Horror of the Broken Lands",
+    "text": "Mana cost: {4}{B}\nType: Creature \u2014 Horror\nPower/Toughness: 4/4\nWhenever you cycle or discard another card, this creature gets +2/+1 until end of turn.\nCycling {B} ({B}, Discard this card: Draw a card.)",
+    "oracle_id": "6de20c2c-b8a8-4f12-897b-a2f55d7eed87",
+    "source": "https://scryfall.com/card/a25/93/horror-of-the-broken-lands?utm_source=api"
+  }
+]

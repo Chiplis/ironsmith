@@ -4,7 +4,7 @@ use crate::cards::builders::{
 use crate::effect::{Effect, EventValueSpec};
 use crate::filter::ObjectRef;
 use crate::model::ast::TriggerIntroSurfaceAst;
-use crate::target::{ChooseSpec, PlayerFilter};
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::triggers::Trigger;
 
 use super::LoweredEffects;
@@ -621,9 +621,20 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
                 Some(PlayerFilter::Opponent) => " during an opponent's turn",
                 _ => "",
             };
-            let display = format!(
-                "Whenever {source_description} deals noncombat damage to {player_description}{turn_description}"
-            );
+            let mut source_without_grouping = source.clone();
+            source_without_grouping.set_union_one_or_more(false);
+            let display = if source_surface == crate::triggers::DamageSourceSurface::Filter
+                && source_without_grouping == ObjectFilter::default()
+            {
+                let verb = if damaged_player_one_or_more || player == PlayerFilter::You {
+                    "are"
+                } else {
+                    "is"
+                };
+                format!("Whenever {player_description} {verb} dealt noncombat damage{turn_description}")
+            } else {
+                format!("Whenever {source_description} deals noncombat damage to {player_description}{turn_description}")
+            };
             Trigger::deals_noncombat_damage_to_player_qualified(
                 source,
                 player,

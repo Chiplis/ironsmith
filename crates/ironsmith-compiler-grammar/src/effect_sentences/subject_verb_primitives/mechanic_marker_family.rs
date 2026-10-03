@@ -38,6 +38,8 @@ pub const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive] = &[
         20,
         PreDiagnostic,
         &[
+            // The typed venture reader already owns this complete clause.
+            LexRuleHeadHint::Single("venture"),
             LexRuleHeadHint::Single("you"),
             LexRuleHeadHint::Single("stand"),
             LexRuleHeadHint::Single("it"),
@@ -935,6 +937,22 @@ mod tests {
     use crate::cards::builders::TokenActionAst;
     use crate::model::ast::SubjectVerbSubjectAst;
     use crate::util::tokenize_line;
+
+    #[test]
+    fn venture_dispatch_reaches_the_existing_typed_clause_reader() {
+        for text in ["Venture into the dungeon.", "venture into the dungeon"] {
+            let tokens = tokenize_line(text, 0);
+            let effects = run_subject_verb_primitives_lexed(
+                &tokens,
+                PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
+                &PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX,
+            ).unwrap().expect("venture lexical head must reach its typed reader");
+            assert_eq!(effects, vec![EffectAst::subject_verb_venture_into_dungeon(PlayerAst::You, false)]);
+        }
+        let tokens = tokenize_line("Venture into the dungeon and discard your hand.", 0);
+        assert!(parse_sentence_fallback_mechanic_marker(SubjectVerbPrimitiveClause::new(&tokens))
+            .unwrap().is_none(), "the reader must not drop a compound tail");
+    }
 
     #[test]
     fn preconditional_registry_preserves_both_joint_create_actors() {
