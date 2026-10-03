@@ -247,6 +247,7 @@ pub fn apply_keyword_action(
         KeywordAction::Annihilator(amount) => builder.annihilator(amount),
         KeywordAction::ForMirrodin => builder.for_mirrodin(),
         KeywordAction::LivingWeapon => builder.living_weapon(),
+        KeywordAction::JobSelect => builder.job_select(),
         KeywordAction::Fuse => builder.has_fuse(),
         KeywordAction::Prototype {
             cost,

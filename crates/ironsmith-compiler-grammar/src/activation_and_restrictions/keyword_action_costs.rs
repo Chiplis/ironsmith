@@ -1010,6 +1010,7 @@ enum ExactAbilityPhrase {
     ProtectionFromColorless,
     ProtectionFromEverything,
     ProtectionFromColoredSpells,
+    JobSelect,
 }
 
 const EXACT_ABILITY_PHRASES: &[(&[&str], ExactAbilityPhrase)] = &[
@@ -1025,6 +1026,7 @@ const EXACT_ABILITY_PHRASES: &[(&[&str], ExactAbilityPhrase)] = &[
     ),
     (&["for", "mirrodin"], ExactAbilityPhrase::ForMirrodin),
     (&["living", "weapon"], ExactAbilityPhrase::LivingWeapon),
+    (&["job", "select"], ExactAbilityPhrase::JobSelect),
     (
         &["modular", "sunburst"],
         ExactAbilityPhrase::ModularSunburst,
@@ -1069,6 +1071,7 @@ fn exact_ability_phrase_action(kind: ExactAbilityPhrase) -> KeywordAction {
         ExactAbilityPhrase::TrampleOverPlaneswalkers => KeywordAction::TrampleOverPlaneswalkers,
         ExactAbilityPhrase::ForMirrodin => KeywordAction::ForMirrodin,
         ExactAbilityPhrase::LivingWeapon => KeywordAction::LivingWeapon,
+        ExactAbilityPhrase::JobSelect => KeywordAction::JobSelect,
         ExactAbilityPhrase::ModularSunburst => KeywordAction::ModularSunburst,
         ExactAbilityPhrase::ProtectionFromAllColors => KeywordAction::ProtectionFromAllColors,
         ExactAbilityPhrase::ProtectionFromColorless => KeywordAction::ProtectionFromColorless,
@@ -1440,9 +1443,6 @@ pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
     if matches!(&surface.head, KeywordAbilityHead::EmergeFrom) {
         return marker_text_from_words(&words).map(KeywordAction::MarkerText);
     }
-    if matches!(&surface.head, KeywordAbilityHead::JobSelect) {
-        return Some(KeywordAction::MarkerText("Job select".to_string()));
-    }
     if matches!(&surface.head, KeywordAbilityHead::UmbraArmor) {
         return Some(KeywordAction::UmbraArmor);
     }
@@ -1540,6 +1540,7 @@ pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
     if let Some(action) = match &surface.head {
         KeywordAbilityHead::ForMirrodin => Some(KeywordAction::ForMirrodin),
         KeywordAbilityHead::LivingWeapon => Some(KeywordAction::LivingWeapon),
+        KeywordAbilityHead::JobSelect => Some(KeywordAction::JobSelect),
         KeywordAbilityHead::BattleCry => Some(KeywordAction::BattleCry),
         KeywordAbilityHead::SplitSecond => Some(KeywordAction::SplitSecond),
         KeywordAbilityHead::ReadAhead => Some(KeywordAction::ReadAhead),
@@ -1698,6 +1699,37 @@ mod tests {
 
     fn lex(raw: &str) -> Vec<OwnedLexToken> {
         crate::lexer::lex_line(raw, 0).expect("test text should lex")
+    }
+
+    #[test]
+    fn job_select_is_a_typed_keyword_with_or_without_reminder_text() {
+        for text in [
+            "Job select",
+            "Job select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)",
+        ] {
+            let tokens = lex(text);
+            assert_eq!(
+                parse_ability_phrase(&tokens),
+                Some(KeywordAction::JobSelect)
+            );
+            // The document pipeline removes reminder text before the
+            // keyword-line reader. Exercise that actual contract here;
+            // parse_ability_phrase above independently accepts raw reminders.
+            let document = crate::preprocess::preprocess_document(
+                ironsmith_core::card::CardBuilder::new(crate::ids::CardId::new(), "Job fixture"),
+                text,
+            )
+            .unwrap();
+            let crate::preprocess::PreprocessedItem::Line(line) = &document.items[0] else {
+                panic!("expected a rules line");
+            };
+            assert_eq!(
+                crate::clause_support::parse_ability_line_lexed(&line.info.source_tokens),
+                Some(vec![KeywordAction::JobSelect]),
+                "{text}"
+            );
+        }
+        assert_eq!(KeywordAction::JobSelect.display_text(), "Job select");
     }
 
     #[test]
