@@ -1,19 +1,19 @@
-//! "Whenever [filter] becomes tapped" trigger.
+//! "Whenever [filter] becomes untapped" trigger.
 
 use crate::events::EventKind;
-use crate::events::other::PermanentTappedEvent;
+use crate::events::other::PermanentUntappedEvent;
 use crate::filter::ObjectFilterExt as _;
 use crate::target::ObjectFilter;
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct PermanentBecomesTappedTrigger {
+pub struct PermanentBecomesUntappedTrigger {
     pub filter: ObjectFilter,
     pub one_or_more: bool,
 }
 
-impl PermanentBecomesTappedTrigger {
+impl PermanentBecomesUntappedTrigger {
     pub fn new(filter: ObjectFilter) -> Self {
         Self {
             filter,
@@ -22,12 +22,12 @@ impl PermanentBecomesTappedTrigger {
     }
 }
 
-impl TriggerMatcher for PermanentBecomesTappedTrigger {
+impl TriggerMatcher for PermanentBecomesUntappedTrigger {
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
-        if event.kind() != EventKind::PermanentTapped {
+        if event.kind() != EventKind::PermanentUntapped {
             return false;
         }
-        let Some(e) = event.downcast::<PermanentTappedEvent>() else {
+        let Some(e) = event.downcast::<PermanentUntappedEvent>() else {
             return false;
         };
         if let Some(snapshot) = &e.snapshot {
@@ -44,8 +44,8 @@ impl TriggerMatcher for PermanentBecomesTappedTrigger {
         &self,
         event: &TriggerEvent,
     ) -> Option<crate::triggers::matcher_trait::SimultaneousTriggerKey> {
-        (self.one_or_more && event.kind() == EventKind::PermanentTapped).then_some(
-            crate::triggers::matcher_trait::SimultaneousTriggerKey::TapStateBatch { tapped: true },
+        (self.one_or_more && event.kind() == EventKind::PermanentUntapped).then_some(
+            crate::triggers::matcher_trait::SimultaneousTriggerKey::TapStateBatch { tapped: false },
         )
     }
 
@@ -54,7 +54,7 @@ impl TriggerMatcher for PermanentBecomesTappedTrigger {
     }
 
     fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
-        Some(vec![EventKind::PermanentTapped])
+        Some(vec![EventKind::PermanentUntapped])
     }
 
     fn display(&self) -> String {
@@ -62,11 +62,11 @@ impl TriggerMatcher for PermanentBecomesTappedTrigger {
             let mut filter = self.filter.clone();
             filter.set_plural_object_noun_surface(true);
             format!(
-                "Whenever one or more {} become tapped",
+                "Whenever one or more {} become untapped",
                 filter.description()
             )
         } else {
-            format!("Whenever {} becomes tapped", self.filter.description())
+            format!("Whenever {} becomes untapped", self.filter.description())
         }
     }
 }
@@ -77,7 +77,7 @@ mod tests {
 
     #[test]
     fn test_display() {
-        let trigger = PermanentBecomesTappedTrigger::new(ObjectFilter::creature());
-        assert!(trigger.display().contains("becomes tapped"));
+        let trigger = PermanentBecomesUntappedTrigger::new(ObjectFilter::creature());
+        assert!(trigger.display().contains("becomes untapped"));
     }
 }

@@ -493,6 +493,15 @@ pub(super) fn compile_subject_verb_late(
 ) -> Result<Option<EffectCompileOutcome>, CardTextError> {
     let role = subject_verb_role(subject_verb.subject.role);
     let player = subject_verb.subject.player;
+    let (tap_actor, tap_actor_choices) = if matches!(&subject_verb.action,
+        SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap { .. }
+            | PermanentStateActionAst::TapAll { .. } | PermanentStateActionAst::TapOrUntap { .. }
+            | PermanentStateActionAst::TapOrUntapAll { .. } | PermanentStateActionAst::Untap { .. }
+            | PermanentStateActionAst::UntapAll { .. })) && !matches!(player, PlayerAst::Implicit)
+    {
+        let actor = resolve_subject_verb_subject(role, player, ctx, true, true, false)?;
+        (Some(actor.clone_player_filter()), actor.into_choices())
+    } else { (None, Vec::new()) };
     let result = match &subject_verb.action {
         SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilityToSource {
             ability,
@@ -859,22 +868,16 @@ pub(super) fn compile_subject_verb_late(
         SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap { target }) => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
-            let base_effect = if spec.is_target() {
-                Effect::tap(spec.clone())
-            } else {
-                Effect::new(crate::effects::TapEffect::with_spec(spec.clone()))
-            };
+            let base_effect = Effect::new(crate::effects::TapEffect::with_spec(spec.clone())
+                .with_actor(tap_actor.clone()));
             let effect = tag_object_target_effect(base_effect, &spec, ctx, "tapped");
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Untap { target }) => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
-            let base_effect = if spec.is_target() {
-                Effect::untap(spec.clone())
-            } else {
-                Effect::new(crate::effects::UntapEffect::with_spec(spec.clone()))
-            };
+            let base_effect = Effect::new(crate::effects::UntapEffect::with_spec(spec.clone())
+                .with_actor(tap_actor.clone()));
             let effect = tag_object_target_effect(base_effect, &spec, ctx, "untapped");
             Ok((vec![effect], choices))
         }
@@ -889,7 +892,7 @@ pub(super) fn compile_subject_verb_late(
                 )));
                 ctx.last_object_tag = Some(tag);
             }
-            prelude.push(Effect::tap_all(resolved_filter));
+            prelude.push(Effect::new(crate::effects::TapEffect::all(resolved_filter).with_actor(tap_actor.clone())));
             Ok((prelude, choices))
         }
         SubjectVerbActionAst::PermanentState(PermanentStateActionAst::UntapAll { filter }) => {
@@ -915,9 +918,9 @@ pub(super) fn compile_subject_verb_late(
             // preserves the old surface until the missing choice loop is
             // represented explicitly.
             if unresolved_demonstrative_set {
-                prelude.push(Effect::untap(ChooseSpec::Object(resolved_filter)));
+                prelude.push(Effect::new(crate::effects::UntapEffect::target(ChooseSpec::Object(resolved_filter)).with_actor(tap_actor.clone())));
             } else {
-                prelude.push(Effect::untap_all(resolved_filter));
+                prelude.push(Effect::new(crate::effects::UntapEffect::all(resolved_filter).with_actor(tap_actor.clone())));
             }
             Ok((prelude, choices))
         }
@@ -927,11 +930,11 @@ pub(super) fn compile_subject_verb_late(
             let modes = vec![
                 EffectMode {
                     source_text: "Tap".to_string(),
-                    effects: vec![Effect::tap(spec.clone())],
+                    effects: vec![Effect::new(crate::effects::TapEffect::with_spec(spec.clone()).with_actor(tap_actor.clone()))],
                 },
                 EffectMode {
                     source_text: "Untap".to_string(),
-                    effects: vec![Effect::untap(spec.clone())],
+                    effects: vec![Effect::new(crate::effects::UntapEffect::with_spec(spec.clone()).with_actor(tap_actor.clone()))],
                 },
             ];
             let effect =
@@ -952,11 +955,11 @@ pub(super) fn compile_subject_verb_late(
             let modes = vec![
                 EffectMode {
                     source_text: "Tap".to_string(),
-                    effects: vec![Effect::tap_all(resolved_tap)],
+                    effects: vec![Effect::new(crate::effects::TapEffect::all(resolved_tap).with_actor(tap_actor.clone()))],
                 },
                 EffectMode {
                     source_text: "Untap".to_string(),
-                    effects: vec![Effect::untap_all(resolved_untap)],
+                    effects: vec![Effect::new(crate::effects::UntapEffect::all(resolved_untap).with_actor(tap_actor.clone()))],
                 },
             ];
             prelude.push(Effect::choose_one(modes));
@@ -2908,7 +2911,9 @@ pub(super) fn compile_subject_verb_late(
         }
         _ => return Ok(None),
     };
-    result.map(Some)
+    let (effects, mut choices) = result?;
+    for choice in tap_actor_choices { push_choice(&mut choices, choice); }
+    Ok(Some((effects, choices)))
 }
 
 /// "Target opponent exiles a creature they control": an explicitly named

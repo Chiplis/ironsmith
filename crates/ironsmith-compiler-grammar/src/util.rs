@@ -671,6 +671,7 @@ enum CompilerActivationCostObjectReference {
 #[derive(Default)]
 struct CompilerActivationCostTagCounters {
     tap: usize,
+    untap: usize,
     discard: usize,
     sacrifice: usize,
     exile: usize,
@@ -696,6 +697,11 @@ fn compiler_activation_cost_component_reference(
             Some(CompilerActivationCostObjectReference::Tagged(
                 tag.key.clone(),
             ))
+        }
+        CompilerCost::UntapChosen { .. } => {
+            let tag = crate::tag::CompilerCostObjectTag::Untap.key(counters.untap);
+            counters.untap += 1;
+            Some(CompilerActivationCostObjectReference::Tagged(tag.key.clone()))
         }
         CompilerCost::Blight { .. } => {
             // Cost materialization shares the tap counter with its private

@@ -240,6 +240,12 @@ pub(crate) fn tagged_object_follow_permitted(
             zone_change.result_objects.contains(&current_id)
         };
     }
+    // A tap/untap occurrence does not move its object. A permanent that
+    // left and returned while its trigger waited is not that event's object,
+    // including the additional members of a grouped tap-state event.
+    if matches!(event.kind(), crate::events::EventKind::PermanentTapped | crate::events::EventKind::PermanentUntapped) {
+        return false;
+    }
     // Other events that move their object (a sacrifice, a discard) don't
     // record the object it became, so the object they name is still found.
     event.object_id() == Some(snapshot.object_id)
@@ -1769,7 +1775,11 @@ fn resolve_controller_of(
                         ) && (object.id == snapshot.object_id || object.zone != snapshot.zone)
                     })
                     .map(|object| game.controller_of(object));
-                Ok(live_controller.unwrap_or(snapshot.controller))
+                let departure_controller = ctx.triggering_event.as_ref()
+                    .filter(|event| matches!(event.kind(), crate::events::EventKind::PermanentTapped | crate::events::EventKind::PermanentUntapped))
+                    .and_then(|_| latest_zone_change_snapshot_for_object(game, snapshot.object_id))
+                    .map(|departed| departed.controller);
+                Ok(live_controller.or(departure_controller).unwrap_or(snapshot.controller))
             } else if let Some(player) = ctx
                 .get_tagged_players(tag.as_str())
                 .and_then(|players| players.first().copied())

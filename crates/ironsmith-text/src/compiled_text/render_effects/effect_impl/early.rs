@@ -5036,11 +5036,19 @@
     }
     if let Some(tap) = effect.downcast_ref::<crate::effects::TapEffect>() {
         if let Some(text) = describe_dynamic_count_tap(tap) {
+            if let Some(actor) = &tap.actor {
+                let player = describe_player_filter(actor);
+                return format!("{} {} {}", player, player_verb(&player, "tap", "taps"), text.strip_prefix("Tap ").unwrap_or(&text));
+            }
             return text;
         }
         let where_clause = choose_spec_dynamic_count_value_where_clause(&tap.target)
             .or_else(|| choose_spec_filter_where_x_clause(&tap.target))
             .unwrap_or_default();
+        if let Some(actor) = &tap.actor {
+            let player = describe_player_filter(actor);
+            return format!("{} {} {}{where_clause}", player, player_verb(&player, "tap", "taps"), describe_choose_spec(&tap.target));
+        }
         return format!("Tap {}{where_clause}", describe_choose_spec(&tap.target));
     }
     if let Some(untap) = effect.downcast_ref::<crate::effects::UntapEffect>() {
@@ -5055,6 +5063,10 @@
             }
             _ => describe_choose_spec(&untap.target),
         };
+        if let Some(actor) = &untap.actor {
+            let player = describe_player_filter(actor);
+            return format!("{} {} {target}{where_clause}", player, player_verb(&player, "untap", "untaps"));
+        }
         return format!("Untap {target}{where_clause}");
     }
     if let Some(phase_out) = effect.downcast_ref::<crate::effects::PhaseOutEffect>() {

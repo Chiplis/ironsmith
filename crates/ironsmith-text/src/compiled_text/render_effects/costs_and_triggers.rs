@@ -1624,6 +1624,19 @@ fn describe_cost_component_parts_with_target(
             && let Some(choose) = costs[idx]
                 .effect_ref()
                 .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+            && let Some(untap) = costs[idx + 1]
+                .effect_ref()
+                .and_then(|effect| effect.downcast_ref::<crate::effects::UntapEffect>())
+            && let Some(compact) = describe_choose_then_tap_state_cost(choose, &untap.target, "Untap")
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < costs.len()
+            && let Some(choose) = costs[idx]
+                .effect_ref()
+                .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
             && let Some(tap) = costs[idx + 1]
                 .effect_ref()
                 .and_then(|effect| effect.downcast_ref::<crate::effects::TapEffect>())
@@ -6870,27 +6883,29 @@ pub(crate) fn describe_choose_then_tap_cost(
     choose: &crate::effects::ChooseObjectsEffect,
     tap: &crate::effects::TapEffect,
 ) -> Option<String> {
+    describe_choose_then_tap_state_cost(choose, &tap.target, "Tap")
+}
+
+fn describe_choose_then_tap_state_cost(
+    choose: &crate::effects::ChooseObjectsEffect,
+    spec: &ChooseSpec,
+    verb: &str,
+) -> Option<String> {
     if choose_primary_zone(choose) != Some(Zone::Battlefield) || choose.is_search {
         return None;
     }
-    if !tap_uses_chosen_tag(&tap.target, choose.tag.as_str()) {
+    if !tap_uses_chosen_tag(spec, choose.tag.as_str()) {
         return None;
     }
-
-    if choose.count.is_single() {
-        return Some(format!(
-            "Tap {}",
-            with_indefinite_article(&choose.filter.description())
-        ));
+    if choose.count.dynamic_x {
+        return Some(format!("{verb} X {}", pluralize_noun_phrase(&choose.filter.description())));
     }
-
+    if choose.count.is_single() {
+        return Some(format!("{verb} {}", with_indefinite_article(&choose.filter.description())));
+    }
     let exact = choose.count.max.filter(|max| *max == choose.count.min)?;
     let count_text = number_word(exact as i32).unwrap_or_else(|| exact.to_string());
-    Some(format!(
-        "Tap {} {}",
-        count_text,
-        pluralize_noun_phrase(&choose.filter.description())
-    ))
+    Some(format!("{verb} {count_text} {}", pluralize_noun_phrase(&choose.filter.description())))
 }
 
 pub(crate) fn exile_uses_chosen_tag(spec: &ChooseSpec, tag: &str) -> bool {

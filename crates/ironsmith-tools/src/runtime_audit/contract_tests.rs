@@ -400,3 +400,22 @@ fn generic_zone_change_destination_controls_the_player_contract() {
             .any(|f| f.path.starts_with("/abilities/1/") && f.severity == "coverage_gap")
     );
 }
+
+#[test]
+fn tap_actor_trigger_binds_only_its_guaranteed_actor_object_and_count() {
+    let actor = json!({"PlayerChangesTapState": {"player": "You", "filter": {}, "tapped": false, "one_or_more": true, "during_untap_step": "You"}});
+    let value = json!({"card": {}, "abilities": [
+        triggered(actor.clone(), vec![loss(json!({"Add": [{"LifeTotal": "IteratedPlayer"}, {"EventValue": "Amount"}]}))]),
+        triggered(json!({"PermanentBecomesUntapped": {"filter": {}, "one_or_more": false}}), vec![loss(json!({"EventValue": "Amount"}))]),
+        triggered(actor, vec![loss(json!({"EventValue": "DieResult"}))]),
+        triggered(json!({"BeginningOfUpkeep": {"player": "Any"}}), vec![loss(json!({"EventValue": "Amount"}))]),
+    ]});
+    let findings = audit(&value);
+    assert_eq!(errors(&findings).len(), 2, "{findings:?}");
+    assert!(
+        errors(&findings)
+            .iter()
+            .all(|finding| finding.path.starts_with("/abilities/2/")
+                || finding.path.starts_with("/abilities/3/"))
+    );
+}

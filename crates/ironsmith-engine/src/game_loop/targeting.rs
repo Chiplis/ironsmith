@@ -121,6 +121,8 @@ pub(crate) fn queue_triggers_from_reported_events(
                     | crate::events::EventKind::LifeLoss
                     | crate::events::EventKind::ZoneChange
                     | crate::events::EventKind::ObjectLeavesGame
+                    | crate::events::EventKind::PermanentTapped
+                    | crate::events::EventKind::PermanentUntapped
             )
         })
     };
@@ -216,7 +218,9 @@ pub(super) fn queue_triggers_for_simultaneous_events(
                 let key = (trigger.source_stable_id, trigger.trigger_identity, group);
                 if matches!(group,
                     crate::triggers::matcher_trait::SimultaneousTriggerKey::ZoneChangeBatch
-                        | crate::triggers::matcher_trait::SimultaneousTriggerKey::ObjectLeavesGameBatch)
+                        | crate::triggers::matcher_trait::SimultaneousTriggerKey::ObjectLeavesGameBatch
+                        | crate::triggers::matcher_trait::SimultaneousTriggerKey::TapStateBatch { .. }
+                        | crate::triggers::matcher_trait::SimultaneousTriggerKey::PlayerTapStateBatch { .. })
                 {
                     // Identical ability instances remain separate; match each
                     // occurrence to its corresponding entry from earlier events.
@@ -526,24 +530,20 @@ pub(super) fn activated_ability_has_tap_cost(
 
 pub(super) fn tap_permanent_with_trigger(
     game: &mut GameState,
-    trigger_queue: &mut TriggerQueue,
     permanent: ObjectId,
-) {
+    actor: PlayerId,
+) -> Option<TriggerEvent> {
     if game.object(permanent).is_some() && !game.is_tapped(permanent) {
+        let before = game.object(permanent).map(|object| {
+            ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
+        });
         game.tap(permanent);
-        let event_provenance = game
-            .provenance_graph_mut()
+        let event_provenance = game.provenance_graph_mut()
             .alloc_root_event(crate::events::EventKind::PermanentTapped);
-        queue_triggers_from_event(
-            game,
-            trigger_queue,
-            TriggerEvent::new_with_provenance(
-                crate::events::PermanentTappedEvent::new(permanent),
-                event_provenance,
-            ),
-            true,
-        );
-    }
+        let mut notification = crate::events::PermanentTappedEvent::capture(game, permanent, Some(actor));
+        notification.before_snapshot = before;
+        Some(TriggerEvent::new_with_provenance(notification, event_provenance))
+    } else { None }
 }
 
 pub(super) fn keyword_action_from_alternative_effect(

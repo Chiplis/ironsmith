@@ -3,6 +3,8 @@ use crate::cards::builders::PlayerPredicateAst;
 
 #[path = "zone_change_surfaces.rs"]
 mod zone_change_surfaces;
+#[path = "permanent_tap_state.rs"]
+mod permanent_tap_state;
 
 // Private-zone membership implies ownership. Parse the complete origin list so
 // a shared or repeated "your" stays attached to every alternative.
@@ -3349,32 +3351,12 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         }
     }
 
-    let becomes_tapped_words = if trigger_pattern_accepts(&words, DURING_YOUR_TURN_TRIGGER_SUFFIX) {
-        &words[..words.len().saturating_sub(3)]
-    } else {
-        words.as_slice()
-    };
-
-    if trigger_pattern_accepts(becomes_tapped_words, BECOMES_TAPPED_TRIGGER_SUFFIX)
-        && let Some(becomes_idx) = trigger_atom_token(tokens, TriggerClauseAtom::Becomes)
-    {
-        let subject_tokens = &tokens[..becomes_idx];
-        return Ok(match parse_trigger_subject_filter_lexed(subject_tokens)? {
-            Some(filter) => TriggerSpec::PermanentBecomesTapped(filter),
-            None => TriggerSpec::ThisBecomesTapped,
-        });
+    if let Some(trigger) = permanent_tap_state::parse_player_tap_state_trigger(tokens)? {
+        return Ok(trigger);
     }
 
-    if trigger_pattern_accepts(becomes_tapped_words, THIS_BECOMES_TAPPED_TRIGGER_PATTERN) {
-        return Ok(TriggerSpec::ThisBecomesTapped);
-    }
-
-    if trigger_pattern_accepts(&words, THIS_BECOMES_UNTAPPED_TRIGGER_PATTERN)
-        || (words.len() > 2
-            && trigger_pattern_accepts(&words, BECOMES_UNTAPPED_TRIGGER_SUFFIX)
-            && is_source_reference_words(&words[..words.len() - 2]))
-    {
-        return Ok(TriggerSpec::ThisBecomesUntapped);
+    if let Some(trigger) = permanent_tap_state::parse_permanent_tap_state_trigger(tokens)? {
+        return Ok(trigger);
     }
 
     if trigger_pattern_accepts(&words, THIS_BECOMES_MONSTROUS_TRIGGER_PATTERN) {

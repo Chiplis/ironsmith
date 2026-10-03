@@ -291,8 +291,7 @@ pub fn parse_tap_chosen_segment_tokens(
         .map_err(|_| unsupported(tokens, "tap chosen"))?;
     let (filter_tokens, exclude_declared_combatants) =
         strip_not_declared_as_attacking_or_blocking_suffix(shape.filter_tokens);
-    let mut filter =
-        filters::parse_object_filter_with_grammar_entrypoint_lexed(filter_tokens, shape.other)?;
+    let mut filter = tap_state_cost_filter(filter_tokens, shape.other)?;
     filter.untapped = true;
     if exclude_declared_combatants {
         filter.nonattacking = true;
@@ -302,6 +301,27 @@ pub fn parse_tap_chosen_segment_tokens(
         count: shape.count,
         filter,
     })
+}
+
+pub fn parse_untap_chosen_segment_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<ActivationCostSegmentCst, CardTextError> {
+    let shape = primitives::parse_all(tokens, parse_untap_chosen_shape_lexed, "untap-chosen-cost")
+        .map_err(|_| unsupported(tokens, "untap chosen"))?;
+    let mut filter = tap_state_cost_filter(shape.filter_tokens, shape.other)?;
+    filter.tapped = true;
+    Ok(ActivationCostSegmentCst::UntapChosen { count: shape.count, filter })
+}
+
+fn tap_state_cost_filter(tokens: &[OwnedLexToken], other: bool) -> Result<ObjectFilter, CardTextError> {
+    let words = primitives::TokenWordView::new(tokens);
+    if words.word_refs() == crate::preprocess::GRANTING_SOURCE_SURFACE_WORDS {
+        let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::GrantingSource.key());
+        filter.zone = Some(Zone::Battlefield);
+        filter.other = other;
+        return Ok(filter);
+    }
+    filters::parse_object_filter_with_grammar_entrypoint_lexed(tokens, other)
 }
 
 fn strip_not_declared_as_attacking_or_blocking_suffix(
@@ -619,7 +639,7 @@ mod reference_programs;
 use reference_programs::parse_optional_object_count;
 #[path = "object_segments/choice.rs"]
 mod choice_programs;
-use choice_programs::{parse_tap_chosen_shape_lexed, parse_unattach_chosen_tail_lexed};
+use choice_programs::{parse_tap_chosen_shape_lexed, parse_untap_chosen_shape_lexed, parse_unattach_chosen_tail_lexed};
 #[path = "object_segments/resource.rs"]
 mod resource_programs;
 use resource_programs::parse_unattach_cost_shape_lexed;

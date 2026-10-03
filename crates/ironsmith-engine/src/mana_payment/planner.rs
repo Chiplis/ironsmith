@@ -483,6 +483,8 @@ pub fn execute_mana_payment_plan(
             return Err(ManaPaymentFailure::ExecutionFailed);
         }
     }
+    let before = crate::events::other::before_tap_state_snapshots(game);
+    let mut tapped_events = Vec::new();
     for allocation in &current.allocations {
         let success = match allocation.payment {
             super::PlannedPipPayment::Convoke(source)
@@ -491,13 +493,10 @@ pub fn execute_mana_payment_plan(
                     false
                 } else {
                     game.tap(source);
-                    game.queue_trigger_event(
+                    tapped_events.push(crate::triggers::TriggerEvent::new(
+                        crate::events::PermanentTappedEvent::capture(game, source, Some(request.payer)),
                         crate::provenance::ProvNodeId::default(),
-                        crate::triggers::TriggerEvent::new(
-                            crate::events::PermanentTappedEvent::new(source),
-                            crate::provenance::ProvNodeId::default(),
-                        ),
-                    );
+                    ));
                     true
                 }
             }
@@ -525,6 +524,8 @@ pub fn execute_mana_payment_plan(
             return Err(ManaPaymentFailure::ExecutionFailed);
         }
     }
+    crate::events::other::bind_before_tap_state_snapshots(&mut tapped_events, &before);
+    crate::events::other::group_tap_state_events(game, &mut tapped_events, Default::default());
     if !game.try_pay_mana_cost_with_payment_options(
         request.payer,
         Some(request.source),
@@ -539,6 +540,7 @@ pub fn execute_mana_payment_plan(
         *game = checkpoint;
         return Err(ManaPaymentFailure::ExecutionFailed);
     }
+    for event in tapped_events { game.queue_trigger_event(event.provenance(), event); }
     for allocation in &current.allocations {
         let (permanent_id, effect, action) = match allocation.payment {
             super::PlannedPipPayment::Convoke(id) => (

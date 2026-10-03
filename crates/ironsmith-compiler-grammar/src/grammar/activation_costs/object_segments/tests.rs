@@ -182,3 +182,30 @@ fn tap_x_untapped_costs_preserve_exact_variable_count_and_filter() {
         );
     }
 }
+
+#[test]
+fn chosen_untap_and_attachment_tap_costs_preserve_count_scope_and_identity() {
+    for (text, count, opponent) in [
+        ("Untap a tapped land an opponent controls", 1, true),
+        ("Untap two tapped blue creatures you control", 2, false),
+        ("Untap fifteen tapped creatures you control", 15, false),
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let ActivationCostSegmentCst::UntapChosen { count: parsed, filter } = parse_untap_chosen_segment_tokens(&tokens).unwrap() else { panic!("typed untap cost"); };
+        assert_eq!(parsed, ChoiceCount::exactly(count));
+        assert!(filter.tapped);
+        assert!(!filter.untapped);
+        assert_eq!(filter.controller, Some(if opponent { crate::target::PlayerFilter::Opponent } else { crate::target::PlayerFilter::You }));
+    }
+    for (text, expected_tag) in [("Tap enchanted land", "enchanted"), ("Tap enchanted creature", "enchanted"), ("Tap granting permanent", crate::tag::CompilerReferenceTag::GrantingSource.as_str())] {
+        let tokens = lex_line(text, 0).unwrap();
+        let ActivationCostSegmentCst::TapChosen { count, filter } = parse_tap_chosen_segment_tokens(&tokens).unwrap() else { panic!("typed tap cost"); };
+        assert_eq!(count, ChoiceCount::exactly(1));
+        assert!(filter.untapped);
+        assert!(filter.tagged_constraints.iter().any(|constraint| constraint.tag.as_str() == expected_tag));
+    }
+    for text in ["Untap", "Untap two tapped", "Tap enchanted nonsense"] {
+        let tokens = lex_line(text, 0).unwrap();
+        assert!(if text.starts_with("Untap") { parse_untap_chosen_segment_tokens(&tokens).is_err() } else { parse_tap_chosen_segment_tokens(&tokens).is_err() });
+    }
+}

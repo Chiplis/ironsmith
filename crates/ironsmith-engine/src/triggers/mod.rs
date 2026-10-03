@@ -1620,6 +1620,14 @@ impl Trigger {
         Self::new(PermanentBecomesTappedTrigger::new(filter))
     }
 
+    pub fn permanent_becomes_tapped_one_or_more(filter: ObjectFilter) -> Self {
+        Self::new(PermanentBecomesTappedTrigger { filter, one_or_more: true })
+    }
+
+    pub fn permanent_becomes_untapped(filter: ObjectFilter, one_or_more: bool) -> Self {
+        Self::new(PermanentBecomesUntappedTrigger { filter, one_or_more })
+    }
+
     /// Create a "when a player sacrifices [filter]" trigger.
     pub fn player_sacrifices(player: PlayerFilter, filter: ObjectFilter) -> Self {
         Self::player_sacrifices_with_surface(player, filter, false)

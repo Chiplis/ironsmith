@@ -1002,7 +1002,8 @@ impl OrTrigger {
             return None;
         };
 
-        if !object_filter_is_plain_card_type(&tapped.filter, CardType::Artifact)
+        if tapped.one_or_more
+            || !object_filter_is_plain_card_type(&tapped.filter, CardType::Artifact)
             || ability.activator != PlayerFilter::Any
             || !object_filter_is_plain_card_type(&ability.filter, CardType::Artifact)
             || ability.non_mana_only

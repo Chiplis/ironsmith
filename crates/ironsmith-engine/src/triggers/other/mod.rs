@@ -11,7 +11,9 @@ mod event_kind;
 mod expend;
 mod keyword_action;
 mod mana_added;
+mod player_changes_tap_state;
 mod permanent_becomes_tapped;
+mod permanent_becomes_untapped;
 mod permanent_sacrificed_or_destroyed;
 mod permanent_turned_face_up;
 mod player_coin_flip_result;
@@ -39,7 +41,9 @@ pub use event_kind::{
 pub use expend::ExpendTrigger;
 pub use keyword_action::KeywordActionTrigger;
 pub use mana_added::ManaAddedTrigger;
+pub use player_changes_tap_state::PlayerChangesTapStateTrigger;
 pub use permanent_becomes_tapped::PermanentBecomesTappedTrigger;
+pub use permanent_becomes_untapped::PermanentBecomesUntappedTrigger;
 pub use permanent_sacrificed_or_destroyed::{
     PermanentDestroyedTrigger, PermanentSacrificedTrigger,
 };
