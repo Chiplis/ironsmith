@@ -86,6 +86,7 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         }
         "AdditionalPhasesEffect" => decode_as::<T, ironsmith_core::AdditionalPhasesEffect>(effect),
         "AmassEffect" => decode_as::<T, ironsmith_core::AmassEffect>(effect),
+        "CollectEvidenceEffect" => decode_as::<T, ironsmith_core::CollectEvidenceEffect>(effect),
         "EmpowerJaceEffect" => decode_as::<T, ironsmith_core::EmpowerJaceEffect>(effect),
         "AmplifyEffect" => decode_as::<T, ironsmith_core::AmplifyEffect>(effect),
         "ApplyContinuousEffect" => decode_as::<
@@ -1319,6 +1320,7 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::AddScaledManaEffect,
             crate::effects::AdditionalPhasesEffect,
             crate::effects::AmassEffect,
+            crate::effects::CollectEvidenceEffect,
             crate::effects::EmpowerJaceEffect,
             crate::effects::AmplifyEffect,
             crate::effects::AscendEffect,

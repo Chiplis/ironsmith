@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "07348582d2b8d76ab21dd5ca5e8e5a5c9a1f01f8",
+  "source_implementation_commit": "0a205e390e05ab76f124378518f2278698dc2dcf",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 290,
-    "additional_proposed_compile_entries": 290,
+    "additional_proposed_unique_cards": 301,
+    "additional_proposed_compile_entries": 301,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true
   },
@@ -710,6 +710,46 @@
         "Independent local X/Y pump quantities; spell mana value includes announced X and exact face.",
         "Actual mana paid, calculated pre-death power/counters, mill and exact Saga event bindings.",
         "Exact departure identity across simultaneous snapshots and pending stack LKI; intentional movement links preserved."
+      ]
+    },
+    {
+      "id": "collect-evidence-shared-action-and-costs",
+      "stage": 29,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/collect_evidence.json.fixture",
+      "baseline_entries": [
+        "Cryptex",
+        "Evidence Examiner",
+        "Forensic Researcher",
+        "Hedge Whisperer",
+        "Incinerator of the Guilty",
+        "Izoni, Center of the Web",
+        "Memory Vampire",
+        "Polygraph Orb",
+        "Sample Collector",
+        "Surveillance Monitor",
+        "Tenth District Hero"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "Behind the Mask",
+          "remaining_blocker": "Independent conditional base-power/toughness replacement tail remains unimplemented by this family."
+        },
+        {
+          "card_name": "Conspiracy Unraveler",
+          "remaining_blocker": "An all-origin alternative-cost modifier must not grant new zone casting permissions or combine with another alternative cost."
+        },
+        {
+          "card_name": "Kylox's Voltstrider",
+          "remaining_blocker": "Its attack permission additionally replaces the cast spell\u2019s graveyard move with owner-library-bottom; that linked cast-destination rider is outside the typed evidence action."
+        }
+      ],
+      "implementation_commit": "0a205e390e05ab76f124378518f2278698dc2dcf",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "One typed action for effects and real costs; aggregate graveyard mana value with normal zone replacements.",
+        "Zero performs one action and observer event; announced X independent of overpayment.",
+        "Cost preflight excludes casting source; unavailable optional actions and interrupted choices preserve rollback."
       ]
     }
   ],
@@ -6279,8 +6319,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "collect-evidence-shared-action-and-costs"
+      ]
     },
     {
       "card_name": "Cryptic Spires",
@@ -9364,8 +9406,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "collect-evidence-shared-action-and-costs"
+      ]
     },
     {
       "card_name": "Excalibur II",
@@ -10595,8 +10639,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "collect-evidence-shared-action-and-costs"
+      ]
     },
     {
       "card_name": "Forethought Amulet",
@@ -12923,8 +12969,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "collect-evidence-shared-action-and-costs"
+      ]
     },
     {
       "card_name": "Hedonist's Trove",
@@ -14012,8 +14060,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "collect-evidence-shared-action-and-costs"
+      ]
     },
     {
       "card_name": "Incite Rebellion",
@@ -14664,8 +14714,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "collect-evidence-shared-action-and-costs"
+      ]
     },
     {
       "card_name": "Izoni, Thousand-Eyed",
@@ -17945,8 +17997,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "collect-evidence-shared-action-and-costs"
+      ]
     },
     {
       "card_name": "Memory Vessel",
@@ -21405,8 +21459,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "collect-evidence-shared-action-and-costs"
+      ]
     },
     {
       "card_name": "Polymorphist's Jest",
@@ -24039,8 +24095,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "collect-evidence-shared-action-and-costs"
+      ]
     },
     {
       "card_name": "Samurai's Katana",
@@ -27405,8 +27463,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "collect-evidence-shared-action-and-costs"
+      ]
     },
     {
       "card_name": "Survey Mechan",
@@ -28129,8 +28189,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "collect-evidence-shared-action-and-costs"
+      ]
     },
     {
       "card_name": "Tenured Tethermage",

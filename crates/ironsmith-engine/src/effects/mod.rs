@@ -113,6 +113,7 @@ pub use combat::{
     SetBasePowerToughnessEffect,
 };
 pub use composition::{
+    CollectEvidenceEffect,
     AdaptEffect, AmplifyEffect, AuraSwapEffect, BackupEffect, BeholdEffect, BidLifeEffect,
     BolsterEffect, CastEncodedCardCopyEffect, ChooseModeEffect, ChooseObjectsEffect,
     ChooseSpellCastHistoryEffect, CipherEffect, ConditionalEffect, CounterAbilityEffect,

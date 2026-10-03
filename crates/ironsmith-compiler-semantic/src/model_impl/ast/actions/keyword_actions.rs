@@ -35,6 +35,7 @@ pub enum KeywordActionAst {
         power: u32,
     },
     EmpowerJace { amount: Value },
+    CollectEvidence { amount: Value },
     Amass {
         subtype: Option<Subtype>,
         amount: Value,

@@ -263,6 +263,7 @@ fn effect_establishes_body_object_antecedent(effect: &EffectAst) -> bool {
             | SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary)
             | SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestCardFromHand)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CollectEvidence { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmpowerJace { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Populate { .. })

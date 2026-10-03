@@ -1721,6 +1721,15 @@
             player_verb(&player, "incubate", "incubates")
         );
     }
+    if let Some(collect) = effect.downcast_ref::<crate::effects::CollectEvidenceEffect>() {
+        let (amount, where_x) = if value_prefers_where_x(&collect.amount) {
+            ("X".to_string(), describe_where_x_basis(&collect.amount)
+                .map(|basis| format!(", where X is {basis}")).unwrap_or_default())
+        } else {
+            (describe_value(&collect.amount), String::new())
+        };
+        return format!("Collect evidence {amount}{where_x}");
+    }
     if let Some(empower) = effect.downcast_ref::<crate::effects::EmpowerJaceEffect>() {
         let (amount, where_x) = if value_prefers_where_x(&empower.amount) {
             ("X".to_string(), describe_where_x_basis(&empower.amount)

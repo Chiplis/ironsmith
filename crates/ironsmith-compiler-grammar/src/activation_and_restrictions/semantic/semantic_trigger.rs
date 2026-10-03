@@ -4312,6 +4312,16 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         });
     }
 
+    if let [subject @ .., "collect" | "collects", "evidence"] = words.as_slice()
+        && let Some(player) = parse_trigger_subject_player_filter(subject)
+    {
+        return Ok(TriggerSpec::KeywordAction {
+            action: crate::events::KeywordActionKind::CollectEvidence,
+            player,
+            source_filter: None,
+            during_your_turn: false,
+        });
+    }
     if let Some(last_word) = words.last().copied()
         && let Some(action) = crate::events::KeywordActionKind::from_trigger_word(last_word)
     {

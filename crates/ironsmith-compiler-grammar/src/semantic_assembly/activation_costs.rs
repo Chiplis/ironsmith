@@ -58,6 +58,9 @@ fn assemble_segment(segment: &ActivationCostSegmentCst) -> CompilerCost {
             count: *count,
             filter: filter.clone(),
         },
+        ActivationCostSegmentCst::CollectEvidence { amount } => CompilerCost::ValidatedEffect(Box::new(
+            crate::cards::builders::EffectAst::subject_verb_collect_evidence(amount.clone()),
+        )),
         ActivationCostSegmentCst::Forage => CompilerCost::ValidatedEffect(Box::new(
             crate::cards::builders::EffectAst::subject_verb_emit_keyword_action(
                 crate::events::KeywordActionKind::Forage,

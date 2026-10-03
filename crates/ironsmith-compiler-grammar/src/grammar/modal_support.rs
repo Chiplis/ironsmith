@@ -491,6 +491,8 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Investigate {
                 count: amount,
             })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CollectEvidence { amount })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmpowerJace { amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Discover { count: amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fateseal { count: amount })
@@ -646,7 +648,6 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction {
                 ..
             })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmpowerJace { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Bolster { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Support { .. })
@@ -1140,4 +1141,22 @@ fn is_loyalty_shorthand_cost_text(text: &str) -> bool {
     trimmed == "0"
         || strip_leading_sign(trimmed)
             .is_some_and(|tail| tail.eq_ignore_ascii_case("x") || tail.parse::<u32>().is_ok())
+}
+
+
+#[test]
+fn numeric_keyword_actions_preserve_modal_header_x_binding() {
+    for mut effect in [
+        EffectAst::subject_verb_collect_evidence(Value::X),
+        EffectAst::subject_verb_empower_jace(Value::X),
+    ] {
+        replace_modal_header_x_in_effect_ast(&mut effect, &Value::Fixed(3), "typed keyword action").unwrap();
+        let EffectAst::SubjectVerb(subject) = effect else { panic!("subject/verb action"); };
+        let amount = match subject.action {
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::CollectEvidence { amount })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmpowerJace { amount }) => amount,
+            _ => panic!("typed numeric keyword action"),
+        };
+        assert_eq!(amount, Value::Fixed(3));
+    }
 }
