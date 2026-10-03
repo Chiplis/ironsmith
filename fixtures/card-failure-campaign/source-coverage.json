@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "c1b2bd5b368b27a9f9d75e2138de88249139b43e",
+  "source_implementation_commit": "07348582d2b8d76ab21dd5ca5e8e5a5c9a1f01f8",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 282,
-    "additional_proposed_compile_entries": 282,
+    "additional_proposed_unique_cards": 290,
+    "additional_proposed_compile_entries": 290,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true
   },
@@ -687,6 +687,29 @@
       "semantic_scope": [
         "Action-qualified prior excess damage and typed ambient excess-trigger amount; ordinary damage/life rejected.",
         "No numeric placeholder or card-name special casing; Violent Echoes closes prior Empower partial."
+      ]
+    },
+    {
+      "id": "event-and-prior-object-quantities",
+      "stage": 28,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/event_object_quantities.json.fixture",
+      "baseline_entries": [
+        "Bioplasm",
+        "Death's Presence",
+        "Felisa, Fang of Silverquill",
+        "Infernal Genesis",
+        "Narci, Fable Singer",
+        "Ovika, Enigma Goliath",
+        "Prossh, Skyraider of Kher",
+        "Pure Reflection"
+      ],
+      "implementation_commit": "07348582d2b8d76ab21dd5ca5e8e5a5c9a1f01f8",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Independent local X/Y pump quantities; spell mana value includes announced X and exact face.",
+        "Actual mana paid, calculated pre-death power/counters, mill and exact Saga event bindings.",
+        "Exact departure identity across simultaneous snapshots and pending stack LKI; intentional movement links preserved."
       ]
     }
   ],
@@ -3238,8 +3261,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "event-and-prior-object-quantities"
+      ]
     },
     {
       "card_name": "Bioshift",
@@ -6901,8 +6926,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "event-and-prior-object-quantities"
+      ]
     },
     {
       "card_name": "Death's Shadow",
@@ -10045,8 +10072,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "event-and-prior-object-quantities"
+      ]
     },
     {
       "card_name": "Fell Beast's Shriek",
@@ -14093,8 +14122,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "event-and-prior-object-quantities"
+      ]
     },
     {
       "card_name": "Infesting Radroach",
@@ -19118,8 +19149,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "event-and-prior-object-quantities"
+      ]
     },
     {
       "card_name": "Nascent Metamorph",
@@ -20470,8 +20503,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "event-and-prior-object-quantities"
+      ]
     },
     {
       "card_name": "Ozai, the Phoenix King",
@@ -21784,8 +21819,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "event-and-prior-object-quantities"
+      ]
     },
     {
       "card_name": "Protean Raider",
@@ -22028,8 +22065,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "event-and-prior-object-quantities"
+      ]
     },
     {
       "card_name": "Purging Scythe",

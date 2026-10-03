@@ -203,7 +203,14 @@ impl EffectExecutor for TagTriggeringObjectEffect {
             return Ok(EffectOutcome::count(1));
         }
 
-        if let Some(snapshot) = event.snapshot() {
+        if let Some(snapshot) = event.snapshot().or_else(|| {
+            // A chapter-resolution event names its Saga as both object and
+            // source. Its outer source LKI survives the final-chapter sacrifice.
+            // Do not borrow another event's distinct damage/ability source.
+            event
+                .source_snapshot()
+                .filter(|snapshot| snapshot.object_id == object_id)
+        }) {
             // Zone-change events are handled above. For any other event (an
             // attack, a block, a tap, a discard) the event's object has left
             // since; keep its recorded identity and last known information

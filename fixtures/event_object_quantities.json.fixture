@@ -1,0 +1,340 @@
+[
+  {
+    "name": "Bioplasm",
+    "oracle_id": "f39777be-39af-4a97-a70d-824d713bf145",
+    "mana_cost": "{3}{G}{G}",
+    "type_line": "Creature — Ooze",
+    "power": "4",
+    "toughness": "4",
+    "oracle_text": "Whenever this creature attacks, exile the top card of your library. If it's a creature card, this creature gets +X/+Y until end of turn, where X is the exiled creature card's power and Y is its toughness.",
+    "baseline": {
+      "card_name": "Bioplasm",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "67ee05f9ae8cf758b9e1dd49a057aa8f6d94a34a7cdbce9f8051bf4f98e754ff",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "Whenever this creature attacks, exile the top card of your library. If it's a creature card, this creature gets +X/+Y until end of turn, where X is the exiled creature card's power and Y is its toughness.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "Whenever this creature attacks, exile the top card of your library. If it's a creature card, this creature gets +X/+Y until end of turn, where X is the exiled creature card's power and Y is its toughness.",
+      "parse_error": "unsupported where-x clause (clause: 'if it's a creature card, this creature gets +x/+y until end of turn, where x is the exiled creature card's power and y is its toughness') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported where-x clause (clause: 'if it's a creature card, this creature gets +x/+y until end of turn, where x is the exiled creature card's power and y is its toughness') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported where-x clause (clause: 'if it's a creature card, this creature gets +x/+y until end of turn, where x is the exiled creature card's power and y is its toughness') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "Whenever this creature attacks, exile the top card of your library. If it's a creature card, this creature gets +X/+Y until end of turn, where X is the exiled creature card's power and Y is its toughness.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported where-x clause (clause: 'if it's a creature card, this creature gets +x/+y until end of turn, where x is the exiled creature card's power and y is its toughness') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported where-x clause (clause: 'if it's a creature card, this creature gets +x/+y until end of turn, where x is the exiled creature card's power and y is its toughness') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  },
+  {
+    "name": "Death's Presence",
+    "oracle_id": "d0db5996-f749-48d2-8fb3-a69104113828",
+    "mana_cost": "{5}{G}",
+    "type_line": "Enchantment",
+    "oracle_text": "Whenever a creature you control dies, put X +1/+1 counters on target creature you control, where X is the power of the creature that died.",
+    "baseline": {
+      "card_name": "Death's Presence",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "cd716d558969457956b6ea790cdf8387d678fce00feefe6b8a7eb2ead1f5c9f7",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "Whenever a creature you control dies, put X +1/+1 counters on target creature you control, where X is the power of the creature that died.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "Whenever a creature you control dies, put X +1/+1 counters on target creature you control, where X is the power of the creature that died.",
+      "parse_error": "unsupported where-x clause (clause: 'put x +1/+1 counters on target creature you control, where x is the power of the creature that died') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported where-x clause (clause: 'put x +1/+1 counters on target creature you control, where x is the power of the creature that died') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported where-x clause (clause: 'put x +1/+1 counters on target creature you control, where x is the power of the creature that died') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "Whenever a creature you control dies, put X +1/+1 counters on target creature you control, where X is the power of the creature that died.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported where-x clause (clause: 'put x +1/+1 counters on target creature you control, where x is the power of the creature that died') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported where-x clause (clause: 'put x +1/+1 counters on target creature you control, where x is the power of the creature that died') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  },
+  {
+    "name": "Felisa, Fang of Silverquill",
+    "oracle_id": "39144f72-789e-457a-a7e7-862f90c34e15",
+    "mana_cost": "{2}{W}{B}",
+    "type_line": "Legendary Creature — Vampire Wizard",
+    "power": "3",
+    "toughness": "2",
+    "oracle_text": "Flying\nMentor (Whenever this creature attacks, put a +1/+1 counter on target attacking creature with lesser power.)\nWhenever a nontoken creature you control dies, if it had counters on it, create X tapped 2/1 white and black Inkling creature tokens with flying, where X is the number of counters it had on it.",
+    "baseline": {
+      "card_name": "Felisa, Fang of Silverquill",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "51d8ff5dc5757a74a73cd948118237dfc145835e957dfde2c6af0b9a6571463b",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "Flying\nMentor\nWhenever a nontoken creature you control dies, if it had counters on it, create X tapped 2/1 white and black Inkling creature tokens with flying, where X is the number of counters it had on it.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "Flying\nMentor\nWhenever a nontoken creature you control dies, if it had counters on it, create X tapped 2/1 white and black Inkling creature tokens with flying, where X is the number of counters it had on it.",
+      "parse_error": "unsupported where-x clause in create clause (clause: 'x tapped 2/1 white and black inkling creature tokens with flying where x is the number of counters it had on it') [rule-path=complete-create > document-reading] [rule-path=compiler-trigger-facts]; oracle-only fallback also failed: unsupported where-x clause in create clause (clause: 'x tapped 2/1 white and black inkling creature tokens with flying where x is the number of counters it had on it') [rule-path=complete-create > document-reading] [rule-path=compiler-trigger-facts]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported where-x clause in create clause (clause: 'x tapped 2/1 white and black inkling creature tokens with flying where x is the number of counters it had on it') [rule-path=complete-create > document-reading] [rule-path=compiler-trigger-facts]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "Flying\nMentor (Whenever this creature attacks, put a +1/+1 counter on target attacking creature with lesser power.)\nWhenever a nontoken creature you control dies, if it had counters on it, create X tapped 2/1 white and black Inkling creature tokens with flying, where X is the number of counters it had on it.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported where-x clause in create clause (clause: 'x tapped 2/1 white and black inkling creature tokens with flying where x is the number of counters it had on it') [rule-path=complete-create > document-reading] [rule-path=compiler-trigger-facts]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported where-x clause in create clause (clause: 'x tapped 2/1 white and black inkling creature tokens with flying where x is the number of counters it had on it') [rule-path=complete-create > document-reading] [rule-path=compiler-trigger-facts]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  },
+  {
+    "name": "Infernal Genesis",
+    "oracle_id": "c3ce3473-e3bc-4b7c-ae57-957e6c40dc7a",
+    "mana_cost": "{4}{B}{B}",
+    "type_line": "Enchantment",
+    "oracle_text": "At the beginning of each player's upkeep, that player mills a card. Then they create X 1/1 black Minion creature tokens, where X is the milled card's mana value.",
+    "baseline": {
+      "card_name": "Infernal Genesis",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "4229b93d87e53a4883445e6f605ab878cc02ca4e1cfd40f26284e542491abe91",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "At the beginning of each player's upkeep, that player mills a card. Then they create X 1/1 black Minion creature tokens, where X is the milled card's mana value.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "At the beginning of each player's upkeep, that player mills a card. Then they create X 1/1 black Minion creature tokens, where X is the milled card's mana value.",
+      "parse_error": "unsupported where-x clause in create clause (clause: 'x 1/1 black minion creature tokens where x is the milled card's mana value') [rule-path=complete-create > statement-reading] [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported where-x clause in create clause (clause: 'x 1/1 black minion creature tokens where x is the milled card's mana value') [rule-path=complete-create > statement-reading] [rule-path=statement-line > triggered-line]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported where-x clause in create clause (clause: 'x 1/1 black minion creature tokens where x is the milled card's mana value') [rule-path=complete-create > statement-reading] [rule-path=statement-line > triggered-line]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "At the beginning of each player's upkeep, that player mills a card. Then they create X 1/1 black Minion creature tokens, where X is the milled card's mana value.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported where-x clause in create clause (clause: 'x 1/1 black minion creature tokens where x is the milled card's mana value') [rule-path=complete-create > statement-reading] [rule-path=statement-line > triggered-line]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported where-x clause in create clause (clause: 'x 1/1 black minion creature tokens where x is the milled card's mana value') [rule-path=complete-create > statement-reading] [rule-path=statement-line > triggered-line]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  },
+  {
+    "name": "Narci, Fable Singer",
+    "oracle_id": "61bbf710-4eb4-4e11-be6e-700a0c6a41ee",
+    "mana_cost": "{1}{W}{B}{G}",
+    "type_line": "Legendary Creature — Human Bard",
+    "power": "3",
+    "toughness": "3",
+    "oracle_text": "Lifelink\nWhenever you sacrifice an enchantment, draw a card.\nWhenever the final chapter ability of a Saga you control resolves, each opponent loses X life and you gain X life, where X is that Saga's mana value.",
+    "baseline": {
+      "card_name": "Narci, Fable Singer",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "5a7aa8255fea020579d73cd218aa0035af9b92c4d7219572604e2f34dcf749c7",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "Lifelink\nWhenever you sacrifice an enchantment, draw a card.\nWhenever the final chapter ability of a Saga you control resolves, each opponent loses X life and you gain X life, where X is that Saga's mana value.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "Lifelink\nWhenever you sacrifice an enchantment, draw a card.\nWhenever the final chapter ability of a Saga you control resolves, each opponent loses X life and you gain X life, where X is that Saga's mana value.",
+      "parse_error": "unsupported where-x clause (clause: 'each opponent loses x life and you gain x life, where x is that saga's mana value') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported where-x clause (clause: 'each opponent loses x life and you gain x life, where x is that saga's mana value') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported where-x clause (clause: 'each opponent loses x life and you gain x life, where x is that saga's mana value') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "Lifelink\nWhenever you sacrifice an enchantment, draw a card.\nWhenever the final chapter ability of a Saga you control resolves, each opponent loses X life and you gain X life, where X is that Saga's mana value.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported where-x clause (clause: 'each opponent loses x life and you gain x life, where x is that saga's mana value') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported where-x clause (clause: 'each opponent loses x life and you gain x life, where x is that saga's mana value') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  },
+  {
+    "name": "Ovika, Enigma Goliath",
+    "oracle_id": "b05a2b5f-1b5c-4f1b-8a6b-525c5c8b8ba1",
+    "mana_cost": "{5}{U}{R}",
+    "type_line": "Legendary Creature — Phyrexian Nightmare",
+    "power": "6",
+    "toughness": "6",
+    "oracle_text": "Flying\nWard—{3}, Pay 3 life.\nWhenever you cast a noncreature spell, create X 1/1 red Phyrexian Goblin creature tokens, where X is the mana value of that spell. They gain haste until end of turn.",
+    "baseline": {
+      "card_name": "Ovika, Enigma Goliath",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "fa94406f61839981d004b2ed43b9aeb482deb980cf0a995d48677bc26e622ee6",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "Flying\nWard—{3}, Pay 3 life.\nWhenever you cast a noncreature spell, create X 1/1 red Phyrexian Goblin creature tokens, where X is the mana value of that spell. They gain haste until end of turn.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "Flying\nWard—{3}, Pay 3 life.\nWhenever you cast a noncreature spell, create X 1/1 red Phyrexian Goblin creature tokens, where X is the mana value of that spell. They gain haste until end of turn.",
+      "parse_error": "unsupported where-x clause in create clause (clause: 'x 1/1 red phyrexian goblin creature tokens where x is the mana value of that spell') [rule-path=complete-create > document-reading] [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported where-x clause in create clause (clause: 'x 1/1 red phyrexian goblin creature tokens where x is the mana value of that spell') [rule-path=complete-create > document-reading] [rule-path=statement-line > triggered-line]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported where-x clause in create clause (clause: 'x 1/1 red phyrexian goblin creature tokens where x is the mana value of that spell') [rule-path=complete-create > document-reading] [rule-path=statement-line > triggered-line]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "Flying\nWard—{3}, Pay 3 life.\nWhenever you cast a noncreature spell, create X 1/1 red Phyrexian Goblin creature tokens, where X is the mana value of that spell. They gain haste until end of turn.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported where-x clause in create clause (clause: 'x 1/1 red phyrexian goblin creature tokens where x is the mana value of that spell') [rule-path=complete-create > document-reading] [rule-path=statement-line > triggered-line]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported where-x clause in create clause (clause: 'x 1/1 red phyrexian goblin creature tokens where x is the mana value of that spell') [rule-path=complete-create > document-reading] [rule-path=statement-line > triggered-line]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  },
+  {
+    "name": "Prossh, Skyraider of Kher",
+    "oracle_id": "868882d2-ed4e-4171-a17c-478a341080fb",
+    "mana_cost": "{3}{B}{R}{G}",
+    "type_line": "Legendary Creature — Dragon",
+    "power": "5",
+    "toughness": "5",
+    "oracle_text": "When you cast this spell, create X 0/1 red Kobold creature tokens named Kobolds of Kher Keep, where X is the amount of mana spent to cast it.\nFlying\nSacrifice another creature: Prossh gets +1/+0 until end of turn.",
+    "baseline": {
+      "card_name": "Prossh, Skyraider of Kher",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "e9b922e454e763b4983dccf9b1d4cff693df3c85bbfaa3913455b60ee869c8a3",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "When you cast this spell, create X 0/1 red Kobold creature tokens named Kobolds of Kher Keep, where X is the amount of mana spent to cast it.\nFlying\nSacrifice another creature: Prossh gets +1/+0 until end of turn.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "When you cast this spell, create X 0/1 red Kobold creature tokens named Kobolds of Kher Keep, where X is the amount of mana spent to cast it.\nFlying\nSacrifice another creature: Prossh gets +1/+0 until end of turn.",
+      "parse_error": "unsupported where-x clause in create clause (clause: 'x 0/1 red kobold creature tokens named kobolds of kher keep where x is the amount of mana spent to cast it') [rule-path=complete-create > document-reading] [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported where-x clause in create clause (clause: 'x 0/1 red kobold creature tokens named kobolds of kher keep where x is the amount of mana spent to cast it') [rule-path=complete-create > document-reading] [rule-path=statement-line > triggered-line]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported where-x clause in create clause (clause: 'x 0/1 red kobold creature tokens named kobolds of kher keep where x is the amount of mana spent to cast it') [rule-path=complete-create > document-reading] [rule-path=statement-line > triggered-line]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "When you cast this spell, create X 0/1 red Kobold creature tokens named Kobolds of Kher Keep, where X is the amount of mana spent to cast it.\nFlying\nSacrifice another creature: Prossh gets +1/+0 until end of turn.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported where-x clause in create clause (clause: 'x 0/1 red kobold creature tokens named kobolds of kher keep where x is the amount of mana spent to cast it') [rule-path=complete-create > document-reading] [rule-path=statement-line > triggered-line]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported where-x clause in create clause (clause: 'x 0/1 red kobold creature tokens named kobolds of kher keep where x is the amount of mana spent to cast it') [rule-path=complete-create > document-reading] [rule-path=statement-line > triggered-line]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  },
+  {
+    "name": "Pure Reflection",
+    "oracle_id": "fee53820-a17c-4f34-9971-581bf8e12fd6",
+    "mana_cost": "{2}{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "Whenever a player casts a creature spell, destroy all Reflections. Then that player creates an X/X white Reflection creature token, where X is the mana value of that spell.",
+    "baseline": {
+      "card_name": "Pure Reflection",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "dd54e0f6d6f9215c52a4605d6476717912dd876f5e86a9344ecfd7e2bb4a2492",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "Whenever a player casts a creature spell, destroy all Reflections. Then that player creates an X/X white Reflection creature token, where X is the mana value of that spell.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "Whenever a player casts a creature spell, destroy all Reflections. Then that player creates an X/X white Reflection creature token, where X is the mana value of that spell.",
+      "parse_error": "unsupported where-x clause in create clause (clause: 'an x/x white reflection creature token where x is the mana value of that spell') [rule-path=complete-create > statement-reading] [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported where-x clause in create clause (clause: 'an x/x white reflection creature token where x is the mana value of that spell') [rule-path=complete-create > statement-reading] [rule-path=statement-line > triggered-line]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported where-x clause in create clause (clause: 'an x/x white reflection creature token where x is the mana value of that spell') [rule-path=complete-create > statement-reading] [rule-path=statement-line > triggered-line]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "Whenever a player casts a creature spell, destroy all Reflections. Then that player creates an X/X white Reflection creature token, where X is the mana value of that spell.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported where-x clause in create clause (clause: 'an x/x white reflection creature token where x is the mana value of that spell') [rule-path=complete-create > statement-reading] [rule-path=statement-line > triggered-line]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported where-x clause in create clause (clause: 'an x/x white reflection creature token where x is the mana value of that spell') [rule-path=complete-create > statement-reading] [rule-path=statement-line > triggered-line]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  }
+]
