@@ -59,38 +59,7 @@ pub mod util {
 
 pub use ironsmith_compiler_semantic::model::visit as effect_ast_traversal;
 
-pub fn map_span_to_original(
-    span: diagnostics::TextSpan,
-    normalized_line: &str,
-    original_line: &str,
-    char_map: &[usize],
-) -> diagnostics::TextSpan {
-    fn byte_to_char_index(text: &str, byte_idx: usize) -> usize {
-        text[..byte_idx.min(text.len())].chars().count()
-    }
-    let start_char = byte_to_char_index(normalized_line, span.start);
-    let end_char = byte_to_char_index(normalized_line, span.end);
-    if start_char >= char_map.len() {
-        return span;
-    }
-    let start_orig = char_map[start_char];
-    let end_orig = if end_char == 0 || end_char > char_map.len() {
-        start_orig
-    } else {
-        let last_orig = char_map[end_char - 1];
-        last_orig
-            + original_line[last_orig..]
-                .chars()
-                .next()
-                .map(char::len_utf8)
-                .unwrap_or(0)
-    };
-    diagnostics::TextSpan {
-        line: span.line,
-        start: start_orig,
-        end: end_orig,
-    }
-}
+pub use ironsmith_compiler_source::map_span_to_original;
 
 pub mod tag_support;
 
