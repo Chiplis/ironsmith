@@ -235,6 +235,21 @@ pub fn compile_delayed_trigger_spec(
                 filter: filter.clone(),
             })
         }
+        TriggerSpec::YouGainLife => Ok(ironsmith_core::DelayedTriggerSpec::LifeChanged {
+            player: PlayerFilter::You, gained: true, during_turn: None,
+        }),
+        TriggerSpec::YouGainLifeDuringTurn(turn) => Ok(ironsmith_core::DelayedTriggerSpec::LifeChanged {
+            player: PlayerFilter::You, gained: true, during_turn: Some(turn.clone()),
+        }),
+        TriggerSpec::PlayerGainsLife { player, during_turn } => Ok(ironsmith_core::DelayedTriggerSpec::LifeChanged {
+            player: player.clone(), gained: true, during_turn: during_turn.clone(),
+        }),
+        TriggerSpec::PlayerLosesLife(player) => Ok(ironsmith_core::DelayedTriggerSpec::LifeChanged {
+            player: player.clone(), gained: false, during_turn: None,
+        }),
+        TriggerSpec::PlayerLosesLifeDuringTurn { player, during_turn } => Ok(ironsmith_core::DelayedTriggerSpec::LifeChanged {
+            player: player.clone(), gained: false, during_turn: Some(during_turn.clone()),
+        }),
         TriggerSpec::YouDrawCard => Ok(ironsmith_core::DelayedTriggerSpec::PlayerDrawsCard(
             PlayerFilter::You,
         )),

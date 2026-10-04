@@ -563,3 +563,32 @@ mod scalar_counter_quantities;
 
 #[path = "value_expr/opponent_history_quantities.rs"]
 mod opponent_history_quantities;
+
+/// A coordinated characteristic reference has two values sharing one object,
+/// not one scalar duplicated onto both axes (or the sum of the two values).
+pub fn parse_power_toughness_value_pair_words(words: &[&str]) -> Option<(Value, Value)> {
+    if !words.ends_with(&["power", "and", "toughness"]) {
+        return None;
+    }
+    let power_words = &words[..words.len() - 2];
+    let (power, used) = parse_value_expr_words(power_words)?;
+    if used != power_words.len() {
+        return None;
+    }
+    let mut toughness_words = power_words.to_vec();
+    *toughness_words.last_mut()? = "toughness";
+    let (toughness, used) = parse_value_expr_words(&toughness_words)?;
+    fn canonical_source(value: Value) -> Value {
+        match value {
+            Value::SourcePower => Value::PowerOf(Box::new(ChooseSpec::Source)),
+            Value::SourceToughness => Value::ToughnessOf(Box::new(ChooseSpec::Source)),
+            Value::SurfaceHinted { value, hints } => Value::SurfaceHinted {
+                value: Box::new(canonical_source(*value)),
+                hints,
+            },
+            other => other,
+        }
+    }
+    (used == toughness_words.len())
+        .then_some((canonical_source(power), canonical_source(toughness)))
+}

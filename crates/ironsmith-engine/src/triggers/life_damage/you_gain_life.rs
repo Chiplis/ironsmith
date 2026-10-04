@@ -53,7 +53,7 @@ impl TriggerMatcher for YouGainLifeTrigger {
         let Some(e) = event.downcast::<LifeGainEvent>() else {
             return false;
         };
-        if e.player != ctx.controller {
+        if e.amount == 0 || e.player != ctx.controller {
             return false;
         }
         if let Some(cause_filter) = &self.cause_filter {
@@ -88,6 +88,10 @@ impl TriggerMatcher for YouGainLifeTrigger {
             return current_turn_matches_player_filter(during_turn, ctx, None);
         }
         true
+    }
+
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::LifeGain])
     }
 
     fn display(&self) -> String {

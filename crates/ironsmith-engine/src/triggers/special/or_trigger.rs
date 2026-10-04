@@ -1215,6 +1215,27 @@ impl OrTrigger {
     }
 }
 
+impl OrTrigger {
+    fn shared_life_change_display(&self) -> Option<String> {
+        let [gain, loss] = self.triggers.as_slice() else { return None; };
+        let loss = loss.downcast_ref::<crate::triggers::PlayerLosesLifeTrigger>()?;
+        if loss.one_or_more || loss.exact_amount.is_some() { return None; }
+        let (player, turn) = if let Some(gain) = gain.downcast_ref::<crate::triggers::YouGainLifeTrigger>() {
+            if gain.cause_filter.is_some() { return None; }
+            (crate::target::PlayerFilter::You, gain.during_turn.clone())
+        } else {
+            let gain = gain.downcast_ref::<crate::triggers::PlayerGainsLifeTrigger>()?;
+            (gain.player.clone(), gain.during_turn.clone())
+        };
+        if player != loss.player || turn != loss.during_turn { return None; }
+        Some(if player == crate::target::PlayerFilter::You {
+            gain.display().replacen("gain life", "gain or lose life", 1)
+        } else {
+            gain.display().replacen("gains life", "gains or loses life", 1)
+        })
+    }
+}
+
 impl TriggerMatcher for OrTrigger {
     fn clone_box(&self) -> Box<dyn TriggerMatcher> {
         Box::new(self.clone())
@@ -1283,6 +1304,9 @@ impl TriggerMatcher for OrTrigger {
         }
         if self.triggers.len() == 1 {
             return self.triggers[0].display();
+        }
+        if let Some(display) = self.shared_life_change_display() {
+            return display;
         }
         if let Some(display) = self.self_attacks_or_blocks_display() {
             return display;

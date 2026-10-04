@@ -1670,6 +1670,19 @@ impl GameState {
         )
     }
 
+    /// Original creation instructions belong to every replacement-added token.
+    pub(crate) fn move_created_token_with_entry_instructions(
+        &mut self, old_id: ObjectId, cause: crate::events::cause::EventCause,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+        enters_tapped: bool, choose_aura_attachment: bool,
+        counters: Vec<(crate::object::CounterType, u32)>,
+    ) -> Result<super::EntryCommitResult, crate::effects::ExecutionError> {
+        self.move_object_with_etb_processing_with_dm_and_cause_internal(
+            old_id, Zone::Battlefield, cause, decision_maker, choose_aura_attachment,
+            counters, None, enters_tapped, None,
+        )
+    }
+
     pub(crate) fn move_object_with_etb_processing_with_cause_and_entry_options_and_controller(
         &mut self,
         old_id: ObjectId,

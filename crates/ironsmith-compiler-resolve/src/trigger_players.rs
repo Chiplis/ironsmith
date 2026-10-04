@@ -90,7 +90,7 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
             Some(PlayerFilter::TaggedPlayer(tag.into()))
         }
         TriggerSpec::CardsMilled { .. } | TriggerSpec::PlayerChangesTapState { .. } => Some(PlayerFilter::IteratedPlayer),
-        TriggerSpec::PlayerLosesLife(_) | TriggerSpec::PlayersLoseLifeOneOrMore(_) => {
+        TriggerSpec::PlayerGainsLife { .. } | TriggerSpec::PlayerLosesLife(_) | TriggerSpec::PlayersLoseLifeOneOrMore(_) => {
             Some(PlayerFilter::IteratedPlayer)
         }
         // CR 607.2a: in "When this leaves the battlefield, that player ...",

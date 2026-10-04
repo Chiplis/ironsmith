@@ -5083,6 +5083,22 @@ pub fn lower_static_ability_ast(ability: StaticAbilityAst) -> Result<StaticAbili
             effect_before_timing,
             display,
         ),
+        StaticAbilityAst::TokenCreationTemplates { controller, token_filter, templates, mode, choose_one, optional, display } => {
+            let (templates, choices) = compile_trigger_effects(None, &templates)?;
+            if !choices.is_empty() || templates.is_empty()
+                || templates.iter().any(|effect| effect.downcast_ref::<crate::effects::CreateTokenEffect>()
+                    .is_none_or(|create| !matches!(create.count.unhinted(), crate::effect::Value::Fixed(1))
+                        || create.controller != crate::target::PlayerFilter::You || create.controller_target.is_some()
+                        || create.use_source_chosen_color || create.use_source_chosen_creature_type
+                        || create.enters_tapped || create.enters_attacking || create.enters_blocking.is_some()
+                        || create.attack_target_mode.is_some() || create.exile_at_end_of_combat
+                        || create.sacrifice_at_end_of_combat || create.sacrifice_at_next_end_step
+                        || create.exile_at_next_end_step || create.link_source_exiled_this_resolution))
+            {
+                return Err(CardTextError::InvariantViolation("token replacement requires complete single-token templates without unresolved targets".into()));
+            }
+            Ok(StaticAbility::token_creation_templates(controller, token_filter, templates, mode, choose_one, optional, display))
+        }
         StaticAbilityAst::LoseGameReplacement {
             effects,
             optional,

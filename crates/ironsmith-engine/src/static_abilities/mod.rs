@@ -4704,7 +4704,15 @@ impl StaticAbility {
         ))
     }
 
-    /// "If you would gain life, you gain that much life plus N instead."
+    /// Append or substitute complete token definitions during token creation.
+    pub fn token_creation_templates(
+        controller: crate::target::PlayerFilter, token_filter: crate::target::ObjectFilter,
+        templates: Vec<crate::effect::Effect>, mode: ironsmith_core::TokenCreationTemplateMode,
+        choose_one: bool, optional: bool, display: String,
+    ) -> Self {
+        Self::new(TokenCreationTemplates { controller, token_filter, templates, mode, choose_one, optional, display, condition: None })
+    }
+
     pub fn add_life_gain_replacement(
         player: crate::target::PlayerFilter, additional: i32, display: impl Into<String>,
     ) -> Self {

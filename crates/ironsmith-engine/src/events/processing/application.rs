@@ -243,7 +243,7 @@ pub(super) fn apply_trait_replacement(
             {
                 let covers = token_groups_covered(game, effect, create_tokens);
                 let modified =
-                    create_tokens.scaled_groups(covers, |count| count.saturating_mul(2));
+                    create_tokens.scaled_token_groups(covers, |count| count.saturating_mul(2));
                 return Ok(TraitApplyResult::Modified(event.rewrap(modified)));
             }
             let modified = apply_trait_double(&event);
@@ -590,6 +590,34 @@ pub(super) fn apply_trait_replacement(
 
         ReplacementAction::DeclineOptional(_) => TraitApplyResult::Modified(event),
 
+        ReplacementAction::TokenCreationTemplates { templates, mode, choose_one, .. } => {
+            if *choose_one { return Err(crate::effects::ExecutionError::InternalError("unselected token replacement alternatives".into())); }
+            use crate::events::{CreateTokensEvent, downcast_event};
+            use ironsmith_core::TokenCreationTemplateMode;
+            let Some(tokens) = downcast_event::<CreateTokensEvent>(event.inner()) else {
+                return Ok(TraitApplyResult::Unchanged(event));
+            };
+            let covers = token_groups_covered(game, effect, tokens);
+            let count = tokens.matching_count(&covers);
+            if count == 0 { return Ok(TraitApplyResult::Unchanged(event)); }
+            let mut modified = if *mode == TokenCreationTemplateMode::ReplaceEach {
+                tokens.scaled_token_groups(&covers, |_| 0)
+            } else { tokens.clone() };
+            let copies = if *mode == TokenCreationTemplateMode::AppendOnce { 1 } else { count };
+            for template in templates {
+                let Some(create) = template.downcast_ref::<crate::effects::CreateTokenEffect>() else {
+                    return Err(crate::effects::ExecutionError::InternalError("token replacement contains a non-template effect".into()));
+                };
+                if !matches!(create.count.unhinted(), crate::effect::Value::Fixed(1)) {
+                    return Err(crate::effects::ExecutionError::InternalError("token replacement template has an unsupported quantity".into()));
+                }
+                let mut definition = create.token.clone();
+                crate::effects::tokens::materialize_named_creator_source_in_token(&mut definition, effect.source);
+                modified = modified.with_template(definition, copies);
+            }
+            TraitApplyResult::Modified(event.rewrap(modified))
+        }
+
         ReplacementAction::AddTokens { token, count } => {
             let modified = apply_trait_add_tokens(&event, *token, *count);
             match modified {
@@ -606,16 +634,7 @@ pub(super) fn apply_trait_replacement(
             };
             // "that many": every covered token, including ones an earlier
             // replacement added (CR 616.1).
-            let that_many = {
-                let covers = token_groups_covered(game, effect, create_tokens);
-                let mut that_many = if covers(None) { create_tokens.count } else { 0 };
-                for (kind, count) in &create_tokens.additional_tokens {
-                    if covers(Some(*kind)) {
-                        that_many = that_many.saturating_add(*count);
-                    }
-                }
-                that_many
-            };
+            let that_many = create_tokens.matching_count(token_groups_covered(game, effect, create_tokens));
             match apply_trait_add_tokens(&event, *token, that_many) {
                 Some(e) => TraitApplyResult::Modified(e),
                 None => TraitApplyResult::Unchanged(event),
@@ -631,37 +650,26 @@ pub(super) fn apply_trait_replacement(
             // Each token group of one of `kinds` (the original token or one an
             // earlier replacement added, CR 616.1) becomes one of each kind.
             let covers = token_groups_covered(game, effect, create_tokens);
-            let created_kind = create_tokens.token.as_ref().and_then(|token| {
-                kinds.iter().copied().find(|kind| {
-                    token.has_subtype(match kind {
-                        ironsmith_core::AdditionalTokenKind::Treasure => {
-                            crate::types::Subtype::Treasure
-                        }
+            let covered: Vec<_> = create_tokens.group_keys().into_iter().filter(|key| {
+                covers(*key) && create_tokens.group_object(*key).is_some_and(|token| {
+                    kinds.iter().any(|kind| token.has_subtype(match kind {
+                        ironsmith_core::AdditionalTokenKind::Treasure => crate::types::Subtype::Treasure,
                         ironsmith_core::AdditionalTokenKind::Food => crate::types::Subtype::Food,
                         ironsmith_core::AdditionalTokenKind::Clue => crate::types::Subtype::Clue,
-                        ironsmith_core::AdditionalTokenKind::Squirrel => {
-                            crate::types::Subtype::Squirrel
-                        }
-                    })
+                        ironsmith_core::AdditionalTokenKind::Squirrel => crate::types::Subtype::Squirrel,
+                    }))
                 })
-            });
-            let mut groups: Vec<(ironsmith_core::AdditionalTokenKind, u32)> = Vec::new();
-            if let Some(kind) = created_kind
-                && covers(None)
-            {
-                groups.push((kind, create_tokens.count));
-            }
-            for (kind, count) in &create_tokens.additional_tokens {
-                if kinds.contains(kind) && covers(Some(*kind)) {
-                    groups.push((*kind, *count));
-                }
-            }
-            let mut modified = create_tokens.clone();
-            for (group_kind, group_count) in groups {
-                for kind in kinds {
-                    if *kind != group_kind {
-                        modified = modified.with_additional_tokens(*kind, group_count);
-                    }
+            }).collect();
+            let count = create_tokens.matching_count(|key| covered.contains(&key));
+            // "Instead create one of each" replaces each matching token's
+            // definition too; it does not retain a custom Food/Clue/Treasure
+            // prototype or omit template groups added by an earlier effect.
+            let mut modified = create_tokens.scaled_token_groups(|key| covered.contains(&key), |_| 0);
+            let mut distinct = Vec::new();
+            for kind in kinds {
+                if !distinct.contains(kind) {
+                    distinct.push(*kind);
+                    modified = modified.with_additional_tokens(*kind, count);
                 }
             }
             TraitApplyResult::Modified(event.rewrap(modified))
@@ -1215,35 +1223,17 @@ pub(super) fn find_matching_sacrificable_permanents(
         .collect()
 }
 
-/// Which token groups of a token-creation event a replacement's token filter
-/// covers: `None` is the original token, `Some(kind)` a group an earlier
-/// replacement added (CR 616.1, 614.1).
+/// A replacement sees every group in the modified event, including arbitrary
+/// templates inserted by earlier replacements (CR 616.1).
 fn token_groups_covered<'a>(
     game: &'a GameState,
     effect: &'a ReplacementEffect,
     create_tokens: &'a crate::events::CreateTokensEvent,
-) -> impl Fn(Option<ironsmith_core::AdditionalTokenKind>) -> bool + 'a {
-    let filter = effect
-        .matcher
-        .as_ref()
-        .and_then(|matcher| matcher.token_group_filter());
+) -> impl Fn(crate::events::tokens::TokenGroupKey) -> bool + 'a {
+    let filter = effect.matcher.as_ref().and_then(|matcher| matcher.token_group_filter());
     let filter_ctx = game.filter_context_for(effect.controller, Some(effect.source));
-    move |group| {
-        let Some(filter) = filter else {
-            return true;
-        };
-        match group {
-            None => create_tokens
-                .token
-                .as_ref()
-                .is_some_and(|token| filter.matches(token, &filter_ctx, game)),
-            Some(kind) => filter.matches(
-                &crate::events::tokens::additional_token_object(kind, create_tokens.controller),
-                &filter_ctx,
-                game,
-            ),
-        }
-    }
+    move |key| filter.is_none_or(|filter| create_tokens.group_object(key)
+        .is_some_and(|token| filter.matches(&token, &filter_ctx, game)))
 }
 
 fn apply_trait_add_tokens(
@@ -1368,33 +1358,33 @@ fn apply_trait_modification(
             let modified = match modification {
                 // "N times that many of those tokens" scales every covered
                 // group, including tokens an earlier replacement added.
-                EventModification::Multiply(factor) => create_tokens.scaled_groups(
+                EventModification::Multiply(factor) => create_tokens.scaled_token_groups(
                     token_groups_covered(game, effect, create_tokens),
                     |count| count.saturating_mul(*factor),
                 ),
                 // The other modifications change the combined count of the
                 // covered groups, which include tokens an earlier replacement
                 // added (CR 616.1).
-                EventModification::Add(delta) => create_tokens.adjusted_covered_total(
+                EventModification::Add(delta) => create_tokens.adjusted_token_total(
                     token_groups_covered(game, effect, create_tokens),
                     |total| (total as i64 + i64::from(*delta)).clamp(0, i64::from(u32::MAX)) as u32,
                 ),
-                EventModification::Subtract(delta) => create_tokens.adjusted_covered_total(
+                EventModification::Subtract(delta) => create_tokens.adjusted_token_total(
                     token_groups_covered(game, effect, create_tokens),
                     |total| total.saturating_sub(*delta),
                 ),
-                EventModification::SetTo(value) => create_tokens.adjusted_covered_total(
+                EventModification::SetTo(value) => create_tokens.adjusted_token_total(
                     token_groups_covered(game, effect, create_tokens),
                     |_| *value,
                 ),
                 EventModification::SetToAtLeast(value) => {
                     let floor = resolve_value_for_replacement(value, game, effect.source);
-                    create_tokens.adjusted_covered_total(
+                    create_tokens.adjusted_token_total(
                         token_groups_covered(game, effect, create_tokens),
                         |total| total.max(floor),
                     )
                 }
-                EventModification::ReduceToZero => create_tokens.adjusted_covered_total(
+                EventModification::ReduceToZero => create_tokens.adjusted_token_total(
                     token_groups_covered(game, effect, create_tokens),
                     |_| 0,
                 ),

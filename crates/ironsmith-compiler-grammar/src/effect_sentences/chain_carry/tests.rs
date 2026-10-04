@@ -509,8 +509,7 @@ fn multicolor_source_animation_then_unblockable_keeps_both_typed_arms() {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
-                    power,
-                    toughness,
+                    base_power_toughness: Some((power, toughness)),
                     target,
                     card_types,
                     subtypes,

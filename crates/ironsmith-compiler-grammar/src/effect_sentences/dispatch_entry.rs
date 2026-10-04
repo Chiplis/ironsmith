@@ -12206,7 +12206,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             )
             | SubjectVerbActionAst::Characteristics(
                 CharacteristicActionAst::BecomeBasePtCreature {
-                    power, toughness, ..
+                    base_power_toughness: Some((power, toughness)), ..
                 },
             )
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {

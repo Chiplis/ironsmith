@@ -782,6 +782,7 @@ fn add_static_ability_ast_condition(
         StaticAbilityAst::Static(_)
         | StaticAbilityAst::KeywordAction(_)
         | StaticAbilityAst::PregameRevealFromOpeningHand { .. }
+        | StaticAbilityAst::TokenCreationTemplates { .. }
         | StaticAbilityAst::LoseGameReplacement { .. } => {
             StaticAbilityAst::ConditionalStaticAbility {
                 ability: Box::new(ability),

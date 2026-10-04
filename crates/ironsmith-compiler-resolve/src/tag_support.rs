@@ -1894,7 +1894,7 @@ pub fn effect_references_event_derived_amount(effect: &EffectAst) -> bool {
                     )
                     | SubjectVerbActionAst::Characteristics(
                         CharacteristicActionAst::BecomeBasePtCreature {
-                            power, toughness, ..
+                            base_power_toughness: Some((power, toughness)), ..
                         },
                     )
                     | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
@@ -2314,7 +2314,7 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
             )
             | SubjectVerbActionAst::Characteristics(
                 CharacteristicActionAst::BecomeBasePtCreature {
-                    power, toughness, ..
+                    base_power_toughness: Some((power, toughness)), ..
                 },
             ) => {
                 value_references_tag(power, crate::tag::CompilerReferenceTag::It.as_str())

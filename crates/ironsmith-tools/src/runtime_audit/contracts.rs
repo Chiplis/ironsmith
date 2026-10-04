@@ -862,7 +862,9 @@ impl Auditor {
         scope.event_object = Binding::Unknown;
         let mut known = true;
         match name {
-            "PlayerLosesLife"
+            "PlayerGainsLife"
+            | "LifeChanged"
+            | "PlayerLosesLife"
             | "PlayersLoseLifeOneOrMore"
             | "OpponentsEachLoseExactLife"
             | "PlayerLosesLifeDuringTurn"

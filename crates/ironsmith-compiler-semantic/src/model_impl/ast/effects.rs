@@ -2121,6 +2121,27 @@ impl EffectAst {
         animation_duration_surface: Option<ironsmith_core::AnimationDurationSurface>,
         duration: Until,
     ) -> Self {
+        Self::subject_verb_become_object_template(Some((power, toughness)), target, card_types, subtypes, subtype_families,
+            colors, abilities, granted_abilities, preserve_other_types, type_retention_surface,
+            animation_pt_surface, animation_duration_surface, duration)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn subject_verb_become_object_template(
+        base_power_toughness: Option<(Value, Value)>,
+        target: TargetAst,
+        card_types: Vec<CardType>,
+        subtypes: Vec<Subtype>,
+        subtype_families: Vec<SubtypeFamily>,
+        colors: Option<ColorSet>,
+        abilities: Vec<crate::model::CompilerStaticAbilityCore>,
+        granted_abilities: Vec<GrantedAbilityAst>,
+        preserve_other_types: bool,
+        type_retention_surface: Option<ironsmith_core::TypeRetentionSurface>,
+        animation_pt_surface: Option<ironsmith_core::AnimationPtSurface>,
+        animation_duration_surface: Option<ironsmith_core::AnimationDurationSurface>,
+        duration: Until,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -2128,8 +2149,7 @@ impl EffectAst {
                 name_override: None,
                 add_supertypes: Vec::new(),
                 remove_all_abilities: false,
-                power,
-                toughness,
+                base_power_toughness,
                 target,
                 card_types,
                 subtypes,

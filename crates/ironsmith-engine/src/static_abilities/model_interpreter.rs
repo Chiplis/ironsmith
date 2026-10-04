@@ -2054,6 +2054,9 @@ impl StaticAbilityModelInterpreter {
                 *factor,
                 display.clone(),
             ),
+            ironsmith_core::StaticAbilityPayload::TokenCreationTemplates { controller, token_filter, templates, mode, choose_one, optional, display } => {
+                StaticAbility::token_creation_templates(controller.clone(), token_filter.clone(), templates.clone(), *mode, *choose_one, *optional, display.clone())
+            }
             ironsmith_core::StaticAbilityPayload::AddLifeGainReplacement { player, additional, display } =>
                 StaticAbility::add_life_gain_replacement(player.clone(), *additional, display.clone()),
             ironsmith_core::StaticAbilityPayload::DoubleLifeChangeReplacement {

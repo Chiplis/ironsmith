@@ -123,6 +123,7 @@ fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
             matches!(
                 trigger,
                 TriggerSpec::CardsMilled { .. }
+                    | TriggerSpec::PlayerGainsLife { .. }
                     | TriggerSpec::YouGainLife
                     | TriggerSpec::YouGainLifeCausedBy(_)
                     | TriggerSpec::YouGainLifeDuringTurn(_)
@@ -5163,8 +5164,7 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
             ..
         })
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
-            power,
-            toughness,
+            base_power_toughness: Some((power, toughness)),
             ..
         })
         | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {

@@ -5025,3 +5025,27 @@ mod power_up_native_replay_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod character_select_token_partner_tests {
+    use super::*;
+    #[test]
+    fn donatello_character_select_pairs_only_with_the_same_partner_variant() {
+        let cards: Vec<serde_json::Value> = serde_json::from_str(include_str!("../../../../fixtures/token_template_replacements.json.fixture")).unwrap();
+        let card = cards.iter().find(|card| card["name"] == "Donatello, the Brains").unwrap();
+        let donatello = ironsmith_registry_test::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Donatello, the Brains")
+            .card_types(vec![CardType::Creature]).supertypes(vec![Supertype::Legendary])
+            .parse_text(card["oracle_text"].as_str().unwrap()).unwrap();
+        for (line, legendary, expected) in [
+            ("Partner—Character select", true, true), ("Partner—Friends forever", true, false),
+            ("Partner", true, false), ("Partner—Character select", false, false),
+        ] {
+            let other = ironsmith_registry_test::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Commander partner probe")
+                .card_types(vec![CardType::Creature])
+                .supertypes(if legendary { vec![Supertype::Legendary] } else { vec![] })
+                .parse_text(line).unwrap();
+            assert_eq!(WasmGame::commander_pair_is_legal(&donatello, &other), expected);
+            assert_eq!(WasmGame::commander_pair_is_legal(&other, &donatello), expected);
+        }
+    }
+}

@@ -3252,6 +3252,29 @@ fn token_descriptor_filter(descriptor_tokens: &[OwnedLexToken]) -> Option<Option
     Some(Some(token_filter))
 }
 
+/// Reuse the full token-definition grammar rather than naming a finite set of
+/// additional token kinds. Existing complete specialized readings keep ownership.
+pub fn parse_token_creation_templates_line(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    if parse_double_token_creation_replacement_line(tokens)?.is_some() { return Ok(None); }
+    let Some(shape) = keyword_static_lines::parse_token_template_replacement(tokens) else { return Ok(None); };
+    let Some(filter) = token_descriptor_filter(shape.source_descriptor) else { return Ok(None); };
+    let token_filter = filter.unwrap_or_else(|| ObjectFilter::default().token());
+    let mut templates = Vec::new();
+    for descriptor in shape.templates {
+        let mut recipe = vec![
+            OwnedLexToken::word("create", TextSpan::synthetic()),
+            OwnedLexToken::word("one", TextSpan::synthetic()),
+        ];
+        recipe.extend_from_slice(descriptor);
+        templates.extend(crate::clause_support::parse_effect_sentences_lexed(&recipe)?);
+    }
+    Ok(Some(StaticAbilityAst::TokenCreationTemplates {
+        controller: PlayerFilter::You, token_filter, templates,
+        mode: shape.mode, choose_one: shape.choose_one, optional: shape.optional,
+        display: display_text_for_tokens(tokens, true),
+    }))
+}
+
 pub fn parse_double_token_creation_replacement_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {

@@ -58,6 +58,15 @@ pub enum StaticAbilityAst {
         effect_before_timing: bool,
         display: String,
     },
+    TokenCreationTemplates {
+        controller: PlayerFilter,
+        token_filter: ObjectFilter,
+        templates: Vec<EffectAst>,
+        mode: ironsmith_core::TokenCreationTemplateMode,
+        choose_one: bool,
+        optional: bool,
+        display: String,
+    },
     LoseGameReplacement {
         effects: Vec<EffectAst>,
         optional: bool,
@@ -415,6 +424,7 @@ pub enum TriggerSpec {
     IsDealtCombatDamage(ObjectFilter),
     IsDealtExcessNoncombatDamage(ObjectFilter),
     YouGainLife,
+    PlayerGainsLife { player: PlayerFilter, during_turn: Option<PlayerFilter> },
     YouGainLifeCausedBy(ObjectFilter),
     YouGainLifeDuringTurn(PlayerFilter),
     PlayerLosesLife(PlayerFilter),

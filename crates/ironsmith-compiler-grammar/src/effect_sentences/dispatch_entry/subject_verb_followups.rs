@@ -2001,6 +2001,11 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
     pre_followup_rule!("if-no-one-does", &["if"], pre_rule_if_no_one_does_followup),
     pre_followup_rule!("if-you-win", &["if"], pre_rule_if_you_win_followup),
     pre_followup_rule!(
+        "animation-base-pt-self-replacement",
+        &["if"],
+        pre_rule_animation_base_pt_replacement
+    ),
+    pre_followup_rule!(
         "conditional-optional-result",
         &["if", "when"],
         pre_rule_conditional_optional_result_followup
@@ -2268,3 +2273,7 @@ use subject_verb_followups_combat_programs::{
 #[path = "subject_verb_followups/subject_verb_followups_permission.rs"]
 mod subject_verb_followups_permission_programs;
 use subject_verb_followups_permission_programs::pre_rule_exile_this_way_followup;
+
+#[path = "subject_verb_followups/animation_pt_replacement.rs"]
+mod animation_pt_replacement;
+use animation_pt_replacement::pre_rule_animation_base_pt_replacement;

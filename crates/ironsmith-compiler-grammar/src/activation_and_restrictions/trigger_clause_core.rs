@@ -3013,6 +3013,26 @@ fn try_parse_trigger_union_lexed(tokens: &[OwnedLexToken]) -> Option<TriggerSpec
         let left = &tokens[..idx];
         let right = &tokens[idx + 1..];
         let right_words = crate::lexer::token_word_refs(right);
+        // The face-up alternative shares the complete entry subject. Derive
+        // its typed filter from that arm instead of guessing a short noun
+        // prefix (which loses long controller/characteristic qualifiers).
+        if matches!(right_words.as_slice(), ["is" | "are", "turned", "face", "up"]) {
+            fn face_up_arm(entry: &TriggerSpec) -> Option<TriggerSpec> {
+                match entry {
+                    TriggerSpec::WithIntro { trigger, .. } => face_up_arm(trigger),
+                    TriggerSpec::EntersBattlefield { filter, cause_filter: None, origin_condition: None, during_turn: None } =>
+                        Some(TriggerSpec::TurnedFaceUp(filter.clone())),
+                    TriggerSpec::ThisEntersBattlefield { origin_condition: None }
+                    | TriggerSpec::ThisEntersBattlefieldWithSurface { origin_condition: None, .. } =>
+                        Some(TriggerSpec::ThisTurnedFaceUp),
+                    _ => None,
+                }
+            }
+            if let Ok(entry) = parse_trigger_clause_lexed_unstacked(left)
+                && let Some(face_up) = face_up_arm(&entry)
+            { return Some(TriggerSpec::Either(Box::new(entry), Box::new(face_up))); }
+            continue;
+        }
         // Only the exact "is put into exile" passive is unioned here — a
         // broader "is" gate steals natively paired shapes like
         // "enters the battlefield or is put into a graveyard".

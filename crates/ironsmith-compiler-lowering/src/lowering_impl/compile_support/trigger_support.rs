@@ -731,6 +731,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::IsDealtExcessNoncombatDamage(filter) => {
             Trigger::is_dealt_excess_noncombat_damage(ChooseSpec::Object(filter))
         }
+        TriggerSpec::PlayerGainsLife { player, during_turn } => Trigger::player_gains_life(player, during_turn),
         TriggerSpec::YouGainLife => Trigger::you_gain_life(),
         TriggerSpec::YouGainLifeCausedBy(source) => Trigger::you_gain_life_caused_by(source),
         TriggerSpec::YouGainLifeDuringTurn(during_turn) => {
@@ -1423,6 +1424,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::NthSpellOfTurnCast { .. }
         | TriggerSpec::SpellCopied { .. }
         | TriggerSpec::SpellCountered { .. }
+        | TriggerSpec::PlayerGainsLife { .. }
         | TriggerSpec::PlayerLosesLife(_)
         | TriggerSpec::PlayersLoseLifeOneOrMore(_)
         | TriggerSpec::OpponentsEachLoseExactLife { .. }
@@ -1524,7 +1526,8 @@ pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec
                 filter: Some(filter),
                 ..
             } if spell_cast_filter_binds_target_count(filter) => true,
-            TriggerSpec::YouGainLife
+            TriggerSpec::PlayerGainsLife { .. }
+            | TriggerSpec::YouGainLife
             | TriggerSpec::YouGainLifeCausedBy(_)
             | TriggerSpec::YouGainLifeDuringTurn(_)
             | TriggerSpec::PlayerLosesLife(_)

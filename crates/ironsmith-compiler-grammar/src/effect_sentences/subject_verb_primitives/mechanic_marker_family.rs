@@ -1101,8 +1101,7 @@ mod tests {
                     action:
                         SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
                             target: TargetAst::Tagged(_, _),
-                            power: Value::Fixed(2),
-                            toughness: Value::Fixed(2),
+                            base_power_toughness: Some((Value::Fixed(2), Value::Fixed(2))),
                             card_types,
                             subtypes,
                             ..

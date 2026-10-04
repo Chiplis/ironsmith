@@ -1,17 +1,21 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "663e8e4dfd3ade19350586798d3f6218967be752",
+  "source_implementation_commit": "2423fd6cf265469189f729aed32d0516c2dd3c28",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 459,
-    "additional_proposed_compile_entries": 459,
+    "additional_proposed_unique_cards": 479,
+    "additional_proposed_compile_entries": 480,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
-    "known_runtime_partial_previous_proposals": 4
+    "known_runtime_partial_previous_proposals": 4,
+    "source_proposals_include_explicit_runtime_limit_caveats": true,
+    "identified_source_proposals_with_known_runtime_gaps": 13,
+    "source_proposals_excluding_identified_runtime_gaps": 466,
+    "runtime_gap_inventory_is_not_exhaustive": true
   },
   "workflow": {
     "effective_at": "2026-10-03T21:19:53Z",
@@ -1300,14 +1304,19 @@
         "Unctus, Grand Metatect",
         "Xathrid Gorgon"
       ],
-      "partial_entries": [
-        "Behind the Mask"
-      ],
+      "partial_entries": [],
       "implementation_commit": "663e8e4dfd3ade19350586798d3f6218967be752",
       "tests": "authored_not_run",
       "semantic_scope": [
         "Complete legendary/named descriptors and static/keyword grants; independent color and type retention via real modifications.",
         "Unknown animation suffixes reject instead of silently degrading to bare creatures. Behind the Mask remains partial."
+      ],
+      "subsequent_source_closures": [
+        {
+          "card_name": "Behind the Mask",
+          "stage": 38,
+          "closed_by": "conditional-animation-pt"
+        }
       ]
     },
     {
@@ -1346,14 +1355,108 @@
         "Curse of Verbosity",
         "Curse of Vitality"
       ],
-      "partial_entries": [
-        "Jolene, the Plunder Queen"
-      ],
+      "partial_entries": [],
       "implementation_commit": "663e8e4dfd3ade19350586798d3f6218967be752",
       "tests": "authored_not_run",
       "semantic_scope": [
         "Actual player-declaration events freeze attacker/defender and group correctly without ETB-attacking or planeswalker/battle false positives.",
         "Curse follow-up rewards query live attacking opponents of the original defender; Jolene remains partial pending token source lane."
+      ],
+      "subsequent_source_closures": [
+        {
+          "card_name": "Jolene, the Plunder Queen",
+          "stage": 38,
+          "closed_by": "token-template-replacements"
+        }
+      ]
+    },
+    {
+      "id": "paired-pt-animation",
+      "stage": 38,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/paired_pt_animation.json.fixture",
+      "baseline_entries": [
+        "Woodcaller Automaton"
+      ],
+      "implementation_commit": "e07e6f0aec438438870f6ee764e71e16f0e2f256",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Paired numeric axes compose with pre-P/T haste grants, exact source values, prototype characteristics and still-land retention."
+      ]
+    },
+    {
+      "id": "conditional-animation-pt",
+      "stage": 38,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/conditional_animation_pt.json.fixture",
+      "baseline_entries": [
+        "Behind the Mask"
+      ],
+      "implementation_commit": "7af0b497922951e72b968b3db3044d6e3317f2cd",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Evidence-paid self replacement clones the full animation and changes only the existing P/T pair; targets/types/grants/duration retained."
+      ]
+    },
+    {
+      "id": "token-template-replacements",
+      "stage": 38,
+      "status": "mechanic_source_implemented_runtime_limit_unresolved",
+      "fixture": "fixtures/token_template_replacements.json.fixture",
+      "baseline_entries": [
+        "Bilbo, Fellow Conspirator",
+        "Divine Visitation",
+        "Donatello, the Brains",
+        "Draconic Visitor",
+        "Jinnie Fay, Jetmir's Second",
+        "Jolene, the Plunder Queen",
+        "Queen Allenal of Ruadach",
+        "Quina, Qu Gourmet",
+        "Stridehangar Automaton",
+        "Tippy-Toe, Terrific Partner",
+        "Worldwalker Helm",
+        "Jinnie Fay, Jetmir's Second // Jinnie Fay, Jetmir's Second"
+      ],
+      "implementation_commit": "7af0b497922951e72b968b3db3044d6e3317f2cd",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Generic complete token template groups, per-event/per-token modifications, optional Jinnie alternatives and inherited original instructions.",
+        "All actual token groups contribute to creation triggers/history; known inherited500-token silent cap remains an unresolved correctness prerequisite."
+      ]
+    },
+    {
+      "id": "life-change-triggers",
+      "stage": 38,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/life_change_triggers.json.fixture",
+      "baseline_entries": [
+        "Kavu Predator",
+        "Punishing Fire",
+        "Moonstone Harbinger",
+        "Wax-Wane Witness",
+        "Vizkopa Guildmage"
+      ],
+      "implementation_commit": "7af0b497922951e72b968b3db3044d6e3317f2cd",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Typed life gain/loss recipients and turn guards; temporary repeating life listeners and actual event amounts.",
+        "Player-filter evaluation respects opponents/teams and rejects unknown filter forms."
+      ]
+    },
+    {
+      "id": "token-template-follow-ups",
+      "stage": 38,
+      "status": "mechanic_source_implemented_runtime_limit_unresolved",
+      "fixture": "fixtures/token_template_follow_ups.json.fixture",
+      "baseline_entries": [
+        "Case of the Pilfered Proof",
+        "Fisher's Talent"
+      ],
+      "implementation_commit": "2423fd6cf265469189f729aed32d0516c2dd3c28",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Case complete entry/face-up subject binding, actual solve path and live token addition; Fisher full upkeep choices/draw and class substitutions.",
+        "Native500-token truncation remains an explicit final correctness blocker."
       ]
     }
   ],
@@ -3721,8 +3824,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "conditional-animation-pt",
+        "collect-evidence"
+      ]
     },
     {
       "card_name": "Beifong's Bounty Hunters",
@@ -3913,8 +4019,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "token-template-replacements"
+      ],
+      "runtime_correctness_gaps": [
+        "token-creation-silent-cap"
+      ]
     },
     {
       "card_name": "Bill the Pony",
@@ -5245,8 +5356,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "token-template-follow-ups"
+      ],
+      "runtime_correctness_gaps": [
+        "token-creation-silent-cap"
+      ]
     },
     {
       "card_name": "Casey & Raph, Hotheads",
@@ -8322,8 +8438,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "token-template-replacements"
+      ],
+      "runtime_correctness_gaps": [
+        "token-creation-silent-cap"
+      ]
     },
     {
       "card_name": "Diviner of Victory // Unwind History",
@@ -8478,8 +8599,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "token-template-replacements"
+      ],
+      "runtime_correctness_gaps": [
+        "token-creation-silent-cap"
+      ]
     },
     {
       "card_name": "Done for the Day",
@@ -8602,8 +8728,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "token-template-replacements"
+      ],
+      "runtime_correctness_gaps": [
+        "token-creation-silent-cap"
+      ]
     },
     {
       "card_name": "Dracoplasm",
@@ -11086,8 +11217,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "token-template-follow-ups"
+      ],
+      "runtime_correctness_gaps": [
+        "token-creation-silent-cap"
+      ]
     },
     {
       "card_name": "Fishing Pole",
@@ -15771,8 +15907,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "token-template-replacements"
+      ],
+      "runtime_correctness_gaps": [
+        "token-creation-silent-cap"
+      ]
     },
     {
       "card_name": "Jinnie Fay, Jetmir's Second // Jinnie Fay, Jetmir's Second",
@@ -15781,8 +15922,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "token-template-replacements"
+      ],
+      "runtime_correctness_gaps": [
+        "token-creation-silent-cap"
+      ]
     },
     {
       "card_name": "Johann, Apprentice Sorcerer",
@@ -15811,8 +15957,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "token-template-replacements",
+        "player-attack-declarations"
+      ],
+      "runtime_correctness_gaps": [
+        "token-creation-silent-cap"
+      ]
     },
     {
       "card_name": "Jon Irenicus, Shattered One",
@@ -16171,8 +16323,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "life-change-triggers"
+      ]
     },
     {
       "card_name": "Kavu Runner",
@@ -19536,8 +19690,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "life-change-triggers"
+      ]
     },
     {
       "card_name": "Moraug, Fury of Akoum",
@@ -22916,8 +23072,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "life-change-triggers"
+      ]
     },
     {
       "card_name": "Pure Intentions",
@@ -23060,8 +23218,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "token-template-replacements"
+      ],
+      "runtime_correctness_gaps": [
+        "token-creation-silent-cap"
+      ]
     },
     {
       "card_name": "Quest for Pure Flame",
@@ -23152,8 +23315,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "token-template-replacements"
+      ],
+      "runtime_correctness_gaps": [
+        "token-creation-silent-cap"
+      ]
     },
     {
       "card_name": "Quinjet Technician",
@@ -27984,8 +28152,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "token-template-replacements"
+      ],
+      "runtime_correctness_gaps": [
+        "token-creation-silent-cap"
+      ]
     },
     {
       "card_name": "Strixhaven Stadium",
@@ -30667,8 +30840,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "token-template-replacements"
+      ],
+      "runtime_correctness_gaps": [
+        "token-creation-silent-cap"
+      ]
     },
     {
       "card_name": "Titania, Nature's Force",
@@ -32493,8 +32671,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "life-change-triggers"
+      ]
     },
     {
       "card_name": "Void",
@@ -33199,8 +33379,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "life-change-triggers"
+      ]
     },
     {
       "card_name": "Way of the Cryomancer",
@@ -33962,8 +34144,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "paired-pt-animation"
+      ]
     },
     {
       "card_name": "Woodwork Prodigy // Soul Tether",
@@ -34062,8 +34246,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "token-template-replacements"
+      ],
+      "runtime_correctness_gaps": [
+        "token-creation-silent-cap"
+      ]
     },
     {
       "card_name": "Wormfang Manta",
@@ -34735,6 +34924,31 @@
       "complete_coverage_claims_withheld": true,
       "completed_action_guard_source_commit": "649a0c72",
       "remaining_boundary": "Precommit opening previews and independent payment failure/cancellation routes remain under source review."
+    },
+    {
+      "id": "token-creation-silent-cap",
+      "status": "unresolved_runtime_correctness_gap",
+      "scope": "Global native token producers; current exact source cohort below is a concrete subset, not an exhaustive impacted-card list.",
+      "affected_source_family": "token-template-replacements",
+      "affected_card_names": [
+        "Bilbo, Fellow Conspirator",
+        "Divine Visitation",
+        "Donatello, the Brains",
+        "Draconic Visitor",
+        "Jinnie Fay, Jetmir's Second",
+        "Jolene, the Plunder Queen",
+        "Queen Allenal of Ruadach",
+        "Quina, Qu Gourmet",
+        "Stridehangar Automaton",
+        "Tippy-Toe, Terrific Partner",
+        "Worldwalker Helm",
+        "Jinnie Fay, Jetmir's Second // Jinnie Fay, Jetmir's Second",
+        "Case of the Pilfered Proof",
+        "Fisher's Talent"
+      ],
+      "source_location": "crates/ironsmith-engine/src/effects/tokens/lifecycle.rs::TOKEN_PER_PLAYER_LIMIT",
+      "behavior": "Native token creation silently truncates at500 token permanents per player. Mechanic source proposals do not establish correct larger outcomes.",
+      "completion_gate": "Fix silent truncation or retain it as explicitly unresolved; no final all-cards-correct claim while it remains."
     }
   ]
 }

@@ -234,6 +234,9 @@ impl ReplacementEffect {
         if let ReplacementAction::DeclineOptional(key) = &self.replacement {
             return key.clone();
         }
+        if let ReplacementAction::TokenCreationTemplates { choice_parent: Some(key), .. } = &self.replacement {
+            return key.clone();
+        }
         if let Some(id) = self.registration_id {
             return ReplacementEffectKey::Registered(id);
         }
@@ -570,6 +573,8 @@ pub enum ReplacementAction<E = Effect, A = Ability, P = crate::resolution::Resol
     /// Additional actions refer to the proposed damage even when prevention is
     /// prohibited. Append rather than reinterpreting existing actual-amount actions.
     PreventDamageThenFromProposedAmount(Vec<E>),
+    /// Complete creation templates modify groups inside the same event.
+    TokenCreationTemplates { templates: Vec<E>, mode: ironsmith_core::TokenCreationTemplateMode, choose_one: bool, choice_parent: Option<K> },
 }
 
 
@@ -591,6 +596,9 @@ impl<E, A, P, K> ReplacementAction<E, A, P, K> {
             Self::PreventDamageByRule(value) => ReplacementAction::PreventDamageByRule(value),
             Self::PreventHalfDamage { round_up } => ReplacementAction::PreventHalfDamage { round_up },
             Self::PreventDamageByRemovingSourceCounters { counter_type } => ReplacementAction::PreventDamageByRemovingSourceCounters { counter_type },
+            Self::TokenCreationTemplates { templates, mode, choose_one, choice_parent } => ReplacementAction::TokenCreationTemplates {
+                templates: templates.into_iter().map(&mut effect).collect::<Result<Vec<_>, _>>()?, mode, choose_one, choice_parent: choice_parent.map(key).transpose()?,
+            },
             Self::PreventDamageThenFromProposedAmount(value) => ReplacementAction::PreventDamageThenFromProposedAmount(value.into_iter().map(&mut effect).collect::<Result<Vec<_>, _>>()?),
             Self::PreventDamageThen(value) => ReplacementAction::PreventDamageThen(value.into_iter().map(&mut effect).collect::<Result<Vec<_>, _>>()?),
             Self::PreventWithShield { shield_id, max_amount } => ReplacementAction::PreventWithShield { shield_id, max_amount },
@@ -1442,6 +1450,24 @@ impl ReplacementEffect {
     pub fn optional(mut self) -> Self {
         self.optional = true;
         self
+    }
+
+    /// Choices within one token replacement share its application identity.
+    /// Register the alternatives with separate selectable IDs, but accepting
+    /// either consumes the same CR 614.5 opportunity as declining it.
+    pub fn token_template_alternatives(&self) -> Vec<Self> {
+        let ReplacementAction::TokenCreationTemplates { templates, mode, choose_one: true, .. } = &self.replacement else {
+            return vec![self.clone()];
+        };
+        let parent = self.application_key();
+        templates.iter().map(|template| {
+            let mut alternative = self.clone();
+            alternative.replacement = ReplacementAction::TokenCreationTemplates {
+                templates: vec![template.clone()], mode: *mode, choose_one: false,
+                choice_parent: Some(parent.clone()),
+            };
+            alternative
+        }).collect()
     }
 
     /// Build the alternative for declining this same effect. For persistent
