@@ -38,7 +38,6 @@ impl WouldCreateTokensUnderControlMatcher {
 }
 
 impl ReplacementMatcher for WouldCreateTokensUnderControlMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldCreateTokensUnderControlMatcher { controller_filter: self.controller_filter.clone(), cause_filter: self.cause_filter.clone(), token_filter: self.token_filter.clone() }) }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::CreateTokens {
@@ -90,13 +89,5 @@ impl ReplacementMatcher for WouldCreateTokensUnderControlMatcher {
 
     fn display(&self) -> String {
         "When an effect would create tokens under a matching player's control".to_string()
-    }
-}
-
-// Engine-owned conversion can access private predicate captures without making them public.
-pub(crate) fn restore_replacement_matcher_descriptor(model: &crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor) -> Option<Box<dyn crate::events::ReplacementMatcher>> {
-    match model {
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldCreateTokensUnderControlMatcher { controller_filter, cause_filter, token_filter } => Some(Box::new(WouldCreateTokensUnderControlMatcher { controller_filter: controller_filter.clone(), cause_filter: cause_filter.clone(), token_filter: token_filter.clone() })),
- _ => None,
     }
 }

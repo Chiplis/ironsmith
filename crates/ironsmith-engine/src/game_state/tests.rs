@@ -262,26 +262,26 @@ fn cloned_state_shares_battlefield_flags_until_mutation() {
 }
 
 #[test]
-fn retained_regeneration_state_is_atomic_and_expires_at_cleanup() {
+fn native_regeneration_history_is_isolated_and_expires_at_cleanup() {
     let mut game = GameState::new(vec!["Alice".into()], 20);
     let alice = PlayerId::from_index(0);
     let definition = CardDefinitionBuilder::new(CardId::new(), "Regeneration state fixture")
         .card_types(vec![CardType::Artifact]).build();
     let object = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
     let departed = ObjectId::from_raw(77_001);
-    game.restore_regeneration_state(vec![(object, 2)], vec![(departed, 3)]).unwrap();
-    let saved = game.regeneration_state();
+    game.add_regeneration_shield(object, 2);
+    // Departed incarnations retain this-turn history until cleanup.
+    game.battlefield_flags_mut().regenerated_this_turn.insert(departed, 3);
     let mut branch = game.clone();
     assert!(branch.use_regeneration_shield(object));
-    assert_eq!(game.regeneration_state(), saved);
-    let before = branch.regeneration_state();
-    assert!(branch.restore_regeneration_state(vec![(object, 1), (object, 2)], vec![]).is_err());
-    assert!(branch.restore_regeneration_state(vec![(departed, 1)], vec![]).is_err());
-    assert!(branch.restore_regeneration_state(vec![(object, 1)], vec![(departed, 0)]).is_err());
-    assert_eq!(branch.regeneration_state(), before);
+    assert_eq!(game.regeneration_shield_count(object), 2);
+    assert_eq!(branch.regeneration_shield_count(object), 1);
+    assert_eq!(game.regenerated_this_turn_count(departed), 3);
     branch.cleanup_damage_and_regeneration_end_of_turn();
-    assert_eq!(branch.regeneration_state(), (vec![], vec![]));
-    assert_eq!(game.regeneration_state(), saved);
+    assert_eq!(branch.regeneration_shield_count(object), 0);
+    assert_eq!(branch.regenerated_this_turn_count(departed), 0);
+    assert_eq!(game.regeneration_shield_count(object), 2);
+    assert_eq!(game.regenerated_this_turn_count(departed), 3);
 }
 
 #[test]

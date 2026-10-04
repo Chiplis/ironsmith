@@ -505,14 +505,6 @@ impl GameState {
         &self.pending_restart_battlefield_entries
     }
 
-    /// Restore deferred restart entries (sync checkpoints).
-    pub fn set_pending_restart_battlefield_entries(
-        &mut self,
-        entries: Vec<PendingRestartBattlefieldEntry>,
-    ) {
-        self.pending_restart_battlefield_entries = entries;
-    }
-
     pub(crate) fn defer_restart_battlefield_entry(&mut self, entry: PendingRestartBattlefieldEntry) {
         if !entry.cards.is_empty() {
             self.pending_restart_battlefield_entries.push(entry);

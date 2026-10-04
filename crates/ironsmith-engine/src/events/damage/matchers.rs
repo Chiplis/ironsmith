@@ -40,7 +40,6 @@ impl DamageToPlayerMatcher {
 }
 
 impl ReplacementMatcher for DamageToPlayerMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToPlayerMatcher { player_filter: self.player_filter.clone() }) }
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -80,7 +79,6 @@ pub struct PreventableDamageToPlayerMatcher {
 }
 
 impl ReplacementMatcher for PreventableDamageToPlayerMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::PreventableDamageToPlayerMatcher { player_filter: self.player_filter.clone() }) }
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -126,7 +124,6 @@ impl DamageToObjectMatcher {
 }
 
 impl ReplacementMatcher for DamageToObjectMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToObjectMatcher { filter: self.filter.clone() }) }
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -175,7 +172,6 @@ impl DamageToPlayerOrObjectMatcher {
 }
 
 impl ReplacementMatcher for DamageToPlayerOrObjectMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToPlayerOrObjectMatcher { player_filter: self.player_filter.clone(), object_filter: self.object_filter.clone() }) }
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -214,7 +210,6 @@ impl ReplacementMatcher for DamageToPlayerOrObjectMatcher {
 pub struct CombatDamageMatcher;
 
 impl ReplacementMatcher for CombatDamageMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::CombatDamageMatcher) }
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -250,7 +245,6 @@ impl PreventableCombatDamageToObjectMatcher {
 }
 
 impl ReplacementMatcher for PreventableCombatDamageToObjectMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::PreventableCombatDamageToObjectMatcher { filter: self.filter.clone() }) }
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -303,7 +297,6 @@ impl PreventableNoncombatDamageToObjectMatcher {
 }
 
 impl ReplacementMatcher for PreventableNoncombatDamageToObjectMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::PreventableNoncombatDamageToObjectMatcher { filter: self.filter.clone() }) }
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -348,7 +341,6 @@ impl ReplacementMatcher for PreventableNoncombatDamageToObjectMatcher {
 pub struct NoncombatDamageMatcher;
 
 impl ReplacementMatcher for NoncombatDamageMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::NoncombatDamageMatcher) }
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -404,7 +396,6 @@ impl DamageFromSourceMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSourceMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageFromSourceMatcher { filter: self.filter.clone() }) }
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -448,7 +439,6 @@ impl DamageFromSourceToPlayerMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSourceToPlayerMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageFromSourceToPlayerMatcher { source_filter: self.source_filter.clone(), player_filter: self.player_filter.clone() }) }
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -543,7 +533,6 @@ impl DamageFromSourceToObjectMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSourceToObjectMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageFromSourceToObjectMatcher { source_filter: self.source_filter.clone(), target_filter: self.target_filter.clone(), combat_only: self.combat_only.clone(), preventable_only: self.preventable_only.clone() }) }
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -602,7 +591,6 @@ impl Default for DamageFromSelfMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSelfMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageFromSelfMatcher) }
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -654,7 +642,6 @@ impl Default for DamageToOrFromSelfMatcher {
 }
 
 impl ReplacementMatcher for DamageToOrFromSelfMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToOrFromSelfMatcher) }
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -706,7 +693,6 @@ impl Default for DamageFromSelfCombatMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSelfCombatMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageFromSelfCombatMatcher) }
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -819,7 +805,6 @@ impl PreventableDamageConstraintMatcher {
 }
 
 impl ReplacementMatcher for PreventableDamageConstraintMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::PreventableDamageConstraintMatcher { source: self.source.clone(), target: self.target.clone() }) }
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -907,7 +892,6 @@ impl Default for DamageToSelfMatcher {
 }
 
 impl ReplacementMatcher for DamageToSelfMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToSelfMatcher) }
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -954,7 +938,6 @@ impl Default for DamageToAttachedObjectMatcher {
 }
 
 impl ReplacementMatcher for DamageToAttachedObjectMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToAttachedObjectMatcher) }
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -1025,7 +1008,6 @@ impl DamageToSelfConstraintMatcher {
 }
 
 impl ReplacementMatcher for DamageToSelfConstraintMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToSelfConstraintMatcher { source_filter: self.source_filter.clone(), combat_only: self.combat_only.clone() }) }
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -1092,7 +1074,6 @@ impl Default for DamageToSelfCombatMatcher {
 }
 
 impl ReplacementMatcher for DamageToSelfCombatMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToSelfCombatMatcher) }
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -1147,7 +1128,6 @@ impl DamageToOtherCreatureYouControlMatcher {
 }
 
 impl ReplacementMatcher for DamageToOtherCreatureYouControlMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToOtherCreatureYouControlMatcher { noncombat_only: self.noncombat_only.clone() }) }
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -1227,7 +1207,6 @@ impl DamageToSelfFromSourceFilterMatcher {
 }
 
 impl ReplacementMatcher for DamageToSelfFromSourceFilterMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToSelfFromSourceFilterMatcher { source_filter: self.source_filter.clone(), combat_only: self.combat_only.clone(), source_relation: self.source_relation.clone() }) }
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -1627,33 +1606,5 @@ mod authoritative_damage_source_filter_tests {
             }
             assert_eq!(DamageSourceConstraint::SpecificMatching { source, filter }.matches_damage_source(source, &ctx), expected);
         }
-    }
-}
-
-// Engine-owned conversion can access private predicate captures without making them public.
-pub(crate) fn restore_replacement_matcher_descriptor(model: &crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor) -> Option<Box<dyn crate::events::ReplacementMatcher>> {
-    match model {
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToPlayerMatcher { player_filter } => Some(Box::new(DamageToPlayerMatcher { player_filter: player_filter.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::PreventableDamageToPlayerMatcher { player_filter } => Some(Box::new(PreventableDamageToPlayerMatcher { player_filter: player_filter.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToObjectMatcher { filter } => Some(Box::new(DamageToObjectMatcher { filter: filter.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToPlayerOrObjectMatcher { player_filter, object_filter } => Some(Box::new(DamageToPlayerOrObjectMatcher { player_filter: player_filter.clone(), object_filter: object_filter.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::CombatDamageMatcher => Some(Box::new(CombatDamageMatcher)),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::PreventableCombatDamageToObjectMatcher { filter } => Some(Box::new(PreventableCombatDamageToObjectMatcher { filter: filter.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::PreventableNoncombatDamageToObjectMatcher { filter } => Some(Box::new(PreventableNoncombatDamageToObjectMatcher { filter: filter.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::NoncombatDamageMatcher => Some(Box::new(NoncombatDamageMatcher)),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageFromSourceMatcher { filter } => Some(Box::new(DamageFromSourceMatcher { filter: filter.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageFromSourceToPlayerMatcher { source_filter, player_filter } => Some(Box::new(DamageFromSourceToPlayerMatcher { source_filter: source_filter.clone(), player_filter: player_filter.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageFromSourceToObjectMatcher { source_filter, target_filter, combat_only, preventable_only } => Some(Box::new(DamageFromSourceToObjectMatcher { source_filter: source_filter.clone(), target_filter: target_filter.clone(), combat_only: combat_only.clone(), preventable_only: preventable_only.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageFromSelfMatcher => Some(Box::new(DamageFromSelfMatcher)),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToOrFromSelfMatcher => Some(Box::new(DamageToOrFromSelfMatcher)),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageFromSelfCombatMatcher => Some(Box::new(DamageFromSelfCombatMatcher)),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::PreventableDamageConstraintMatcher { source, target } => Some(Box::new(PreventableDamageConstraintMatcher { source: source.clone(), target: target.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToSelfMatcher => Some(Box::new(DamageToSelfMatcher)),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToAttachedObjectMatcher => Some(Box::new(DamageToAttachedObjectMatcher)),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToSelfConstraintMatcher { source_filter, combat_only } => Some(Box::new(DamageToSelfConstraintMatcher { source_filter: source_filter.clone(), combat_only: combat_only.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToSelfCombatMatcher => Some(Box::new(DamageToSelfCombatMatcher)),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToOtherCreatureYouControlMatcher { noncombat_only } => Some(Box::new(DamageToOtherCreatureYouControlMatcher { noncombat_only: noncombat_only.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToSelfFromSourceFilterMatcher { source_filter, combat_only, source_relation } => Some(Box::new(DamageToSelfFromSourceFilterMatcher { source_filter: source_filter.clone(), combat_only: combat_only.clone(), source_relation: source_relation.clone() })),
- _ => None,
     }
 }

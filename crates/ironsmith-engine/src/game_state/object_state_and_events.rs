@@ -196,44 +196,6 @@ impl GameState {
             .unwrap_or(0)
     }
 
-    /// Retain all regeneration state, including this-turn counts for departed
-    /// object incarnations. Their history remains meaningful until cleanup.
-    pub fn regeneration_state(&self) -> (Vec<(ObjectId, u32)>, Vec<(ObjectId, u32)>) {
-        let mut shields: Vec<_> = self.battlefield_flags.regeneration_shields.iter()
-            .map(|(&id, &count)| (id, count)).collect();
-        let mut used: Vec<_> = self.battlefield_flags.regenerated_this_turn.iter()
-            .map(|(&id, &count)| (id, count)).collect();
-        shields.sort_unstable_by_key(|entry| entry.0);
-        used.sort_unstable_by_key(|entry| entry.0);
-        (shields, used)
-    }
-
-    /// Restore bookkeeping without consuming shields or emitting events.
-    /// Validate complete tables before publishing either one.
-    pub fn restore_regeneration_state(
-        &mut self, shields: Vec<(ObjectId, u32)>, used: Vec<(ObjectId, u32)>,
-    ) -> Result<(), String> {
-        let mut shield_map = std::collections::HashMap::new();
-        for (id, count) in shields {
-            if count == 0 || shield_map.insert(id, count).is_some() {
-                return Err("invalid or duplicate regeneration shield count".into());
-            }
-            if !self.object(id).is_some_and(|object| object.zone == crate::zone::Zone::Battlefield) {
-                return Err("regeneration shield belongs to a battlefield incarnation".into());
-            }
-        }
-        let mut used_map = std::collections::HashMap::new();
-        for (id, count) in used {
-            if count == 0 || used_map.insert(id, count).is_some() {
-                return Err("invalid or duplicate regenerated-this-turn count".into());
-            }
-        }
-        let flags = self.battlefield_flags_mut();
-        flags.regeneration_shields = shield_map;
-        flags.regenerated_this_turn = used_map;
-        Ok(())
-    }
-
     /// Add regeneration shields to an object.
     pub fn add_regeneration_shield(&mut self, id: ObjectId, count: u32) {
         if count > 0 {
@@ -541,22 +503,6 @@ impl GameState {
         self.battlefield_flags_mut().prepared.remove(&source);
         self.unlink_prepared_spell_copy(source);
         self.mark_object_characteristics_dirty(source);
-    }
-
-    /// Re-establish a prepared permanent and its exiled copy from a restored
-    /// checkpoint, where both objects already exist.
-    ///
-    /// Unlike [`Self::set_prepared`] this creates nothing: the copy is part of
-    /// the restored exile zone, and creating a second one would duplicate it.
-    pub fn restore_prepared_link(&mut self, permanent: ObjectId, copy_id: ObjectId) {
-        self.battlefield_flags_mut().prepared.insert(permanent);
-        self.cast_permission_flags_mut()
-            .prepared_spell_copies
-            .insert(permanent, copy_id);
-        self.cast_permission_flags_mut()
-            .prepared_spell_sources
-            .insert(copy_id, permanent);
-        self.mark_object_characteristics_dirty(permanent);
     }
 
     fn unlink_prepared_spell_copy(&mut self, id: ObjectId) -> Option<ObjectId> {

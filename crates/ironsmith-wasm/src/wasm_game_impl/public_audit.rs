@@ -1956,7 +1956,7 @@ mod public_audit_tests {
                 ironsmith::turn_runner::TurnState::FirstMainPriority,
             ));
             wasm.runner_awaiting_priority = true;
-            wasm.priority_state.restore_priority_tracker_for_sync(0, 2);
+            wasm.priority_state.seed_priority_tracker_for_test(0, 2);
             let context = DecisionContext::Priority(ironsmith::decisions::context::PriorityContext::new(&wasm.game,
                 owner, ironsmith::decision::compute_legal_actions(&wasm.game, owner).expect("fixture has complete replacement state"),
             ).expect("fixture has complete replacement state"));

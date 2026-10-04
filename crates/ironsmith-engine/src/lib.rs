@@ -84,10 +84,6 @@ pub mod player;
 pub mod prevention;
 pub mod provenance;
 pub mod replacement;
-pub mod replacement_entry_capture;
-pub mod replacement_matcher_descriptor;
-#[cfg(feature="serialization")]
-pub mod replacement_matcher_codec;
 pub mod replacement_ability_processor;
 pub mod resolution;
 pub mod rules;

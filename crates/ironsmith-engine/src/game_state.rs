@@ -3764,8 +3764,7 @@ pub struct GameState {
     /// CR 726.4: battlefield entries a restarting effect's later instructions
     /// ("then put those cards onto the battlefield") owe the new game. They
     /// run once the new game's rule 103 procedure is done, just before turn
-    /// 1's untap step. Plain data (card ids in the new game), so it survives
-    /// sync checkpoints.
+    /// 1's untap step. Native game-state clones preserve these pending entries.
     pending_restart_battlefield_entries: Vec<PendingRestartBattlefieldEntry>,
     /// One-shot signal for host loops that need to restore their suspended
     /// turn-runner context after `finish_subgame_with` resumes a parent.

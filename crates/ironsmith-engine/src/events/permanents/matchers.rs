@@ -32,7 +32,6 @@ impl WouldBecomeTappedMatcher {
 }
 
 impl ReplacementMatcher for WouldBecomeTappedMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldBecomeTappedMatcher { filter: self.filter.clone() }) }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::BecomeTapped {
@@ -73,7 +72,6 @@ impl WouldBecomeUntappedMatcher {
 }
 
 impl ReplacementMatcher for WouldBecomeUntappedMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldBecomeUntappedMatcher { filter: self.filter.clone() }) }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::BecomeUntapped {
@@ -119,7 +117,6 @@ impl WouldBeDestroyedMatcher {
 }
 
 impl ReplacementMatcher for WouldBeDestroyedMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldBeDestroyedMatcher { filter: self.filter.clone() }) }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Destroy {
@@ -147,7 +144,6 @@ impl ReplacementMatcher for WouldBeDestroyedMatcher {
 pub struct ThisWouldBeDestroyedMatcher;
 
 impl ReplacementMatcher for ThisWouldBeDestroyedMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ThisWouldBeDestroyedMatcher) }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Destroy {
@@ -183,7 +179,6 @@ impl AttachedPermanentWouldBeDestroyedMatcher {
 }
 
 impl ReplacementMatcher for AttachedPermanentWouldBeDestroyedMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::AttachedPermanentWouldBeDestroyedMatcher { aura: self.aura.clone() }) }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Destroy {
@@ -229,7 +224,6 @@ impl WouldBeSacrificedMatcher {
 }
 
 impl ReplacementMatcher for WouldBeSacrificedMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldBeSacrificedMatcher { filter: self.filter.clone() }) }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Sacrifice {
@@ -273,7 +267,6 @@ impl RegenerationShieldMatcher {
 }
 
 impl ReplacementMatcher for RegenerationShieldMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::RegenerationShieldMatcher { protected: self.protected.clone() }) }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Destroy {
@@ -350,19 +343,5 @@ mod tests {
 
         let matcher = WouldBeSacrificedMatcher::any();
         assert_eq!(matcher.display(), "When a permanent would be sacrificed");
-    }
-}
-
-// Engine-owned conversion can access private predicate captures without making them public.
-pub(crate) fn restore_replacement_matcher_descriptor(model: &crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor) -> Option<Box<dyn crate::events::ReplacementMatcher>> {
-    match model {
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldBecomeTappedMatcher { filter } => Some(Box::new(WouldBecomeTappedMatcher { filter: filter.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldBecomeUntappedMatcher { filter } => Some(Box::new(WouldBecomeUntappedMatcher { filter: filter.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldBeDestroyedMatcher { filter } => Some(Box::new(WouldBeDestroyedMatcher { filter: filter.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ThisWouldBeDestroyedMatcher => Some(Box::new(ThisWouldBeDestroyedMatcher)),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::AttachedPermanentWouldBeDestroyedMatcher { aura } => Some(Box::new(AttachedPermanentWouldBeDestroyedMatcher { aura: aura.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldBeSacrificedMatcher { filter } => Some(Box::new(WouldBeSacrificedMatcher { filter: filter.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::RegenerationShieldMatcher { protected } => Some(Box::new(RegenerationShieldMatcher { protected: protected.clone() })),
- _ => None,
     }
 }

@@ -54,7 +54,6 @@ impl GameEventType for PlayerLosesGameEvent {
 pub struct WouldLoseGameMatcher;
 
 impl ReplacementMatcher for WouldLoseGameMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldLoseGameMatcher) }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         event
@@ -65,13 +64,5 @@ impl ReplacementMatcher for WouldLoseGameMatcher {
 
     fn display(&self) -> String {
         "You would lose the game".to_string()
-    }
-}
-
-// Engine-owned conversion can access private predicate captures without making them public.
-pub(crate) fn restore_replacement_matcher_descriptor(model: &crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor) -> Option<Box<dyn crate::events::ReplacementMatcher>> {
-    match model {
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldLoseGameMatcher => Some(Box::new(WouldLoseGameMatcher)),
- _ => None,
     }
 }

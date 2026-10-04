@@ -30,7 +30,6 @@ fn suspended_draw_keeps_its_private_opening_and_hand_view_after_transaction_roll
     wasm.active_viewed_cards = views;
     wasm.active_audit_viewed_cards = audit_views;
     wasm.update_crypto_requirements_from(before);
-    assert!(!wasm.is_replay_checkpoint_boundary());
     assert!(
         wasm.game.player(alice).unwrap().hand.is_empty(),
         "the transaction remains uncommitted"

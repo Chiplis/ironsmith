@@ -18,7 +18,6 @@ struct ChosenTypeDamageSourceMatcher {
 }
 
 impl ReplacementMatcher for ChosenTypeDamageSourceMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ChosenTypeDamageSourceMatcher { ability_source: self.ability_source.clone() }) }
 
     fn matches_prepared_event(
         &self,
@@ -324,7 +323,6 @@ impl DamageAmountReplacementMatcher {
 }
 
 impl ReplacementMatcher for DamageAmountReplacementMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageAmountReplacementMatcher { source_filter: self.source_filter.clone(), target_player_filter: self.target_player_filter.clone(), target_object_filter: self.target_object_filter.clone(), condition: self.condition.clone(), combat_only: self.combat_only.clone(), noncombat_only: self.noncombat_only.clone(), amount_less_than: self.amount_less_than.clone() }) }
 
     fn matches_prepared_event(
         &self,
@@ -662,7 +660,6 @@ impl WouldPutCountersOrEnterWithCountersMatcher {
 }
 
 impl ReplacementMatcher for WouldPutCountersOrEnterWithCountersMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldPutCountersOrEnterWithCountersMatcher { ability_source: self.ability_source.clone(), controller: self.controller.clone(), filter: self.filter.clone(), player_filter: self.player_filter.clone(), counter_type: self.counter_type.clone(), actor: self.actor.clone(), includes_permanents: self.includes_permanents.clone(), effect_only: self.effect_only.clone() }) }
 
     fn matches_prepared_event(
         &self,
@@ -1799,7 +1796,6 @@ struct DredgeDrawMatcher {
 }
 
 impl ReplacementMatcher for DredgeDrawMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DredgeDrawMatcher { amount: self.amount.clone() }) }
 
     fn matches_prepared_event(
         &self,
@@ -2130,7 +2126,6 @@ struct ConditionalWouldDrawCardMatcher {
 }
 
 impl ReplacementMatcher for ConditionalWouldDrawCardMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ConditionalWouldDrawCardMatcher { condition: self.condition.clone(), display: self.display.clone() }) }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if !WouldDrawCardMatcher::you().matches_prepared_event(event, ctx) {
@@ -2256,7 +2251,6 @@ struct WouldDrawInstructionMatcher {
 }
 
 impl ReplacementMatcher for WouldDrawInstructionMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldDrawInstructionMatcher { condition: self.condition.clone(), except_first_of_draw_step: self.except_first_of_draw_step.clone(), per_instruction: self.per_instruction.clone(), display: self.display.clone() }) }
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Draw
@@ -2479,7 +2473,6 @@ struct WouldDrawByPlayerMatcher {
 }
 
 impl ReplacementMatcher for WouldDrawByPlayerMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldDrawByPlayerMatcher { drawer: self.drawer.clone(), except_first_of_draw_step: self.except_first_of_draw_step.clone(), display: self.display.clone() }) }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if !WouldDrawCardMatcher::new(self.drawer.clone()).matches_prepared_event(event, ctx) {
@@ -2933,7 +2926,6 @@ impl WouldGoToGraveyardFromAnywhereMatcher {
 }
 
 impl ReplacementMatcher for WouldGoToGraveyardFromAnywhereMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldGoToGraveyardFromAnywhereMatcher { filter: self.filter.clone(), exclude_cycled: self.exclude_cycled.clone() }) }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         match event.event_kind() {
@@ -3545,7 +3537,6 @@ impl WouldEnterFromZoneMatcher {
 }
 
 impl ReplacementMatcher for WouldEnterFromZoneMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldEnterFromZoneMatcher { enter_matcher: self.enter_matcher.clone(), not_cast: self.not_cast.clone() }) }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         self.enter_matcher.matches_prepared_event(event, ctx) && self.origin_allowed(event)
@@ -3670,7 +3661,6 @@ struct TappedForMinimumManaMatcher {
 }
 
 impl ReplacementMatcher for TappedForMinimumManaMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::TappedForMinimumManaMatcher { inner: self.inner.clone(), minimum_amount: self.minimum_amount.clone() }) }
 
     fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
         kind == crate::events::EventKind::ManaAdded
@@ -3767,7 +3757,6 @@ struct ConditionalWouldChangeLifeMatcher {
 }
 
 impl ReplacementMatcher for ConditionalWouldChangeLifeMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ConditionalWouldChangeLifeMatcher { player: self.player.clone(), loss: self.loss.clone(), condition: self.condition.clone(), display: self.display.clone() }) }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         let matches_change = if self.loss {
@@ -4532,23 +4521,5 @@ impl StaticAbilityKind for UnsupportedParserLine {
             self.raw_line.trim(),
             self.reason
         )
-    }
-}
-
-// Engine-owned conversion can access private predicate captures without making them public.
-pub(crate) fn restore_replacement_matcher_descriptor(model: &crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor) -> Option<Box<dyn crate::events::ReplacementMatcher>> {
-    match model {
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ChosenTypeDamageSourceMatcher { ability_source } => Some(Box::new(ChosenTypeDamageSourceMatcher { ability_source: ability_source.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageAmountReplacementMatcher { source_filter, target_player_filter, target_object_filter, condition, combat_only, noncombat_only, amount_less_than } => Some(Box::new(DamageAmountReplacementMatcher { source_filter: source_filter.clone(), target_player_filter: target_player_filter.clone(), target_object_filter: target_object_filter.clone(), condition: condition.clone(), combat_only: combat_only.clone(), noncombat_only: noncombat_only.clone(), amount_less_than: amount_less_than.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldPutCountersOrEnterWithCountersMatcher { ability_source, controller, filter, player_filter, counter_type, actor, includes_permanents, effect_only } => Some(Box::new(WouldPutCountersOrEnterWithCountersMatcher { ability_source: ability_source.clone(), controller: controller.clone(), filter: filter.clone(), player_filter: player_filter.clone(), counter_type: counter_type.clone(), actor: actor.clone(), includes_permanents: includes_permanents.clone(), effect_only: effect_only.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DredgeDrawMatcher { amount } => Some(Box::new(DredgeDrawMatcher { amount: amount.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ConditionalWouldDrawCardMatcher { condition, display } => Some(Box::new(ConditionalWouldDrawCardMatcher { condition: condition.clone(), display: display.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldDrawInstructionMatcher { condition, except_first_of_draw_step, per_instruction, display } => Some(Box::new(WouldDrawInstructionMatcher { condition: condition.clone(), except_first_of_draw_step: except_first_of_draw_step.clone(), per_instruction: per_instruction.clone(), display: display.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldDrawByPlayerMatcher { drawer, except_first_of_draw_step, display } => Some(Box::new(WouldDrawByPlayerMatcher { drawer: drawer.clone(), except_first_of_draw_step: except_first_of_draw_step.clone(), display: display.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldGoToGraveyardFromAnywhereMatcher { filter, exclude_cycled } => Some(Box::new(WouldGoToGraveyardFromAnywhereMatcher { filter: filter.clone(), exclude_cycled: exclude_cycled.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldEnterFromZoneMatcher { enter_matcher, not_cast } => Some(Box::new(WouldEnterFromZoneMatcher { enter_matcher: enter_matcher.clone(), not_cast: not_cast.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::TappedForMinimumManaMatcher { inner, minimum_amount } => Some(Box::new(TappedForMinimumManaMatcher { inner: inner.clone(), minimum_amount: minimum_amount.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ConditionalWouldChangeLifeMatcher { player, loss, condition, display } => Some(Box::new(ConditionalWouldChangeLifeMatcher { player: player.clone(), loss: loss.clone(), condition: condition.clone(), display: display.clone() })),
- _ => None,
     }
 }

@@ -2442,10 +2442,14 @@ fn intrinsic_starting_counter_models_round_trip_with_rule_identity_and_action_pa
             |_| Err::<u16, _>("unexpected effect payload"), |_| Err::<u16, _>("unexpected ability payload"),
             |_| Err::<u16, _>("unexpected program payload"), |_| Err::<u16, _>("unexpected key payload"),
         ).unwrap();
-        let json = serde_json::to_value(&mapped).unwrap();
-        let decoded: crate::replacement::ReplacementAction<u16, u16, u16, u16> = serde_json::from_value(json).unwrap();
-        assert_eq!(decoded, mapped);
-        assert!(serde_json::from_value::<Action>(serde_json::json!({"EnterWithIntrinsicStartingCounters": "Poison"})).is_err());
+        assert!(matches!(mapped, crate::replacement::ReplacementAction::EnterWithIntrinsicStartingCounters(actual) if actual == rule));
+        #[cfg(feature = "serialization")]
+        {
+            let json = serde_json::to_value(&mapped).unwrap();
+            let decoded: crate::replacement::ReplacementAction<u16, u16, u16, u16> = serde_json::from_value(json).unwrap();
+            assert_eq!(decoded, mapped);
+            assert!(serde_json::from_value::<Action>(serde_json::json!({"EnterWithIntrinsicStartingCounters": "Poison"})).is_err());
+        }
     }
 }
 

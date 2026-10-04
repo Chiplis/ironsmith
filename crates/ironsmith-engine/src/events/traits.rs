@@ -351,11 +351,6 @@ where
 }
 
 pub trait ReplacementMatcher: Debug + Send + Sync + ReplacementMatcherClone + Any {
-    /// Preserve the exact native predicate captures for an owning canonical codec.
-    /// Unknown external predicate types must fail explicitly rather than guess from text.
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> {
-        Err(format!("unsupported native replacement predicate {}", std::any::type_name::<Self>()))
-    }
 
     /// Exact mana-event predicate for compact evaluation. Wrappers with
     /// additional conditions must expose those conditions or leave this unknown.

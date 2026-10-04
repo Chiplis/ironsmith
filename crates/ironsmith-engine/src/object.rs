@@ -958,13 +958,6 @@ pub struct Object {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 pub struct TemporaryAbilityOrigin { source: ObjectId, serial: u64 }
-impl TemporaryAbilityOrigin {
-    pub fn source(&self) -> ObjectId {
-        let Self { source, serial: _ } = self;
-        *source
-    }
-}
-
 
 /// Temporary grants paired with stable origins. Read access cannot detach
 /// a grant from its identity; push always registers a new occurrence.
@@ -979,10 +972,6 @@ impl TemporaryStaticAbilityGrants {
         Self { source, next_serial: 0, grants: Vec::new(), origins: Vec::new() }
     }
     pub fn origin(&self, index: usize) -> Option<&TemporaryAbilityOrigin> { self.origins.get(index) }
-    pub fn contains_origin(&self, origin: &TemporaryAbilityOrigin) -> bool {
-        self.origins.iter().any(|registered| registered == origin)
-    }
-
     pub fn push(&mut self, mut grant: TemporaryStaticAbilityGrant) {
         // A registered keyword is one runtime ability occurrence. Materialize
         // its payload at registration so layer/query reads clone that ability

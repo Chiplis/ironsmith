@@ -22,7 +22,6 @@ struct DamageToExactTargetMatcher {
 }
 
 impl ReplacementMatcher for DamageToExactTargetMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToExactTargetMatcher { target: match &self.target { ExactDamageTarget::Object(id) => crate::events::DamageTarget::Object(*id), ExactDamageTarget::Player(id) => crate::events::DamageTarget::Player(*id) } }) }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, _ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
@@ -220,13 +219,5 @@ mod tests {
         );
         let ctx = EventContext::for_replacement_effect(alice, source, &game);
         assert!(matcher.matches_event(&event, &ctx).expect("finite matcher fixture evaluates successfully"));
-    }
-}
-
-// Engine-owned conversion can access private predicate captures without making them public.
-pub(crate) fn restore_replacement_matcher_descriptor(model: &crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor) -> Option<Box<dyn crate::events::ReplacementMatcher>> {
-    match model {
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToExactTargetMatcher { target } => Some(Box::new(DamageToExactTargetMatcher { target: match target { crate::events::DamageTarget::Object(id) => ExactDamageTarget::Object(*id), crate::events::DamageTarget::Player(id) => ExactDamageTarget::Player(*id) } })),
- _ => None,
     }
 }

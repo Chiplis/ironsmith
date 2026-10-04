@@ -2469,7 +2469,7 @@ mod live_action_rollback_tests {
             ironsmith::turn_runner::TurnState::FirstMainPriority,
         ));
         wasm.runner_awaiting_priority = true;
-        wasm.priority_state.restore_priority_tracker_for_sync(0, 2);
+        wasm.priority_state.seed_priority_tracker_for_test(0, 2);
         let mountain = wasm.game.create_object_from_definition(
             &ironsmith_registry_test::cards::definitions::basic_mountain(),
             alice,
@@ -3191,7 +3191,7 @@ mod live_action_rollback_tests {
             ironsmith::turn_runner::TurnState::FirstMainPriority,
         ));
         wasm.runner_awaiting_priority = true;
-        wasm.priority_state.restore_priority_tracker_for_sync(0, 2);
+        wasm.priority_state.seed_priority_tracker_for_test(0, 2);
 
         let lotus = ObjectId(
             wasm.add_card_to_zone(
@@ -3278,7 +3278,7 @@ mod live_action_rollback_tests {
             ironsmith::turn_runner::TurnState::DrawPriority,
         ));
         wasm.runner_awaiting_priority = true;
-        wasm.priority_state.restore_priority_tracker_for_sync(1, 2);
+        wasm.priority_state.seed_priority_tracker_for_test(1, 2);
         wasm.game
             .create_hidden_card_placeholder(alice, Zone::Hand, 7, "alice-slot-7".to_string());
         wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
@@ -3320,7 +3320,7 @@ mod live_action_rollback_tests {
             ironsmith::turn_runner::TurnState::DrawPriority,
         ));
         wasm.runner_awaiting_priority = true;
-        wasm.priority_state.restore_priority_tracker_for_sync(0, 2);
+        wasm.priority_state.seed_priority_tracker_for_test(0, 2);
         wasm.game
             .create_hidden_card_placeholder(bob, Zone::Hand, 7, "bob-slot-7".to_string());
         wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
@@ -3362,7 +3362,7 @@ mod live_action_rollback_tests {
             ironsmith::turn_runner::TurnState::FirstMainPriority,
         ));
         wasm.runner_awaiting_priority = true;
-        wasm.priority_state.restore_priority_tracker_for_sync(0, 2);
+        wasm.priority_state.seed_priority_tracker_for_test(0, 2);
 
         let selvala = CardDefinitionBuilder::new(CardId::new(), "Selvala, Explorer Returned")
             .card_types(vec![CardType::Creature])
@@ -3463,7 +3463,7 @@ mod live_action_rollback_tests {
             ironsmith::turn_runner::TurnState::DrawPriority,
         ));
         wasm.runner_awaiting_priority = true;
-        wasm.priority_state.restore_priority_tracker_for_sync(0, 2);
+        wasm.priority_state.seed_priority_tracker_for_test(0, 2);
         wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(&wasm.game,
             alice,
             compute_legal_actions(&wasm.game, alice).expect("fixture has complete replacement state"),
@@ -3947,7 +3947,7 @@ mod live_action_rollback_tests {
             ironsmith::turn_runner::TurnState::FirstMainPriority,
         ));
         wasm.runner_awaiting_priority = true;
-        wasm.priority_state.restore_priority_tracker_for_sync(0, 2);
+        wasm.priority_state.seed_priority_tracker_for_test(0, 2);
 
         let skeleton_def = ironsmith_registry_test::compile_to_runtime_definition(
             "Probe Skeleton",
@@ -4050,7 +4050,7 @@ mod live_action_rollback_tests {
             ironsmith::turn_runner::TurnState::FirstMainPriority,
         ));
         wasm.runner_awaiting_priority = true;
-        wasm.priority_state.restore_priority_tracker_for_sync(0, 2);
+        wasm.priority_state.seed_priority_tracker_for_test(0, 2);
 
         let discharge = ObjectId(
             wasm.add_card_to_zone(0, "Galvanic Discharge".to_string(), "Hand".to_string(), true)
@@ -4138,7 +4138,7 @@ mod live_action_rollback_tests {
             ironsmith::turn_runner::TurnState::FirstMainPriority,
         ));
         wasm.runner_awaiting_priority = true;
-        wasm.priority_state.restore_priority_tracker_for_sync(0, 2);
+        wasm.priority_state.seed_priority_tracker_for_test(0, 2);
 
         let spell = ObjectId(
             wasm.add_card_to_zone(0, "Join the Maestros".to_string(), "Hand".to_string(), true)

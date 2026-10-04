@@ -76,7 +76,6 @@ impl WouldEnterBattlefieldMatcher {
 }
 
 impl ReplacementMatcher for WouldEnterBattlefieldMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldEnterBattlefieldMatcher { filter: self.filter.clone(), stable_id: self.stable_id.clone() }) }
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         matches!(kind, EventKind::ZoneChange | EventKind::EnterBattlefield)
@@ -122,7 +121,6 @@ impl ReplacementMatcher for WouldEnterBattlefieldMatcher {
 pub struct ThisWouldEnterBattlefieldMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterBattlefieldMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ThisWouldEnterBattlefieldMatcher) }
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         matches!(kind, EventKind::ZoneChange | EventKind::EnterBattlefield)
@@ -190,7 +188,6 @@ impl WouldDieMatcher {
 }
 
 impl ReplacementMatcher for WouldDieMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldDieMatcher { filter: self.filter.clone() }) }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::ZoneChange {
@@ -276,7 +273,6 @@ impl WouldDieDamagedBySourceThisTurnMatcher {
 }
 
 impl ReplacementMatcher for WouldDieDamagedBySourceThisTurnMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldDieDamagedBySourceThisTurnMatcher { filter: self.filter.clone(), damaged_by: self.damaged_by.clone(), victims: self.victims.clone() }) }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::ZoneChange {
@@ -415,7 +411,6 @@ impl WouldDieDamagedByFilteredSourceThisTurnMatcher {
 }
 
 impl ReplacementMatcher for WouldDieDamagedByFilteredSourceThisTurnMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldDieDamagedByFilteredSourceThisTurnMatcher { victim_filter: self.victim_filter.clone(), damager_filter: self.damager_filter.clone() }) }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::ZoneChange {
@@ -451,7 +446,6 @@ impl ReplacementMatcher for WouldDieDamagedByFilteredSourceThisTurnMatcher {
 pub struct ThisWouldDieMatcher;
 
 impl ReplacementMatcher for ThisWouldDieMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ThisWouldDieMatcher) }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         let object_id = if event.event_kind() == EventKind::ZoneChange {
@@ -494,7 +488,6 @@ impl WouldGoToGraveyardMatcher {
 }
 
 impl ReplacementMatcher for WouldGoToGraveyardMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldGoToGraveyardMatcher { filter: self.filter.clone() }) }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::ZoneChange {
@@ -573,7 +566,6 @@ impl WouldChangeZoneMatcher {
 }
 
 impl ReplacementMatcher for WouldChangeZoneMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldChangeZoneMatcher { filter: self.filter.clone(), from_zone: self.from_zone.clone(), to_zone: self.to_zone.clone(), cause_filter: self.cause_filter.clone(), require_cause_source_match: self.require_cause_source_match.clone(), frozen_tagged_objects: self.frozen_tagged_objects.clone() }) }
 
     fn applies_from_entering_source(&self) -> bool {
         self.filter.source
@@ -715,7 +707,6 @@ impl WouldBeExiledMatcher {
 }
 
 impl ReplacementMatcher for WouldBeExiledMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldBeExiledMatcher { filter: self.filter.clone() }) }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::ZoneChange {
@@ -756,7 +747,6 @@ impl ReplacementMatcher for WouldBeExiledMatcher {
 pub struct ThisWouldGoToGraveyardMatcher;
 
 impl ReplacementMatcher for ThisWouldGoToGraveyardMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ThisWouldGoToGraveyardMatcher) }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         let object_id = if event.event_kind() == EventKind::ZoneChange {
@@ -809,7 +799,6 @@ impl WouldGoToHandMatcher {
 }
 
 impl ReplacementMatcher for WouldGoToHandMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldGoToHandMatcher { player_filter: self.player_filter.clone() }) }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::ZoneChange {
@@ -863,7 +852,6 @@ impl WouldLeaveBattlefieldMatcher {
 }
 
 impl ReplacementMatcher for WouldLeaveBattlefieldMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldLeaveBattlefieldMatcher { filter: self.filter.clone() }) }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::ZoneChange {
@@ -1120,24 +1108,5 @@ mod tests {
             matcher.display(),
             "When a card would be put into a player's hand"
         );
-    }
-}
-
-// Engine-owned conversion can access private predicate captures without making them public.
-pub(crate) fn restore_replacement_matcher_descriptor(model: &crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor) -> Option<Box<dyn crate::events::ReplacementMatcher>> {
-    match model {
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldEnterBattlefieldMatcher { filter, stable_id } => Some(Box::new(WouldEnterBattlefieldMatcher { filter: filter.clone(), stable_id: stable_id.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ThisWouldEnterBattlefieldMatcher => Some(Box::new(ThisWouldEnterBattlefieldMatcher)),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldDieMatcher { filter } => Some(Box::new(WouldDieMatcher { filter: filter.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldDieDamagedBySourceThisTurnMatcher { filter, damaged_by, victims } => Some(Box::new(WouldDieDamagedBySourceThisTurnMatcher { filter: filter.clone(), damaged_by: damaged_by.clone(), victims: victims.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldDieDamagedByFilteredSourceThisTurnMatcher { victim_filter, damager_filter } => Some(Box::new(WouldDieDamagedByFilteredSourceThisTurnMatcher { victim_filter: victim_filter.clone(), damager_filter: damager_filter.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ThisWouldDieMatcher => Some(Box::new(ThisWouldDieMatcher)),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldGoToGraveyardMatcher { filter } => Some(Box::new(WouldGoToGraveyardMatcher { filter: filter.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldChangeZoneMatcher { filter, from_zone, to_zone, cause_filter, require_cause_source_match, frozen_tagged_objects } => Some(Box::new(WouldChangeZoneMatcher { filter: filter.clone(), from_zone: from_zone.clone(), to_zone: to_zone.clone(), cause_filter: cause_filter.clone(), require_cause_source_match: require_cause_source_match.clone(), frozen_tagged_objects: frozen_tagged_objects.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldBeExiledMatcher { filter } => Some(Box::new(WouldBeExiledMatcher { filter: filter.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ThisWouldGoToGraveyardMatcher => Some(Box::new(ThisWouldGoToGraveyardMatcher)),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldGoToHandMatcher { player_filter } => Some(Box::new(WouldGoToHandMatcher { player_filter: player_filter.clone() })),
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldLeaveBattlefieldMatcher { filter } => Some(Box::new(WouldLeaveBattlefieldMatcher { filter: filter.clone() })),
- _ => None,
     }
 }

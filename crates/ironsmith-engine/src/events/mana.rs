@@ -157,7 +157,6 @@ pub mod matchers {
     }
 
     impl ReplacementMatcher for ManaProducedBySourceMatcher {
-    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ManaProducedBySourceMatcher { source_filter: self.source_filter.clone(), required_provenance: self.required_provenance.clone() }) }
 
         fn may_match_event_kind(&self, kind: EventKind) -> bool {
             kind == EventKind::ManaAdded
@@ -187,13 +186,6 @@ pub mod matchers {
         }
     }
 
-// Engine-owned conversion can access private predicate captures without making them public.
-pub(crate) fn restore_replacement_matcher_descriptor(model: &crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor) -> Option<Box<dyn crate::events::ReplacementMatcher>> {
-    match model {
-crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ManaProducedBySourceMatcher { source_filter, required_provenance } => Some(Box::new(ManaProducedBySourceMatcher { source_filter: source_filter.clone(), required_provenance: required_provenance.clone() })),
- _ => None,
-    }
-}
 
 }
 
@@ -287,4 +279,3 @@ impl GameEventType for ManaUnitSpentEvent {
         self
     }
 }
-

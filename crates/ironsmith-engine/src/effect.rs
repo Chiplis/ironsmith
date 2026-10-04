@@ -408,57 +408,6 @@ pub struct EffectOutcome {
 }
 
 
-/// Executable checkpoint outcome. Unlike the event-free filter serializer,
-/// this carrier retains every event and nested authored-instruction result.
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serialization", serde(deny_unknown_fields, bound(deserialize = "E: serde::Deserialize<'de>")))]
-pub struct RetainedEffectOutcome<E> {
-    pub status: OutcomeStatus,
-    pub value: OutcomeValue,
-    pub events: Vec<E>,
-    pub execution_facts: Vec<ExecutionFact>,
-    #[cfg_attr(feature = "serialization", serde(deserialize_with = "outcome_required_option"))]
-    pub instruction_result: Option<Box<RetainedEffectOutcome<E>>>,
-}
-#[cfg(feature = "serialization")]
-fn outcome_required_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
-where D: serde::Deserializer<'de>, T: serde::Deserialize<'de> {
-    <Option<T> as serde::Deserialize>::deserialize(deserializer)
-}
-impl EffectOutcome {
-    pub fn try_retain<E, C, Error>(self, context: &mut C,
-        mut event: impl FnMut(&mut C, crate::triggers::TriggerEvent) -> Result<E, Error>,
-    ) -> Result<RetainedEffectOutcome<E>, Error> {
-        self.retain_with_event_codec(context, &mut event)
-    }
-    fn retain_with_event_codec<E, C, Error>(self, context: &mut C,
-        event: &mut dyn FnMut(&mut C, crate::triggers::TriggerEvent) -> Result<E, Error>,
-    ) -> Result<RetainedEffectOutcome<E>, Error> {
-        let EffectOutcome { status, value, events, execution_facts, instruction_result } = self;
-        let events = events.into_iter().map(|value| event(context, value)).collect::<Result<Vec<_>, _>>()?;
-        let instruction_result = instruction_result.map(|value|
-            value.retain_with_event_codec(context, event).map(Box::new)).transpose()?;
-        Ok(RetainedEffectOutcome { status, value, events, execution_facts, instruction_result })
-    }
-}
-impl<E> RetainedEffectOutcome<E> {
-    pub fn try_restore<C, Error>(self, context: &mut C,
-        mut event: impl FnMut(&mut C, E) -> Result<crate::triggers::TriggerEvent, Error>,
-    ) -> Result<EffectOutcome, Error> {
-        self.restore_with_event_codec(context, &mut event)
-    }
-    fn restore_with_event_codec<C, Error>(self, context: &mut C,
-        event: &mut dyn FnMut(&mut C, E) -> Result<crate::triggers::TriggerEvent, Error>,
-    ) -> Result<EffectOutcome, Error> {
-        let RetainedEffectOutcome { status, value, events, execution_facts, instruction_result } = self;
-        let events = events.into_iter().map(|value| event(context, value)).collect::<Result<Vec<_>, _>>()?;
-        let instruction_result = instruction_result.map(|value|
-            value.restore_with_event_codec(context, event).map(Box::new)).transpose()?;
-        Ok(EffectOutcome { status, value, events, execution_facts, instruction_result })
-    }
-}
-
 impl EffectOutcome {
     fn object_memory_from_ids(game: &GameState, objects: &[ObjectId]) -> Vec<OutcomeObjectMemory> {
         objects

@@ -29,7 +29,7 @@ use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
 
 mod ability_origins;
-pub use ability_origins::{AbilityEffectOrigin, AbilityOrigin, CalculatedAbilities, ContinuousAbilityOrigin, ContinuousOriginMetadata};
+pub use ability_origins::{AbilityEffectOrigin, AbilityOrigin, CalculatedAbilities, ContinuousAbilityOrigin};
 mod layer_resolution;
 pub(crate) mod value_context;
 pub(crate) use layer_resolution::{resolve_value_direct, bind_effect_controller_to_layer_frame};

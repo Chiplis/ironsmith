@@ -112,7 +112,7 @@ fn live_fixture_with(
         ironsmith::turn_runner::TurnState::FirstMainPriority,
     ));
     g.runner_awaiting_priority = true;
-    g.priority_state.restore_priority_tracker_for_sync(0, 2);
+    g.priority_state.seed_priority_tracker_for_test(0, 2);
     let land = land(&mut g, vec![ManaSymbol::Blue]);
     setup(&mut g);
     let spell = CardDefinitionBuilder::new(CardId::new(), "Live audit spell")
