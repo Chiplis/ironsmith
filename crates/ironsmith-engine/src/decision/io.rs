@@ -98,9 +98,10 @@ pub trait DecisionMaker {
     /// Returns IDs of selected objects.
     fn decide_objects(
         &mut self,
-        _game: &GameState,
+        game: &GameState,
         ctx: &crate::decisions::context::SelectObjectsContext,
     ) -> Vec<ObjectId> {
+        if ctx.relation_filter.is_some() { return ctx.legal_relation_selection(game, ctx.min).unwrap_or_default(); }
         // Default: select minimum required from legal candidates
         ctx.candidates
             .iter()
@@ -902,9 +903,10 @@ impl DecisionMaker for AutoPassDecisionMaker {
 
     fn decide_objects(
         &mut self,
-        _game: &GameState,
+        game: &GameState,
         ctx: &crate::decisions::context::SelectObjectsContext,
     ) -> Vec<ObjectId> {
+        if ctx.relation_filter.is_some() { return ctx.legal_relation_selection(game, ctx.min).unwrap_or_default(); }
         // Auto-pass: select minimum required, using first legal candidates
         let legal: Vec<ObjectId> = ctx
             .candidates
@@ -1067,9 +1069,10 @@ impl DecisionMaker for SelectFirstDecisionMaker {
 
     fn decide_objects(
         &mut self,
-        _game: &GameState,
+        game: &GameState,
         ctx: &crate::decisions::context::SelectObjectsContext,
     ) -> Vec<ObjectId> {
+        if ctx.relation_filter.is_some() { return ctx.legal_relation_selection(game, ctx.max.unwrap_or(1).max(ctx.min)).unwrap_or_default(); }
         // Select first: select first legal option (up to max)
         let legal: Vec<ObjectId> = ctx
             .candidates

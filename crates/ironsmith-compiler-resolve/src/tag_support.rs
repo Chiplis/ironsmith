@@ -1094,6 +1094,7 @@ pub fn value_references_tag(value: &Value, tag: &str) -> bool {
         Value::StaticAbilitiesAmong { filter, .. } => filter_references_tag(filter, tag),
         Value::PowerOf(spec) | Value::ToughnessOf(spec) => choose_spec_references_tag(spec, tag),
         Value::ManaSpentToCast(spec)
+        | Value::KicksPaidOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. } => choose_spec_references_tag(spec, tag),

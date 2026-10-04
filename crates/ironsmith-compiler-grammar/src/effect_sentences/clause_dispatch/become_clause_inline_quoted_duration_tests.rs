@@ -273,3 +273,25 @@ fn animation_templates_preserve_legendary_names_retention_and_complete_grants() 
         assert!(parse_become_clause(&subject, &tokens).is_err(), "unknown descriptor/ability must never degrade to a bare creature: {text}");
     }
 }
+
+#[test]
+fn unsized_templates_store_complete_grants_and_no_dummy_size() {
+    for (body, expected_grants, expected_card_types, removes_other) in [
+        ("a Construct artifact creature with \"This creature's power and toughness are each equal to the number of charge counters on it.\"", 1, vec![CardType::Artifact, CardType::Creature], false),
+        ("a creature with haste and \"This creature's power and toughness are each equal to the number of lands you control.\"", 2, vec![CardType::Creature], false),
+        ("a Human Spirit Warrior with trample and lifelink", 2, vec![], false),
+        ("a Treasure artifact with \"{T}, Sacrifice this artifact: Add one mana of any color\" and loses all other card types and abilities", 1, vec![CardType::Artifact], true),
+    ] {
+        let tokens = crate::lexer::lex_line(body, 0).unwrap();
+        let subject = crate::lexer::lex_line("target creature", 0).unwrap();
+        let effect = parse_become_clause(&subject, &tokens).unwrap();
+        let EffectAst::SubjectVerb(subject) = effect else { panic!("{body}") };
+        let crate::cards::builders::SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
+            base_power_toughness, card_types, granted_abilities, remove_other_abilities, ..
+        }) = subject.action else { panic!("{body}") };
+        assert!(base_power_toughness.is_none());
+        assert_eq!(card_types, expected_card_types);
+        assert_eq!(granted_abilities.len(), expected_grants);
+        assert_eq!(remove_other_abilities, removes_other);
+    }
+}

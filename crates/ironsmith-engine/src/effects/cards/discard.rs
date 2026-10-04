@@ -144,7 +144,10 @@ impl DiscardEffect {
             !ctx.replacement.entry_reserved_objects.contains(id)
                 && !(reason == crate::costs::PaymentReason::CastSpell && *id == ctx.source)
         });
-        let candidates: Vec<_> = eligible.collect();
+        let candidates: Vec<_> = eligible.filter(|id| filter.tagged_constraints.iter().all(|constraint|
+            constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                || ctx.tagged_objects.get(&constraint.tag).is_some_and(|snapshots|
+                    snapshots.iter().any(|snapshot| snapshot.object_id == *id)))).collect();
         let placeholders =
             game.hidden_hand_payable_placeholders(&filter, &filter_ctx, candidates.iter().copied());
         Ok(candidates

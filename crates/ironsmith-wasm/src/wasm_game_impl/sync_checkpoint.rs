@@ -918,6 +918,10 @@ pub(crate) struct SyncCheckpoint {
     /// checkpoints. Not part of the public audit checkpoint.
     #[serde(default)]
     rules: SyncRulesState,
+    /// Wire checkpoints omit live continuation programs. A committed payment
+    /// must recover by accepted transcript replay or a lossless runtime branch.
+    #[serde(default)]
+    pending_payment_disclosure: bool,
     id_counters: SyncIdCounters,
 }
 
@@ -3410,6 +3414,7 @@ impl WasmGame {
                 ids
             },
             rules: self.sync_rules_state().map_err(|error| JsValue::from_str(&error))?,
+            pending_payment_disclosure: self.payment_disclosure.is_some(),
             id_counters: SyncIdCounters::from_game(&self.game),
         })
     }
@@ -4441,6 +4446,8 @@ impl WasmGame {
         self.pending_replay_action = None;
         self.pending_action_checkpoint = None;
         self.pending_live_action_root = None;
+        self.payment_disclosure = None;
+        self.payment_disclosure_generation = 0;
         self.pending_live_continuation = None;
         self.game_over = None;
         self.runner = checkpoint
@@ -4465,6 +4472,7 @@ impl WasmGame {
         self.priority_epoch_checkpoint = None;
         self.priority_epoch_has_undoable_action = false;
         self.priority_epoch_undo_locked_by_mana = false;
+        self.priority_epoch_undo_locked_by_disclosure = false;
         self.priority_epoch_undo_land_stable_id = None;
         self.semantic_threshold = checkpoint.semantic_threshold;
         self.snapshot_serial = checkpoint.snapshot_serial;
@@ -4579,6 +4587,10 @@ impl WasmGame {
                 { return Err("inconsistent shared schedule replacements across Grand Melee lanes".into()); }
             }
         }
+        if checkpoint.pending_payment_disclosure {
+            return Err("checkpoint contains a committed payment without its live continuation; resume accepted transcript replay instead".into());
+        }
+
         if checkpoint.version != SYNC_CHECKPOINT_VERSION {
             return Err(format!(
                 "unsupported checkpoint version: {}",

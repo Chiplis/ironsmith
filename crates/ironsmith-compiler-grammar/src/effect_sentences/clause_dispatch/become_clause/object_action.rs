@@ -772,6 +772,30 @@ pub fn parse_become_clause(
             .with_animation_color_retention(preserve_other_colors));
     }
 
+    if let Some(shape) = become_grammar::parse_unsized_object_template_tokens(become_body_tokens) {
+        let words = crate::lexer::parser_token_word_refs(shape.ability_tokens);
+        let (grants, choice) = parse_granted_abilities_for_gain_clause(shape.ability_tokens, &words, false)?;
+        if choice || grants.is_empty() {
+            return Err(CardTextError::ParseError("unsupported complete unsized object-template grant".into()));
+        }
+        let mut effect = EffectAst::subject_verb_become_object_template(
+            None, target, shape.card_types, shape.subtypes, Vec::new(), shape.colors,
+            Vec::new(), grants, shape.preserve_other_types,
+            shape.preserve_other_types.then_some(ironsmith_core::TypeRetentionSurface::InAdditionToOtherTypes),
+            None, animation_duration_surface, duration,
+        ).with_set_quantifier_surface(set_quantifier_surface)
+         .with_animation_color_retention(shape.preserve_other_colors);
+        if let EffectAst::SubjectVerb(subject) = &mut effect
+            && let crate::cards::builders::SubjectVerbActionAst::Characteristics(
+                crate::cards::builders::CharacteristicActionAst::BecomeBasePtCreature {
+                    add_supertypes, remove_other_abilities, ..
+                }) = &mut subject.action {
+            *add_supertypes = shape.supertypes;
+            *remove_other_abilities = shape.remove_other_abilities;
+        }
+        return Ok(effect);
+    }
+
     // A creature conversion can leave power/toughness unstated, for example
     // when a separately granted ability supplies its dynamic characteristics.
     // Preserve that absence rather than inventing a fixed base size.

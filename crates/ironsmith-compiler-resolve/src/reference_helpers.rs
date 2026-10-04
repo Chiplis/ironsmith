@@ -2366,6 +2366,9 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
         Value::ColorsOf(spec) => Ok(Value::ColorsOf(Box::new(resolve_choose_spec_it_tag(
             spec, refs,
         )?))),
+        Value::KicksPaidOf(spec) => Ok(Value::KicksPaidOf(Box::new(resolve_choose_spec_it_tag(
+            spec, refs,
+        )?))),
         Value::ManaSpentToCast(spec) => Ok(Value::ManaSpentToCast(Box::new(
             resolve_choose_spec_it_tag(spec, refs)?,
         ))),

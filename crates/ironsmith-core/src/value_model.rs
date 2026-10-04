@@ -819,6 +819,10 @@ pub enum Value {
     /// Frozen mana the triggering spell's caster actually spent, excluding
     /// other players' Assist contributions. Distinct from total cast payment.
     CasterManaSpentToCastTriggeringObject,
+    /// Kicker plus multikicker payments on the exact referenced object. Uses
+    /// that object's live cast metadata or departure LKI, never the resolving
+    /// ability source's optional costs and never a new incarnation's costs.
+    KicksPaidOf(Box<ChooseSpec>),
 }
 
 impl Value {

@@ -379,7 +379,10 @@ impl LayerValueContext<'_, '_> {
                     |chars| crate::filter::calculated_mana_value_for_filter(object, &chars),
                 );
         }
-        if matches!(property, NumericProperty::ManaSpent) {
+        if matches!(
+            property,
+            NumericProperty::ManaSpent | NumericProperty::KickerCount
+        ) {
             return ctx
                 .objects
                 .get(&id)

@@ -16,6 +16,7 @@ mod manabrew_payment_conformance;
 include!("priority_analysis.rs");
 
 include!("runtime_savepoint.rs");
+include!("payment_disclosure_transaction.rs");
 
 #[cfg(test)]
 mod runtime_audit_devourer;

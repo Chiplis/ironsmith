@@ -868,6 +868,7 @@ pub(super) fn compile_become_base_pt_creature_action(
         name_override,
         add_supertypes,
         remove_all_abilities,
+        remove_other_abilities,
         base_power_toughness,
         target,
         card_types,
@@ -888,6 +889,10 @@ pub(super) fn compile_become_base_pt_creature_action(
         unreachable!("typed animation route requires a BecomeBasePtCreature action")
     };
 
+    // Native late-static discovery classifies ordinary granted self-stat
+    // abilities in layer7b, with the receiving object's source/controller and
+    // the grant's timestamp. Keep their exact self-stat payload; rewriting to
+    // an effect-target Source filter would instead capture the grantor.
     let granted_modifications = lower_granted_ability_grant_modifications(granted_abilities)?;
     let abilities = abilities
         .iter()
@@ -910,7 +915,7 @@ pub(super) fn compile_become_base_pt_creature_action(
         // CR 205.1b gives "artifact creature" an implicit preservation
         // exception even without an "in addition" clause.
         let implicitly_preserves_card_types =
-            card_types.contains(&CardType::Artifact) && card_types.contains(&CardType::Creature);
+            card_types.contains(&CardType::Artifact) && card_types.contains(&CardType::Creature) && !remove_other_abilities;
         // No authored card type ("becomes a green Wurm with base power and
         // toughness 6/4", Scale Up): only the creature subtype is set, so the
         // object keeps its card types and is at least a creature.
@@ -957,15 +962,21 @@ pub(super) fn compile_become_base_pt_creature_action(
         }
         if !subtypes.is_empty() {
             if !preserve_other_types {
-                apply = apply.with_additional_modification(
-                    crate::continuous::Modification::RemoveAllSubtypesOfFamily(
-                        crate::types::SubtypeFamily::Creature,
-                    ),
-                );
+                for family in [crate::types::SubtypeFamily::Creature, crate::types::SubtypeFamily::Artifact,
+                    crate::types::SubtypeFamily::Enchantment, crate::types::SubtypeFamily::Land,
+                    crate::types::SubtypeFamily::Planeswalker, crate::types::SubtypeFamily::Spell,
+                    crate::types::SubtypeFamily::Battle] {
+                    if subtypes.iter().any(|subtype| subtype.belongs_to_family(family)) {
+                        apply = apply.with_additional_modification(crate::continuous::Modification::RemoveAllSubtypesOfFamily(family));
+                    }
+                }
             }
             apply = apply.with_additional_modification(
                 crate::continuous::Modification::AddSubtypes(subtypes.clone()),
             );
+        }
+        if *remove_other_abilities {
+            apply = apply.with_additional_modification(crate::continuous::Modification::RemoveAllAbilities);
         }
         for ability in &abilities {
             apply = apply.with_additional_modification(

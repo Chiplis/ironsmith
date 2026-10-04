@@ -42,139 +42,147 @@ fn payment_disclosure_exact_discard_cost_cards_disable_completed_action_undo() {
         .iter()
         .filter(|card| card["previously_proposed_complete"] == true)
     {
-        let name = card["name"].as_str().unwrap();
-        let definition = ironsmith_registry_test::compile_to_runtime_definition(
-            name,
-            card["text"].as_str().unwrap(),
-            false,
-        )
-        .unwrap();
-        let (mut wasm, _) = manual_payment_fixture();
-        let alice = PlayerId(0);
-        let source = wasm
-            .game
-            .create_object_from_definition(&definition, alice, Zone::Battlefield);
-        wasm.game.remove_summoning_sickness(source);
-        let payment_card =
-            ironsmith::card::CardBuilder::new(CardId::new(), "Public discard payment")
-                .card_types(vec![CardType::Artifact])
-                .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
-                .build();
-        let payment = wasm
-            .game
-            .create_object_from_card(&payment_card, alice, Zone::Hand);
-        let alternative = wasm
-            .game
-            .create_object_from_card(&payment_card, alice, Zone::Hand);
-        payment_disclosure_track_hand(&mut wasm, payment, 0);
-        payment_disclosure_track_hand(&mut wasm, alternative, 1);
-        let payment_stable = wasm.game.object(payment).unwrap().stable_id;
-        wasm.game
-            .player_mut(alice)
-            .unwrap()
-            .mana_pool
-            .add(ManaSymbol::Colorless, 3);
-        let target = if name == "Kozilek, the Great Distortion" {
-            let target_card = ironsmith::card::CardBuilder::new(CardId::new(), "Three-value spell")
-                .card_types(vec![CardType::Instant])
-                .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
-                .build();
-            let id = wasm
-                .game
-                .create_object_from_card(&target_card, PlayerId(1), Zone::Stack);
-            wasm.game.push_to_stack(StackEntry::new(id, PlayerId(1)));
-            TargetInput::Object { object: id.0 }
-        } else {
-            TargetInput::Player { player: 1 }
-        };
-        let before_stack = wasm.game.stack.len();
-        let before_library = wasm.game.player(alice).unwrap().library.clone();
-        payment_disclosure_prepare_priority(&mut wasm);
-        let index = definition
-            .abilities
-            .iter()
-            .position(|ability| {
-                matches!(&ability.kind, ironsmith::ability::AbilityKind::Activated(_))
-            })
+        for candidate_count in [1, 2] {
+            let name = card["name"].as_str().unwrap();
+            let definition = ironsmith_registry_test::compile_to_runtime_definition(
+                name,
+                card["text"].as_str().unwrap(),
+                false,
+            )
             .unwrap();
-        dispatch_priority_action_matching(&mut wasm, |action| {
-            matches!(action,
-            LegalAction::ActivateAbility { source: id, ability_index } if *id == source && *ability_index == index)
-        });
-        let mut selected = false;
-        for _ in 0..40 {
-            let command = match wasm.pending_decision.as_ref().unwrap() {
-                DecisionContext::Priority(_) => break,
-                DecisionContext::Number(_) => UiCommand::NumberChoice { value: 3 },
-                DecisionContext::Targets(_) => UiCommand::SelectTargets {
-                    targets: vec![target.clone()],
-                },
-                DecisionContext::ManaPayment(_) => {
-                    confirm_pending_mana_payment(&mut wasm);
-                    continue;
-                }
-                DecisionContext::SelectOptions(options) => UiCommand::SelectOptions {
-                    option_indices: vec![
-                        options
-                            .options
-                            .iter()
-                            .find(|option| option.legal)
-                            .unwrap()
-                            .index,
-                    ],
-                },
-                DecisionContext::SelectObjects(objects) => {
-                    assert!(
-                        objects
-                            .candidates
-                            .iter()
-                            .any(|candidate| candidate.id == payment)
-                    );
-                    assert_eq!(
-                        objects.reveal_policy,
-                        SelectionRevealPolicy::Public,
-                        "the regression must retain public proof validation"
-                    );
-                    if !selected {
-                        assert!(
-                            wasm.is_cancelable(),
-                            "a pending selection before disclosure remains cancelable: {name}"
-                        );
-                    }
-                    selected = true;
-                    UiCommand::SelectObjects {
-                        object_ids: vec![payment.0],
-                        object_stable_ids: Vec::new(),
-                        object_hidden_refs: Vec::new(),
-                    }
-                }
-                other => panic!("unexpected payment decision for {name}: {other:?}"),
+            let (mut wasm, _) = manual_payment_fixture();
+            let alice = PlayerId(0);
+            let source =
+                wasm.game
+                    .create_object_from_definition(&definition, alice, Zone::Battlefield);
+            wasm.game.remove_summoning_sickness(source);
+            let payment_card =
+                ironsmith::card::CardBuilder::new(CardId::new(), "Public discard payment")
+                    .card_types(vec![CardType::Artifact])
+                    .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+                    .build();
+            let payment = wasm
+                .game
+                .create_object_from_card(&payment_card, alice, Zone::Hand);
+            payment_disclosure_track_hand(&mut wasm, payment, 0);
+            if candidate_count == 2 {
+                let alternative =
+                    wasm.game
+                        .create_object_from_card(&payment_card, alice, Zone::Hand);
+                payment_disclosure_track_hand(&mut wasm, alternative, 1);
+            }
+            let payment_stable = wasm.game.object(payment).unwrap().stable_id;
+            wasm.game
+                .player_mut(alice)
+                .unwrap()
+                .mana_pool
+                .add(ManaSymbol::Colorless, 3);
+            let target = if name == "Kozilek, the Great Distortion" {
+                let target_card =
+                    ironsmith::card::CardBuilder::new(CardId::new(), "Three-value spell")
+                        .card_types(vec![CardType::Instant])
+                        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+                        .build();
+                let id = wasm
+                    .game
+                    .create_object_from_card(&target_card, PlayerId(1), Zone::Stack);
+                wasm.game.push_to_stack(StackEntry::new(id, PlayerId(1)));
+                TargetInput::Object { object: id.0 }
+            } else {
+                TargetInput::Player { player: 1 }
             };
-            dispatch_manual_payment_command(&mut wasm, command);
+            let before_stack = wasm.game.stack.len();
+            let before_library = wasm.game.player(alice).unwrap().library.clone();
+            payment_disclosure_prepare_priority(&mut wasm);
+            let index = definition
+                .abilities
+                .iter()
+                .position(|ability| {
+                    matches!(&ability.kind, ironsmith::ability::AbilityKind::Activated(_))
+                })
+                .unwrap();
+            disclosure_priority_matching(&mut wasm, |action| {
+                matches!(action,
+            LegalAction::ActivateAbility { source: id, ability_index } if *id == source && *ability_index == index)
+            });
+            let mut selected = false;
+            for _ in 0..40 {
+                let command = match wasm.pending_decision.as_ref().unwrap() {
+                    DecisionContext::Priority(_) => break,
+                    DecisionContext::Number(_) => UiCommand::NumberChoice { value: 3 },
+                    DecisionContext::Targets(_) => UiCommand::SelectTargets {
+                        targets: vec![target.clone()],
+                    },
+                    DecisionContext::ManaPayment(_) => {
+                        disclosure_confirm_mana(&mut wasm);
+                        continue;
+                    }
+                    DecisionContext::SelectOptions(options) => UiCommand::SelectOptions {
+                        option_indices: vec![
+                            options
+                                .options
+                                .iter()
+                                .find(|option| option.legal)
+                                .unwrap()
+                                .index,
+                        ],
+                    },
+                    DecisionContext::SelectObjects(objects) => {
+                        assert!(
+                            objects
+                                .candidates
+                                .iter()
+                                .any(|candidate| candidate.id == payment)
+                        );
+                        assert_eq!(
+                            objects.reveal_policy,
+                            SelectionRevealPolicy::Public,
+                            "the regression must retain public proof validation"
+                        );
+                        if !selected {
+                            assert!(
+                                wasm.is_cancelable(),
+                                "a pending selection before disclosure remains cancelable: {name}"
+                            );
+                        }
+                        selected = true;
+                        UiCommand::SelectObjects {
+                            object_ids: vec![payment.0],
+                            object_stable_ids: Vec::new(),
+                            object_hidden_refs: Vec::new(),
+                        }
+                    }
+                    other => panic!("unexpected payment decision for {name}: {other:?}"),
+                };
+                disclosure_command(&mut wasm, command).unwrap();
+            }
+            assert!(
+                selected,
+                "{name} must retain its public discard prompt with {candidate_count} candidate(s)"
+            );
+            assert!(matches!(
+                wasm.pending_decision,
+                Some(DecisionContext::Priority(_))
+            ));
+            assert_eq!(wasm.game.stack.len(), before_stack + 1);
+            assert_eq!(
+                wasm.game.player(alice).unwrap().library,
+                before_library,
+                "the ability has not resolved; the existing library latch cannot explain this result"
+            );
+            let paid = wasm.game.find_object_by_stable_id(payment_stable).unwrap();
+            assert_eq!(wasm.game.object(paid).unwrap().zone, Zone::Graveyard);
+            assert!(
+                !wasm.is_cancelable(),
+                "published cost identity cannot be undone: {name}"
+            );
+            #[cfg(target_arch = "wasm32")]
+            assert!(
+                wasm.cancel_decision().is_err(),
+                "direct cancelDecision must enforce the same guard"
+            );
+            assert_eq!(wasm.game.object(paid).unwrap().zone, Zone::Graveyard);
         }
-        assert!(selected, "{name} exercised its actual discard choice");
-        assert!(matches!(
-            wasm.pending_decision,
-            Some(DecisionContext::Priority(_))
-        ));
-        assert_eq!(wasm.game.stack.len(), before_stack + 1);
-        assert_eq!(
-            wasm.game.player(alice).unwrap().library,
-            before_library,
-            "the ability has not resolved; the existing library latch cannot explain this result"
-        );
-        let paid = wasm.game.find_object_by_stable_id(payment_stable).unwrap();
-        assert_eq!(wasm.game.object(paid).unwrap().zone, Zone::Graveyard);
-        assert!(
-            !wasm.is_cancelable(),
-            "published cost identity cannot be undone: {name}"
-        );
-        #[cfg(target_arch = "wasm32")]
-        assert!(
-            wasm.cancel_decision().is_err(),
-            "direct cancelDecision must enforce the same guard"
-        );
-        assert_eq!(wasm.game.object(paid).unwrap().zone, Zone::Graveyard);
     }
 }
 
@@ -209,19 +217,20 @@ fn payment_disclosure_public_hand_reveal_locks_undo_without_a_zone_change() {
     payment_disclosure_track_hand(&mut wasm, hand, 0);
     payment_disclosure_track_hand(&mut wasm, alternative, 1);
     payment_disclosure_prepare_priority(&mut wasm);
-    dispatch_priority_action_matching(
+    disclosure_priority_matching(
         &mut wasm,
         |action| matches!(action, LegalAction::ActivateAbility { source: id, .. } if *id == source),
     );
     assert!(wasm.is_cancelable());
-    dispatch_manual_payment_command(
+    disclosure_command(
         &mut wasm,
         UiCommand::SelectObjects {
             object_ids: vec![hand.0],
             object_stable_ids: Vec::new(),
             object_hidden_refs: Vec::new(),
         },
-    );
+    )
+    .unwrap();
     assert_eq!(wasm.game.object(hand).unwrap().zone, Zone::Hand);
     assert_eq!(wasm.game.stack.len(), 1);
     assert!(!wasm.is_cancelable());
@@ -251,7 +260,7 @@ fn payment_disclosure_private_views_and_mana_only_actions_do_not_set_the_guard()
         &view,
     );
     assert!(!wasm.has_irreversible_hand_disclosure_since(&before));
-    dispatch_priority_action_matching(&mut wasm, |action| {
+    disclosure_priority_matching(&mut wasm, |action| {
         matches!(action,
         LegalAction::ActivateManaAbility { source, .. } if *source == mountain)
     });

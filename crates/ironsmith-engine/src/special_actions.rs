@@ -3219,6 +3219,12 @@ fn preflight_tagged_choice_in_context(
             .unwrap_or_default();
     }
 
+    if crate::effects::composition::selection_relations::has_relations(&choice.filter) {
+        candidates.retain(|id| !execution_ctx.replacement.entry_reserved_objects.contains(id));
+        candidates = crate::effects::composition::selection_relations::find_group(game, &choice.filter, &candidates, required, true)
+            .ok_or_else(|| CostPaymentError::Other("no legal group for tagged cost selection".into()))?;
+    }
+
     let snapshots = candidates
         .into_iter()
         .take(required)

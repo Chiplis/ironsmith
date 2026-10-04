@@ -2149,6 +2149,7 @@ impl EffectAst {
                 name_override: None,
                 add_supertypes: Vec::new(),
                 remove_all_abilities: false,
+                remove_other_abilities: false,
                 base_power_toughness,
                 target,
                 card_types,

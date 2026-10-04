@@ -20,6 +20,33 @@ pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
     if words.get(start) == Some(&"total") {
         start += 1;
     }
+    if words.get(start..start + 3) == Some(&["number", "of", "cards"][..]) {
+        let (player, used) = participant(&words[start + 3..], true)?;
+        let mut action = start + 3 + used;
+        if matches!(words.get(action), Some(&"have" | &"has")) {
+            action += 1;
+        }
+        if words.get(action..action + 3) == Some(&["drawn", "this", "turn"][..]) {
+            return Some((
+                Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::CardsDrawn(player)),
+                action + 3,
+            ));
+        }
+        if words.get(action..action + 3) == Some(&["drew", "this", "way"][..]) {
+            let query = ironsmith_core::PriorEffectMetricQuery::new(
+                ironsmith_core::EffectMetricSource::AffectedObjects,
+                ironsmith_core::EffectMetric::Count,
+            )
+            .with_action(ironsmith_core::PriorEffectAction::Drawn)
+            .with_player(player);
+            return Some((
+                Value::PendingPriorEffectMetric(query)
+                    .with_surface_hint(ValueSurfaceHint::CardsDrawnThisWay),
+                action + 3,
+            ));
+        }
+        return None;
+    }
     if words.get(start..start + 2) == Some(&["amount", "of"][..]) {
         start += 2;
     }
@@ -174,6 +201,38 @@ mod participant_tests {
                 parse(&crate::lexer::parser_token_word_refs(&tokens)).is_none(),
                 "{text}"
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod participant_draw_tests {
+    use super::*;
+    #[test]
+    fn draws_this_turn_and_draws_this_way_keep_distinct_typed_sources() {
+        for (text, this_way) in [
+            ("the number of cards they've drawn this turn", false),
+            ("the number of cards that player has drawn this turn", false),
+            ("the number of cards they drew this way", true),
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let (value, used) = parse_value_expr_tokens(&tokens).unwrap();
+            assert_eq!(used, tokens.len());
+            if this_way {
+                let Value::PendingPriorEffectMetric(query) = value.unhinted() else {
+                    panic!("{value:?}");
+                };
+                assert_eq!(query.action, Some(ironsmith_core::PriorEffectAction::Drawn));
+                assert_eq!(query.player, Some(PlayerFilter::IteratedPlayer));
+                assert_eq!(query.metric, ironsmith_core::EffectMetric::Count);
+            } else {
+                assert_eq!(
+                    value,
+                    Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::CardsDrawn(
+                        PlayerFilter::IteratedPlayer
+                    ))
+                );
+            }
         }
     }
 }

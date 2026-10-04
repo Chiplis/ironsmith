@@ -2699,6 +2699,23 @@ pub(super) struct ZoneCardSnapshot {
 }
 
 impl GameSnapshot {
+    pub(super) fn include_payment_disclosure(
+        &mut self, game: &GameState, view: &ActiveViewedCards, cache: &SnapshotObjectViewCache,
+    ) {
+        let Some(player) = self.players.iter_mut().find(|player| player.id == view.subject.0) else { return; };
+        let disclosed = cache.hand_cards(game, view.subject, PlayerId::from_index(self.perspective), Some(view), 1);
+        if disclosed.is_empty() { return; }
+        let mut cards = player.hand_cards.as_ref().clone();
+        for card in disclosed.iter() {
+            if !cards.iter().any(|known| known.id == card.id) { cards.push(card.clone()); }
+        }
+        if let Some(owner) = game.player(view.subject) {
+            cards.sort_by_key(|card| owner.hand.iter().position(|id| id.0 == card.id));
+        }
+        player.hand_cards = Arc::new(cards);
+        player.can_view_hand = true;
+    }
+
     #[cfg(test)]
     pub(super) fn from_game(
         game: &GameState,

@@ -34,7 +34,7 @@ fn payment_disclosure_exact_snc_self_exile_costs_disable_completed_action_undo()
                 .public_hand_disclosure_identities()
                 .contains(&(alice, source))
         );
-        dispatch_priority_action_matching(
+        disclosure_priority_matching(
             &mut wasm,
             |action| matches!(action, LegalAction::ActivateAbility { source: id, .. } if *id == source),
         );
@@ -45,7 +45,7 @@ fn payment_disclosure_exact_snc_self_exile_costs_disable_completed_action_undo()
                     targets: vec![TargetInput::Object { object: land.0 }],
                 },
                 DecisionContext::ManaPayment(_) => {
-                    confirm_pending_mana_payment(&mut wasm);
+                    disclosure_confirm_mana(&mut wasm);
                     continue;
                 }
                 DecisionContext::SelectOptions(options) => UiCommand::SelectOptions {
@@ -60,7 +60,7 @@ fn payment_disclosure_exact_snc_self_exile_costs_disable_completed_action_undo()
                 },
                 other => panic!("unexpected self-exile payment prompt for {name}: {other:?}"),
             };
-            dispatch_manual_payment_command(&mut wasm, command);
+            disclosure_command(&mut wasm, command).unwrap();
         }
         assert!(matches!(
             wasm.pending_decision,

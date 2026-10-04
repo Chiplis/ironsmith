@@ -1446,6 +1446,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 name_override,
                 add_supertypes,
                 remove_all_abilities,
+                remove_other_abilities,
                 base_power_toughness,
                 target,
                 card_types,
@@ -1466,6 +1467,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("name_override", name_override)
                 .field("add_supertypes", add_supertypes)
                 .field("remove_all_abilities", remove_all_abilities)
+                .field("remove_other_abilities", remove_other_abilities)
                 .field("base_power_toughness", base_power_toughness)
                 .field("target", target)
                 .field("card_types", card_types)

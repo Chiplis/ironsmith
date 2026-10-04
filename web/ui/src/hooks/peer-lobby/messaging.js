@@ -1045,6 +1045,14 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           ? `Resynced with host at action ${lastSequence}`
           : "Resynced with host",
       );
+      // Replaying the accepted prefix does not erase a signed payment whose
+      // public openings were sent before its command could be accepted.
+      servicesRef.current.acceptPaymentDisclosure(currentAuditMatchId(), lastSequence);
+      await servicesRef.current.restorePaymentDisclosureAtHead({ sequence: lastSequence + 1,
+        prevStateHash: auditStateHashRef.current });
+      nextState = await currentGame.uiState();
+      stateRef.current = nextState;
+      setState(nextState);
       awaitingStateResyncRef.current = false;
       await revealLocalZiffleHand(acceptedMatchPayload);
       if (importedCheckpointSequence > 0) {

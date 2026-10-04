@@ -5060,6 +5060,12 @@ impl ObjectFilterExt for ObjectFilter {
         if self.shares_land_type {
             parts.push("that share a land type".to_string());
         }
+        if self.shares_name {
+            parts.push("with the same name".to_string());
+        }
+        if self.shares_color {
+            parts.push("that share a color".to_string());
+        }
         if self.one_per_card_type {
             parts.push("with at most one card of each card type".to_string());
         }

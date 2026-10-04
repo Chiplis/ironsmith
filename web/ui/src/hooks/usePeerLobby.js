@@ -720,6 +720,7 @@ export function usePeerLobby({
       let localSubmissionSnapshot = null;
       let localSubmissionCommitted = false;
       let signedActionIntent = null;
+      let paymentDisclosure = null;
       const clearLocalActionWait = () => {
         if (localActionWaitId) {
           clearPeerWait(localActionWaitId);
@@ -735,6 +736,7 @@ export function usePeerLobby({
       const cancelLocalActionIntent = (reason) => {
         stopLocalActionIntentProgress();
         if (signedActionIntent && !localSubmissionCommitted) {
+          if (servicesRef.current.pinnedPaymentDisclosure?.(signedActionIntent)) return;
           rememberIgnoredActionIntentKey(actionIntentKey(signedActionIntent), reason || "local_action_cancelled");
           void Promise.resolve(broadcastActionIntentCancel(signedActionIntent, reason)).catch(() => {});
         }
@@ -952,6 +954,11 @@ export function usePeerLobby({
           extraPayload = {}
         ) => {
           if (!signedActionIntent) return;
+          if (!localSubmissionCommitted && (paymentDisclosure?.required || paymentDisclosure?.active)) {
+            // Labels, detail strings, and cardName can also identify a hand
+            // source. Before acceptance all payment progress is count-only.
+            extraPayload = openingPreparationProgress(extraPayload || {});
+          }
           if (typeof stopActionIntentProgress?.update === "function") {
             stopActionIntentProgress.update(phase, responseTimeoutMs, extraPayload);
             return;
@@ -1070,11 +1077,14 @@ export function usePeerLobby({
           }
           return signedActionIntent;
         };
-        const pendingIntentCleared = await runSubmissionPhase("submit_action:wait_pending_intent", {}, () => waitForPendingActionIntentBeforeLocalSubmit(nextSequence));
+        const pendingIntentCleared = await runSubmissionPhase("submit_action:wait_pending_intent", {}, () => waitForPendingActionIntentBeforeLocalSubmit(nextSequence, command));
         if (!pendingIntentCleared) {
           updateMultiplayer((prev) => ({ ...prev, submittingAction: false }));
           setStatus("Another action was signed first");
           return;
+        }
+        if (!isForfeitCommand(command)) {
+          await servicesRef.current.restorePaymentDisclosureAtHead({ sequence: nextSequence, prevStateHash: preActionStateHash });
         }
         preSubmitState = gameRef.current ? await gameRef.current.uiState() : stateRef.current;
         if (Number(multiplayerRef.current.lastAppliedSequence || 0) !== nextSequence - 1) {
@@ -1098,6 +1108,9 @@ export function usePeerLobby({
           setStatus("It is not your turn to act");
           return;
         }
+        paymentDisclosure = await servicesRef.current.paymentDisclosureForCommand(command);
+        servicesRef.current.assertPaymentDisclosureIntent({ matchId: currentAuditMatchId(),
+          seq: nextSequence, actorIndex: session.localPlayerIndex, prevStateHash: preActionStateHash, command });
         const clock = await buildMatchClockAuditForCommand({
           command,
           seq: nextSequence,
@@ -1236,6 +1249,7 @@ export function usePeerLobby({
           bytes: payloadSizeBytes(shuffleProofs),
         });
         let actionCryptoOptions = {
+          paymentDisclosure,
           command,
           seq: nextSequence,
           actorIndex: session.localPlayerIndex,
@@ -1308,6 +1322,7 @@ export function usePeerLobby({
               seq: nextSequence,
               actorIndex: session.localPlayerIndex,
               requestPreview: requestRemoteCryptoPreview,
+              paymentDisclosure,
               shuffleProofs,
               rngReveals,
               prevStateHash: preActionStateHash,
@@ -1652,6 +1667,7 @@ export function usePeerLobby({
                 prevStateHash: preActionStateHash,
                 publicCheckpointHash: await ensurePreActionPublicCheckpointHash(),
                 actionIntent: await ensureSignedActionIntent(),
+                paymentDisclosure,
               }
             )
           );
@@ -1813,7 +1829,8 @@ export function usePeerLobby({
         );
         await servicesRef.current.stagePreparedLocalAction?.({ seq: nextSequence,
           actorIndex: session.localPlayerIndex, command, label,
-          publicCheckpointHash: localPublicCheckpointHash, openings, rngReveals, shuffleProofs });
+          publicCheckpointHash: localPublicCheckpointHash, openings, rngReveals, shuffleProofs,
+          paymentDisclosure: Boolean(paymentDisclosure?.required || paymentDisclosure?.active) });
         updateLocalActionProgress({
           kind: "local_payload",
           title: "Signing action payload",
@@ -1886,6 +1903,10 @@ export function usePeerLobby({
         }
         clearLocalActionWait();
         setStatus("Waiting for peers to verify action payload");
+        if (paymentDisclosure?.required || paymentDisclosure?.active) {
+          servicesRef.current.pinPaymentDisclosureIntent(signedActionIntent, { openings,
+            evidence: { actionIntent: signedActionIntent, audit } });
+        }
         const quorumCertificate = await runSubmissionPhase(
           "submit_action:collect_action_quorum_certificate",
           summarizeSequencedActionForPerf(message),
@@ -1951,7 +1972,8 @@ export function usePeerLobby({
           command: summarizePeerCommand(command),
           error: failureReason,
         });
-        if (signedActionIntent && !localSubmissionCommitted) {
+        if (signedActionIntent && !localSubmissionCommitted
+          && !servicesRef.current.pinnedPaymentDisclosure?.(signedActionIntent)) {
           void Promise.resolve(broadcastActionIntentCancel(signedActionIntent, failureReason)).catch(() => {});
         }
         if (isMatchDisputed(multiplayerRef.current)) {

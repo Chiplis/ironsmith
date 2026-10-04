@@ -11,6 +11,7 @@ fn loaded_deck_sample_index(_len: usize) -> usize {
 
 impl WasmGame {
     pub(super) fn is_cancelable(&self) -> bool {
+        if self.payment_disclosure.is_some() { return false; }
         if let Some(replay) = self.pending_replay_action.as_ref() {
             return self.is_replay_chain_cancelable(replay);
         }
@@ -25,7 +26,8 @@ impl WasmGame {
         }
 
         if let Some(checkpoint) = self.pending_action_checkpoint.as_ref() {
-            return !self.has_irreversible_mana_undo_lock()
+            return self.payment_disclosure_generation == checkpoint.payment_disclosure_generation
+                && !self.has_irreversible_mana_undo_lock()
                 && !self.has_irreversible_library_change_since(checkpoint)
                 && !self.has_irreversible_random_change_since(checkpoint)
                 && !self.has_irreversible_hand_disclosure_since(checkpoint);
@@ -36,6 +38,7 @@ impl WasmGame {
         };
 
         self.priority_epoch_has_undoable_action
+            && !self.priority_epoch_undo_locked_by_disclosure
             && !self.has_irreversible_mana_undo_lock()
             && !self.has_land_play_since(epoch)
             && !self.has_irreversible_library_change_since(epoch)
@@ -84,6 +87,9 @@ impl WasmGame {
     }
 
     fn is_replay_chain_cancelable(&self, replay: &PendingReplayAction) -> bool {
+        if self.payment_disclosure_generation != replay.checkpoint.payment_disclosure_generation {
+            return false;
+        }
         let ReplayRoot::Response(response) = &replay.root else {
             return false;
         };

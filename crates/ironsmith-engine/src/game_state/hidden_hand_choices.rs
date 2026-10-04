@@ -331,7 +331,7 @@ pub const HIDDEN_IDENTITY_VIOLATION_PREFIX: &str = "Hidden identity obligation v
 /// than naming objects already known to every peer (specific or tagged
 /// objects, the source).
 fn filter_depends_on_card_identity(filter: &ObjectFilter) -> bool {
-    filter.has_search_stated_quality()
+    (filter.has_search_stated_quality() || filter.distinct_names || filter.shares_name || filter.shares_color)
         && filter.specific.is_none()
         && !filter.source
         && filter.tagged_constraints.is_empty()

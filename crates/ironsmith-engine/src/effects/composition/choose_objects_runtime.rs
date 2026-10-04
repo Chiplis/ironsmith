@@ -1517,6 +1517,10 @@ pub(crate) fn run_choose_objects(
         });
 
         let mut candidates = collect_candidates(effect, game, ctx, chooser_id)?;
+        let relation_cost = ctx.cause.cause_type == crate::events::cause::CauseType::Cost
+            && super::selection_relations::has_relations(&effect.filter);
+        if relation_cost { candidates.retain(|id| !ctx.replacement.entry_reserved_objects.contains(id)); }
+
         if !game
             .source_snapshot_is_exempt_from_range(Some(ctx.source), ctx.source_snapshot.as_ref())
         {
@@ -1743,6 +1747,9 @@ pub(crate) fn run_choose_objects(
                 min,
                 Some(max),
             );
+            if super::selection_relations::has_relations(&effect.filter) {
+                spec = spec.with_relation_filter(effect.filter.clone());
+            }
             if let Some(constraint) = aggregate_constraint.clone() {
                 spec = spec.with_aggregate_constraint(constraint);
             }
@@ -1757,7 +1764,7 @@ pub(crate) fn run_choose_objects(
                     DecisionHiddenCardVisibility::PrivateToDecisionPlayer,
                 );
             }
-            if reveals_selection_publicly {
+            if reveals_selection_publicly || relation_cost {
                 // The chosen cards are revealed: open them on every peer
                 // before the answer is replayed (as `SearchSpec` does for a
                 // revealed search), so every engine filters the real cards.
@@ -1845,6 +1852,10 @@ pub(crate) fn run_choose_objects(
         );
         let chosen =
             enforce_single_graveyard_choice_constraint(effect, game, &candidates, chosen, min, max);
+        if (effect.filter.shares_name || effect.filter.shares_color || relation_cost)
+            && !super::selection_relations::allows(game, &effect.filter, &chosen, chose_placeholder && !relation_cost) {
+            return Err(ExecutionError::Impossible("chosen objects do not satisfy the whole-selection relation".into()));
+        }
         let chosen = if effect.filter.distinct_names && !chose_placeholder {
             normalize_chosen_distinct_names(
                 game,

@@ -369,6 +369,12 @@ pub(crate) fn effect_consumed_choice_tag(
             .then(|| filter_consumed_tag(&sacrifice.filter).cloned())
             .flatten();
     }
+    if let Some(discard) = consumer.downcast_ref::<crate::effects::DiscardEffect>() {
+        return discard.card_filter.as_ref().and_then(filter_consumed_tag).cloned();
+    }
+    if let Some(reveal) = consumer.downcast_ref::<crate::effects::RevealTaggedEffect>() {
+        return Some(reveal.tag.clone());
+    }
     if let Some(exile) = consumer.downcast_ref::<crate::effects::ExileEffect>() {
         return spec_consumed_tag(&exile.spec).cloned();
     }

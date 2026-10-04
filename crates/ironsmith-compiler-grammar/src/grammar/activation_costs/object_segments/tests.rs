@@ -221,7 +221,7 @@ fn complete_discard_selectors_preserve_color_historic_x_and_other() {
     assert!(matches!(mana.mana_value, Some(crate::filter::Comparison::EqualExpr(value)) if matches!(value.unhinted(), crate::effect::Value::X)));
     assert!(matches!(parse("discard x cards"), ActivationCostSegmentCst::DiscardValue { count: crate::effect::Value::X, .. }));
     assert!(matches!(parse("discard another card"), ActivationCostSegmentCst::DiscardFiltered { other: true, .. }));
-    for text in ["discard a card with mana value", "discard three cards with different names", "discard a creature from your graveyard", "discard a card and draw a card"] {
+    for text in ["discard a card with mana value", "discard a creature from your graveyard", "discard a card and draw a card"] {
         assert!(parse_discard_segment_tokens(&lex_line(text, 0).unwrap()).is_err(), "{text}");
     }
 }

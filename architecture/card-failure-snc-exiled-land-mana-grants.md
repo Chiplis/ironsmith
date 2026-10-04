@@ -2,7 +2,7 @@
 
 Status: **UNVALIDATED source implementation and authored regressions**. No compiler, build, or tests ran. Exact frozen identities and payloads are in `fixtures/snc_exiled_land_mana_grants.json.fixture`.
 
-The five shared mechanic candidates are Glamorous Outlaw, Masked Bandits, Rakish Revelers, Shattered Seraph, and Spara's Adjudicators. All remain **partial** because they activate from a private hand and share the unresolved payment-disclosure transaction/error boundary. No additional complete-card proposal is claimed here.
+The five shared mechanic candidates are Glamorous Outlaw, Masked Bandits, Rakish Revelers, Shattered Seraph, and Spara's Adjudicators. These were held partial because their private-hand activations shared the payment-disclosure transaction/error boundary. Stage40 now admits their mechanic source proposals after reviewing the shared transaction and exact self-exile behavior. Runtime validation is deferred; Rakish Revelers separately retains the token-cap gap.
 
 ## Typed implementation
 
@@ -40,7 +40,7 @@ At the first legitimate disclosure required to finish payment or choose a replac
 
 The engine must distinguish a legal cost modified/prevented by replacement (still paid under CR 118.11) from an invalid proposal and a genuine implementation/transport failure. Exact movement receipts and ownership/controller context must survive legitimate pending replacement prompts. Recovery checkpoints must persist both payment state and disclosure commitments; speculative probes must clone/restore them without permanently latching knowledge.
 
-Implementing that cross-command boundary is intentionally deferred here at the coordinator's direction. The bounded preview redaction and Undo corrections remain useful prerequisites, and all twelve affected identities stay partial until this shared semantic requirement is met.
+Stage40 implements and source-reviews that cross-command boundary, including corrected Cancel routing, actual decision-owner authority, invalid-input prechecks, immutable signed attempt and original timing recovery. The bounded preview redaction and Undo corrections remain prerequisites. All execution remains deferred.
 
 ### Replaced/prevented payment edge
 
