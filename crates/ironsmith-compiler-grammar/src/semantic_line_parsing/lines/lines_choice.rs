@@ -104,6 +104,28 @@ pub fn rewrite_modal_to_parsed_item(
         )));
     };
 
+    let positive_x_modes = modal.modes.iter().filter(|mode| {
+        crate::grammar::structure::split_lexed_sentences(&mode.info.source_tokens)
+            .into_iter()
+            .any(crate::grammar::effects::dispatch_entry_shapes::is_x_cant_be_zero_tokens)
+    }).count();
+    if positive_x_modes > 0 {
+        // A repeated restriction on every mode is an announcement constraint,
+        // not an effect to discard. Do not strengthen mixed-mode restrictions
+        // into a global minimum or silently lose them.
+        let Some(activated) = header.activated.as_mut() else {
+            return Err(CardTextError::ParseError(
+                "mode-specific positive X requires an activated modal header".into(),
+            ));
+        };
+        if positive_x_modes != modal.modes.len() && !activated.x_cant_be_zero {
+            return Err(CardTextError::ParseError(
+                "mixed mode-specific positive X restrictions are not yet represented".into(),
+            ));
+        }
+        activated.x_cant_be_zero = true;
+    }
+
     if let Some(replacement) = header.x_replacement.as_ref() {
         replace_modal_header_x_in_effects_ast(
             &mut header.common_prefix_effects_ast,

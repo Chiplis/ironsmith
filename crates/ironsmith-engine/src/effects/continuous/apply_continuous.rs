@@ -957,6 +957,7 @@ impl EffectExecutor for ApplyContinuousEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        game.establish_control_transition_boundary().map_err(ExecutionError::ContinuousDiscovery)?;
         // A tagged reference names the objects selected by an earlier action.
         // An empty selection has no characteristics to change.
         if let Some(spec) = &self.target_spec
@@ -1130,12 +1131,9 @@ impl EffectExecutor for ApplyContinuousEffect {
                 {
                     continue;
                 }
-                for id in control_change_target_object_ids(&target, &source_type, game, ctx) {
-                    if game.current_controller(id) != Some(*new_controller) {
-                        game.clear_soulbond_pair(id);
-                        game.set_summoning_sick(id);
-                    }
-                }
+                // Reconciliation after applying the complete layer result
+                // owns sickness/soulbond changes. A false duration or condition
+                // must not manufacture a controller transition here.
             }
             let expires_end_of_turn = match self.until {
                 Until::EndOfTurn

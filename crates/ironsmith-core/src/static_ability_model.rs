@@ -5837,19 +5837,19 @@ impl<
     pub fn creatures_assign_combat_damage_using_toughness() -> Self {
         Self::identified(
             StaticAbilityId::CreaturesAssignCombatDamageUsingToughness,
-            "creatures assign combat damage using toughness",
+            "Each creature assigns combat damage equal to its toughness rather than its power",
         )
     }
     pub fn this_creature_assigns_combat_damage_using_toughness() -> Self {
         Self::identified(
             StaticAbilityId::ThisCreatureAssignsCombatDamageUsingToughness,
-            "this creature assigns combat damage using toughness",
+            "This creature assigns combat damage equal to its toughness rather than its power",
         )
     }
     pub fn creatures_you_control_assign_combat_damage_using_toughness() -> Self {
         Self {
             id: Some(StaticAbilityId::CreaturesYouControlAssignCombatDamageUsingToughness),
-            label: "creatures you control assign damage using toughness".into(),
+            label: "Each creature you control assigns combat damage equal to its toughness rather than its power".into(),
             payload: StaticAbilityPayload::None,
         }
     }

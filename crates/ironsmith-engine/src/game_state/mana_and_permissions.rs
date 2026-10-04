@@ -121,8 +121,10 @@ impl GameState {
         -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
         let revision = self.effect_store.continuous_effects.revision();
         if self.continuous_state_is_clean()
+            && !self.battlefield_flags.control_transition_pending
             && self.runtime_cache.static_effects_cache.borrow().has_refreshed_snapshot(revision)
         {
+            self.publish_completed_control_transitions();
             return Ok(());
         }
         let checkpoint = self.clone();
@@ -174,6 +176,7 @@ impl GameState {
         {
             self.refresh_continuous_state()?;
         }
+            self.publish_completed_control_transitions();
             let revision = self.effect_store.continuous_effects.revision();
             self.runtime_cache.static_effects_cache.borrow_mut().mark_refreshed_snapshot(revision);
             Ok(())
@@ -212,6 +215,11 @@ impl GameState {
     /// only in "gain control" executors: static abilities and expired effects
     /// can change a permanent's controller without executing such an effect.
     pub(crate) fn reconcile_continuous_control_changes(&mut self) {
+        if self.control_transition_boundary_is_held() {
+            self.battlefield_flags_mut().control_transition_pending = true;
+            return;
+        }
+        self.battlefield_flags_mut().control_transition_pending = false;
         let controllers = self
             .battlefield
             .iter()
@@ -255,6 +263,7 @@ impl GameState {
         self.battlefield_flags_mut().controller_at_last_refresh = controllers;
         self.remember_face_down_exile_source_controllers();
         for &id in &changed {
+            self.clear_soulbond_pair(id);
             self.set_summoning_sick(id);
         }
         self.reconcile_combat_membership(&changed);
@@ -3403,6 +3412,10 @@ impl GameState {
         if let Some(lookback) = self.simultaneous_event_lookback() {
             return lookback.to_vec();
         }
+        self.current_trigger_source_snapshots()
+    }
+
+    pub(crate) fn current_trigger_source_snapshots(&self) -> Vec<ObjectSnapshot> {
         let all_effects = self.all_continuous_effects();
         let ability_effects_can_add_triggers = all_effects
             .iter()

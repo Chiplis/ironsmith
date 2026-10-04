@@ -4259,6 +4259,7 @@
         );
     }
     if let Some(register) = effect.downcast_ref::<crate::effects::RegisterDrawReplacementEffect>() {
+        if let Some(display) = &register.display { return display.clone(); }
         let player = if register.player == PlayerFilter::IteratedPlayer {
             "they".to_string()
         } else {

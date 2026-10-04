@@ -7874,12 +7874,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 ReplacementActionAst::RegisterCounterPlacementReplacement { filter, .. },
             ) => bind_unresolved_it_in_filter(filter, seed_tag),
             SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDrawReplacement {
-                replacement_effects,
-                ..
-            }) => replacement_effects
-                .iter_mut()
-                .map(|effect| bind_unresolved_it_in_effect(effect, seed_tag))
-                .sum(),
+                replacement_effects, player_target, ..
+            }) => player_target.as_mut().map(|target| bind_unresolved_it_in_target(target, seed_tag)).unwrap_or(0)
+                + replacement_effects.iter_mut().map(|effect| bind_unresolved_it_in_effect(effect, seed_tag)).sum::<usize>(),
             SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterDamagedBySourceZoneReplacement { filter, .. },
             ) => bind_unresolved_it_in_filter(filter, seed_tag),

@@ -1836,6 +1836,7 @@ impl GameState {
             flags.tapped_permanents.remove(&id);
             flags.summoning_sick.remove(&id);
             flags.controller_at_last_refresh.remove(&id);
+            flags.control_event_snapshots.remove(&id);
             flags.damage_marked.remove(&id);
             flags.battle_protectors.remove(&id);
             flags.monstrous.remove(&id);

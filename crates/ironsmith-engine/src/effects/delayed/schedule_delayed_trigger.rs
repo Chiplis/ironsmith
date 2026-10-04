@@ -223,15 +223,16 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
         // every continuous effect from scratch.
         game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
         let controller_id = resolve_player_filter(game, &self.controller, ctx)?;
-        // A resolving ability may already have moved its source to another
-        // zone before registering this delayed trigger. Follow the source's
-        // stable identity so the delayed ability and any `this card` effects
-        // refer to the current object rather than the stale pre-zone-change
-        // ObjectId.
-        let ability_source = self
-            .ability_source
-            .or_else(|| resolve_source_object_id(game, ctx))
-            .unwrap_or(ctx.source);
+        // Watching the ability source means this exact incarnation. A
+        // source that left before registration must not turn a blinked new
+        // permanent into the delayed event's subject. Explicit source moves
+        // performed by the resolving program update ctx.source themselves.
+        // Non-watcher delayed effects retain their existing narrow zone-move
+        // reference exceptions (for example a source Aura's graveyard card).
+        let ability_source = self.ability_source.or_else(|| {
+            if self.watch_ability_source { Some(ctx.source) }
+            else { resolve_source_object_id(game, ctx) }
+        }).unwrap_or(ctx.source);
         let filter_ctx = ctx.filter_context(game);
         let mut tagged_players = filter_ctx.tagged_players.clone();
         if !ctx.targets_are_cost_choices {

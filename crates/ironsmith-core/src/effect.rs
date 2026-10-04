@@ -663,6 +663,8 @@ pub enum DelayedTriggerSpec {
         gained: bool,
         during_turn: Option<PlayerFilter>,
     },
+    ControlChanged(crate::trigger_model::ControlChangeTrigger),
+    PermanentBecomesUntapped { filter: ObjectFilter },
 }
 
 /// Lifetime policy for a delayed trigger registration.

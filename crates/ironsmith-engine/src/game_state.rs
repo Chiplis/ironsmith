@@ -62,6 +62,7 @@ mod two_headed_giant;
 mod vanguard;
 mod zones_and_characteristics;
 mod attachment_transitions;
+mod control_transitions;
 mod phasing_transitions;
 pub use alternating_teams::AlternatingTeamsState;
 pub use attack_direction::AttackDirection;
@@ -434,6 +435,11 @@ struct BattlefieldFlags {
     /// controller lets refreshes turn every control transition (including a
     /// static control effect appearing or expiring) into summoning sickness.
     controller_at_last_refresh: HashMap<ObjectId, PlayerId>,
+    /// Exact-incarnation characteristics at the previous authoritative
+    /// instruction/continuous-state boundary, for CR 603.10d lookback.
+    control_event_snapshots: HashMap<ObjectId, ObjectSnapshot>,
+    control_source_lookback: Vec<ObjectSnapshot>,
+    control_transition_pending: bool,
     /// Damage marked on creatures (cleared at cleanup step).
     damage_marked: HashMap<ObjectId, u32>,
     /// Player currently designated to protect each battle.

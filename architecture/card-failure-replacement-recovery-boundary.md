@@ -118,3 +118,23 @@ accepted-transcript recovery; it is not reported as restored.
 
 The final shared-code review and deferred native/Wasm/browser execution remain
 mandatory. No measured recovery count changes are asserted here.
+
+
+## Registered restriction follow-up
+
+The same exact-local-versus-wire boundary also applies to
+`EffectStore.restriction_effects`. `ApplyRestrictionEffect` records typed
+restrictions with captured source/controller, reference snapshots, start and
+expiry state. The existing checkpoint has no carrier for that collection. A
+concrete earlier proposed identity is Display of Dominance, whose temporary
+source-filtered targeting rule uses this owner; this is not an exhaustive
+inventory of temporary restrictions.
+
+The exporter and replay-boundary predicate now also reject any retained runtime
+restriction. The wire carries an explicit empty-restriction field, required and
+validated before import. Local priority/payment/target analysis uses the already
+implemented exact runtime fallback, and Verified resync continues to replay from
+genesis regardless of any host emptiness claim. A native savepoint retains the
+restriction normally. An unrun native scenario and the missing-carrier import
+scenario cover this additional owner. No gameplay prohibition is implemented by
+this certificate: the actual native restriction continues to enforce the rule.

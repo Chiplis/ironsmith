@@ -20,6 +20,8 @@ mod cards_milled;
 pub use cards_milled::CardsMilledTrigger;
 pub use phasing_changed::PhasingChangedTrigger;
 pub use attachment_changed::AttachmentChangedTrigger;
+mod control_changed;
+pub use control_changed::ControlChangedTrigger;
 mod permanent_becomes_tapped;
 mod permanent_becomes_untapped;
 mod permanent_sacrificed_or_destroyed;

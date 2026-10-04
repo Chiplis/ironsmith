@@ -3036,6 +3036,10 @@ pub fn parse_static_condition_clause(
         ));
     }
     let display = clause_words.join(" ");
+    if let Some(condition) = toughness_assignment::attached_axis_condition(&tokens) {
+        return Ok(condition);
+    }
+
 
     // "you control a Human creature and a non-Human creature" (Of One Mind):
     // two separate control requirements, not one object matching both.

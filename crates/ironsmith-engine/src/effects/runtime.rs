@@ -318,7 +318,7 @@ fn execute_effect_with_resource_scope(
     {
         return Ok(EffectOutcome::resolved());
     }
-    game.try_update_static_ability_effects(Default::default())
+    game.establish_control_transition_boundary()
         .map_err(ExecutionError::ContinuousDiscovery)?;
     if !settle_hidden_hand_all_matching_specs(game, effect, ctx) {
         return Ok(EffectOutcome::count(0));

@@ -289,4 +289,4 @@ use condition_programs::parse_modifier_words;
 
 #[path = "become_shapes/object_template.rs"]
 mod object_template;
-pub use object_template::{UnsizedObjectTemplateShape, parse_unsized_object_template_tokens};
+pub use object_template::{ObjectTemplateShape, parse_object_template_tokens};

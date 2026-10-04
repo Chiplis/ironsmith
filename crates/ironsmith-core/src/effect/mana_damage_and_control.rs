@@ -1080,6 +1080,10 @@ pub struct RegisterDrawReplacementEffect<E = ()> {
     pub player: PlayerFilter,
     pub replacement_effects: Vec<E>,
     pub mode: ReplacementApplyMode,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub player_target: Option<ChooseSpec>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub display: Option<String>,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1282,6 +1286,8 @@ impl<E> RegisterDrawReplacementEffect<E> {
             player,
             replacement_effects,
             mode,
+            player_target: None,
+            display: None,
         }
     }
 }

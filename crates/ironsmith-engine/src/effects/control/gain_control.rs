@@ -5,10 +5,8 @@ use crate::effect::{Effect, EffectOutcome, Until};
 use crate::effects::helpers::resolve_single_object_for_effect;
 use crate::effects::{ApplyContinuousEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
-use crate::events::ControlChangedEvent;
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
-use crate::triggers::TriggerEvent;
 
 /// Effect that gains control of a target permanent.
 ///
@@ -76,8 +74,8 @@ impl EffectExecutor for GainControlEffect {
         let _obj = game
             .object(target_id)
             .ok_or(ExecutionError::ObjectNotFound(target_id))?;
-        let previous_controller = game.current_controller(target_id);
-        let lookback_source_snapshots = game.trigger_source_lookback_snapshots();
+        game.establish_control_transition_boundary().map_err(ExecutionError::ContinuousDiscovery)?;
+        let pending_start = game.effect_store.pending_trigger_events.len();
 
         let apply = ApplyContinuousEffect::new(
             EffectTarget::Specific(target_id),
@@ -86,32 +84,11 @@ impl EffectExecutor for GainControlEffect {
         );
 
         let mut outcome = execute_effect(game, &Effect::new(apply), ctx)?;
-        // A duration condition may already be false when the ability resolves
-        // (for example, the source was untapped in response). Only an actual
-        // controller transition emits a receipt or breaks a soulbond pair.
-        if let Some(previous_controller) = previous_controller
-            && let Some(current_controller) = game.current_controller(target_id)
-            && previous_controller != current_controller
-        {
-            game.clear_soulbond_pair(target_id);
-            if let Some(stable_id) = game.object(target_id).map(|o| o.stable_id) {
-                game.record_ui_effect_event(
-                    "control_change",
-                    Some(current_controller),
-                    Some(previous_controller),
-                    vec![stable_id],
-                    None,
-                    None,
-                );
-            }
-            outcome = outcome.with_event(
-                TriggerEvent::new_with_provenance(
-                    ControlChangedEvent::new(target_id, previous_controller, current_controller),
-                    ctx.provenance,
-                )
-                .with_lookback_source_snapshots(lookback_source_snapshots),
-            );
-        }
+        // The shared derived-state owner only publishes actual transitions,
+        // including those induced on other permanents by this control change.
+        // Return those same receipts rather than manufacturing a second event.
+        outcome.events.extend(game.remove_pending_trigger_events_matching_from(pending_start,
+            |event| event.kind() == crate::events::EventKind::ControlChanged));
         Ok(outcome)
     }
 
@@ -129,6 +106,7 @@ mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::effects::ResolvedTarget;
+    use crate::events::ControlChangedEvent;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;

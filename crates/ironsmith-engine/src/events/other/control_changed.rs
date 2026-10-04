@@ -16,6 +16,10 @@ pub struct ControlChangedEvent {
     pub previous_controller: PlayerId,
     /// The controller after the change.
     pub new_controller: PlayerId,
+    /// Characteristics immediately before and after the completed transition.
+    pub previous_snapshot: Option<ObjectSnapshot>,
+    pub snapshot: Option<ObjectSnapshot>,
+    pub complete_source_lookback: bool,
 }
 
 impl ControlChangedEvent {
@@ -28,7 +32,22 @@ impl ControlChangedEvent {
             permanent,
             previous_controller,
             new_controller,
+            previous_snapshot: None,
+            snapshot: None,
+            complete_source_lookback: false,
         }
+    }
+}
+
+impl ControlChangedEvent {
+    pub fn with_complete_source_lookback(mut self) -> Self {
+        self.complete_source_lookback = true;
+        self
+    }
+    pub fn with_snapshots(mut self, previous: ObjectSnapshot, current: ObjectSnapshot) -> Self {
+        self.previous_snapshot = Some(previous);
+        self.snapshot = Some(current);
+        self
     }
 }
 
@@ -36,6 +55,8 @@ impl GameEventType for ControlChangedEvent {
     fn event_kind(&self) -> EventKind {
         EventKind::ControlChanged
     }
+
+    fn is_replacement_proposal(&self) -> bool { false }
 
     fn affected_player(&self, _game: &GameState) -> PlayerId {
         self.new_controller
@@ -66,7 +87,7 @@ impl GameEventType for ControlChangedEvent {
     }
 
     fn snapshot(&self) -> Option<&ObjectSnapshot> {
-        None
+        self.snapshot.as_ref()
     }
 }
 

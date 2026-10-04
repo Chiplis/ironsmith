@@ -1643,13 +1643,11 @@ where
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::RegisterDrawReplacementEffect<M::Effect>>(&effect)
     {
-        return Ok(Effect::new(
-            crate::effects::RegisterDrawReplacementEffect::new(
-                payload.player.clone(),
-                convert_effects(payload.replacement_effects.iter().cloned(), hooks)?,
-                payload.mode,
-            ),
-        ));
+        let mut registration = crate::effects::RegisterDrawReplacementEffect::new(
+            payload.player.clone(), convert_effects(payload.replacement_effects.iter().cloned(), hooks)?, payload.mode);
+        registration.player_target = payload.player_target.clone();
+        registration.display = payload.display.clone();
+        return Ok(Effect::new(registration));
     }
     if let Some(converted) = clone_direct_effect::<
         M,

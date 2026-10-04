@@ -173,6 +173,9 @@ pub fn compile_delayed_trigger_spec(
         TriggerSpec::Dies(filter) | TriggerSpec::DiesOneOrMore(filter) => {
             Ok(ironsmith_core::DelayedTriggerSpec::Dies(filter.clone()))
         }
+        TriggerSpec::ControlChanged(trigger) => Ok(ironsmith_core::DelayedTriggerSpec::ControlChanged(trigger.clone())),
+        TriggerSpec::ThisBecomesUntapped => Ok(ironsmith_core::DelayedTriggerSpec::PermanentBecomesUntapped { filter: ObjectFilter::source() }),
+        TriggerSpec::PermanentBecomesUntapped { filter, one_or_more: false } => Ok(ironsmith_core::DelayedTriggerSpec::PermanentBecomesUntapped { filter: filter.clone() }),
         TriggerSpec::PermanentBecomesTapped(filter) => Ok(
             ironsmith_core::DelayedTriggerSpec::PermanentBecomesTapped(filter.clone()),
         ),
@@ -664,6 +667,11 @@ fn resolve_play_or_cast_trigger_references(
                 .map(|trigger| resolve_play_or_cast_trigger_references(trigger, refs))
                 .collect::<Result<Vec<_>, _>>()?,
         ),
+        TriggerSpec::ControlChanged(control) if references_it(&control.filter) => {
+            let mut control = control.clone();
+            control.filter = resolve_it_tag(&control.filter, refs)?;
+            TriggerSpec::ControlChanged(control)
+        }
         TriggerSpec::PlayerPlaysLand { player, filter } if references_it(filter) => {
             TriggerSpec::PlayerPlaysLand {
                 player: player.clone(),
@@ -799,10 +807,31 @@ fn compile_duration_scoped_delayed_trigger(
     let refs = current_reference_env(ctx);
     let mut watched_tag = None;
     let mut watched_filter = None;
-    let mut watch_ability_source = false;
+    fn watches_ability_source(trigger: &TriggerSpec) -> bool {
+        match trigger_without_intro(trigger) {
+            TriggerSpec::ThisBecomesUntapped => true,
+            TriggerSpec::PermanentBecomesUntapped { filter, .. } => filter.source,
+            TriggerSpec::ControlChanged(control) => control.filter.source,
+            TriggerSpec::Either(left, right) => watches_ability_source(left) && watches_ability_source(right),
+            TriggerSpec::AnyOf(branches) => !branches.is_empty() && branches.iter().all(watches_ability_source),
+            _ => false,
+        }
+    }
+    let mut watch_ability_source = watches_ability_source(trigger);
     let mut watch_all_object_targets = false;
 
     let delayed_trigger = match trigger_without_intro(trigger) {
+        TriggerSpec::ControlChanged(control) => {
+            let mut control = control.clone();
+            control.filter = resolve_it_tag(&control.filter, &refs)?;
+            if let Some(tag) = watch_tag_from_filter(&control.filter) {
+                watched_tag = Some(tag);
+                watched_filter = Some(control.filter.clone());
+                control.filter.tagged_constraints.clear();
+                control.filter.source = true;
+            }
+            ironsmith_core::DelayedTriggerSpec::ControlChanged(control)
+        }
         TriggerSpec::Attacks(filter) => {
             let resolved = resolve_it_tag(filter, &refs)?;
             if let Some(tag) = watch_tag_from_filter(&resolved) {

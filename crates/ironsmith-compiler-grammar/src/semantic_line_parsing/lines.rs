@@ -1016,6 +1016,12 @@ fn wrap_future_draw_replacement_effects(
     full_parse_tokens: &[OwnedLexToken],
     effects: Vec<EffectAst>,
 ) -> Vec<EffectAst> {
+    // The strict instruction owner already captured the complete future
+    // program, including its later permission sentences. Do not defer twice.
+    if matches!(effects.as_slice(), [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::Replacements(
+            crate::model::ast::ReplacementActionAst::RegisterDrawReplacement { .. }), ..
+    })]) { return effects; }
     let Some(player) =
         semantic_grammar::parse_next_draw_replacement_player_tokens(full_parse_tokens)
     else {

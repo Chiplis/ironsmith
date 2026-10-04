@@ -736,7 +736,25 @@ pub enum TriggerKind {
     },
     PlayerDrawsCardDuringTurn { player: PlayerFilter, during_turn: PlayerFilter },
     PlayerDrawsFirstCardInOwnDrawStep { player: PlayerFilter },
+    ControlChanged(ControlChangeTrigger),
 }
+
+/// The player mentioned as gaining or losing control is distinct from the
+/// permanent's owner, and a gain may further qualify its previous controller.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub enum ControlChangeDirection {
+    Gained { player: PlayerFilter, from: Option<PlayerFilter> },
+    Lost { player: PlayerFilter },
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct ControlChangeTrigger {
+    pub filter: ObjectFilter,
+    pub change: ControlChangeDirection,
+}
+
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
@@ -1180,6 +1198,9 @@ impl Trigger {
         Self::typed("player_changes_tap_state", TriggerKind::PlayerChangesTapState {
             player, filter, tapped, one_or_more, during_untap_step,
         })
+    }
+    pub fn control_changed(trigger: ControlChangeTrigger) -> Self {
+        Self::typed("control_changed", TriggerKind::ControlChanged(trigger))
     }
     pub fn attachment_changed(attachment: ObjectFilter, recipient: ObjectFilter, attached: bool) -> Self {
         Self::typed("attachment_changed", TriggerKind::AttachmentChanged { attachment, recipient, attached })

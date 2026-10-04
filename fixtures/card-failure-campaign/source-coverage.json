@@ -1,20 +1,20 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "909991200635453c82f34a3b26f066fd3491d9aa",
+  "source_implementation_commit": "cfaebd7d5bc40a06b3c336f5e2d79cf0c622abed",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 590,
-    "additional_proposed_compile_entries": 591,
+    "additional_proposed_unique_cards": 624,
+    "additional_proposed_compile_entries": 625,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
     "known_runtime_partial_previous_proposals": 0,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
     "identified_source_proposals_with_known_runtime_gaps": 8,
-    "source_proposals_excluding_identified_runtime_gaps": 582,
+    "source_proposals_excluding_identified_runtime_gaps": 616,
     "runtime_gap_inventory_is_not_exhaustive": true
   },
   "workflow": {
@@ -2125,6 +2125,171 @@
       "semantic_scope": [
         "Complete shuffle zone selectors and owner references; draw event receipts and continuation scopes/iterations integrated. Shared dynamic nested completion remains unresolved."
       ]
+    },
+    {
+      "id": "named-source-counter-removal",
+      "stage": 44,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/named_counter_removal_costs.json.fixture",
+      "baseline_entries": [
+        "Marath, Will of the Wild",
+        "Ulasht, the Hate Seed"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "b2262a7b",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Complete contextual source operands and direct modal cost normalization retain existing native counter payment semantics.",
+        "Positive X repeated across every mode reaches the activation minimum; mixed per-mode constraints reject instead of being dropped."
+      ]
+    },
+    {
+      "id": "timed-draw-replacement-programs",
+      "stage": 44,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/timed_draw_replacements.json.fixture",
+      "baseline_entries": [
+        "Words of War",
+        "Words of Waste",
+        "Words of Wilding",
+        "Words of Wind",
+        "Words of Worship",
+        "Plagiarize",
+        "Urabrask, Heretic Praetor"
+      ],
+      "implementation_commit": "cac487a6",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Complete registration programs retain announcement-time target/player bindings, captured controller and future drawer, actual source departure/phase-out LKI and exact one-shot/cleanup ownership.",
+        "Recovery and token-resource prerequisites source-addressed in stage43; pending-choice, recursion, expiry, target-departure and future permission scenarios authored/unrun.",
+        "Independent review corrected ObjectLeavesGame LKI and reused shared per-instruction replacement owner with future triggering-event context; source-clear througha624bede, tests unrun."
+      ],
+      "resolved_partial_entries": [
+        {
+          "card_name": "Words of War",
+          "remaining_blocker": "Independent source review found missing ObjectLeavesGame source LKI and per-instruction prefix receipt capture in the registered future program; correction in progress."
+        },
+        {
+          "card_name": "Words of Waste",
+          "remaining_blocker": "Independent source review found missing ObjectLeavesGame source LKI and per-instruction prefix receipt capture in the registered future program; correction in progress."
+        },
+        {
+          "card_name": "Words of Wilding",
+          "remaining_blocker": "Independent source review found missing ObjectLeavesGame source LKI and per-instruction prefix receipt capture in the registered future program; correction in progress."
+        },
+        {
+          "card_name": "Words of Wind",
+          "remaining_blocker": "Independent source review found missing ObjectLeavesGame source LKI and per-instruction prefix receipt capture in the registered future program; correction in progress."
+        },
+        {
+          "card_name": "Words of Worship",
+          "remaining_blocker": "Independent source review found missing ObjectLeavesGame source LKI and per-instruction prefix receipt capture in the registered future program; correction in progress."
+        },
+        {
+          "card_name": "Plagiarize",
+          "remaining_blocker": "Independent source review found missing ObjectLeavesGame source LKI and per-instruction prefix receipt capture in the registered future program; correction in progress."
+        },
+        {
+          "card_name": "Urabrask, Heretic Praetor",
+          "remaining_blocker": "Independent source review found missing ObjectLeavesGame source LKI and per-instruction prefix receipt capture in the registered future program; correction in progress."
+        }
+      ],
+      "partial_closure_commit": "cfaebd7d5bc40a06b3c336f5e2d79cf0c622abed"
+    },
+    {
+      "id": "completed-control-transition-events",
+      "stage": 44,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/control_transition_triggers.json.fixture",
+      "baseline_entries": [
+        "Coffin Queen",
+        "Gustha's Scepter",
+        "Ogre Geargrabber",
+        "Zidane, Tantalus Thief",
+        "Duplicity",
+        "Risky Move"
+      ],
+      "implementation_commit": "9e7b6213",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Completed-state control transitions, old/new participant ownership and exact source-incarnation watchers.",
+        "Independent bounded source review caught/fixed simultaneous departed-observer loss; action/pin/matching holds defer publication and force post-scope reconciliation.",
+        "Independent object/player choice and exact new-exile exclusion preserve the complete Risky Move/ Duplicity followup bodies."
+      ],
+      "resolved_partial_entries": [
+        {
+          "card_name": "Duplicity",
+          "remaining_blocker": "Complete independent upkeep/swap/choice bodies remain under source review."
+        },
+        {
+          "card_name": "Risky Move",
+          "remaining_blocker": "Complete independent upkeep/swap/choice bodies remain under source review."
+        }
+      ],
+      "partial_closure_commit": "4a354918"
+    },
+    {
+      "id": "compound-characteristic-transitions",
+      "stage": 44,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/compound_characteristic_transitions.json.fixture",
+      "baseline_entries": [
+        "Defiling Tears",
+        "Dragonsoul Knight",
+        "Paragon of the Amesha",
+        "Kellan, Planar Trailblazer",
+        "Origin of Spider-Man",
+        "Possessed Goat",
+        "Surge Engine",
+        "Kitesail Larcenist"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "The Irencrag",
+          "remaining_blocker": "Full followup body remains partial: Irencrag optional grant/removal composition; Thermal Flux negative-supertype mode and delayed draw."
+        },
+        {
+          "card_name": "Thermal Flux",
+          "remaining_blocker": "Full followup body remains partial: Irencrag optional grant/removal composition; Thermal Flux negative-supertype mode and delayed draw."
+        }
+      ],
+      "implementation_commit": "31d1a73b",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Complete quotation-aware templates preserve unspecified card types/P/T and all authored supertypes, colors, abilities and names.",
+        "Become/get/gain coordination owns one announced target and full duration; lifetime activation restriction remains conjunctive. Independently source-reviewedc91d7f63; authored full-card runtime scenarios unrun."
+      ]
+    },
+    {
+      "id": "toughness-combat-assignment",
+      "stage": 44,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/toughness_damage_assignment.json.fixture",
+      "baseline_entries": [
+        "Ancient Lumberknot",
+        "Arcades, the Strategist",
+        "Baldin, Century Herdmaster",
+        "Bark of Doran",
+        "Bedrock Tortoise",
+        "Bill the Pony",
+        "Ghalta the Immovable",
+        "Plagon, Lord of the Beach",
+        "Solid Footing",
+        "The Kingpin of Crime",
+        "Walking Bulwark"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "Tapestry Warden",
+          "remaining_blocker": "Station using toughness payment primitive remains unimplemented."
+        }
+      ],
+      "implementation_commit": "86f9d40a",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Receiver-local toughness assignment is consumed by both combat paths without rewriting ordinary power or noncombat damage.",
+        "Static grants retain live filters; resolving grants lock recipient sets and use current damage-time toughness. Secondary cast, ETB, equip, Food, optional-life and100-target bodies source-reviewed."
+      ]
     }
   ],
   "cards": [
@@ -2877,8 +3042,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "toughness-combat-assignment"
+      ]
     },
     {
       "card_name": "And They Shall Know No Fear",
@@ -3203,8 +3370,10 @@
       ],
       "baseline_category": "semantic_output_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "toughness-combat-assignment"
+      ]
     },
     {
       "card_name": "Arcane Amphisbaena",
@@ -4116,8 +4285,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "toughness-combat-assignment"
+      ]
     },
     {
       "card_name": "Balduvian Fallen",
@@ -4310,8 +4481,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "toughness-combat-assignment"
+      ]
     },
     {
       "card_name": "Baron Helmut Zemo",
@@ -4478,8 +4651,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "toughness-combat-assignment"
+      ]
     },
     {
       "card_name": "Beguiler of Wills",
@@ -4720,8 +4895,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "toughness-combat-assignment"
+      ]
     },
     {
       "card_name": "Bioplasm",
@@ -6996,8 +7173,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "completed-control-transition-events"
+      ]
     },
     {
       "card_name": "Cogwork Tracker",
@@ -8587,8 +8766,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "compound-characteristic-transitions"
+      ]
     },
     {
       "card_name": "Dega Sanctuary",
@@ -9594,8 +9775,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "compound-characteristic-transitions"
+      ]
     },
     {
       "card_name": "Dragoon's Lance",
@@ -9852,8 +10035,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "completed-control-transition-events"
+      ]
     },
     {
       "card_name": "Durnan of the Yawning Portal",
@@ -12947,8 +13132,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "toughness-combat-assignment"
+      ]
     },
     {
       "card_name": "Ghastly Conscription",
@@ -14210,8 +14397,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "completed-control-transition-events"
+      ]
     },
     {
       "card_name": "Gwenom, Remorseless",
@@ -17261,8 +17450,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "compound-characteristic-transitions"
+      ]
     },
     {
       "card_name": "Kelsien, the Plague",
@@ -17515,8 +17706,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "compound-characteristic-transitions"
+      ]
     },
     {
       "card_name": "Kitsune Palliator",
@@ -19381,8 +19574,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "named-source-counter-removal"
+      ]
     },
     {
       "card_name": "Marble Priest",
@@ -21929,8 +22124,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "completed-control-transition-events"
+      ]
     },
     {
       "card_name": "Okaun, Eye of Chaos",
@@ -22183,8 +22380,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "compound-characteristic-transitions"
+      ]
     },
     {
       "card_name": "Orim's Touch",
@@ -22617,8 +22816,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "compound-characteristic-transitions"
+      ]
     },
     {
       "card_name": "Parallel Thoughts",
@@ -23111,8 +23312,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "timed-draw-replacement-programs"
+      ]
     },
     {
       "card_name": "Plagon, Lord of the Beach",
@@ -23121,8 +23324,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "toughness-combat-assignment"
+      ]
     },
     {
       "card_name": "Plague Drone",
@@ -23381,8 +23586,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "compound-characteristic-transitions"
+      ]
     },
     {
       "card_name": "Possessed Portal",
@@ -25327,8 +25534,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "completed-control-transition-events"
+      ]
     },
     {
       "card_name": "Risona, Asari Commander",
@@ -28058,8 +28267,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "toughness-combat-assignment"
+      ]
     },
     {
       "card_name": "Solitary Sanctuary",
@@ -29418,8 +29629,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "compound-characteristic-transitions"
+      ]
     },
     {
       "card_name": "Surging Aether",
@@ -29930,8 +30143,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "toughness-combat-assignment"
+      ]
     },
     {
       "card_name": "Targ Nar, Demon-Fang Gnoll",
@@ -30830,8 +31046,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "compound-characteristic-transitions"
+      ]
     },
     {
       "card_name": "The Kingpin of Crime",
@@ -30840,8 +31059,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "toughness-combat-assignment"
+      ]
     },
     {
       "card_name": "The Last Ride",
@@ -31361,8 +31582,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "compound-characteristic-transitions"
+      ]
     },
     {
       "card_name": "Thick-Skinned Goblin",
@@ -32560,8 +32784,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "named-source-counter-removal"
+      ]
     },
     {
       "card_name": "Uldaros Theorix",
@@ -32834,8 +33060,10 @@
       ],
       "baseline_category": "semantic_output_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "timed-draw-replacement-programs"
+      ]
     },
     {
       "card_name": "Urborg Justice",
@@ -33910,8 +34138,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "toughness-combat-assignment"
+      ]
     },
     {
       "card_name": "Walking Sponge",
@@ -35171,8 +35401,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "timed-draw-replacement-programs"
+      ]
     },
     {
       "card_name": "Words of Waste",
@@ -35181,8 +35413,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "timed-draw-replacement-programs"
+      ]
     },
     {
       "card_name": "Words of Wilding",
@@ -35191,8 +35425,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "timed-draw-replacement-programs"
+      ]
     },
     {
       "card_name": "Words of Wind",
@@ -35201,8 +35437,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "timed-draw-replacement-programs"
+      ]
     },
     {
       "card_name": "Words of Worship",
@@ -35211,8 +35449,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "timed-draw-replacement-programs"
+      ]
     },
     {
       "card_name": "World at War",
@@ -35724,8 +35964,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "completed-control-transition-events"
+      ]
     },
     {
       "card_name": "Zimone and Dina",
@@ -36010,6 +36252,17 @@
       "discovered_stage": 43,
       "source_review_commit": "909991200635453c82f34a3b26f066fd3491d9aa",
       "source_proposal_promotion_stage": 43
+    },
+    {
+      "id": "runtime-restriction-checkpoint-recovery",
+      "status": "source_reviewed_remediation_integrated_validation_deferred",
+      "affected_card_names": [
+        "Display of Dominance"
+      ],
+      "scope": "Known example only, not exhaustive.",
+      "source_review_commit": "e226c7e9",
+      "behavior": "Retained runtime restrictions reject incomplete wire export; explicit empty carrier required before import. Exact native analysis branches and authenticated full-genesis replay retain actual rules.",
+      "completion_gate": "Deferred native/peer/runtime regression validation."
     }
   ]
 }

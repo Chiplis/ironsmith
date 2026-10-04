@@ -346,6 +346,7 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
     // Check for "gets +X/+Y and gains/has/loses ..." patterns - if there's a pump
     // modifier before the ability verb, extract it as a separate Pump/PumpAll effect.
     let before_gain = &word_list[subject_start_word_idx..gain_idx];
+    let get_idx = gain_shapes::find_get_verb(before_gain);
     let leading_become_subject_end_word_idx = gain_shapes::find_become_verb(before_gain)
         .map(|become_idx| subject_start_word_idx + become_idx);
     let leading_become_effect = if let Some(become_word_idx) = leading_become_subject_end_word_idx {
@@ -354,8 +355,15 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
             return Ok(None);
         };
         let become_subject_tokens = trim_commas(&tokens[subject_start_token_idx..become_token_idx]);
+        // A shared-subject type/color change ends before the sibling pump:
+        // "becomes a Dragon, gets +5/+3, and gains flying". Each complete
+        // child remains in the same duration/program, with one target owner.
+        let become_end = get_idx
+            .filter(|index| subject_start_word_idx + *index > become_word_idx)
+            .and_then(|index| word_view.map_word_or_end_to_token_boundary(subject_start_word_idx + index))
+            .unwrap_or(gain_token_idx);
         let mut become_tail_tokens =
-            trim_commas(&tokens[become_token_idx + 1..gain_token_idx]).to_vec();
+            trim_commas(&tokens[become_token_idx + 1..become_end]).to_vec();
         while become_tail_tokens.last().is_some_and(|token| {
             token
                 .as_word()
@@ -377,7 +385,6 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
     } else {
         None
     };
-    let get_idx = gain_shapes::find_get_verb(before_gain);
     // Run even when `losing`: cards like Will Kenrith say "...have base power and
     // toughness 0/3 and lose all abilities", where the base P/T precedes the lose
     // clause. The parser returns None when there is no leading base-P/T clause, so
@@ -457,6 +464,9 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
     } else {
         None
     };
+    if leading_become_effect.is_some() && get_idx.is_some() && pump_effect.is_none() {
+        return Err(CardTextError::ParseError("unsupported complete pump between transformation and grant".into()));
+    }
     if !losing
         && let Some((power, toughness, _gi, pump_duration, condition, for_each)) = &pump_effect
         && let Some(local_get_idx) = get_idx
@@ -518,15 +528,15 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
     }
 
     // Determine the real subject (before "get"/"gets" if pump is present)
-    let real_subject_end_word_idx = pump_effect
+    let real_subject_end_word_idx = leading_become_subject_end_word_idx.or(pump_effect
         .as_ref()
         .map(|(_, _, gi, _, _, _)| *gi)
         .or(leading_base_pt_effect
             .as_ref()
             .map(|(_, _, has_idx, _)| *has_idx))
-        .or(leading_become_subject_end_word_idx)
+        )
         .unwrap_or(gain_idx);
-    let real_subject_start_word_idx = if target_word_only_qualifies_a_controller(before_gain) {
+    let real_subject_start_word_idx = if leading_become_subject_end_word_idx.is_some() || target_word_only_qualifies_a_controller(before_gain) {
         subject_start_word_idx
     } else if let Some(gi) = get_idx {
         subject_start_word_idx + gain_shapes::find_gain_real_subject_start(before_gain, gi)
@@ -594,8 +604,11 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
         if let Some(become_effect) = &leading_become_effect {
             effects.push(become_effect.clone());
         }
-        append_shared_subject_base_pt_to_target(&mut effects, &target, &leading_base_pt_effect);
-        append_shared_subject_pump_to_target(&mut effects, &target, &pump_effect);
+        let modifier_target = if leading_become_effect.is_some() {
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span_from_tokens(real_subject_tokens))
+        } else { target.clone() };
+        append_shared_subject_base_pt_to_target(&mut effects, &modifier_target, &leading_base_pt_effect);
+        append_shared_subject_pump_to_target(&mut effects, &modifier_target, &pump_effect);
         let grant_target = if has_preceding_target_effect || declares_shared_target {
             TargetAst::Tagged(
                 crate::tag::CompilerReferenceTag::It.bind(),

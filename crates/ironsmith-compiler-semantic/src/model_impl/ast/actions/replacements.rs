@@ -32,6 +32,8 @@ pub enum ReplacementActionAst {
         player: PlayerFilter,
         replacement_effects: Vec<EffectAst>,
         duration: ZoneReplacementDurationAst,
+        player_target: Option<TargetAst>,
+        display: Option<String>,
     },
     RegisterManaReplacement {
         source_filter: ObjectFilter,

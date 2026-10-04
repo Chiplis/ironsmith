@@ -105,21 +105,29 @@ impl SourceControllerLosesControlTrigger {
 
 impl TriggerMatcher for SourceControllerLosesControlTrigger {
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
-        event
-            .downcast::<ControlChangedEvent>()
-            .is_some_and(|event| {
-                event.permanent == ctx.source_id
-                    && event.previous_controller == ctx.controller
-                    && event.new_controller != ctx.controller
-            })
+        if let Some(event) = event.downcast::<ControlChangedEvent>() {
+            return event.permanent == ctx.source_id
+                && event.previous_controller == ctx.controller
+                && event.new_controller != ctx.controller;
+        }
+        crate::triggers::ControlChangedTrigger {
+            filter: crate::target::ObjectFilter::source(),
+            change: ironsmith_core::trigger_model::ControlChangeDirection::Lost {
+                player: crate::target::PlayerFilter::You,
+            },
+        }.matches(event, ctx)
     }
 
     fn display(&self) -> String {
         format!("When you lose control of {}", self.source_description)
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::ControlChanged, EventKind::ZoneChange, EventKind::ObjectLeavesGame])
+    }
+
     fn looks_back_for_source(&self, event: &TriggerEvent) -> bool {
-        event.kind() == EventKind::ControlChanged
+        matches!(event.kind(), EventKind::ControlChanged | EventKind::ZoneChange | EventKind::ObjectLeavesGame)
     }
 }
 

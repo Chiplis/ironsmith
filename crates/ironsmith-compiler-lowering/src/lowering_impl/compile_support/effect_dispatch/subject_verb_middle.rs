@@ -918,9 +918,10 @@ pub(super) fn compile_become_base_pt_creature_action(
             card_types.contains(&CardType::Artifact) && card_types.contains(&CardType::Creature) && !remove_other_abilities;
         // No authored card type ("becomes a green Wurm with base power and
         // toughness 6/4", Scale Up): only the creature subtype is set, so the
-        // object keeps its card types and is at least a creature.
+        // object keeps its card types. Color/supertype/size-only templates
+        // likewise must not invent Creature on an existing noncreature.
         let type_modification = if card_types.is_empty() {
-            crate::continuous::Modification::AddCardTypes(vec![CardType::Creature])
+            crate::continuous::Modification::AddCardTypes(Vec::new())
         } else if *preserve_other_types || implicitly_preserves_card_types {
             crate::continuous::Modification::AddCardTypes(card_types.clone())
         } else {

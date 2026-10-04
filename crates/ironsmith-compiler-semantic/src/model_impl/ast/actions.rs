@@ -690,9 +690,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 player,
                 replacement_effects,
                 duration,
+                player_target,
+                display,
             }) => f
                 .debug_struct("RegisterDrawReplacement")
                 .field("player", player)
+                .field("player_target", player_target)
+                .field("display", display)
                 .field("replacement_effects", replacement_effects)
                 .field("duration", duration)
                 .finish(),

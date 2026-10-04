@@ -342,6 +342,18 @@ fn parse_once_each_turn_and_if_activation_condition(
 ) -> Option<PredicateAst> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
+    // The inverse order has the same conjunction, including a lifetime
+    // limit: "Activate only if this creature is blue and only once."
+    for (suffix, limit) in [
+        (&["and", "only", "once"][..], PredicateAst::MaxActivationsPerObject(1)),
+        (&["and", "only", "once", "each", "turn"][..], PredicateAst::MaxActivationsPerTurn(1)),
+    ] {
+        if words.ends_with(suffix) && words.starts_with(&["activate", "only", "if"]) {
+            let left = token_slice_for_words(tokens, &view, 0, words.len() - suffix.len())?;
+            let condition = parse_activation_condition_lexed(left)?;
+            return Some(PredicateAst::And(Box::new(condition), Box::new(limit)));
+        }
+    }
     let split = phrase_offset_words(&words, &["and", "only", "if"])?;
     if split == 0 || split + 3 >= words.len() {
         return None;

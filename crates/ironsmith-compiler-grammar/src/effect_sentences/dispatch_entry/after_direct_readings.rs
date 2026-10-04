@@ -67,6 +67,12 @@ pub(super) const REGISTRY: RuleId = RuleId::new("after-direct-registry");
 /// The readings, in the order they were ranked.
 const READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("coordinated-object-and-player-choice"),
+        head: HeadDiscriminator::Any,
+        admits: |input| input.sentences.len() == 1,
+        read: |input| input.outcome(crate::activation_and_restrictions::choice_object_clauses::parse_coordinated_object_and_player_choice(input.tokens)),
+    },
+    Reading {
         id: RuleId::new("otherwise-face-down-exile-top"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -93,7 +99,7 @@ const READINGS: &[Reading] = &[
     Reading {
         id: RuleId::new("complete-simple-controlled-object-choice"),
         head: HeadDiscriminator::Any,
-        admits: |_| true,
+        admits: |input| !input.read_by("coordinated-object-and-player-choice"),
         read: |input| input.outcome(read_complete_simple_controlled_object_choice(input)),
     },
     Reading {
@@ -117,7 +123,7 @@ const READINGS: &[Reading] = &[
     Reading {
         id: RuleId::new("direct-typed-coordination"),
         head: HeadDiscriminator::Any,
-        admits: |_| true,
+        admits: |input| !input.read_by("coordinated-object-and-player-choice"),
         read: |input| input.outcome(read_direct_typed_coordination(input)),
     },
     Reading {
@@ -131,7 +137,7 @@ const READINGS: &[Reading] = &[
         head: HeadDiscriminator::Any,
         admits: |input| {
             // Readings ranked above this one that read the input read it.
-            !input.read_by("simple-face-down-exile-top")
+            !input.read_by("simple-face-down-exile-top") && !input.read_by("coordinated-object-and-player-choice")
         },
         read: |input| input.outcome(read_composable_typed_statements(input)),
     },

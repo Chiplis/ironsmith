@@ -1,3 +1,4 @@
+mod timed_draw_replacement;
 pub(crate) mod life_unit_programs;
 use self::sentence_helpers::*;
 use super::object_filters::parse_object_filter;
@@ -86,6 +87,7 @@ mod exiled_top_procedure;
 mod fanout_family;
 mod for_each_helpers;
 mod gain_ability;
+mod toughness_assignment;
 mod graveyard_cast_procedure;
 mod hand_procedure;
 mod lex_chain_helpers;

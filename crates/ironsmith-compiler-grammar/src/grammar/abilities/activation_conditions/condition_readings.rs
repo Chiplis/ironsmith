@@ -143,7 +143,8 @@ const READINGS: &[Reading] = &[
         // The dedicated graveyard-threshold reading owns "there are N or more
         // ... cards in your graveyard"; the generic predicate reading of the
         // same words would only make the registry ambiguous (and drop it).
-        admits: |input| !input.read_by("graveyard-condition"),
+        admits: |input| !input.read_by("graveyard-condition")
+            && !input.read_by("once-each-turn-and-if-activation-condition"),
         read: |input| input.outcome(read_activate_only_if_predicate(input)),
     },
 ];

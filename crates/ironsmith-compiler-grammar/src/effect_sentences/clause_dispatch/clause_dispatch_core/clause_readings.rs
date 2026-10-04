@@ -552,6 +552,12 @@ const CLAUSE_READINGS: &[Reading] = &[
         read: |input| input.outcome(part_3::read_you_choose_objects_with_count(input)),
     },
     Reading {
+        id: RuleId::new("assigns-combat-damage-using-toughness"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(crate::effect_sentences::toughness_assignment::parse(input.tokens)),
+    },
+    Reading {
         id: RuleId::new("assigns-no-combat-damage"),
         head: HeadDiscriminator::Any,
         admits: |input| {

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "repository": "Chiplis/ironsmith",
   "frozen_baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "published_through_stage": 42,
+  "published_through_stage": 43,
   "purpose": "Verified published tree/ref/parent and draft-PR lookup for the source-coverage stage IDs. Only historical compile/runtime evidence is verification; stages08+ remain UNVALIDATED. The current stage appears in the next cumulative source update to avoid a self-referential commit.",
   "entries": [
     {
@@ -622,6 +622,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_source_proposal_all_execution_deferred",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/808"
+    },
+    {
+      "stage": 43,
+      "branch": "fix/card-failures-43-runtime-resource-and-redirection-roots",
+      "base": "fix/card-failures-42-resource-and-reference-boundaries",
+      "source_integration_commit": "0e88e2c5306c329a02d672ef4b83223b42dac082",
+      "remote_commit": "6c5abe9cc32f0f6662937ac5c0461c5465d2a34c",
+      "tree": "58541a521de755dcfdd39920168416970de401e2",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 809,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/809"
     }
   ]
 }
