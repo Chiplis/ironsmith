@@ -6673,7 +6673,8 @@ html[data-hand-pointer-suspended="true"] * {
 
 /* Multi-select decisions in the battlefield popup are a compact vertical list. */
 .battlefield-human-decision-panel .decision-strip-scroll--vertical-options,
-.battlefield-human-decision-panel .decision-strip-scroll--vertical-object-options {
+.battlefield-human-decision-panel .decision-strip-scroll--vertical-object-options,
+.battlefield-human-decision-panel .decision-strip-scroll--vertical-target-options {
   max-height: min(200px, max(56px, calc(46vh - 152px))) !important;
   overflow-x: hidden !important;
   overflow-y: auto !important;
@@ -6683,7 +6684,8 @@ html[data-hand-pointer-suspended="true"] * {
 }
 
 .battlefield-human-decision-panel .decision-strip-options-row--vertical,
-.battlefield-human-decision-panel .decision-strip-options-row--vertical-objects {
+.battlefield-human-decision-panel .decision-strip-options-row--vertical-objects,
+.battlefield-human-decision-panel .decision-strip-options-row--vertical-targets {
   display: flex !important;
   width: 100% !important;
   min-width: 100% !important;
@@ -6695,7 +6697,8 @@ html[data-hand-pointer-suspended="true"] * {
 }
 
 .battlefield-human-decision-panel .decision-option-row--vertical-select,
-.battlefield-human-decision-panel .decision-option-row--vertical-object-select {
+.battlefield-human-decision-panel .decision-option-row--vertical-object-select,
+.battlefield-human-decision-panel .decision-option-row--vertical-target-select {
   width: 100% !important;
   min-width: 0 !important;
   max-width: none !important;
@@ -7402,26 +7405,36 @@ html[data-hand-pointer-suspended="true"] * {
   }
 }
 
-/* Desktop hand past the packed card limit: scroll horizontally. A scroller
-   clips on both axes, so it reserves transparent headroom (padding pulled
-   back with a negative margin) for the enlarged hover card, and lets clicks
-   through everywhere except the cards themselves. */
+/* Overflow hands scroll only their resting cards; enlarged cards use a portal. */
 .hand-reveal-shell .hand-zone-scroll-mobile-fan[data-hand-overflow="true"] {
-  --hand-hover-headroom: 640px;
   overflow-x: auto;
   overflow-y: hidden;
-  height: calc(100% + var(--hand-hover-headroom)) !important;
-  margin-top: calc(var(--hand-hover-headroom) * -1);
-  padding-top: var(--hand-hover-headroom);
-  pointer-events: none;
   overscroll-behavior-x: contain;
   scrollbar-width: thin;
   scrollbar-color: rgba(190, 164, 226, 0.55) transparent;
 }
 
-.hand-reveal-shell .hand-zone-scroll-mobile-fan[data-hand-overflow="true"] > .hand-zone-row {
-  justify-content: flex-start;
+.hand-hover-portal {
+  position: fixed;
+  z-index: 30010;
   pointer-events: auto;
+}
+
+.hand-hover-portal .game-card.hand-card {
+  transform: none !important;
+  transition: none !important;
+  margin: 0 !important;
+}
+
+.hand-hover-portal .game-card-surface,
+.hand-hover-portal .game-card-surface > img {
+  opacity: 1 !important;
+  filter: none !important;
+  clip-path: none !important;
+}
+
+.hand-layout-item.hand-layout-item--drag-source {
+  z-index: 1 !important;
 }
 
 /* Dock header: a chevron in the top-right corner folds the options; Submit
@@ -7484,7 +7497,7 @@ html[data-hand-pointer-suspended="true"] * {
 
   /* Decision header uses the full width:
        [stage chip] [title ...........] [⌄]
-       [description, up to three lines, then scrolls]
+       [full-width description, wraps then scrolls]
      The nested wrappers become transparent so their children join one grid. */
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
     .action-strip-decision-stack .action-strip-decision-toolbar {
@@ -7492,7 +7505,7 @@ html[data-hand-pointer-suspended="true"] * {
     grid-template-columns: auto auto minmax(0, 1fr) auto;
     grid-template-areas:
       "prim chip title side"
-      "prim desc desc side"
+      "desc desc desc desc"
       "search search search search";
     align-items: center;
     column-gap: 8px;
@@ -7533,7 +7546,8 @@ html[data-hand-pointer-suspended="true"] * {
     grid-area: desc;
     min-width: 0;
     max-width: none !important;
-    max-height: 4.05em;
+    max-height: 5.4em;
+    padding-top: 4px;
     overflow-x: hidden !important;
     overflow-y: auto !important;
     overscroll-behavior: contain;
@@ -7621,7 +7635,7 @@ html[data-hand-pointer-suspended="true"] * {
    one vertical, full-width list in the desktop dock, scrolling as needed. */
 @media (min-width: 1024px) {
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
-    .action-strip-decision-content div:has(.decision-strip-options-row) {
+    .action-strip-decision-content div:has(.decision-strip-options-row):not(.decision-strip-scroll--vertical-target-options) {
     display: flex !important;
     min-height: 0 !important;
     max-height: none !important;
@@ -7630,7 +7644,7 @@ html[data-hand-pointer-suspended="true"] * {
   }
 
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
-    .action-strip-decision-content div:has(> .decision-strip-options-row) {
+    .action-strip-decision-content div:has(> .decision-strip-options-row):not(.decision-strip-scroll--vertical-target-options) {
     min-height: 40px !important;
     overflow-x: hidden !important;
     overflow-y: auto !important;
@@ -7775,4 +7789,43 @@ html[data-hand-pointer-suspended="true"] * {
   .table-shell[data-focused-hud="true"] > .table-shared-control-band:has(.player-header-perspective[data-open="true"]) {
     z-index: 200 !important;
   }
+}
+
+/* Target requirements are text blocks rather than fixed-height strip badges. */
+.decision-target-heading-shell {
+  height: auto !important;
+  min-height: 0 !important;
+  max-width: 100% !important;
+  padding: 8px 10px !important;
+  clip-path: none !important;
+  border-radius: 6px !important;
+  background: rgba(190, 164, 226, 0.07) !important;
+}
+
+.decision-target-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  min-width: 0;
+  width: 100%;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+
+.decision-target-heading-label {
+  flex: 1 1 180px;
+  min-width: 0;
+  color: var(--ui-text-primary);
+}
+
+.decision-target-heading-index {
+  font-weight: 600;
+}
+
+.decision-target-heading-limit {
+  flex: 0 1 auto;
+  color: var(--ui-text-secondary);
+  font-size: 11px;
 }

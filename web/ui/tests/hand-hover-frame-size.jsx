@@ -1,17 +1,20 @@
+/* eslint-disable react-refresh/only-export-components */
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { GameContext } from "../src/context/GameContext.shared";
-import { HoverProvider } from "../src/context/HoverContext";
-import { DragProvider } from "../src/context/DragContext";
+import { HoverProvider, useHoverActions } from "../src/context/HoverContext";
+import { DragProvider, useDragState } from "../src/context/DragContext";
 import { CombatArrowProvider } from "../src/context/CombatArrowContext";
 import { I18nProvider } from "../src/i18n/I18nContext";
 import { TooltipProvider } from "../src/components/ui/tooltip";
+import GameCard from "../src/components/cards/GameCard";
+import FloatingCardPreview from "../src/components/right-rail/FloatingCardPreview";
 import HandZone from "../src/components/board/HandZone";
 import "../src/index.css";
 
 // The app docks the hand at the bottom of the window inside .hand-reveal-shell,
-// where the fan's scroller is overflow:visible. A hovered card has to grow to
-// the frame renderer's size without leaving the window, so the fixture has to
+// where a hovered card must match the local battlefield preview. The fixture
+// has to
 // reproduce that geometry rather than float the hand in the middle of a page.
 const card = {
   name: "Myr Moonvessel", controller: 0, owner: 0,
@@ -25,13 +28,30 @@ const context = {
   dispatch: async () => {}, dispatchInBackground: async () => {},
 };
 
+function FieldCard({ card }) {
+  const { hoverCard, clearHover } = useHoverActions();
+  return <GameCard card={card} variant="battlefield" onMouseEnter={() => hoverCard(card.id)} onMouseLeave={clearHover} />;
+}
+
+function DragProbe() {
+  const dragState = useDragState();
+  React.useEffect(() => { window.__handDrag = dragState; }, [dragState]);
+  return null;
+}
+
 function Fixture() {
-  const hand = Array.from({ length: 7 }, (_, i) => ({ ...card, id: i + 1, stable_id: i + 1 }));
-  const player = { id: 0, can_view_hand: true, hand_cards: hand };
+  const hand = Array.from({ length: Number(new URLSearchParams(location.search).get('count')) || 7 }, (_, i) => ({ ...card, id: i + 1, stable_id: i + 1 }));
+  const player = { id: 0, can_view_hand: true, hand_cards: hand, battlefield: [{ ...card, id: 100, stable_id: 100 }] };
   const state = { ...context.state, players: [player], snapshot_id: 1, zone_transitions: [] };
   return <I18nProvider><GameContext.Provider value={{ ...context, state }}><HoverProvider><DragProvider><CombatArrowProvider><TooltipProvider>
     <main style={{ position: "fixed", inset: 0, overflow: "hidden" }}>
-      <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 220 }} data-bottom-dock>
+      <DragProbe />
+      <div className="topbar-shell" style={{ position: "absolute", top: '45%', height: 40, width: '100%', zIndex: 180, background: '#493464' }} />
+      <div data-my-zone><div className="my-zone-board-shell" style={{ position: "absolute", top: '45%', height: 160, width: '100%' }}>
+        <div className="battlefield-row" data-bf-side="bottom"><FieldCard card={player.battlefield[0]} /></div>
+      </div></div>
+      <FloatingCardPreview />
+      <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 220, zIndex: 30 }} data-bottom-dock>
         <div className="hand-reveal-shell absolute left-1/2 bottom-0" data-open="true" style={{ height: 220 }}>
           <div className="hand-reveal-body" style={{ height: "100%" }}>
             <HandZone player={player} onInspect={() => {}} isExpanded layout="mobile-fan" />

@@ -253,13 +253,15 @@ export default function TableCore({
       observe(table);
       const protectedZones = zoneElements.map(visibleRect).filter(Boolean);
       // Bottom-right corner, beside the hand: the hand keeps a reserve on
-      // its right (see handSideReserve) that bounds the dock's width, and the
-      // dock may only grow up to just below Graveyard/Exile; taller content
-      // scrolls inside it.
+      // its right (see handSideReserve) that bounds the dock's width.
+      // Keep enough room for the decision header, a useful portion of the
+      // choices, and Submit. When the pile column leaves less room than that,
+      // anchorFloatingDock slides the dock beside it; longer lists scroll.
       const bottomLimit = window.innerHeight - 16;
       const pilesBottom = protectedZones.reduce((bottom, rect) => Math.max(bottom, rect.bottom), -Infinity);
+      const minimumDecisionRoom = Math.min(280, Math.round(window.innerHeight * 0.6));
       const maxHeight = Number.isFinite(pilesBottom)
-        ? Math.max(150, Math.floor(bottomLimit - pilesBottom - 14))
+        ? Math.max(minimumDecisionRoom, Math.floor(bottomLimit - pilesBottom - 14))
         : Math.round(window.innerHeight * 0.6);
       const maxWidth = Math.round(dockMaxWidth(window.innerWidth));
       const position = anchorFloatingDock({

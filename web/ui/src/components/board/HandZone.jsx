@@ -16,6 +16,7 @@ import {
   CARD_FRAME_RENDER_HEIGHT,
   CARD_FRAME_RENDER_WIDTH,
 } from "@/components/cards/MiniatureCardFrame";
+import HandHoverPortal from "./HandHoverPortal";
 import GameCard from "@/components/cards/GameCard";
 import useHandReflow from "@/hooks/useHandReflow";
 import { samePlayerId } from "@/lib/player-display";
@@ -946,7 +947,7 @@ export default function HandZone({
       if (isMobileFan) {
         const surface = handListRef.current?.closest(".mobile-mtga-hand-fan")
           || handListRef.current?.closest(".hand-zone-surface");
-        if (surface?.contains(target)) {
+        if (surface?.contains(target) || (target instanceof Element && target.closest(".hand-hover-portal .hand-card"))) {
           setMobileHandDismissed(false);
           return;
         }
@@ -983,7 +984,8 @@ export default function HandZone({
       // the slot itself, which the selection lift never moves — anchors the
       // arrow where the card actually is.
       const element = (
-        event.currentTarget?.closest?.(".hand-layout-item")
+        handListRef.current?.querySelector(`.hand-layout-item[data-hand-object-id="${card.id}"]`)
+        || event.currentTarget?.closest?.(".hand-layout-item")
         || event.currentTarget?.closest?.(".game-card")
         || event.currentTarget
       );
@@ -1296,6 +1298,7 @@ export default function HandZone({
   }, [hoverableHandObjectIds, isMobileFan, selectedObjectIdKey]);
 
   const handleHandPointerMove = useCallback((event) => {
+    if (event.target instanceof Element && event.target.closest('.hand-hover-portal')) return;
     if (performance.now() < hoverSuppressedUntilRef.current) return;
     if (event.pointerType === "touch" || activePointerIdRef.current != null) return;
     if (keyboardNavigationRef.current) {
@@ -1781,7 +1784,7 @@ export default function HandZone({
         const { wrapperStyle: baseWrapperStyle, cardStyle } = splitHandCardRowStyle(
           buildHandCardRowStyle(visualIndex, renderedHandCardCount, {
             dims: handDimensions,
-            activeIndex: isPrimaryCycle ? activeFanIndex : null,
+            activeIndex: isPrimaryCycle && !handDimensions.packWidth ? activeFanIndex : null,
             activeIsPlayable: isPrimaryCycle ? activeFanIsPlayable : false,
             centerActive: isPrimaryCycle ? activeFanShouldCenter : false,
             spreadAroundActive: isPrimaryCycle ? activeFanShouldSpread : false,
@@ -1799,6 +1802,7 @@ export default function HandZone({
             inert={isDrawInFlight ? true : undefined}
             style={isDrawInFlight ? { ...wrapperStyle, visibility: "hidden", pointerEvents: "none" } : wrapperStyle}
           >
+            <HandHoverPortal enabled={Boolean(handDimensions.packWidth)} active={Boolean(handDimensions.packWidth) && !isDragSource && (isHovered || isInspected || isKeyboardSelected)} objectId={cardObjectId}>
             <GameCard
               card={card}
               variant="hand"
@@ -1823,6 +1827,7 @@ export default function HandZone({
               ].filter(Boolean).join(" ") || undefined}
               style={cardStyle}
             />
+            </HandHoverPortal>
           </div>
         );
       }
@@ -1857,7 +1862,7 @@ export default function HandZone({
       const { wrapperStyle: baseWrapperStyle, cardStyle } = splitHandCardRowStyle(
         buildHandCardRowStyle(visualIndex, renderedHandCardCount, {
             dims: handDimensions,
-            activeIndex: isPrimaryCycle ? activeFanIndex : null,
+          activeIndex: isPrimaryCycle && !handDimensions.packWidth ? activeFanIndex : null,
             activeIsPlayable: isPrimaryCycle ? activeFanIsPlayable : false,
             centerActive: isPrimaryCycle ? activeFanShouldCenter : false,
             spreadAroundActive: isPrimaryCycle ? activeFanShouldSpread : false,
@@ -1872,6 +1877,7 @@ export default function HandZone({
           data-hand-object-id={extraObjectId}
           style={wrapperStyle}
         >
+          <HandHoverPortal enabled={Boolean(handDimensions.packWidth)} active={Boolean(handDimensions.packWidth) && !isDragSource && (isHovered || isInspected || isKeyboardSelected)} objectId={extraObjectId}>
           <GameCard
             card={card}
             variant="hand"
@@ -1896,6 +1902,7 @@ export default function HandZone({
             ].filter(Boolean).join(" ") || undefined}
             style={cardStyle}
           />
+          </HandHoverPortal>
         </div>
       );
     };

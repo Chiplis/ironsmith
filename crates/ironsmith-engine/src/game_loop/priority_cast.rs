@@ -6787,10 +6787,20 @@ pub(super) fn continue_activation(
                     pending.stage = ActivationStage::ChoosingTargets;
                     pending.active_target_requirement_count = requirements.len();
 
+                    // The source can have several activated abilities. Keep the
+                    // context tied to this announcement instead of letting UI
+                    // enrichment quote the source's entire card text.
+                    let ability_text = crate::runtime_display::effect_sentences::effect_summary_text(
+                        game,
+                        source,
+                        Some(&pending.source_snapshot),
+                        Some(pending.ability_index),
+                        pending.effects.flattened_default_effects(),
+                    );
                     state.pending_activation = Some(pending);
 
                     // Convert to TargetsContext
-                    let ctx = crate::decisions::context::TargetsContext::new(
+                    let mut ctx = crate::decisions::context::TargetsContext::new(
                         chooser,
                         source,
                         context,
@@ -6808,6 +6818,9 @@ pub(super) fn continue_activation(
                             })
                             .collect(),
                     );
+                    if let Some(text) = ability_text {
+                        ctx = ctx.with_context_text(text);
+                    }
                     return Ok(GameProgress::NeedsDecisionCtx(
                         crate::decisions::context::DecisionContext::Targets(ctx),
                     ));
@@ -7002,3 +7015,7 @@ fn auto_pay_activation_tap_cost_steps_inner(
 #[cfg(test)]
 #[path = "cost_resource_tests.rs"]
 mod cost_resource_tests;
+
+#[cfg(test)]
+#[path = "activation_display_tests.rs"]
+mod activation_display_tests;
