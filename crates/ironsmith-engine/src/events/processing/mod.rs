@@ -10236,10 +10236,10 @@ mod replacement_additional_choice_label_contract_tests {
 }
 
 #[cfg(test)]
-mod retained_prevention_owner_tests {
+mod native_prevention_savepoint_tests {
     use super::*;
     #[test]
-    fn restored_prevention_follow_up_executes_saved_event_source_targets_and_scope_once() {
+    fn cloned_prevention_follow_up_executes_saved_event_source_targets_and_scope_once() {
         use crate::effect::{Effect, EventValueSpec, Value};
         use crate::prevention::{PreventionEffectManager, PreventionShield, PreventionTarget};
         use crate::replacement::{ReplacementAction, ReplacementEffect};
@@ -10273,16 +10273,6 @@ mod retained_prevention_owner_tests {
             .with_follow_up_target_assignments(vec![crate::game_state::TargetAssignment {
                 spec: crate::target::ChooseSpec::target_player(), range: 0..1,
             }]));
-        // Carry the actual native descriptor/action and suppression history
-        // through the complete scope converter before the owning queued restore.
-        let scope = scope.try_map_payloads(
-            Ok::<_, String>,
-            |descriptor| descriptor.try_map_payloads(
-                |action| action.try_map_payloads(Ok::<_, String>, Ok, Ok, Ok),
-                Ok, Ok, Ok,
-            ),
-            Ok,
-        ).expect("complete native replacement scope conversion");
         manager.begin_follow_up_replacement_scope(&scope);
         let follow_up = manager.apply_chosen_shield(shield, 2, true, None).follow_ups.remove(0);
         manager.queue_follow_up_with_source_snapshot(follow_up, crate::events::DamageEvent::with_cause(
@@ -10291,8 +10281,8 @@ mod retained_prevention_owner_tests {
         ), crate::provenance::ProvNodeId::default(), Some(source_snapshot));
         manager.end_follow_up_replacement_scope();
         let mut guest = crate::tests::test_helpers::setup_two_player_game(); guest.turn.turn_number = 4;
-        guest.effect_store.replacement_effects.restore_registered_state(original.effect_store.replacement_effects.registered_state().unwrap()).unwrap();
-        guest.effect_store.prevention_effects.restore_retained_state(manager.retained_state().unwrap()).unwrap();
+        guest.effect_store.replacement_effects = original.effect_store.replacement_effects.clone();
+        guest.effect_store.prevention_effects = manager.clone();
         assert!(guest.object(source).is_none(), "saved source snapshot must supply departed source characteristics");
         let mut dm = crate::decision::SelectFirstDecisionMaker;
         execute_pending_prevention_follow_ups(&mut guest, &mut dm).unwrap();

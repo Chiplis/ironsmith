@@ -9,36 +9,22 @@ use std::sync::Arc;
 
 /// Stable occurrence of the ability generating one branch of a static effect.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(
-    feature = "serialization",
-    derive(serde::Serialize, serde::Deserialize)
-)]
-#[cfg_attr(feature = "serialization", serde(bound(deserialize = "I: serde::Deserialize<'de>, C: serde::Deserialize<'de>")))]
-pub struct ContinuousAbilityOrigin<I = StaticAbilityInstanceId, C = CardId> {
+pub struct ContinuousAbilityOrigin {
     pub host: ObjectId,
-    pub ability: AbilityOrigin<I, C>,
-    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_origin_reference"))]
-    pub printed_face: Option<C>,
+    pub ability: AbilityOrigin,
+    pub printed_face: Option<CardId>,
     pub branch: usize,
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(
-    feature = "serialization",
-    derive(serde::Serialize, serde::Deserialize)
-)]
-#[cfg_attr(feature = "serialization", serde(bound(deserialize = "I: serde::Deserialize<'de>, C: serde::Deserialize<'de>")))]
-pub struct AbilityEffectOrigin<I = StaticAbilityInstanceId, C = CardId> {
+pub struct AbilityEffectOrigin {
     source: ObjectId,
-    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_origin_reference"))]
     registration_id: Option<super::ContinuousEffectId>,
     timestamp: u64,
-    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_origin_reference"))]
-    static_ability: Option<I>,
-    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_origin_reference"))]
-    generated_by: Option<Box<ContinuousAbilityOrigin<I, C>>>,
+    static_ability: Option<StaticAbilityInstanceId>,
+    generated_by: Option<Box<ContinuousAbilityOrigin>>,
 }
-impl<I: PartialEq, C: PartialEq> PartialEq for AbilityEffectOrigin<I, C> {
+impl PartialEq for AbilityEffectOrigin {
     fn eq(&self, other: &Self) -> bool {
         match (self.registration_id, other.registration_id) {
             (Some(a), Some(b)) => a == b,
@@ -55,8 +41,8 @@ impl<I: PartialEq, C: PartialEq> PartialEq for AbilityEffectOrigin<I, C> {
         }
     }
 }
-impl<I: Eq, C: Eq> Eq for AbilityEffectOrigin<I, C> {}
-impl<I: Hash, C: Hash> Hash for AbilityEffectOrigin<I, C> {
+impl Eq for AbilityEffectOrigin {}
+impl Hash for AbilityEffectOrigin {
     fn hash<H: Hasher>(&self, state: &mut H) {
         if let Some(id) = self.registration_id {
             0_u8.hash(state);
@@ -72,16 +58,14 @@ impl<I: Hash, C: Hash> Hash for AbilityEffectOrigin<I, C> {
         }
     }
 }
-impl<I, C> AbilityEffectOrigin<I, C> {
+impl AbilityEffectOrigin {
     /// The object whose effect granted the ability.
     pub fn source(&self) -> ObjectId {
         self.source
     }
     /// The static ability of `source` that generated the effect, when a static
     /// ability (rather than a resolving spell or ability) generated it.
-    pub fn static_ability(&self) -> Option<I>
-    where
-        I: Copy,
+    pub fn static_ability(&self) -> Option<StaticAbilityInstanceId>
     {
         self.static_ability
     }
@@ -102,12 +86,7 @@ impl From<&ContinuousEffect> for AbilityEffectOrigin {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(
-    feature = "serialization",
-    derive(serde::Serialize, serde::Deserialize)
-)]
-#[cfg_attr(feature = "serialization", serde(bound(deserialize = "I: serde::Deserialize<'de>, C: serde::Deserialize<'de>")))]
-pub enum AbilityOrigin<I = StaticAbilityInstanceId, C = CardId> {
+pub enum AbilityOrigin {
     Printed(usize),
     /// Mana supplied intrinsically by the object's current basic land type.
     IntrinsicBasicLandMana(crate::types::Subtype),
@@ -118,20 +97,19 @@ pub enum AbilityOrigin<I = StaticAbilityInstanceId, C = CardId> {
         slot: usize,
     },
     Level {
-    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_origin_reference"))]
-        printed_face: Option<C>,
-        parent: Box<AbilityOrigin<I, C>>,
+        printed_face: Option<CardId>,
+        parent: Box<AbilityOrigin>,
         tier: usize,
         slot: usize,
     },
     Effect {
-        effect: AbilityEffectOrigin<I, C>,
+        effect: AbilityEffectOrigin,
         slot: usize,
     },
     Borrowed {
-        effect: AbilityEffectOrigin<I, C>,
+        effect: AbilityEffectOrigin,
         source: ObjectId,
-        origin: Box<AbilityOrigin<I, C>>,
+        origin: Box<AbilityOrigin>,
     },
 }
 
@@ -343,15 +321,4 @@ mod registered_origin_tests {
         assert_ne!(id, independent);
         assert_ne!(moved, AbilityEffectOrigin::from(&manager.effects()[1]));
     }
-}
-
-#[cfg(feature = "serialization")]
-fn deserialize_present_origin_reference<
-    'de,
-    T: serde::Deserialize<'de>,
-    D: serde::Deserializer<'de>,
->(
-    deserializer: D,
-) -> Result<Option<T>, D::Error> {
-    <Option<T> as serde::Deserialize<'de>>::deserialize(deserializer)
 }

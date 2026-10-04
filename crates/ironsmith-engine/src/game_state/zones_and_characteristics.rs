@@ -5888,7 +5888,7 @@ mod lingering_departure_snapshot_tests {
             assert_eq!(game.battlefield.to_vec(), vec![keep]);
             assert_eq!(game.current_power(keep).zip(game.current_toughness(keep)), Some((4, 4)),
                 "saved pre-event abilities must survive donor loss; donor_first={donor_first}");
-            assert!(game.effect_store.continuous_effects.registered_state().effects.iter()
+            assert!(game.effect_store.continuous_effects.effects().iter()
                 .any(|effect| effect.source == recipient && effect.controller == alice
                     && effect.duration == crate::effect::Until::EndOfTurn));
         }

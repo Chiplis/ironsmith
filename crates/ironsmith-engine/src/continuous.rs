@@ -219,11 +219,7 @@ pub enum EffectSourceType {
 
 /// A continuous effect that modifies game state.
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(
-    feature = "serialization",
-    derive(serde::Serialize, serde::Deserialize)
-)]
-pub struct ContinuousEffect<M = Modification, S = StaticAbility, O = ContinuousAbilityOrigin> {
+pub struct ContinuousEffect {
     /// Unique identifier for this effect
     pub id: ContinuousEffectId,
 
@@ -241,7 +237,7 @@ pub struct ContinuousEffect<M = Modification, S = StaticAbility, O = ContinuousA
     pub applies_to: EffectTarget,
 
     /// The modification this effect makes
-    pub modification: M,
+    pub modification: Modification,
 
     /// When this effect was created (for timestamp ordering)
     pub timestamp: u64,
@@ -270,45 +266,10 @@ pub struct ContinuousEffect<M = Modification, S = StaticAbility, O = ContinuousA
     ///
     /// This lets dependency resolution detect when another effect would cause
     /// the source to lose the specific static ability that created this effect.
-    pub originating_static_ability: Option<S>,
+    pub originating_static_ability: Option<StaticAbility>,
 
     /// Stable generating occurrence; distinct equal abilities are independent.
-    pub originating_ability: Option<Box<O>>,
-}
-
-impl<M, S, O> ContinuousEffect<M, S, O> {
-    /// Translate a descriptor's payloads while preserving captured event context,
-    /// chronology, registration and generating occurrence. Display projections
-    /// cannot substitute for these fields in a checkpoint.
-    pub fn try_map_payloads<M2, S2, O2, Error>(
-        self,
-        modification: impl FnOnce(M) -> Result<M2, Error>,
-        static_ability: impl FnOnce(S) -> Result<S2, Error>,
-        origin: impl FnOnce(O) -> Result<O2, Error>,
-    ) -> Result<ContinuousEffect<M2, S2, O2>, Error> {
-        Ok(ContinuousEffect {
-            id: self.id,
-            registration_id: self.registration_id,
-            source: self.source,
-            controller: self.controller,
-            applies_to: self.applies_to,
-            modification: modification(self.modification)?,
-            timestamp: self.timestamp,
-            group: self.group,
-            duration: self.duration,
-            expires_end_of_turn: self.expires_end_of_turn,
-            condition: self.condition,
-            source_type: self.source_type,
-            originating_static_ability: self
-                .originating_static_ability
-                .map(static_ability)
-                .transpose()?,
-            originating_ability: self
-                .originating_ability
-                .map(|value| origin(*value).map(Box::new))
-                .transpose()?,
-        })
-    }
+    pub originating_ability: Option<Box<ContinuousAbilityOrigin>>,
 }
 
 /// Unique identifier for a continuous effect.

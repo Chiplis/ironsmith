@@ -2167,34 +2167,6 @@ fn complete_modification_schema_propagates_nested_payload_failure() {
 }
 
 
-#[test]
-fn complete_registered_schema_propagates_generating_occurrence_failure() {
-    let effect = ContinuousEffect::<u8, u8, u8> {
-        id: ContinuousEffectId::new(5),
-        registration_id: Some(ContinuousEffectId::new(5)),
-        source: ObjectId::from_raw(99323),
-        controller: PlayerId::from_index(0),
-        applies_to: EffectTarget::Source,
-        modification: 1,
-        timestamp: 11,
-        group: None,
-        duration: Until::Forever,
-        expires_end_of_turn: 23,
-        condition: None,
-        source_type: EffectSourceType::StaticAbility,
-        originating_static_ability: Some(2),
-        originating_ability: Some(Box::new(3)),
-    };
-    let result = effect.try_map_payloads(Ok::<_, &'static str>, Ok::<_, &'static str>, |_origin| {
-        Err::<u8, _>("unsupported generating occurrence")
-    });
-    assert_eq!(
-        result,
-        Err("unsupported generating occurrence"),
-        "a descriptor cannot succeed by omitting the provenance its duration/dependency semantics require"
-    );
-}
-
 #[cfg(feature = "serialization")]
 fn retained_copy_schema_fixture() -> crate::snapshot::RetainedCopiableValues<String> {
     crate::snapshot::RetainedCopiableValues {
