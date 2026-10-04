@@ -126,6 +126,7 @@ export default function TableCore({
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const tableRef = useRef(null);
   const humanActionDockRef = useRef(null);
+  const previousHoldRuleRef = useRef("never");
   const [openDecklist, setOpenDecklist] = useState(null);
   const [humanActionDockPosition, setHumanActionDockPosition] = useState(null);
   const {
@@ -328,8 +329,8 @@ export default function TableCore({
     && typeof onChangePerspective === "function"
     && players.length > 1;
   const humanQuickControlsElement = focusedHudDesktop ? (
-    <div className="battlefield-human-quick-controls">
-      <PriorityHoldControl compact />
+    <div className="battlefield-human-quick-controls decision-quick-controls">
+      <PriorityHoldControl compact previousRuleRef={previousHoldRuleRef} />
       <button
         type="button"
         className="battlefield-auto-pass-toggle"
@@ -429,7 +430,6 @@ export default function TableCore({
             <LobbyChat showOffline />
           </div>
         ) : null}
-        {humanQuickControlsElement}
         {middleUtilityControls ? (
           <div className="player-header-utility-controls">
             {cloneElement(middleUtilityControls, {
@@ -551,6 +551,7 @@ export default function TableCore({
           <DecisionPopupLayer
             priorityInline
             dockSubmitFooter
+            quickControls={humanQuickControlsElement}
             selectedObjectId={selectedObjectId}
           />
         </div>

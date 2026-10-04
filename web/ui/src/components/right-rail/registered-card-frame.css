@@ -25,7 +25,7 @@
 .registered-card-frame__field { position:absolute; z-index:2; min-width:0; }
 .registered-card-frame__field[data-replaced="true"] { display:flex; }
 .registered-card-frame__field .interactive-card-frame__rules { padding:0!important; border:0; box-shadow:none; background:none; overflow:hidden; line-height:var(--registered-field-line-height,1.2); }
-.registered-card-frame__field .interactive-card-frame__rule-line { font-weight:400; text-shadow:none; line-height:var(--registered-field-line-height,1.2); color:var(--registered-field-ink,var(--card-frame-ink)); }
+.registered-card-frame__field .interactive-card-frame__rule-line { font-weight:400; text-shadow:var(--registered-field-shadow,none); line-height:var(--registered-field-line-height,1.2); color:var(--registered-field-ink,var(--card-frame-ink)); }
 /* Registered fields already sit on the printed baseline grid: the preview-wide
    clamp for assembled frames would shrink or enlarge them away from the scan. */
 .registered-card-frame__field .interactive-card-frame__rules[data-fit-text="true"] { font-size:var(--card-fitted-rules-font-size,var(--registered-field-font-size,3.575cqw)); }

@@ -1849,58 +1849,6 @@ select.stone-select.topbar-phase-perspective-select:disabled {
   animation: none !important;
 }
 
-/* The local active decision is the primary affordance: start it as a warm
-   yellow control with dark lettering, then ease into the familiar yellow-on-
-   black treatment while the pointer is over it. */
-.decision-main-button:not(:disabled):not([aria-disabled="true"]),
-.mobile-decision-primary-button:not(:disabled):not([aria-disabled="true"]) {
-  border-color: #ffe083 !important;
-  color: #080a0b !important;
-  -webkit-text-fill-color: #080a0b !important;
-  background: #ffe083 !important;
-  box-shadow:
-    0 0 0 1px rgba(255, 224, 131, 0.72),
-    0 0 16px rgba(255, 224, 131, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.52),
-    inset 0 -2px 0 rgba(116, 80, 14, 0.22) !important;
-  text-shadow: none !important;
-  transition:
-    background 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    border-color 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    color 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    -webkit-text-fill-color 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 320ms cubic-bezier(0.22, 1, 0.36, 1) !important;
-}
-
-.decision-main-button:not(:disabled):not([aria-disabled="true"]) > *,
-.mobile-decision-primary-button:not(:disabled):not([aria-disabled="true"]) > * {
-  color: #080a0b !important;
-  -webkit-text-fill-color: #080a0b !important;
-  text-shadow: none !important;
-}
-
-.decision-main-button:not(:disabled):not([aria-disabled="true"]):hover,
-.mobile-decision-primary-button:not(:disabled):not([aria-disabled="true"]):hover {
-  border-color: #ffe8a6 !important;
-  color: #ffe8a6 !important;
-  -webkit-text-fill-color: #ffe8a6 !important;
-  background: #111314 !important;
-  box-shadow:
-    0 0 0 1px rgba(255, 240, 190, 0.2),
-    0 0 18px 2px rgba(255, 224, 131, 0.46),
-    0 0 34px 8px rgba(255, 224, 131, 0.18),
-    inset 0 0 16px rgba(255, 224, 131, 0.12) !important;
-  transform: translateY(-1px) scale(1.01) !important;
-}
-
-.decision-main-button:not(:disabled):not([aria-disabled="true"]):hover > *,
-.mobile-decision-primary-button:not(:disabled):not([aria-disabled="true"]):hover > * {
-  color: #ffe8a6 !important;
-  -webkit-text-fill-color: #ffe8a6 !important;
-  text-shadow: 0 0 7px rgba(255, 224, 131, 0.46) !important;
-}
-
 .decision-cancel-button,
 .mobile-decision-secondary-button {
   border: 1px solid rgba(223, 113, 108, 0.44) !important;
@@ -4248,148 +4196,6 @@ button:disabled,
 /* Printed reminder text is italic. */
 .rules-reminder-text { font-style: italic; }
 
-/* Opening hand: Mulligan sits beside Keep hand as the red twin of the main
-   decision surface. The region variant routes the accent variables so the
-   shared segmented-strip glow and edge text follow the danger palette. */
-.action-strip-command-region--danger {
-  --decision-main-accent: var(--ui-danger);
-  --decision-main-rgb: 223, 113, 108;
-  --decision-edge-text: #ffd9d4;
-  --decision-edge-text-shadow:
-    0 1px 0 rgba(0, 0, 0, 0.9),
-    0 0 8px rgba(223, 113, 108, 0.22);
-}
-
-:is(.topbar-main-decision-host, .priority-inline-panel)
-.action-strip-command-region--danger:has(.decision-main-button:not(:disabled):not([aria-disabled="true"])) {
-  border: 1px solid rgba(223, 113, 108, 0.55) !important;
-  background:
-    linear-gradient(180deg, rgba(40, 20, 19, 0.995), rgba(14, 7, 7, 0.995)) !important;
-  box-shadow:
-    inset 3px 0 0 rgba(223, 113, 108, 0.9),
-    inset 0 1px 0 rgba(255, 236, 232, 0.07),
-    0 2px 7px rgba(0, 0, 0, 0.42) !important;
-}
-
-:is(.topbar-main-decision-host, .priority-inline-panel)
-.action-strip-command-region--danger:has(.decision-main-button:not(:disabled):not([aria-disabled="true"]):hover) {
-  border-color: rgba(239, 140, 132, 0.8) !important;
-  background:
-    linear-gradient(180deg, rgba(56, 25, 23, 0.995), rgba(20, 8, 8, 0.995)) !important;
-  box-shadow:
-    inset 3px 0 0 rgba(239, 140, 132, 1),
-    inset 0 1px 0 rgba(255, 240, 236, 0.1),
-    0 3px 9px rgba(0, 0, 0, 0.5) !important;
-}
-
-.action-strip-command-region--danger .decision-main-button:not(:disabled):not([aria-disabled="true"]),
-.action-strip-command-region--danger .decision-main-button:not(:disabled):not([aria-disabled="true"]):hover {
-  background: transparent !important;
-}
-
-.action-strip-command-region--danger .action-strip-main-title-text,
-.topbar-main-decision-host .action-strip-command-region--danger .action-strip-main-title-text {
-  color: #ffb3ab !important;
-  -webkit-text-fill-color: #ffb3ab !important;
-  text-shadow:
-    0 1px 0 rgba(0, 0, 0, 0.9),
-    0 0 8px rgba(223, 113, 108, 0.28) !important;
-}
-
-:is(.topbar-main-decision-host, .priority-inline-panel)
-.action-strip-command-region--danger
-.action-strip-main-region:has(.decision-main-button:not(:disabled):not([aria-disabled="true"]):hover)
-.action-strip-main-title-text {
-  color: #ffe1dd !important;
-  -webkit-text-fill-color: #ffe1dd !important;
-  text-shadow:
-    0 0 4px #ff9a90,
-    0 0 12px rgba(223, 113, 108, 0.85),
-    0 0 26px rgba(223, 113, 108, 0.6) !important;
-}
-
-/* Standalone (floating strip) variant of the same control. */
-.pass-priority-btn.action-strip-mulligan-button:not(:disabled):not([aria-disabled="true"]),
-.pass-priority-btn.action-strip-mulligan-button:not(:disabled):not([aria-disabled="true"]):hover {
-  border: 1px solid rgba(223, 113, 108, 0.55) !important;
-  color: #ffb3ab !important;
-  -webkit-text-fill-color: #ffb3ab !important;
-  background:
-    linear-gradient(180deg, rgba(40, 20, 19, 0.995), rgba(14, 7, 7, 0.995)) !important;
-  box-shadow: inset 3px 0 0 rgba(223, 113, 108, 0.9) !important;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.9) !important;
-}
-
-.pass-priority-btn.action-strip-mulligan-button:not(:disabled):not([aria-disabled="true"]):hover {
-  border-color: rgba(239, 140, 132, 0.8) !important;
-  color: #ffe1dd !important;
-  -webkit-text-fill-color: #ffe1dd !important;
-}
-
-.action-strip-command-region--danger .pass-priority-btn.action-strip-mulligan-button:not(:disabled):not([aria-disabled="true"]) {
-  border: 0 !important;
-  box-shadow: none !important;
-}
-
-/* Pregame controls keep a readable blue label, then fill blue on hover.
-   Use the main decision button's transition timing for both the surface and
-   its separately rendered label. */
-.action-strip-command-region--pregame,
-.action-strip-pregame-button {
-  --decision-main-accent: #71b7ef;
-  --decision-main-rgb: 113, 183, 239;
-}
-
-.action-strip-pregame-button:not(:disabled):not([aria-disabled="true"]) {
-  border: 1px solid #71b7ef !important;
-  color: #abd8ff !important;
-  -webkit-text-fill-color: #abd8ff !important;
-  background: #111314 !important;
-  box-shadow:
-    0 0 0 1px rgba(113, 183, 239, 0.2),
-    0 0 16px rgba(113, 183, 239, 0.3) !important;
-  text-shadow: none !important;
-  transition:
-    background 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    border-color 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    color 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    -webkit-text-fill-color 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 320ms cubic-bezier(0.22, 1, 0.36, 1) !important;
-}
-
-.action-strip-pregame-button:not(:disabled):not([aria-disabled="true"]):hover {
-  border-color: #abd8ff !important;
-  color: #080a0b !important;
-  -webkit-text-fill-color: #080a0b !important;
-  background: #71b7ef !important;
-  box-shadow:
-    0 0 0 1px rgba(113, 183, 239, 0.72),
-    0 0 18px 2px rgba(113, 183, 239, 0.46),
-    0 0 34px 8px rgba(113, 183, 239, 0.18),
-    inset 0 1px 0 rgba(255, 255, 255, 0.52) !important;
-  text-shadow: none !important;
-  transform: translateY(-1px) scale(1.01) !important;
-}
-
-:is(.topbar-main-decision-host, .priority-inline-panel)
-.action-strip-command-region--pregame .action-strip-main-region:has(.action-strip-pregame-button:not(:disabled):not([aria-disabled="true"]))
-.action-strip-main-title-text {
-  color: #abd8ff !important;
-  -webkit-text-fill-color: #abd8ff !important;
-  -webkit-text-stroke: 0 !important;
-  text-shadow: none !important;
-  transition: color 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    -webkit-text-fill-color 320ms cubic-bezier(0.22, 1, 0.36, 1) !important;
-}
-
-:is(.topbar-main-decision-host, .priority-inline-panel)
-.action-strip-command-region--pregame .action-strip-main-region:has(.action-strip-pregame-button:not(:disabled):not([aria-disabled="true"]):hover)
-.action-strip-main-title-text {
-  color: #080a0b !important;
-  -webkit-text-fill-color: #080a0b !important;
-}
-
 .mobile-pregame-actions {
   display: flex;
   gap: 8px;
@@ -5697,95 +5503,6 @@ html[data-hand-pointer-suspended="true"] * {
   pointer-events: none !important;
 }
 
-/* Make the opening-hand choice match the restrained violet table HUD rather
-   than the default gold call-to-action. The same selectors cover English and
-   Spanish labels without coupling this treatment to engine action names. */
-:is(.topbar-main-decision-host, .priority-inline-panel)
-.action-strip-command-region:has(.action-strip-advance-button:is([aria-label*="hand" i], [aria-label*="mano" i])) {
-  --decision-main-accent: #bd91ff;
-  --decision-main-rgb: 189, 145, 255;
-  border: 1px solid rgba(189, 145, 255, 0.56) !important;
-  background: linear-gradient(180deg, rgba(31, 23, 47, 0.94), rgba(13, 12, 20, 0.96)) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.07),
-    0 0 10px rgba(151, 100, 230, 0.16) !important;
-}
-
-.action-strip-advance-button:is([aria-label*="hand" i], [aria-label*="mano" i]):not(:disabled):not([aria-disabled="true"]) {
-  border-color: rgba(189, 145, 255, 0.76) !important;
-  color: #eadcff !important;
-  -webkit-text-fill-color: #eadcff !important;
-  background: linear-gradient(180deg, rgba(85, 55, 127, 0.72), rgba(22, 17, 34, 0.96)) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.13),
-    inset 0 -1px 0 rgba(5, 4, 9, 0.68),
-    0 0 0 1px rgba(189, 145, 255, 0.16),
-    0 0 11px rgba(162, 112, 238, 0.2) !important;
-  text-shadow: 0 1px 2px rgba(10, 7, 17, 0.88) !important;
-  animation: none !important;
-  transform: none !important;
-}
-
-.action-strip-advance-button:is([aria-label*="hand" i], [aria-label*="mano" i]):not(:disabled):not([aria-disabled="true"]):hover {
-  border-color: rgba(222, 200, 255, 0.96) !important;
-  color: #fff !important;
-  -webkit-text-fill-color: #fff !important;
-  background: linear-gradient(180deg, rgba(113, 75, 163, 0.84), rgba(31, 22, 48, 0.98)) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    0 0 0 1px rgba(189, 145, 255, 0.24),
-    0 0 14px rgba(162, 112, 238, 0.3) !important;
-}
-
-:is(.topbar-main-decision-host, .priority-inline-panel)
-.action-strip-command-region:has(.action-strip-advance-button:is([aria-label*="hand" i], [aria-label*="mano" i]))
-.action-strip-main-title-text {
-  color: #eadcff !important;
-  -webkit-text-fill-color: #eadcff !important;
-  text-shadow: 0 1px 2px rgba(10, 7, 17, 0.88), 0 0 8px rgba(189, 145, 255, 0.28) !important;
-}
-
-:is(.topbar-main-decision-host, .priority-inline-panel)
-.action-strip-command-region:has(.action-strip-advance-button:is([aria-label*="hand" i], [aria-label*="mano" i]):hover)
-.action-strip-main-title-text {
-  color: #fff !important;
-  -webkit-text-fill-color: #fff !important;
-  text-shadow: 0 0 8px rgba(205, 175, 255, 0.48) !important;
-}
-
-.table-shell[data-focused-hud="true"] .priority-inline-panel:has(.action-strip-advance-button[aria-label*="hand" i]) .action-strip-main-title-text,
-.table-shell[data-focused-hud="true"] .priority-inline-panel:has(.action-strip-advance-button[aria-label*="mano" i]) .action-strip-main-title-text {
-  color: #eadcff !important;
-  -webkit-text-fill-color: #eadcff !important;
-  text-shadow: 0 1px 2px rgba(10, 7, 17, 0.88), 0 0 8px rgba(189, 145, 255, 0.28) !important;
-}
-
-.action-strip-command-region:not(.action-strip-command-region--danger):not(.action-strip-command-region--pregame)
-.action-strip-main-region:has(.action-strip-advance-button:is([aria-label*="hand" i], [aria-label*="mano" i]):not(:disabled):not([aria-disabled="true"]))
-.action-strip-main-title-text {
-  color: #eadcff !important;
-  -webkit-text-fill-color: #eadcff !important;
-  -webkit-text-stroke: 0 !important;
-  text-shadow: 0 1px 2px rgba(10, 7, 17, 0.88), 0 0 8px rgba(189, 145, 255, 0.28) !important;
-}
-
-.action-strip-advance-button:is([aria-label*="hand" i], [aria-label*="mano" i]):not(:disabled):not([aria-disabled="true"]):active,
-.action-strip-mulligan-button:not(:disabled):not([aria-disabled="true"]):active,
-.action-strip-pregame-button:not(:disabled):not([aria-disabled="true"]):active {
-  filter: brightness(1.08) !important;
-  transform: translateY(1px) scale(0.975) !important;
-  box-shadow:
-    inset 0 2px 5px rgba(5, 4, 9, 0.62),
-    0 0 0 1px rgba(var(--decision-main-rgb, 189, 145, 255), 0.28) !important;
-  transition-duration: 70ms !important;
-}
-
-.action-strip-mulligan-button:focus-visible,
-.action-strip-advance-button:is([aria-label*="hand" i], [aria-label*="mano" i]):focus-visible {
-  outline: 2px solid rgba(220, 196, 255, 0.9) !important;
-  outline-offset: 2px;
-}
-
 /* The line between phase dots now ends in a tiny arrowhead. It reinforces
    sequence without turning the calm violet tracker into another button row. */
 .phase-track--sequence .phase-track-cell:not(:last-child)::after {
@@ -6145,52 +5862,7 @@ html[data-hand-pointer-suspended="true"] * {
     transition: none !important;
   }
 
-  .table-shell[data-focused-hud="true"] .action-strip-layout--pregame-choice .action-strip-advance-button:not(:disabled):not([aria-disabled="true"]) {
-    border: 1px solid rgba(218, 186, 116, 0.58) !important;
-    color: #f4dfad !important;
-    -webkit-text-fill-color: #f4dfad !important;
-    background: linear-gradient(180deg, rgba(53, 42, 26, 0.9), rgba(18, 15, 12, 0.96)) !important;
-    box-shadow: inset 0 1px 0 rgba(255, 244, 213, 0.08), 0 0 10px rgba(218, 186, 116, 0.1) !important;
-  }
 
-  .table-shell[data-focused-hud="true"] .priority-inline-panel .action-strip-layout--pregame-choice
-    .action-strip-command-region:not(.action-strip-command-region--pregame) .action-strip-main-region .action-strip-main-title-text {
-    color: #f4dfad !important;
-    -webkit-text-fill-color: #f4dfad !important;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9) !important;
-    transition: none !important;
-  }
-
-  .table-shell[data-focused-hud="true"] .action-strip-layout--pregame-choice .action-strip-pregame-button:not(:disabled):not([aria-disabled="true"]) {
-    border: 1px solid rgba(190, 151, 244, 0.66) !important;
-    color: #eadcff !important;
-    -webkit-text-fill-color: #eadcff !important;
-    background: linear-gradient(180deg, rgba(63, 42, 92, 0.88), rgba(20, 16, 30, 0.97)) !important;
-    box-shadow: inset 0 1px 0 rgba(245, 235, 255, 0.1), 0 0 12px rgba(158, 101, 228, 0.17) !important;
-  }
-
-  .table-shell[data-focused-hud="true"] .priority-inline-panel .action-strip-layout--pregame-choice
-    .action-strip-command-region--pregame .action-strip-main-region .action-strip-main-title-text {
-    color: #eadcff !important;
-    -webkit-text-fill-color: #eadcff !important;
-    text-shadow: 0 1px 2px rgba(4, 3, 8, 0.9) !important;
-    transition: none !important;
-  }
-
-  .table-shell[data-focused-hud="true"] .action-strip-layout--pregame-choice .decision-main-button:not(:disabled):not([aria-disabled="true"]):hover {
-    border-color: rgba(228, 205, 255, 0.92) !important;
-    color: #fff !important;
-    -webkit-text-fill-color: #fff !important;
-    background: linear-gradient(180deg, rgba(100, 70, 142, 0.94), rgba(34, 24, 49, 0.98)) !important;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 0 16px rgba(176, 121, 241, 0.3) !important;
-    transform: translateY(-1px) !important;
-  }
-
-  .table-shell[data-focused-hud="true"] .priority-inline-panel .action-strip-layout--pregame-choice
-    .action-strip-main-region:has(.decision-main-button:hover) .action-strip-main-title-text {
-    color: #fff !important;
-    -webkit-text-fill-color: #fff !important;
-  }
 }
 
 .battlefield-decision-disclosure-toggle {
@@ -6888,21 +6560,9 @@ html[data-hand-pointer-suspended="true"] * {
   }
 }
 
-/* Calm, consistent action colours for the focused HUD dock. One muted violet
-   for the primary action, a neutral surface for secondary choices and a soft
-   red for cancel; labels drawn as overlays follow their button's colour. */
+/* Cancel actions retain their soft red treatment in the focused HUD dock. */
 @media (min-width: 1024px) {
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock {
-    --hud-primary-border: rgba(184, 152, 232, 0.5);
-    --hud-primary-bg: linear-gradient(180deg, rgba(60, 46, 86, 0.94), rgba(24, 20, 34, 0.97));
-    --hud-primary-fg: #e8ddfa;
-    --hud-primary-border-hover: rgba(214, 192, 250, 0.82);
-    --hud-primary-bg-hover: linear-gradient(180deg, rgba(76, 58, 108, 0.96), rgba(30, 24, 43, 0.98));
-    --hud-secondary-border: rgba(214, 206, 230, 0.2);
-    --hud-secondary-bg: linear-gradient(180deg, rgba(36, 34, 44, 0.92), rgba(18, 17, 23, 0.96));
-    --hud-secondary-fg: #d8d1e6;
-    --hud-secondary-border-hover: rgba(214, 206, 230, 0.42);
-    --hud-secondary-bg-hover: linear-gradient(180deg, rgba(48, 45, 58, 0.94), rgba(22, 21, 28, 0.97));
     --hud-danger-border: rgba(222, 128, 128, 0.42);
     --hud-danger-bg: linear-gradient(180deg, rgba(64, 30, 34, 0.9), rgba(26, 15, 17, 0.96));
     --hud-danger-fg: #f0cfcf;
@@ -6912,42 +6572,6 @@ html[data-hand-pointer-suspended="true"] * {
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
     .battlefield-human-decision-panel:not(:has(.action-strip-decision-stack)) {
     margin-left: auto !important;
-  }
-
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
-    :is(.decision-main-button, .action-strip-submit-button):not(:disabled):not([aria-disabled="true"]) {
-    --hud-action-fg: var(--hud-primary-fg);
-    border: 1px solid var(--hud-primary-border) !important;
-    background: var(--hud-primary-bg) !important;
-    color: var(--hud-primary-fg) !important;
-    -webkit-text-fill-color: var(--hud-primary-fg) !important;
-    text-shadow: none !important;
-    animation: none !important;
-    filter: none !important;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07) !important;
-  }
-
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
-    :is(.action-strip-mulligan-button, .action-strip-layout--pregame-choice .action-strip-advance-button, .action-strip-resolve-all-button):not(:disabled):not([aria-disabled="true"]) {
-    border-color: var(--hud-secondary-border) !important;
-    background: var(--hud-secondary-bg) !important;
-    color: var(--hud-secondary-fg) !important;
-    -webkit-text-fill-color: var(--hud-secondary-fg) !important;
-  }
-
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
-    :is(.decision-main-button, .action-strip-submit-button):not(:disabled):not([aria-disabled="true"]):hover {
-    border-color: var(--hud-primary-border-hover) !important;
-    background: var(--hud-primary-bg-hover) !important;
-    color: #fff !important;
-    -webkit-text-fill-color: #fff !important;
-  }
-
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
-    :is(.action-strip-mulligan-button, .action-strip-layout--pregame-choice .action-strip-advance-button, .action-strip-resolve-all-button):not(:disabled):not([aria-disabled="true"]):hover {
-    border-color: var(--hud-secondary-border-hover) !important;
-    background: var(--hud-secondary-bg-hover) !important;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
   }
 
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
@@ -6967,39 +6591,7 @@ html[data-hand-pointer-suspended="true"] * {
     display: none !important;
   }
 
-  /* Overlay labels (Keep hand, Resolve, pregame) take their button's colour.
-     Selectors are deliberately as specific as the legacy gold-button rules
-     (dark #080a0b text), which otherwise win and make labels unreadable. */
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
-    .action-strip-command-region .action-strip-main-region .action-strip-main-title-text,
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
-    .action-strip-command-region
-    .action-strip-main-region:has(.decision-main-button:not(:disabled):not([aria-disabled="true"]))
-    .action-strip-main-title-text {
-    color: var(--hud-primary-fg) !important;
-    -webkit-text-fill-color: var(--hud-primary-fg) !important;
-    -webkit-text-stroke: 0 !important;
-    text-shadow: none !important;
-  }
 
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
-    .action-strip-command-region:not(.action-strip-command-region--pregame)
-    .action-strip-main-region:has(.action-strip-layout--pregame-choice .action-strip-advance-button) .action-strip-main-title-text,
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
-    .action-strip-layout--pregame-choice > .action-strip-command-region:not(.action-strip-command-region--pregame)
-    .action-strip-main-region:has(.decision-main-button:not(:disabled):not([aria-disabled="true"]))
-    .action-strip-main-title-text {
-    color: var(--hud-secondary-fg) !important;
-    -webkit-text-fill-color: var(--hud-secondary-fg) !important;
-  }
-
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
-    .action-strip-command-region
-    .action-strip-main-region:has(.decision-main-button:not(:disabled):not([aria-disabled="true"]):hover)
-    .action-strip-main-title-text {
-    color: #fff !important;
-    -webkit-text-fill-color: #fff !important;
-  }
 }
 
 /* The docked stack hugs its entries instead of reserving a fixed 240px box,
@@ -7405,38 +6997,6 @@ html[data-hand-pointer-suspended="true"] * {
   }
 }
 
-/* Overflow hands scroll only their resting cards; enlarged cards use a portal. */
-.hand-reveal-shell .hand-zone-scroll-mobile-fan[data-hand-overflow="true"] {
-  overflow-x: auto;
-  overflow-y: hidden;
-  overscroll-behavior-x: contain;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(190, 164, 226, 0.55) transparent;
-}
-
-.hand-hover-portal {
-  position: fixed;
-  z-index: 30010;
-  pointer-events: auto;
-}
-
-.hand-hover-portal .game-card.hand-card {
-  transform: none !important;
-  transition: none !important;
-  margin: 0 !important;
-}
-
-.hand-hover-portal .game-card-surface,
-.hand-hover-portal .game-card-surface > img {
-  opacity: 1 !important;
-  filter: none !important;
-  clip-path: none !important;
-}
-
-.hand-layout-item.hand-layout-item--drag-source {
-  z-index: 1 !important;
-}
-
 /* Dock header: a chevron in the top-right corner folds the options; Submit
    lives in a footer under the options, outside their scroll area. */
 @media (min-width: 1024px) {
@@ -7828,4 +7388,129 @@ html[data-hand-pointer-suspended="true"] * {
   flex: 0 1 auto;
   color: var(--ui-text-secondary);
   font-size: 11px;
+}
+
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] .priority-inline-panel:has(> .decision-quick-controls) {
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 8px;
+  }
+
+  .table-shell[data-focused-hud="true"] .priority-inline-panel:has(> .decision-quick-controls) > .action-strip-layout {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .table-shell[data-focused-hud="true"] .decision-quick-controls {
+    display: flex !important;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px;
+    margin: 0;
+  }
+
+  .table-shell[data-focused-hud="true"] .decision-stack-footer:has(.decision-quick-controls) {
+    gap: 8px;
+    align-items: center;
+  }
+
+  .table-shell[data-focused-hud="true"] .decision-quick-controls button {
+    display: inline-grid !important;
+    flex: 0 0 36px !important;
+    width: 36px !important;
+    min-width: 36px !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    place-items: center;
+    padding: 0 !important;
+    border: 1px solid rgba(194, 157, 241, 0.3) !important;
+    border-radius: 6px !important;
+    background: rgba(7, 9, 17, 0.65) !important;
+    color: #eee5fa !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .decision-quick-controls button svg {
+    display: block !important;
+    width: 15px;
+    height: 15px;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .table-shell[data-focused-hud="true"] .decision-quick-controls button:is(:hover, :focus-visible, [aria-pressed="true"]) {
+    border-color: rgba(204, 165, 255, 0.72) !important;
+    background: rgba(67, 39, 96, 0.65) !important;
+    color: #e6c9ff !important;
+  }
+}
+
+/* Main and opening-hand actions share a flat yellow/black surface. The dock
+   scope also covers its overlaid labels and desktop interaction rules. */
+:is(:root, .table-shell[data-focused-hud="true"] .battlefield-human-action-dock)
+:is(.decision-main-button, .mobile-decision-primary-button, .decision-submit-button,
+    .action-strip-mulligan-button, .action-strip-pregame-button):not(:disabled):not([aria-disabled="true"]) {
+  border: 1px solid #ffe083 !important;
+  color: #080a0b !important;
+  -webkit-text-fill-color: #080a0b !important;
+  background: #ffe083 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  filter: none !important;
+  animation: none !important;
+  transform: none !important;
+  transition: background-color 120ms ease, color 120ms ease !important;
+}
+
+:is(:root, .table-shell[data-focused-hud="true"] .battlefield-human-action-dock)
+:is(.decision-main-button, .mobile-decision-primary-button, .decision-submit-button,
+    .action-strip-mulligan-button, .action-strip-pregame-button):not(:disabled):not([aria-disabled="true"]):is(:hover, :active) {
+  color: #ffe083 !important;
+  -webkit-text-fill-color: #ffe083 !important;
+  background: #111314 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  transform: none !important;
+  filter: none !important;
+}
+
+:is(:root, .table-shell[data-focused-hud="true"] .battlefield-human-action-dock)
+:is(.decision-main-button, .mobile-decision-primary-button, .decision-submit-button,
+    .action-strip-mulligan-button, .action-strip-pregame-button):not(:disabled):not([aria-disabled="true"]) > * {
+  color: inherit !important;
+  -webkit-text-fill-color: inherit !important;
+  text-shadow: none !important;
+}
+
+:is(:root, .table-shell[data-focused-hud="true"] .battlefield-human-action-dock)
+:is(.decision-main-button, .mobile-decision-primary-button, .decision-submit-button,
+    .action-strip-mulligan-button, .action-strip-pregame-button):focus-visible {
+  outline: 2px solid #ffe083 !important;
+  outline-offset: -3px !important;
+}
+
+:is(.topbar-main-decision-host, .priority-inline-panel)
+.action-strip-command-region:has(.decision-main-button:not(:disabled):not([aria-disabled="true"])) {
+  border-color: #ffe083 !important;
+  background: #111314 !important;
+  box-shadow: none !important;
+}
+
+:is(:root, .table-shell[data-focused-hud="true"] .battlefield-human-action-dock)
+.action-strip-command-region .action-strip-main-region:has(.decision-main-button:not(:disabled):not([aria-disabled="true"]))
+.action-strip-main-title-text {
+  color: #080a0b !important;
+  -webkit-text-fill-color: #080a0b !important;
+  -webkit-text-stroke: 0 !important;
+  text-shadow: none !important;
+}
+
+:is(:root, .table-shell[data-focused-hud="true"] .battlefield-human-action-dock)
+.action-strip-command-region .action-strip-main-region:has(.decision-main-button:not(:disabled):not([aria-disabled="true"]):is(:hover, :active))
+.action-strip-main-title-text {
+  color: #ffe083 !important;
+  -webkit-text-fill-color: #ffe083 !important;
 }

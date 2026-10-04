@@ -1575,11 +1575,13 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
 }
 
 .hand-reveal-shell:has(.game-card.hand-card.hovered),
+.hand-reveal-shell:has(.game-card.hand-card.keyboard-selected),
 .hand-reveal-shell:has(.game-card.hand-card.inspected) {
   z-index: 1000;
 }
 
 [data-bottom-dock]:has(.game-card.hand-card.hovered),
+[data-bottom-dock]:has(.game-card.hand-card.keyboard-selected),
 [data-bottom-dock]:has(.game-card.hand-card.inspected),
 .mobile-mtga-hand-fan:has(.game-card.hand-card.hovered),
 .mobile-mtga-hand-fan:has(.game-card.hand-card.inspected),

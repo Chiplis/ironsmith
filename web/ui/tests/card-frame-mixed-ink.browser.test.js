@@ -22,7 +22,7 @@ test('mixed ink uses pale name/type fills, dark rules, and removes initial glyph
       };
       const url='/tests/fixtures/frame-mask/arnjlot-normal.jpg';
       const ctx=await read(url),art=await read('/tests/fixtures/frame-mask/arnjlot-art.jpg');
-      const printing={"name": "Arnjlot's Ascent", "type_line": "Enchantment", "mana_cost": "{1}{U}{U}", "frame": "1993", "oracle_text": "Cumulative upkeep {U} (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)\n{1}: Target creature gains flying until end of turn.", "flavor_text": "\"The dreams of a child fulfilled:\nthe wind on my brow,\nthe air 'neath my feet.\"\n\u2014Arnjlot Olasson, Sky Mage", "artist": "Drew Tucker"};
+      const printing={"name": "Arnjlot's Ascent", "set": "ice", "released_at": "1995-06-03", "type_line": "Enchantment", "mana_cost": "{1}{U}{U}", "frame": "1993", "oracle_text": "Cumulative upkeep {U} (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)\n{1}: Target creature gains flying until end of turn.", "flavor_text": "\"The dreams of a child fulfilled:\nthe wind on my brow,\nthe air 'neath my feet.\"\n\u2014Arnjlot Olasson, Sky Mage", "artist": "Drew Tucker"};
       const typography=cardTypography(printing);
       await Promise.all(['title','type','rules'].map(n=>document.fonts.load(`400 40px ${typography[n]}`)));
       const style=await sampleCardFramePixels({fullScan:ctx.getImageData(0,0,488,680),artScan:art.getImageData(0,0,art.canvas.width,art.canvas.height),printing,typography,icons:await manaTemplates(printing.mana_cost)});
@@ -33,7 +33,7 @@ test('mixed ink uses pale name/type fills, dark rules, and removes initial glyph
       ];
       const inks=[];
       for(const f of fields) {
-        const patch=await maskRegisteredRegion(url,{...f,lines:[{...f.bounds,text:f.text}]},typography[f.kind==='name'?'title':f.kind==='rule'?'rules':'type']);
+        const patch=await maskRegisteredRegion(url,{...f,lines:[{...f.bounds,text:f.text}]},typography[f.kind==='name'?'title':f.kind==='rule'?'rules':'type'],typography.profile);
         inks.push(patch.ink);
       }
       const clean=style['--source-frame-image']?await read(style['--source-frame-image'].slice(5,-2)):null;

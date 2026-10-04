@@ -1,4 +1,5 @@
 import {fontGuidedPanel,inpaintGlyphMask,hasOutlinedLightText} from './card-frame-font-mask.js';
+import {profileSectionInk} from './card-printing-profile.js';
 const scans=new Map(),patches=new Map();
 function loadScan(url) {
   if(!scans.has(url))scans.set(url,(async()=>{
@@ -11,8 +12,8 @@ function loadScan(url) {
 }
 // Mask only registered printed text, leaving the rest of the scan untouched.
 // Patches are shared between translations and repeated previews.
-export function maskRegisteredRegion(url,field,family) {
-  const key=JSON.stringify([url,field.lines,family,field.outlined]);
+export function maskRegisteredRegion(url,field,family,profile) {
+  const key=JSON.stringify([url,field.lines,family,field.outlined,profileSectionInk(profile,field.kind)]);
   if(patches.has(key))return patches.get(key);
   const promise=(async()=>{
     const {canvas,ctx}=await loadScan(url),W=canvas.width,H=canvas.height;
@@ -63,7 +64,8 @@ export function maskRegisteredRegion(url,field,family) {
     // Anti-aliased edges dilute the colour; keep the solid glyph cores.
     const strongest=inkSamples.slice(0,Math.max(1,Math.floor(inkSamples.length*.15)));
     const channel=c=>strongest.map(s=>s.rgb[c]).sort((a,b)=>a-b)[Math.floor(strongest.length/2)];
-    const ink=outlined?'white':strongest.length&&strongest[0].contrast>40?`rgb(${channel(0)},${channel(1)},${channel(2)})`:null;
+    const preferredInk=profileSectionInk(profile,field.kind);
+    const ink=preferredInk==='light'?'white':preferredInk==='dark'?'rgb(0,0,0)':outlined?'white':strongest.length&&strongest[0].contrast>40?`rgb(${channel(0)},${channel(1)},${channel(2)})`:null;
     return {image:result.toDataURL('image/png'),bounds:{x:x/W,y:y/H,width:width/W,height:height/H},ink};
   })();
   patches.set(key,promise);

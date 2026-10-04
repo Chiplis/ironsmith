@@ -1,3 +1,4 @@
+import { cardPrintingProfile, printingProfileInkStyle, profileSectionInk } from './card-printing-profile.js';
 import { sourceMaskLayoutGap } from './card-frame-layout.js';
 import {manaTemplates,locateManaSymbols} from './card-mana-match.js';
 import { locateSetSymbol } from './card-set-symbol.js';
@@ -105,7 +106,9 @@ function analyzeSection({ data, width, height }, {minGlyphHeight=5,minimumGlyphs
   };
 }
 
-export function sectionInk(region) {
+export function sectionInk(region, {preferredInk} = {}) {
+  if (preferredInk === 'light') return [255, 255, 255];
+  if (preferredInk === 'dark') return [0, 0, 0];
   const ink = analyzeSection(region).ink;
   return luminance(ink) > luminance(materialColor(region.data))
     ? [255, 255, 255] : [0, 0, 0];
@@ -1062,7 +1065,7 @@ function scaleSourceUnits(style) {
 // for the rest. Callers render these containers opaquely, so the printed
 // lettering underneath never shows through the live text.
 export function placedFrameStyle(measured, scan, printing, reason) {
-  const style = {...measured};
+  const style = {...measured, ...printingProfileInkStyle(cardPrintingProfile(printing))};
   delete style['--source-frame-image'];
   const candidates = JSON.parse(style['--printed-layout-candidates'] || 'null') || {};
   const published = JSON.parse(style['--printed-layout'] || 'null') || {};
@@ -1100,6 +1103,7 @@ export async function sampleCardFramePixels({fullScan, artScan, symbolScan, icon
   // its containers over the printing from these regions.
   const future = printing?.frame === 'future';
   const style = future ? futureFrameGeometry(fullScan) : measureFrameGeometry(fullScan, artScan, true, {retro: typography?.era === 'retro'});
+  Object.assign(style, printingProfileInkStyle(typography?.profile));
   const fallback = reason => placedFrameStyle(style, fullScan, printing, reason);
   if (layoutGap) return fallback(layoutGap);
   if (!typography || !printing) return fallback('printing-metadata');
@@ -1146,7 +1150,7 @@ export async function sampleCardFramePixels({fullScan, artScan, symbolScan, icon
       style['--sampled-rules-ink'] = style['--sampled-type-ink'];
       continue;
     }
-    style[`--sampled-${name}-ink`] = `rgb(${sectionInk(region).join(',')})`;
+    style[`--sampled-${name}-ink`] = `rgb(${sectionInk(region, {preferredInk: profileSectionInk(typography.profile, name)}).join(',')})`;
   }
   if(style['--printed-layout']) {
     const box=measuredBoxes.title;

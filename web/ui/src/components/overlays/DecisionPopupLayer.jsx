@@ -2439,6 +2439,7 @@ function PriorityBar({
   replaceMiddleControls = false,
   selectedObjectId = null,
   dockSubmitFooter = false,
+  quickControls = null,
 }) {
   const ui = useUiText();
   const {
@@ -2987,6 +2988,7 @@ function PriorityBar({
           )}
           data-replaces-middle-controls={replaceMiddleControls ? "true" : "false"}
         >
+          {isPriorityDecision ? quickControls : null}
           {isPriorityDecision ? (
             showViewedCardsStep ? (
               <div
@@ -3179,6 +3181,7 @@ function PriorityBar({
                     "decision-primary-controls flex min-w-0 shrink-0 items-stretch gap-2",
                     manaPayment ? "max-w-[360px]" : "max-w-[320px]"
                   )}>
+                    {!decisionSubmitPortalHost && !submitInFooter ? quickControls : null}
                     {!decisionSubmitPortalHost && !submitInFooter ? renderExpandedPrimaryControl(false) : null}
                     {manaPayment && secondarySubmitAction ? (
                       <Button
@@ -3353,6 +3356,7 @@ function PriorityBar({
               </div>
               {submitInFooter ? (
                 <div className="action-strip-submit-row decision-stack-footer">
+                  {quickControls}
                   {renderExpandedPrimaryControl(false, true)}
                 </div>
               ) : null}
@@ -3743,7 +3747,7 @@ function PriorityBar({
   );
 }
 
-function CombatBar({ anchor = null, inline = false, replaceMiddleControls = false, decision, canAct }) {
+function CombatBar({ anchor = null, inline = false, replaceMiddleControls = false, decision, canAct, quickControls = null }) {
   const ui = useUiText();
   const { t } = useI18n();
   const {
@@ -3842,6 +3846,7 @@ function CombatBar({ anchor = null, inline = false, replaceMiddleControls = fals
               </button>
             </div>
             <div className="combat-decision-actions">
+              {quickControls}
               {!topbarHost ? primaryControl : null}
               {canCancelDecision ? <Button type="button" variant="ghost" size="sm"
                 className="decision-neon-button decision-neon-button--danger decision-cancel-button h-10 shrink-0 rounded-none px-3 font-bold uppercase"
@@ -3950,6 +3955,7 @@ export default function DecisionPopupLayer({
   mobileBattleDockHidden = false,
   mobileBattleDockOrientation = "horizontal",
   dockSubmitFooter = false,
+  quickControls = null,
 }) {
   const { state } = useGame();
   const decision = state?.decision || null;
@@ -3985,10 +3991,11 @@ export default function DecisionPopupLayer({
         replaceMiddleControls={replaceMiddleControls}
         selectedObjectId={selectedObjectId}
         dockSubmitFooter={dockSubmitFooter}
+        quickControls={quickControls}
       />
     );
   } else if (decision?.kind === "attackers" || decision?.kind === "blockers") {
-    content = <CombatBar anchor={anchor} inline={priorityInline} replaceMiddleControls={replaceMiddleControls} decision={decision} canAct={canAct} />;
+    content = <CombatBar anchor={anchor} inline={priorityInline} replaceMiddleControls={replaceMiddleControls} decision={decision} canAct={canAct} quickControls={quickControls} />;
   } else {
     content = (
       <PriorityBar
@@ -3997,6 +4004,7 @@ export default function DecisionPopupLayer({
         replaceMiddleControls={replaceMiddleControls}
         selectedObjectId={selectedObjectId}
         dockSubmitFooter={dockSubmitFooter}
+        quickControls={quickControls}
       />
     );
   }

@@ -9,14 +9,14 @@
 }
 .interactive-card-frame-stage[data-card-colors="sampled"] .interactive-card-frame__title {
   color: var(--sampled-bar-ink, var(--sampled-title-ink));
-  text-shadow: none;
+  text-shadow: var(--sampled-title-shadow, none);
 }
 .interactive-card-frame-stage[data-card-colors="sampled"] .interactive-card-frame__type-row {
   background: var(--sampled-type-paper);
 }
 .interactive-card-frame-stage[data-card-colors="sampled"] .interactive-card-frame__type {
   color: var(--sampled-type-ink);
-  text-shadow: none;
+  text-shadow: var(--sampled-type-shadow, none);
 }
 .interactive-card-frame-stage[data-card-colors="sampled"] .interactive-card-frame__rules {
   background-image: var(--sampled-rules-veil, linear-gradient(transparent, transparent)), var(--sampled-rules-texture, var(--sampled-rules-paper));
@@ -33,7 +33,7 @@
   background-size: 100% 100%, var(--sampled-stats-texture-size, 100% 100%);
   background-repeat: repeat;
   color: var(--sampled-stats-ink);
-  text-shadow: none;
+  text-shadow: var(--sampled-stats-shadow, none);
 }
 
 /* Both horizontal bars clone the real printing's type-line material. */
