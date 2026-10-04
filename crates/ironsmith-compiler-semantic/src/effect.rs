@@ -470,6 +470,12 @@ impl Effect {
             }
             return;
         }
+        if let Some(prevent) = self.downcast_ref::<crate::effects::PreventAllDamageEffect>() {
+            for effect in &prevent.follow_up_effects {
+                visitor(effect);
+            }
+            return;
+        }
         if let Some(prevent) = self.downcast_ref::<crate::effects::PreventDamageEffect>() {
             for effect in &prevent.follow_up_effects {
                 visitor(effect);

@@ -80,6 +80,9 @@ pub enum DamagePreventionActionAst {
         source_of_your_choice: bool,
         source_choice_shares_activation_mana_color: bool,
         source_target: Option<TargetAst>,
+        /// The same declared source is also protected against incoming damage.
+        protect_source_target: bool,
+        follow_up_effects: Vec<EffectAst>,
     },
     PreventAllDamageToTargetFromSourceFilter {
         target: TargetAst,

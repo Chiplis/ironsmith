@@ -5727,6 +5727,7 @@ fn describe_prior_result_active_action(action: crate::effect::PriorEffectAction)
         crate::effect::PriorEffectAction::Prevented => "prevent",
         crate::effect::PriorEffectAction::PutOntoBattlefield => "put onto the battlefield",
         crate::effect::PriorEffectAction::PutIntoGraveyard => "put into a graveyard",
+        crate::effect::PriorEffectAction::PutIntoHand => "put into a hand",
         crate::effect::PriorEffectAction::Removed => "remove",
         crate::effect::PriorEffectAction::Returned => "return",
         crate::effect::PriorEffectAction::Revealed => "reveal",
@@ -5740,6 +5741,15 @@ fn describe_prior_result_active_action(action: crate::effect::PriorEffectAction)
 fn describe_prior_effect_result_surface(
     surface: &crate::effect::PriorEffectResultSurface,
 ) -> String {
+    if surface.action == crate::effect::PriorEffectAction::PutIntoHand
+        && surface.actor == crate::effect::PriorEffectResultActor::You
+        && surface.filter == ObjectFilter::default()
+        && surface.quantifier == crate::effect::PriorEffectResultQuantifier::One
+        && surface.required_count.is_none() && surface.shared_characteristic.is_none()
+    {
+        return if surface.negated { "you didn't put a card into your hand this way" }
+            else { "you put a card into your hand this way" }.to_string();
+    }
     // A draw result counts cards, even without an object-type filter.
     if surface.action == crate::effect::PriorEffectAction::Drawn
         && surface.filter == ObjectFilter::default()

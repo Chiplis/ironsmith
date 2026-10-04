@@ -760,7 +760,7 @@ impl Auditor {
                     self.walk(value, &child(path, key), &mut inner);
                 }
             }
-            "PreventDamageEffect" | "PreventAllDamageToTargetEffect" => {
+            "PreventDamageEffect" | "PreventAllDamageToTargetEffect" | "PreventAllDamageEffect" => {
                 for (key, value) in fields {
                     if metadata(key) {
                         continue;

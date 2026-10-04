@@ -173,7 +173,7 @@ PoisonCountersEffect	ironsmith_core::PoisonCountersEffect	player
 PopulateEffect	ironsmith_core::PopulateEffect	composition-m-z
 PrepareEffect	ironsmith_core::PrepareEffect	permanent
 PreventAllCombatDamageEffect	ironsmith_core::PreventAllCombatDamageEffect	combat
-PreventAllDamageEffect	ironsmith_core::PreventAllDamageEffect	combat
+PreventAllDamageEffect	ironsmith_core::PreventAllDamageEffect<wire::WireEffect>	combat
 PreventAllDamageToTargetEffect	ironsmith_core::PreventAllDamageToTargetEffect<wire::WireEffect>	combat
 PreventDamageEffect	ironsmith_core::PreventDamageEffect<wire::WireEffect>	combat
 PreventNextTimeDamageEffect	ironsmith_core::PreventNextTimeDamageEffect<wire::WireEffect>	combat

@@ -2854,8 +2854,30 @@ pub(super) fn compile_subject_verb_early(
                 source_of_your_choice,
                 source_choice_shares_activation_mana_color,
                 source_target,
+                protect_source_target,
+                follow_up_effects,
             },
         ) => {
+            if !follow_up_effects.is_empty() && source_target.is_none() {
+                return Err(CardTextError::ParseError(
+                    "deferred all-damage follow-up requires its bound source selector".into(),
+                ));
+            }
+            let compiled_follow_up = if follow_up_effects.is_empty() {
+                Vec::new()
+            } else {
+                let mut follow_ctx =
+                    EffectLoweringContext::from_parts(ctx.id_gen_context(), ctx.lowering_frame());
+                follow_ctx.allow_life_event_value = true;
+                let (effects, choices) = compile_effects(follow_up_effects, &mut follow_ctx)?;
+                if !choices.is_empty() {
+                    return Err(CardTextError::ParseError(
+                        "deferred prevention follow-up cannot declare fresh targets".into(),
+                    ));
+                }
+                ctx.apply_id_gen_context(follow_ctx.id_gen_context());
+                effects
+            };
             let damage_filter = if *combat_only {
                 ironsmith_core::DamageFilter::combat()
             } else { ironsmith_core::DamageFilter::all() };
@@ -2873,9 +2895,13 @@ pub(super) fn compile_subject_verb_early(
                     damage_filter.clone(),
                     duration.clone(),
                 )
-                .with_target_source(source_spec.clone());
+                .with_target_source(source_spec.clone())
+                .with_follow_up_effects(compiled_follow_up);
                 if protect_source {
                     effect = effect.protecting_source();
+                }
+                if *protect_source_target {
+                    effect = effect.protecting_target_source();
                 }
                 // Record the targeted source so a following "that creature"
                 // (Kry Shield) reads the chosen object.

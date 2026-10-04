@@ -405,7 +405,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "PreventAllCombatDamageEffect" => {
             decode_as::<T, ironsmith_core::PreventAllCombatDamageEffect>(effect)
         }
-        "PreventAllDamageEffect" => decode_as::<T, ironsmith_core::PreventAllDamageEffect>(effect),
+        "PreventAllDamageEffect" => {
+            decode_as::<T, ironsmith_core::PreventAllDamageEffect<wire::WireEffect>>(effect)
+        }
         "PreventAllDamageToTargetEffect" => {
             decode_as::<T, ironsmith_core::PreventAllDamageToTargetEffect<wire::WireEffect>>(effect)
         }
@@ -1457,7 +1459,6 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::PayManaEffect,
             crate::effects::PopulateEffect,
             crate::effects::PreventAllCombatDamageEffect,
-            crate::effects::PreventAllDamageEffect,
             crate::effects::ProliferateEffect,
             crate::effects::PutCountersEffect,
             crate::effects::PutOntoBattlefieldEffect,
@@ -1550,6 +1551,14 @@ pub fn encode_runtime_effect(
         };
     }
     with_native_direct_effect_types!(encode_direct);
+    if let Some(payload) = effect.downcast_ref::<crate::effects::PreventAllDamageEffect>() {
+        let converted = payload.clone().try_map_effects(encode_runtime_effect)?;
+        return serde_json::to_value(converted)
+            .map(|payload| wire::WireEffect::new("PreventAllDamageEffect", payload))
+            .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel {
+                detail: error.to_string(),
+            });
+    }
     if let Some(payload) = effect.downcast_ref::<crate::effects::CreateTokenEffect>() {
         let ironsmith_core::CreateTokenEffect {
             token, count, controller, controller_target, use_source_chosen_color,

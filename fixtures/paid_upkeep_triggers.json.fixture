@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Hibernation's End",
+    "oracle_id": "cf032b80-00d5-42fc-9e1a-16072b5fed55",
+    "text": "Mana cost: {4}{G}\nType: Enchantment\nCumulative upkeep {1} (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)\nWhenever you pay this enchantment's cumulative upkeep, you may search your library for a creature card with mana value equal to the number of age counters on this enchantment, put it onto the battlefield, then shuffle.",
+    "oracle_text": "Cumulative upkeep {1} (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)\nWhenever you pay this enchantment's cumulative upkeep, you may search your library for a creature card with mana value equal to the number of age counters on this enchantment, put it onto the battlefield, then shuffle.",
+    "baseline_content_hash": "33787600dfb47ac85294c1bab2d6134e9acc44fecf6c17cc97b2d807ae9b3d19",
+    "baseline_error": "unsupported triggered line: 'Whenever you pay this enchantment's cumulative upkeep, you may search your library for a creature card with mana value equal to the number of age counters on this enchantment, put it onto the battlefield, then shuffle.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever you pay this enchantment's cumulative upkeep, you may search your library for a creature card with mana value equal to the number of age counters on this enchantment, put it onto the battlefield, then shuffle.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; bounded independent source review clear at b726ad8aa"
+  },
+  {
+    "name": "Shah of Naar Isle",
+    "oracle_id": "31c978b4-06d7-4e9d-82da-bfa4ef16f470",
+    "text": "Mana cost: {3}{R}\nType: Creature — Efreet\nPower/Toughness: 6/6\nTrample\nEcho {0} (At the beginning of your upkeep, if this came under your control since the beginning of your last upkeep, sacrifice it unless you pay its echo cost.)\nWhen this creature's echo cost is paid, each opponent may draw up to three cards.",
+    "oracle_text": "Trample\nEcho {0} (At the beginning of your upkeep, if this came under your control since the beginning of your last upkeep, sacrifice it unless you pay its echo cost.)\nWhen this creature's echo cost is paid, each opponent may draw up to three cards.",
+    "baseline_content_hash": "8a26df20f3a10ac808bde87db9bddadc1d0f0bfd9188762995d03a6bcdb23779",
+    "baseline_error": "unsupported triggered line: 'When this creature's echo cost is paid, each opponent may draw up to three cards.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'When this creature's echo cost is paid, each opponent may draw up to three cards.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; bounded independent source review clear at b726ad8aa"
+  }
+]

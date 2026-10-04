@@ -588,3 +588,48 @@ fn noted_life_prefers_live_re_notes_and_exact_departure_receipts_without_blink_f
         "a snapshot for another object is not a receipt"
     );
 }
+
+#[test]
+fn numeric_damage_and_prevention_receipts_check_the_scalar_boundary_before_consumers() {
+    let (game, source, player) = fixture();
+    for amount in [i32::MAX as u32, i32::MAX as u32 + 1, u32::MAX] {
+        let target = crate::events::DamageTarget::Player(player);
+        let events = [
+            crate::triggers::TriggerEvent::new_with_provenance(
+                crate::events::DamageEvent::new(source, target, amount, false),
+                Default::default(),
+            ),
+            crate::triggers::TriggerEvent::new_with_provenance(
+                crate::events::DamagePreventedEvent::new(
+                    source, target, amount, source, player, false,
+                ),
+                Default::default(),
+            ),
+            crate::triggers::TriggerEvent::new_with_provenance(
+                crate::events::LifeGainEvent::new(player, amount),
+                Default::default(),
+            ),
+            crate::triggers::TriggerEvent::new_with_provenance(
+                crate::events::LifeLossEvent::new(player, amount, false),
+                Default::default(),
+            ),
+        ];
+        for event in events {
+            let context =
+                ExecutionContext::new_default(source, player).with_triggering_event(event);
+            let result = resolve(
+                &Value::EventValue(EventValueSpec::Amount),
+                &EvaluationContext::execution_context(&game, &context),
+            );
+            if amount == i32::MAX as u32 {
+                assert_eq!(result.unwrap(), i32::MAX);
+            } else {
+                let error = result.unwrap_err();
+                assert!(error.is_incomplete_execution());
+                assert!(
+                    matches!(error, ExecutionError::ResourceLimitExceeded { requested, maximum, .. } if requested == u128::from(amount) && maximum == i32::MAX as u128)
+                );
+            }
+        }
+    }
+}

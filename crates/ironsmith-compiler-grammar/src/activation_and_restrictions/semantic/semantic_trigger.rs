@@ -23,7 +23,10 @@ mod qualified_player_events;
 mod control_transitions;
 #[path = "causal_events.rs"]
 mod causal_events;
+#[path = "combat_declaration_shapes.rs"]
 mod combat_declaration_shapes;
+#[path = "paid_cost_triggers.rs"]
+mod paid_cost_triggers;
 
 // Private-zone membership implies ownership. Parse the complete origin list so
 // a shared or repeated "your" stays attached to every alternative.
@@ -690,6 +693,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     }
 
     if let Some(trigger) = causal_events::parse(tokens)? { return Ok(trigger); }
+    if let Some(trigger) = paid_cost_triggers::parse(tokens) { return Ok(trigger); }
 
     if let Some(player) = parse_unpaid_cumulative_upkeep_player(&words) {
         return Ok(TriggerSpec::KeywordActionFromSource {

@@ -3079,6 +3079,12 @@ fn build_builtin_token_definition(shape: token_grammar::BuiltinTokenShape) -> Ca
         token_grammar::BuiltinTokenShape::Powerstone => {
             crate::cards::tokens::powerstone_token_definition()
         }
+        token_grammar::BuiltinTokenShape::Heartwood => crate::cards::tokens::heartwood_token_definition(),
+        token_grammar::BuiltinTokenShape::Vibranium => crate::cards::tokens::vibranium_token_definition(),
+        token_grammar::BuiltinTokenShape::Gingerbrute => crate::cards::tokens::gingerbrute_token_definition(),
+        token_grammar::BuiltinTokenShape::Mutavault => crate::cards::tokens::mutavault_token_definition(),
+        token_grammar::BuiltinTokenShape::SpellgorgerWeird => crate::cards::tokens::spellgorger_weird_token_definition(),
+        token_grammar::BuiltinTokenShape::Tarmogoyf => crate::cards::tokens::tarmogoyf_token_definition(),
     }
 }
 

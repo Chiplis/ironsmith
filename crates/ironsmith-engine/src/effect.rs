@@ -362,6 +362,9 @@ pub enum ExecutionFact {
     },
     /// Captured once for each distinct original damage recipient.
     DamageRecipientBefore(DamageRecipientBefore),
+    /// Exact successful original arrivals, before replacement-added programs.
+    /// This is not selection/reveal evidence and does not include draws.
+    CardsPutIntoHand { player: PlayerId, cards: Vec<OutcomeObjectMemory> },
 }
 
 impl ExecutionFact {
@@ -1147,6 +1150,14 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
                     let mut positive = surface.clone();
                     positive.negated = false;
                     return !Self::PriorEffectResult(positive).evaluate_outcome(outcome);
+                }
+                if surface.action == crate::effect::PriorEffectAction::PutIntoHand {
+                    // The context-aware If owner additionally selects the actor.
+                    let count = outcome.execution_facts.iter().filter_map(|fact| {
+                        let ExecutionFact::CardsPutIntoHand { cards, .. } = fact else { return None; };
+                        Some(cards)
+                    }).flatten().filter(|card| prior_result_memory_matches_filter(card, &surface.filter)).count();
+                    return count >= surface.required_count.unwrap_or(1) as usize;
                 }
                 if !prior_result_filter_has_lki_constraints(&surface.filter) {
                     // CR 701.19a / 701.8a: regeneration (or a shield counter)

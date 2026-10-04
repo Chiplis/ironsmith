@@ -2354,3 +2354,23 @@ fn combat_declaration_shapes_preserve_grouping_direction_and_direct_player_alone
     assert!(blocker.colors.is_none());
     assert!(!blocked.any_of.is_empty() || blocked.colors.is_some());
 }
+
+#[test]
+fn paid_upkeep_triggers_require_a_complete_authenticated_source_and_distinct_paid_kind() {
+    use crate::model::ast::TriggerSpec;
+    use crate::events::KeywordActionKind;
+    for (text,expected) in [
+        ("you pay this enchantment's cumulative upkeep",KeywordActionKind::CumulativeUpkeepPaid),
+        ("this creature's echo cost is paid",KeywordActionKind::EchoCostPaid),
+        ("you pay this permanent's echo cost",KeywordActionKind::EchoCostPaid),
+        ("you don't pay this creature's cumulative upkeep",KeywordActionKind::CumulativeUpkeepNotPaid),
+    ] {
+        let tokens=crate::lexer::lex_line(text,0).unwrap();
+        assert!(matches!(crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).unwrap(),TriggerSpec::KeywordActionFromSource{action,..} if action==expected));
+    }
+    for text in ["you pay unknown object's cumulative upkeep", "you pay this enchantment's cumulative upkeep and draw a card"] {
+        let tokens=crate::lexer::lex_line(text,0).unwrap();
+        assert!(crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).is_err());
+    }
+
+}

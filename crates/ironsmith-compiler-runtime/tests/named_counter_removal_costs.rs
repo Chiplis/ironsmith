@@ -340,15 +340,15 @@ fn ulasht_entry_counts_other_controlled_colors_separately_and_each_mode_pays_sou
                 &mut game,
                 A,
                 Zone::Battlefield,
-                ColorSet::RED | ColorSet::GREEN,
+                ColorSet::RED.union(ColorSet::GREEN),
             );
             colored_creature(
                 &mut game,
                 B,
                 Zone::Battlefield,
-                ColorSet::RED | ColorSet::GREEN,
+                ColorSet::RED.union(ColorSet::GREEN),
             );
-            colored_creature(&mut game, A, Zone::Hand, ColorSet::RED | ColorSet::GREEN);
+            colored_creature(&mut game, A, Zone::Hand, ColorSet::RED.union(ColorSet::GREEN));
             let source = cast_source(&mut game, &definition, false);
             assert_eq!(
                 counters(&game, source),

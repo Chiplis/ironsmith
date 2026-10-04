@@ -635,13 +635,48 @@ pub(crate) fn can_attack_defending_player_with_view(
     game: &crate::game_state::GameState,
     view: &DerivedGameView<'_>,
 ) -> bool {
-    if !can_attack_with_view(creature, game, view) {
-        return false;
-    }
+    can_attack_defender_kind_with_view(creature, defending_player, false, game, view)
+}
 
-    if !game.can_attack_defending_player(creature.id, defending_player) {
-        return false;
-    }
+/// Attack-target-aware restriction owner. A battle's protector is still its
+/// defending player for landwalk and other defender rules, but a prohibition
+/// on attacking that player or their planeswalkers does not prohibit a battle.
+pub(crate) fn can_attack_target_with_view(
+    creature: &Object,
+    defending_player: crate::ids::PlayerId,
+    target: &crate::combat_state::AttackTarget,
+    game: &crate::game_state::GameState,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    if matches!(target, crate::combat_state::AttackTarget::Player(_))
+        && !game.can_attack_player_directly(creature.id, defending_player) { return false; }
+    can_attack_defender_kind_with_view(creature, defending_player,
+        matches!(target, crate::combat_state::AttackTarget::Battle(_)), game, view)
+}
+
+pub fn can_attack_target(
+    creature: &Object,
+    defending_player: crate::ids::PlayerId,
+    target: &crate::combat_state::AttackTarget,
+    game: &crate::game_state::GameState,
+) -> bool {
+    can_attack_target_with_view(creature, defending_player, target, game, &DerivedGameView::new(game))
+}
+
+fn can_attack_defender_kind_with_view(
+    creature: &Object,
+    defending_player: crate::ids::PlayerId,
+    battle: bool,
+    game: &crate::game_state::GameState,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    if !can_attack_with_view(creature, game, view) { return false; }
+    let allowed = if battle {
+        game.are_opponents(game.controller_of(creature), defending_player)
+            && game.attack_direction_allows_defender(game.controller_of(creature), defending_player)
+            && game.can_attack(creature.id)
+    } else { game.can_attack_defending_player(creature.id, defending_player) };
+    if !allowed { return false; }
 
     let abilities = view
         .calculated_characteristics(creature.id)

@@ -360,3 +360,19 @@ fn creature_token_shape_distinguishes_referenced_card_name_from_token_name() {
         "specialized quoted abilities must retain authored order and named self surface"
     );
 }
+
+#[test]
+fn canonical_token_names_are_typed_complete_leaves() {
+    for (text, expected) in [("Heartwood", BuiltinTokenShape::Heartwood),
+        ("Vibranium", BuiltinTokenShape::Vibranium), ("Gingerbrute", BuiltinTokenShape::Gingerbrute),
+        ("Mutavault", BuiltinTokenShape::Mutavault), ("Spellgorger Weird", BuiltinTokenShape::SpellgorgerWeird),
+        ("Tarmogoyf", BuiltinTokenShape::Tarmogoyf)] {
+        let tokens = crate::lexer::lex_line(text, 0).unwrap();
+        assert_eq!(parse_token_definition_shape_tokens(&tokens), Some(TokenDefinitionSpec::Builtin(expected)));
+    }
+    for text in ["Heartwood with flying", "Vibranium and draw a card", "Gingerbrute which is legendary",
+        "Mutavault with a charge counter", "Spellgorger Weird named Something Else"] {
+        let tokens = crate::lexer::lex_line(text, 0).unwrap();
+        assert!(super::super::rules::parse_canonical_named_token_shape(&tokens).is_none(), "{text}");
+    }
+}

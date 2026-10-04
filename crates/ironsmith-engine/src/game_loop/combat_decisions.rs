@@ -273,9 +273,10 @@ fn required_attack_cost_message_for_unpreviewed_attack(
     let creature = game.object(creature_id)?;
     let defending_player = crate::combat_state::defending_player_for_attack_target(game, target)?;
     let view = DerivedGameView::new(game);
-    if !crate::rules::combat::can_attack_defending_player_with_view(
+    if !crate::rules::combat::can_attack_target_with_view(
         creature,
         defending_player,
+        target,
         game,
         &view,
     ) {

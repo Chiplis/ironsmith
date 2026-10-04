@@ -29336,6 +29336,12 @@ fn describe_structural_echo_keyword(ability: &Ability) -> Option<String> {
     let [unless] = triggered.effects.flattened_default_effects() else {
         return None;
     };
+    if let Some(paid) = unless.downcast_ref::<crate::effects::CumulativeUpkeepEffect>() {
+        if paid.kind != ironsmith_core::effect::UpkeepPaymentKind::Echo || paid.player != PlayerFilter::You { return None; }
+        let [sacrifice] = paid.failure.as_slice() else { return None; };
+        if !matches!(sacrifice.downcast_ref::<crate::effects::SacrificeTargetEffect>()?.target, ChooseSpec::Source) { return None; }
+        return Some(format!("Echo{}", describe_echo_alternative_cost(&paid.payment)?));
+    }
     let unless = unless.downcast_ref::<crate::effects::UnlessActionEffect>()?;
     if unless.player != PlayerFilter::You {
         return None;

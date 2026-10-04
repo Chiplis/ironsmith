@@ -1321,7 +1321,12 @@ impl GameState {
         let sticker_identity = new_object.stable_id;
         self.add_object(new_object);
         if old_zone == Zone::Stack && new_zone == Zone::Battlefield {
-            self.effect_store.continuous_effects.retarget_resolved_permanent_spell(old_id, new_id);
+            self.effect_store
+                .continuous_effects
+                .retarget_resolved_permanent_spell(old_id, new_id);
+            self.effect_store
+                .prevention_effects
+                .link_resolved_permanent_spell(old_id, new_id);
         }
         self.move_stickers_to_new_object(sticker_identity, new_id, new_zone);
         if new_zone == Zone::Battlefield {
@@ -4993,6 +4998,8 @@ impl GameState {
     pub fn update_cant_effects(&mut self) {
         use crate::ability::AbilityKind;
         use crate::static_abilities::StaticAbility;
+
+        self.expire_condition_ended_prevention_shields();
 
         // A duration ends permanently at its first false transition.
         let expired: std::collections::HashSet<usize> = self

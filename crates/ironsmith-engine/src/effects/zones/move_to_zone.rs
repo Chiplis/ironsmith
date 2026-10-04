@@ -677,6 +677,19 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                     let mut new_object_ids = game.take_zone_change_results(object_id);
                     if new_object_ids.is_empty() && let Some(id) = new_object_id { new_object_ids.push(id); }
                     let mut result = super::AppliedZoneChange { final_zone, new_object_id, new_object_ids };
+                    if final_zone == Zone::Hand {
+                        for &id in &result.new_object_ids {
+                            let arriving = game.object(id).ok_or_else(|| ExecutionError::InternalError(
+                                "hand arrival disappeared before result capture".into()))?;
+                            let snapshot = ObjectSnapshot::from_object(arriving, game);
+                            if arriving.kind == crate::object::ObjectKind::Card {
+                                let memory = OutcomeObjectMemory::from_snapshot(&snapshot);
+                                authored_facts.push(crate::effect::ExecutionFact::CardsPutIntoHand {
+                                    player: arriving.owner, cards: vec![memory],
+                                });
+                            }
+                        }
+                    }
                     // Retain the exact arrival identities for enclosing replacement owners.
                     game.record_zone_change_results(object_id, result.new_object_ids.clone());
                     if !result.new_object_ids.is_empty() {

@@ -3930,6 +3930,8 @@ pub(crate) fn describe_compact_prevent_damage_color_choice(effect: &Effect) -> O
             || prevent.source_target.is_some()
             || prevent.excluded_source_target.is_some()
             || prevent.protect_source
+            || prevent.protect_source_target
+            || !prevent.follow_up_effects.is_empty()
         {
             return None;
         }
@@ -4607,6 +4609,7 @@ pub(crate) fn describe_prior_effect_action(
         crate::effect::PriorEffectAction::Prevented => "prevented",
         crate::effect::PriorEffectAction::PutOntoBattlefield => "put onto the battlefield",
         crate::effect::PriorEffectAction::PutIntoGraveyard => "put into a graveyard",
+        crate::effect::PriorEffectAction::PutIntoHand => "put into a hand",
         crate::effect::PriorEffectAction::Removed => "removed",
         crate::effect::PriorEffectAction::Returned => "returned",
         crate::effect::PriorEffectAction::Revealed => "revealed",

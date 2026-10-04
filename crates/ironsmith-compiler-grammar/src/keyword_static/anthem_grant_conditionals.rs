@@ -2252,12 +2252,31 @@ fn goad_for_anthem_subject(clause: &ParsedAnthemClause) -> StaticAbilityAst {
     ability.into()
 }
 
-fn lower_atomic_anthem_predicate(clause: &ParsedAnthemClause, tokens: &[OwnedLexToken]) -> Option<StaticAbilityAst> {
+fn lower_atomic_anthem_predicate(clause: &ParsedAnthemClause, tokens: &[OwnedLexToken], quoted: bool) -> Option<StaticAbilityAst> {
     if let Some(ability) = crate::activation_and_restrictions::activation_costs::blocking_cant_static_ability(tokens) {
         return Some(grant_for_anthem_subject(clause, ability));
     }
     use anthem_grant_grammar::ContinuingSegmentShape as S;
     let ability = match anthem_grant_grammar::parse_continuing_segment_shape(tokens) {
+        S::CantAttackYou { covers_planeswalkers } => {
+            // Edge trimming has removed quotation tokens by this point. Only
+            // the untouched raw segment can establish ownership of this rule.
+            if quoted { return None; }
+            // This unquoted rule is controlled by the granter. Giving the
+            // creature a new ability would incorrectly rebind "you" to its
+            // controller and let ordinary ability removal erase the rule.
+            let mut filter = anthem_subject_filter(&clause.subject);
+            if attached_goaded_display_subject(&clause.subject).is_some() {
+                filter.with_attached_object = Some(Box::new(ObjectFilter::source()));
+            }
+            let restriction = if covers_planeswalkers {
+                crate::effect::Restriction::attack_player_or_planeswalkers_controlled_by(filter, PlayerFilter::You)
+            } else { crate::effect::Restriction::attack_player(filter, PlayerFilter::You) };
+            let mut ability = StaticAbility::restriction(restriction,
+                format!("{} {}", anthem_subject_filter(&clause.subject).description(), display_text_for_tokens(tokens, false)));
+            if let Some(condition) = &clause.condition { ability = ability.with_condition(condition.clone()); }
+            return Some(ability.into());
+        }
         S::CantAttack => StaticAbility::cant_attack(),
         S::MustBeBlocked => StaticAbility::restriction(crate::effect::Restriction::must_be_blocked(ObjectFilter::source()), "This creature must be blocked if able"),
         S::AllMustBlock => StaticAbility::restriction(crate::effect::Restriction::must_block_specific_attacker(ObjectFilter::creature(), ObjectFilter::source()), "All creatures able to block this creature do so"),
@@ -2316,7 +2335,7 @@ pub fn parse_anthem_with_trailing_segments_line(
             if let Some(additions) = parse_type_color_addition_clause(&segment)? {
                 push_type_color_additions_for_anthem_subject(&mut extras, &clause, additions); continue;
             }
-            if let Some(extra) = lower_atomic_anthem_predicate(&clause, &segment) {
+            if let Some(extra) = lower_atomic_anthem_predicate(&clause, &segment, raw_segment.iter().any(|token| token.kind == TokenKind::Quote)) {
                 extras.push(extra); continue;
             }
 
@@ -2378,7 +2397,7 @@ pub fn parse_anthem_with_trailing_segments_line(
         if let Some(additions) = parse_type_color_addition_clause(&segment)? {
             push_type_color_additions_for_anthem_subject(&mut extras, &clause, additions); continue;
         }
-        if let Some(extra) = lower_atomic_anthem_predicate(&clause, &segment) {
+        if let Some(extra) = lower_atomic_anthem_predicate(&clause, &segment, raw_segment.iter().any(|token| token.kind == TokenKind::Quote)) {
             extras.push(extra); continue;
         }
 
@@ -5216,6 +5235,42 @@ mod live_same_name_goad_tests {
             "Other creatures with the same impossible quality are goaded."] {
             let tokens = crate::lexer::lex_line(line, 0).unwrap();
             assert!(!matches!(parse_matching_are_goaded_line(&tokens), Ok(Some(_))), "{line}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod attached_player_restriction_tests {
+    use super::*;
+    #[test]
+    fn complete_unquoted_tail_belongs_to_the_granter() {
+        let tokens=crate::lexer::lex_line("Enchanted creature gets +2/+2, has vigilance, and can't attack you or planeswalkers you control.",0).unwrap();
+        let result=parse_anthem_with_trailing_segments_line(&tokens).unwrap().unwrap();
+        assert_eq!(result.len(),3);
+        assert!(matches!(&result[2], StaticAbilityAst::Static(_)),"the restriction is not an ability granted to the recipient");
+        for text in ["Enchanted creature gets +2/+2, has vigilance, and can't attack you or planeswalkers you control unless its controller pays {2}.","Enchanted creature gets +2/+2, has vigilance, and can't attack you or battles you protect."] {
+            assert!(!matches!(parse_anthem_with_trailing_segments_line(&crate::lexer::lex_line(text,0).unwrap()),Ok(Some(_))),"{text}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod quoted_anthem_attack_rule_ownership_tests {
+    use super::*;
+    #[test]
+    fn mixed_quoted_tail_is_never_rebound_as_a_granters_unquoted_rule() {
+        for text in [
+            "Enchanted creature gets +2/+2, has vigilance, and has \"can't attack you or planeswalkers you control\".",
+            "Enchanted creature gets +2/+2, has \"can't attack you or planeswalkers you control\", and has vigilance.",
+            "Enchanted creature gets +2/+2, has vigilance, and \"can't attack you or planeswalkers you control\".",
+        ] {
+            let tokens=crate::lexer::lex_line(text,0).unwrap();
+            if let Ok(Some(abilities))=parse_anthem_with_trailing_segments_line(&tokens) {
+                assert!(!abilities.iter().any(|ability| matches!(ability,
+                    StaticAbilityAst::Static(ability) if matches!(&ability.payload,
+                        ironsmith_core::StaticAbilityPayload::RuleRestriction { restriction: crate::effect::Restriction::AttackPlayerOrPlaneswalkersControlledBy { .. }, .. }))),
+                    "a quoted ability must stay recipient-owned or be rejected: {text}");
+            }
         }
     }
 }

@@ -85,7 +85,7 @@ pub fn blood_token_definition() -> CardDefinition {
         .build()
 }
 
-pub fn powerstone_token_definition() -> CardDefinition {
+fn nonartifact_spell_restricted_mana_ability() -> crate::ability::Ability {
     let restriction = crate::ability::ManaUsageRestriction::PaymentTransaction {
         restriction: Some(crate::ability::ManaPaymentPredicate::Not(Box::new(
             crate::ability::ManaPaymentPredicate::All(vec![
@@ -99,7 +99,7 @@ pub fn powerstone_token_definition() -> CardDefinition {
         ))),
         on_spend: Vec::new(),
     };
-    let ability = crate::ability::Ability {
+    crate::ability::Ability {
         kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
             mana_cost: TotalCost::from_costs(vec![Cost::tap()]),
             effects: vec![Effect::add_mana(vec![ManaSymbol::Colorless])].into(),
@@ -113,13 +113,15 @@ pub fn powerstone_token_definition() -> CardDefinition {
             is_loyalty_ability: false,
         }),
         functional_zones: vec![Zone::Battlefield],
-    };
+    }
+}
 
+pub fn powerstone_token_definition() -> CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Powerstone")
         .token()
         .card_types(vec![CardType::Artifact])
         .subtypes(vec![Subtype::Powerstone])
-        .with_ability(ability)
+        .with_ability(nonartifact_spell_restricted_mana_ability())
         .build()
 }
 
@@ -479,5 +481,91 @@ pub fn cursed_role_token_definition() -> CardDefinition {
         .with_ability(crate::ability::Ability::static_ability(
             StaticAbility::set_base_power_toughness(enchanted_creature_filter(), 1, 1),
         ))
+        .build()
+}
+
+/// CR 111.10x. The subtype is part of the definition even where the reminder
+/// text abbreviates it. This is a repeatable tap ability, not a sacrifice.
+pub fn heartwood_token_definition() -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Heartwood")
+        .token().card_types(vec![CardType::Artifact]).subtypes(vec![Subtype::Heartwood])
+        .color_indicator(crate::color::ColorSet::RED.union(crate::color::ColorSet::GREEN))
+        .oracle_text("{T}: Add {R} or {G}.")
+        .with_ability(crate::ability::Ability::mana_with_effects(TotalCost::from_costs(vec![]),
+            vec![Effect::add_mana_of_any_color_restricted(1, vec![crate::color::Color::Red, crate::color::Color::Green])]))
+        .build()
+}
+
+/// CR 111.10w. The restriction prohibits only casting a nonartifact spell;
+/// activation and other costs remain legal uses of the produced mana.
+pub fn vibranium_token_definition() -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Vibranium")
+        .token().card_types(vec![CardType::Artifact]).subtypes(vec![Subtype::Vibranium])
+        .oracle_text("Indestructible\n{T}: Add {C}. This mana can't be spent to cast a nonartifact spell.")
+        .indestructible().with_ability(nonartifact_spell_restricted_mana_ability()).build()
+}
+
+/// CR 111.11: complete printed characteristics, frozen from the canonical
+/// Oracle card. Runtime execution uses this payload and never looks up a name.
+pub fn gingerbrute_token_definition() -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Gingerbrute")
+        .token().mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)]))
+        .card_types(vec![CardType::Artifact, CardType::Creature]).subtypes(vec![Subtype::Food, Subtype::Golem])
+        .power_toughness(crate::card::PowerToughness::fixed(1, 1))
+        .oracle_text("Haste\n{1}: This creature can't be blocked this turn except by creatures with haste.\n{2}, {T}, Sacrifice this creature: You gain 3 life.")
+        .with_ability(crate::ability::Ability::static_ability(StaticAbility::haste()))
+        .with_ability(crate::ability::Ability::activated_with_timing(
+            TotalCost::mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)])),
+            vec![Effect::cant_until(crate::effect::Restriction::BlockSpecificAttacker {
+                blockers: ObjectFilter::creature().without_static_ability(crate::static_abilities::StaticAbilityId::Haste),
+                attacker: ObjectFilter::source(),
+            }, crate::effect::Until::EndOfTurn)], crate::ability::ActivationTiming::AnyTime))
+        .with_ability(crate::ability::Ability::activated_with_timing(
+            TotalCost::from_costs(vec![Cost::mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(2)])),
+                Cost::tap(), Cost::sacrifice_self()]), vec![Effect::gain_life(3)], crate::ability::ActivationTiming::AnyTime))
+        .build()
+}
+
+pub fn mutavault_token_definition() -> CardDefinition {
+    let animation = crate::effects::ApplyContinuousEffect::with_spec(ChooseSpec::Source,
+        crate::continuous::Modification::AddCardTypes(vec![CardType::Creature]), crate::effect::Until::EndOfTurn)
+        .with_additional_modification(crate::continuous::Modification::SetPowerToughness {
+            power: crate::effect::Value::Fixed(2), toughness: crate::effect::Value::Fixed(2),
+            sublayer: crate::continuous::PtSublayer::Setting,
+        })
+        .with_additional_modification(crate::continuous::Modification::AddAllSubtypesOfFamily(crate::types::SubtypeFamily::Creature));
+    CardDefinitionBuilder::new(CardId::new(), "Mutavault")
+        .token().card_types(vec![CardType::Land])
+        .oracle_text("{T}: Add {C}.\n{1}: This land becomes a 2/2 creature with all creature types until end of turn. It's still a land.")
+        .with_ability(crate::ability::Ability::mana(TotalCost::from_costs(vec![]), vec![ManaSymbol::Colorless]))
+        .with_ability(crate::ability::Ability::activated_with_timing(
+            TotalCost::mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)])),
+            vec![Effect::new(animation)], crate::ability::ActivationTiming::AnyTime))
+        .build()
+}
+
+pub fn spellgorger_weird_token_definition() -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Spellgorger Weird")
+        .token().mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(2), ManaSymbol::Red]))
+        .card_types(vec![CardType::Creature]).subtypes(vec![Subtype::Weird])
+        .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+        .oracle_text("Whenever you cast a noncreature spell, put a +1/+1 counter on this creature.")
+        .with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::spell_cast(Some(ObjectFilter::default().without_type(CardType::Creature)), PlayerFilter::You),
+            vec![Effect::put_counters(crate::object::CounterType::PlusOnePlusOne, 1, ChooseSpec::Source)]))
+        .build()
+}
+
+pub fn tarmogoyf_token_definition() -> CardDefinition {
+    let count = crate::effect::Value::CardTypesAmong(ObjectFilter::default().in_zone(Zone::Graveyard).nontoken());
+    CardDefinitionBuilder::new(CardId::new(), "Tarmogoyf")
+        .token().mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(1), ManaSymbol::Green]))
+        .card_types(vec![CardType::Creature]).subtypes(vec![Subtype::Lhurgoyf])
+        .power_toughness(crate::card::PowerToughness::new(crate::card::PtValue::Star, crate::card::PtValue::StarPlus(1)))
+        .oracle_text("Tarmogoyf's power is equal to the number of card types among cards in all graveyards and its toughness is equal to that number plus 1.")
+        .with_ability(crate::ability::Ability::static_ability(StaticAbility::characteristic_defining_pt(
+            count.clone(), crate::effect::Value::Add(Box::new(count), Box::new(crate::effect::Value::Fixed(1)))))
+            .in_zones(vec![Zone::Library, Zone::Hand, Zone::Battlefield, Zone::Graveyard, Zone::Stack,
+                Zone::Exile, Zone::Command, Zone::Ante, Zone::OutsideGame]))
         .build()
 }

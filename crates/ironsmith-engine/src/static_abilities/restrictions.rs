@@ -186,6 +186,13 @@ impl StaticAbilityKind for YouCantLoseGame {
         "You can't lose the game".to_string()
     }
 
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        // A command-zone emblem changes game rules directly. A conditional
+        // self-granted ability would be confined to battlefield layer six.
+        StaticAbility::restriction(Restriction::lose_game(PlayerFilter::You), self.display())
+            .with_condition(condition)
+    }
+
     fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
         let mut tracker = CantEffectTracker::default();
         Restriction::lose_game(PlayerFilter::You).apply(game, &mut tracker, controller, None, None);
@@ -204,6 +211,16 @@ impl StaticAbilityKind for OpponentsCantWinGame {
 
     fn display(&self) -> String {
         "Your opponents can't win the game".to_string()
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        // A command-zone emblem changes game rules directly. A conditional
+        // self-granted ability would be confined to battlefield layer six.
+        StaticAbility::restriction(
+            Restriction::win_game(PlayerFilter::Opponent),
+            self.display(),
+        )
+        .with_condition(condition)
     }
 
     fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {

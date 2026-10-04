@@ -577,6 +577,9 @@ mod chain_entry_readings;
 fn parse_effect_chain_lexed_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effect) = super::duration_source_prevention::parse(tokens)? {
+        return Ok(vec![effect]);
+    }
     if let Some(effect) = super::temporary_attack_requirement::parse(tokens)? {
         return Ok(vec![effect]);
     }
@@ -1332,6 +1335,9 @@ fn parse_effect_chain_inner_lexed_unstacked(
     tokens: &[OwnedLexToken],
     recognize_control_flow: bool,
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effect) = super::duration_source_prevention::parse(tokens)? {
+        return Ok(vec![effect]);
+    }
     if let Some(effect) = super::temporary_attack_requirement::parse(tokens)? {
         return Ok(vec![effect]);
     }
@@ -2639,6 +2645,25 @@ pub fn bind_prevention_followup(effects: &mut Vec<EffectAst>, sentence: &[OwnedL
     };
     match action {
         SubjectVerbActionAst::DamagePrevention(
+            DamagePreventionActionAst::PreventAllDamageToTarget {
+                source_target: Some(_),
+                follow_up_effects,
+                ..
+            },
+        ) if follow_up_effects.is_empty()
+            && sequence_grammar::parse_prevention_gain_life_followup_shape(sentence) =>
+        {
+            follow_up_effects.push(EffectAst::subject_verb(
+                SubjectVerbRoleAst::AffectedPlayer,
+                PlayerAst::You,
+                SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife {
+                    amount: Value::EventValue(crate::effect::EventValueSpec::Amount),
+                }),
+            ));
+            true
+        }
+
+        SubjectVerbActionAst::DamagePrevention(
             DamagePreventionActionAst::PreventNextTimeDamage {
                 source,
                 reflect_damage_to_source_controller,
@@ -2842,7 +2867,12 @@ pub fn bind_prevention_followup(effects: &mut Vec<EffectAst>, sentence: &[OwnedL
         }
         SubjectVerbActionAst::DamagePrevention(
             DamagePreventionActionAst::PreventAllDamageToTarget {
-                target, duration, combat_only, ..
+                target,
+                duration,
+                combat_only,
+                source_target: None,
+                protect_source_target: false,
+                ..
             },
         ) => {
             if !*combat_only && sequence_grammar::parse_prevention_counter_followup_shape(sentence) {

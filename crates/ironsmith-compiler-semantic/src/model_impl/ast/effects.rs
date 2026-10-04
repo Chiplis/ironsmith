@@ -651,11 +651,20 @@ impl EffectAst {
 
     pub fn subject_verb_prevent_all_combat_damage_to_target(target: TargetAst, duration: Until) -> Self {
         Self::subject_verb(
-            SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
-            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllDamageToTarget {
-                target, duration, combat_only: true, source_of_your_choice: false,
-                source_choice_shares_activation_mana_color: false, source_target: None,
-            }),
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllDamageToTarget {
+                    target,
+                    duration,
+                    combat_only: true,
+                    source_of_your_choice: false,
+                    source_choice_shares_activation_mana_color: false,
+                    source_target: None,
+                    protect_source_target: false,
+                    follow_up_effects: Vec::new(),
+                },
+            ),
         )
     }
 
@@ -675,6 +684,8 @@ impl EffectAst {
                     source_of_your_choice,
                     source_choice_shares_activation_mana_color: false,
                     source_target: None,
+                    protect_source_target: false,
+                    follow_up_effects: Vec::new(),
                 },
             ),
         )
@@ -695,6 +706,8 @@ impl EffectAst {
                     source_of_your_choice: true,
                     source_choice_shares_activation_mana_color: true,
                     source_target: None,
+                    protect_source_target: false,
+                    follow_up_effects: Vec::new(),
                 },
             ),
         )
@@ -716,9 +729,38 @@ impl EffectAst {
                     source_of_your_choice: false,
                     source_choice_shares_activation_mana_color: false,
                     source_target: Some(source_target),
+                    protect_source_target: false,
+                    follow_up_effects: Vec::new(),
                 },
             ),
         )
+    }
+
+    /// One target declaration binds both directions of the prevention shield.
+    pub fn subject_verb_prevent_all_damage_to_and_by_target(
+        target: TargetAst,
+        duration: Until,
+    ) -> Self {
+        let mut effect = Self::subject_verb_prevent_all_damage_to_target_from_target_source(
+            TargetAst::ObjectOrPlayer(
+                ObjectFilter::default(),
+                crate::target::PlayerFilter::Any,
+                None,
+            ),
+            target,
+            duration,
+        );
+        if let Self::SubjectVerb(subject) = &mut effect
+            && let SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllDamageToTarget {
+                    protect_source_target,
+                    ..
+                },
+            ) = &mut subject.action
+        {
+            *protect_source_target = true;
+        }
+        effect
     }
 
     pub fn subject_verb_prevent_all_damage_to_target_from_source_filter(
