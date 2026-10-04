@@ -840,7 +840,7 @@ fn named_vote_counts_and_the_highest_life_scalar_remain_composable_values() {
         ),
         (
             "the highest life total among all players",
-            Value::LifeTotal(PlayerFilter::MostLifeTied),
+            Value::MaximumLifeTotal(PlayerFilter::Any),
         ),
     ] {
         let tokens = lex_line(text, 0).unwrap();
@@ -852,5 +852,40 @@ fn named_vote_counts_and_the_highest_life_scalar_remain_composable_values() {
     assert!(
         parse_value_expr_words(&["the", "highest", "life", "total", "among", "opponents"])
             .is_none()
+    );
+}
+
+#[test]
+fn life_extrema_and_fractional_player_counts_keep_their_scopes() {
+    for (text, value) in [
+        (
+            "the highest life total among your opponents",
+            Value::MaximumLifeTotal(PlayerFilter::Opponent),
+        ),
+        (
+            "the highest life total among players",
+            Value::MaximumLifeTotal(PlayerFilter::Any),
+        ),
+        (
+            "the number of opponents whose life total is less than half their starting life total",
+            Value::CountPlayersBelowHalfStartingLifeTotal(PlayerFilter::Opponent),
+        ),
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let (parsed, used) = parse_value_expr_tokens(&tokens).unwrap();
+        assert_eq!(used, tokens.len());
+        assert_eq!(parsed, value);
+    }
+    let words = "half the highest life total among your opponents rounded up"
+        .split_whitespace()
+        .collect::<Vec<_>>();
+    let (value, used) = parse_value_expr_words(&words).unwrap();
+    assert_eq!(used, words.len());
+    assert_eq!(
+        value,
+        Value::HalfRoundedDown(Box::new(Value::Add(
+            Box::new(Value::MaximumLifeTotal(PlayerFilter::Opponent)),
+            Box::new(Value::Fixed(1))
+        )))
     );
 }

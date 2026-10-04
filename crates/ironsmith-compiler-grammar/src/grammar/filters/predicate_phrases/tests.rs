@@ -4176,3 +4176,78 @@ fn strict_hand_comparisons_preserve_existential_player_group_scopes() {
     assert!(matches!(parse_predicate(&predicate_tokens_after_if(&tokens)).unwrap(),
         PredicateAst::Player(PlayerPredicateAst::PlayerCardsInHandOrFewer { player: PlayerAst::Opponent, count: 2 })));
 }
+
+#[test]
+fn a_ring_choice_predicate_authenticates_the_source_and_keeps_historical_choice_semantics() {
+    for (name, text) in [
+        ("Aragorn, Company Leader", "you chose a creature other than Aragorn as your Ring-bearer"),
+        ("Gandalf, Friend of the Shire", "you chose a creature other than Gandalf as your Ring-bearer"),
+        ("Ring witness", "you chose a creature other than this creature as your Ring-bearer"),
+    ] {
+        assert_eq!(parse_predicate_for_source(name, text).unwrap(), PredicateAst::Triggering(TriggeringPredicateAst::YouChoseAnotherRingBearer));
+    }
+    assert!(parse_predicate_for_source("Ring witness", "you chose a creature other than Unknown Creature as your Ring-bearer").is_err());
+}
+
+#[test]
+fn dynamic_life_conditions_keep_strictness_offsets_and_article_player_scope() {
+    for (text, operator, right) in [
+        (
+            "If your life total is greater than your starting life total",
+            ValueComparisonOperator::GreaterThan,
+            Value::StartingLifeTotal(PlayerFilter::You),
+        ),
+        (
+            "If your life total is less than your starting life total",
+            ValueComparisonOperator::LessThan,
+            Value::StartingLifeTotal(PlayerFilter::You),
+        ),
+        (
+            "If your life total is at least 10 greater than your starting life total",
+            ValueComparisonOperator::GreaterThanOrEqual,
+            Value::Add(
+                Box::new(Value::StartingLifeTotal(PlayerFilter::You)),
+                Box::new(Value::Fixed(10)),
+            ),
+        ),
+    ] {
+        assert_eq!(
+            parse_predicate_for_source("Life condition witness", text).unwrap(),
+            PredicateAst::ValueComparison {
+                left: Value::LifeTotal(PlayerFilter::You),
+                operator,
+                right
+            }
+        );
+    }
+    assert_eq!(
+        parse_predicate_for_source(
+            "Life condition witness",
+            "If a player's life total is less than or equal to half their starting life total"
+        )
+        .unwrap(),
+        PredicateAst::Player(PlayerPredicateAst::PlayerLifeAtMostHalfStartingLifeTotal {
+            player: PlayerAst::Any
+        }),
+    );
+    assert_eq!(
+        parse_predicate_for_source(
+            "Life condition witness",
+            "If an opponent's life total is less than half their starting life total"
+        )
+        .unwrap(),
+        PredicateAst::Player(
+            PlayerPredicateAst::PlayerLifeLessThanHalfStartingLifeTotal {
+                player: PlayerAst::Opponent
+            }
+        ),
+    );
+}
+
+#[test]
+fn ring_bearer_control_predicate_keeps_the_typed_designation() {
+    let predicate = parse_predicate_for_source("Dúnedain Rangers", "you don't control a Ring-bearer").unwrap();
+    let debug = format!("{predicate:?}");
+    assert!(debug.contains("ring_bearer: true"), "{debug}");
+    assert!(debug.contains("PlayerControlsNo"), "{debug}");
+}

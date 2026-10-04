@@ -493,8 +493,10 @@ fn horde_complete_entry_count_and_prevention_keep_each_zone_and_controller() {
             game.create_object_from_card(&irrelevant, alice, Zone::Graveyard);
             let old_host = game.create_object_from_definition(&definition, alice, from);
             let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
-            let entry = game.move_object_with_etb_processing_with_dm(old_host, Zone::Battlefield, &mut dm)
-                .unwrap().assert_completed_without_additions().unwrap();
+            let receipt = game.move_object_with_etb_processing_with_dm(old_host, Zone::Battlefield, &mut dm).unwrap();
+            assert!(!receipt.pending);
+            assert!(receipt.programs.is_empty(), "fixture must not discard added entry instructions");
+            let entry = receipt.original.into_result().unwrap();
             let host = entry.new_id;
             // A direct graveyard entry counts the entering card in that old
             // zone, before the replacement-modified entry is committed.

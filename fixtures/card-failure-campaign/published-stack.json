@@ -2,7 +2,7 @@
   "schema_version": 1,
   "repository": "Chiplis/ironsmith",
   "frozen_baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "published_through_stage": 43,
+  "published_through_stage": 44,
   "purpose": "Verified published tree/ref/parent and draft-PR lookup for the source-coverage stage IDs. Only historical compile/runtime evidence is verification; stages08+ remain UNVALIDATED. The current stage appears in the next cumulative source update to avoid a self-referential commit.",
   "entries": [
     {
@@ -636,6 +636,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/809"
+    },
+    {
+      "stage": 44,
+      "branch": "fix/card-failures-44-control-and-activation-families",
+      "base": "fix/card-failures-43-runtime-resource-and-redirection-roots",
+      "source_integration_commit": "cbbb608f70e742454fba702062acf4a827ab5e0c",
+      "remote_commit": "98e6f7e3428a7e698bc1d39372d1c5d3943a427a",
+      "tree": "e99e12814f793cc390d67de6db4e796f76f3694f",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 810,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/810"
     }
   ]
 }

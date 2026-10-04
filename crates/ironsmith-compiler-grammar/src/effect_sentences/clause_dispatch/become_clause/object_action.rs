@@ -210,6 +210,19 @@ pub fn parse_become_clause(
         target = recovered_target;
     }
 
+    if let Some(shape) = become_grammar::parse_basic_land_choice_template(become_words) {
+        let mut effect = EffectAst::subject_verb_become_basic_land_type_choice(target, duration);
+        if let EffectAst::SubjectVerb(subject) = &mut effect
+            && let crate::cards::builders::SubjectVerbActionAst::Characteristics(
+                crate::cards::builders::CharacteristicActionAst::BecomeBasicLandTypeChoice {
+                    allowed_subtypes, preserve_other_types, ..
+                }) = &mut subject.action {
+            *allowed_subtypes = shape.allowed_subtypes;
+            *preserve_other_types = shape.preserve_other_types;
+        }
+        return Ok(effect);
+    }
+
     match become_surface.exact_kind {
         Some(become_grammar::BecomeExactKind::BasicLandTypeChoice) => {
             return Ok(EffectAst::subject_verb_become_basic_land_type_choice(

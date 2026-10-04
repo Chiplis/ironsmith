@@ -2828,6 +2828,7 @@ pub(crate) fn describe_goad_target(spec: &ChooseSpec) -> String {
                 && filter.with_attached_object.is_none()
                 && filter.without_attached_object.is_none()
                 && !filter.suspected
+                && !filter.ring_bearer
                 && !filter.source;
             if looks_like_plain_creature_filter {
                 if let Some(controller) = filter.controller.as_ref() {
@@ -5823,6 +5824,9 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 describe_count_filter_value_subject(filter)
             )
         }
+        Value::TotalPower(filter) if filter == &ObjectFilter::your_ring_bearer() => "your Ring-bearer's power".to_string(),
+        Value::TotalToughness(filter) if filter == &ObjectFilter::your_ring_bearer() => "your Ring-bearer's toughness".to_string(),
+        Value::TotalManaValue(filter) if filter == &ObjectFilter::your_ring_bearer() => "your Ring-bearer's mana value".to_string(),
         Value::TotalPower(filter) => {
             if filter.tagged_constraints.iter().any(|constraint| {
                 constraint.relation == TaggedOpbjectRelation::IsTaggedObject
@@ -6184,6 +6188,22 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 .unwrap_or_else(|| "this permanent".to_string());
             format!("the number of {character}'s in name stickers on {source}")
         }
+        Value::MaximumLifeTotal(players) => {
+            let scope = match players {
+                PlayerFilter::Any => "all players".to_string(),
+                PlayerFilter::Opponent => "your opponents".to_string(),
+                _ => describe_player_filter(players),
+            };
+            format!("the highest life total among {scope}")
+        },
+        Value::CountPlayersBelowHalfStartingLifeTotal(players) => {
+            let scope = match players {
+                PlayerFilter::Opponent => "opponents".to_string(),
+                PlayerFilter::Any => "players".to_string(),
+                _ => describe_player_filter(players),
+            };
+            format!("the number of {scope} whose life total is less than half their starting life total")
+        },
         Value::LifeTotal(PlayerFilter::MostLifeTied) => "the highest life total among all players".to_string(),
         Value::LifeTotal(filter) => {
             format!("{} life total", describe_possessive_player_filter(filter))

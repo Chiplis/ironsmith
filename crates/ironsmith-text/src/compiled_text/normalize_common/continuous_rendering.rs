@@ -5024,6 +5024,12 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 describe_player_set_filter(filter)
             )
         }
+        crate::effect::Restriction::PlayLandsMatching(player, filter) => format!(
+            "{} can't play {}", describe_player_set_filter(player), filter.description()
+        ),
+        crate::effect::Restriction::ActivateLoyaltyAbilitiesOf(filter) => format!(
+            "loyalty abilities of {} can't be activated", filter.description()
+        ),
         crate::effect::Restriction::CastSpellsMatching(filter, spell_filter) => format!(
             "{} can't cast {}",
             describe_player_set_filter(filter),

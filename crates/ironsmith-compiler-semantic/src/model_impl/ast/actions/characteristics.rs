@@ -96,6 +96,8 @@ pub enum CharacteristicActionAst {
     BecomeBasicLandTypeChoice {
         target: TargetAst,
         duration: Until,
+        allowed_subtypes: Vec<Subtype>,
+        preserve_other_types: bool,
     },
     BecomeCreatureTypeChoice {
         target: TargetAst,

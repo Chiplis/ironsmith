@@ -300,6 +300,7 @@ pub(crate) fn interpret_trigger_model(
             })
         }
         TriggerKind::ControlChanged(trigger) => crate::triggers::Trigger::new(trigger),
+        TriggerKind::RingBearerChosen { player } => crate::triggers::Trigger::new(crate::triggers::RingBearerChosenTrigger { player }),
         TriggerKind::AttachmentChanged { attachment, recipient, attached } => crate::triggers::Trigger::new(crate::triggers::AttachmentChangedTrigger { attachment, recipient, attached }),
         TriggerKind::PlayerAttackDeclaration { attacker, defender, grouping } => crate::triggers::Trigger::new(crate::triggers::PlayerAttackDeclarationTrigger { attacker, defender, grouping }),
         TriggerKind::CardsMilled { player, filter, one_or_more, per_player } => crate::triggers::Trigger::new(crate::triggers::CardsMilledTrigger { player, filter, one_or_more, per_player }),

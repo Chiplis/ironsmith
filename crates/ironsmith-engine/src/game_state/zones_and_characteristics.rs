@@ -3092,9 +3092,7 @@ impl GameState {
             self.set_chosen_named_option(new_id, option);
         }
         if let Some(life_total) = choices.noted_life_total {
-            self.object_annotations_mut()
-                .noted_life_totals
-                .insert(new_id, life_total);
+            self.set_noted_life_total_for_source(new_id, life_total);
         }
         for (power, toughness, abilities) in &choices.power_toughness_choices {
             if let Some(object) = self.object_mut(new_id) {
@@ -5369,6 +5367,7 @@ impl GameState {
             | Modification::RemoveStaticAbilityFamily(_)
             | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
+        | Modification::RemoveLandRulesTextAbilities
             | Modification::RemoveAllAbilitiesExceptMana => true,
             Modification::AddAbility(static_ability) => {
                 Self::static_ability_requires_cant_update(static_ability)

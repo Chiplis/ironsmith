@@ -22,6 +22,8 @@ pub use phasing_changed::PhasingChangedTrigger;
 pub use attachment_changed::AttachmentChangedTrigger;
 mod control_changed;
 pub use control_changed::ControlChangedTrigger;
+mod ring_bearer_chosen;
+pub use ring_bearer_chosen::RingBearerChosenTrigger;
 mod permanent_becomes_tapped;
 mod permanent_becomes_untapped;
 mod permanent_sacrificed_or_destroyed;

@@ -884,6 +884,8 @@ pub enum ActivatedAbilityCostCondition {
     /// abilities. `None` until lowering binds the preceding activated ability;
     /// an unbound condition applies to every activated ability of the source.
     ThisAbility { ability_index: Option<usize> },
+    /// Independent gates on the same priced activation. Appended for artifact compatibility.
+    All(Vec<ActivatedAbilityCostCondition>),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

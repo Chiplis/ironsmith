@@ -126,6 +126,16 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
             visitor,
         )
     }
+    /// Numeric aggregates have an explicit empty-set identity, unlike a
+    /// scalar player reference that must designate an available player.
+    pub fn aggregate_players(&self, filter: &PlayerFilter) -> Vec<PlayerId> {
+        super::layer_resolution::continuous_value_players(
+            self.calculation,
+            filter,
+            self.controller,
+            self.source,
+        )
+    }
     pub fn players(&self, value: &Value, filter: &PlayerFilter) -> Vec<PlayerId> {
         required_continuous_value_players(
             value,

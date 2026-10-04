@@ -2920,12 +2920,12 @@ pub(super) fn compile_subject_verb_middle(
             ))
         }),
         SubjectVerbActionAst::Characteristics(
-            CharacteristicActionAst::BecomeBasicLandTypeChoice { target, duration },
+            CharacteristicActionAst::BecomeBasicLandTypeChoice { target, duration, allowed_subtypes, preserve_other_types },
         ) => compile_tagged_effect_for_target(target, ctx, "become_basic_land_type", |spec| {
             Effect::new(crate::effects::BecomeBasicLandTypeChoiceEffect::new(
                 spec,
                 duration.clone(),
-            ))
+            ).with_options(allowed_subtypes.clone(), *preserve_other_types))
         }),
         SubjectVerbActionAst::Characteristics(
             CharacteristicActionAst::BecomeCreatureTypeChoice {

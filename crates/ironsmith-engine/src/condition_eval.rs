@@ -1848,12 +1848,68 @@ fn player_life_compares_to_half_starting(
     inclusive: bool,
 ) -> bool {
     game.player(player).is_some_and(|state| {
-        let doubled_life = state.life.saturating_mul(2);
+        let doubled_life = i64::from(state.life) * 2;
         if inclusive {
-            doubled_life <= state.starting_life
+            doubled_life <= i64::from(state.starting_life)
         } else {
-            doubled_life < state.starting_life
+            doubled_life < i64::from(state.starting_life)
         }
+    })
+}
+
+/// A comparison need not materialize its arithmetic as an i32 effect amount.
+/// Widen the existing arithmetic nodes before comparing (for example a life
+/// difference spanning MIN..MAX, or starting life + 10). Leaves retain their
+/// ordinary typed resolver and all context/choice errors. This is bounded
+/// arithmetic, not an unbounded Value or gameplay-count representation.
+fn resolve_comparison_operand(
+    game: &GameState,
+    value: &Value,
+    ctx: &ExecutionContext,
+) -> Result<i64, ExecutionError> {
+    let overflow = || {
+        ExecutionError::UnresolvableValue(
+            "comparison arithmetic is outside the supported integer range".into(),
+        )
+    };
+    match value.unhinted() {
+        Value::Add(left, right) => resolve_comparison_operand(game, left, ctx)?
+            .checked_add(resolve_comparison_operand(game, right, ctx)?)
+            .ok_or_else(overflow),
+        Value::Scaled(inner, multiplier) => resolve_comparison_operand(game, inner, ctx)?
+            .checked_mul(i64::from(*multiplier))
+            .ok_or_else(overflow),
+        Value::Min(left, right) => Ok(resolve_comparison_operand(game, left, ctx)?
+            .min(resolve_comparison_operand(game, right, ctx)?)),
+        Value::HalfRoundedDown(inner) => {
+            Ok(resolve_comparison_operand(game, inner, ctx)?.div_euclid(2))
+        }
+        Value::DividedRoundedDown(inner, divisor) if *divisor != 0 => {
+            resolve_comparison_operand(game, inner, ctx)?
+                .checked_div_euclid(i64::from(*divisor))
+                .ok_or_else(overflow)
+        }
+        _ => resolve_value(game, value, ctx).map(i64::from),
+    }
+}
+
+fn compare_resolved_values(
+    game: &GameState,
+    left: &Value,
+    operator: crate::effect::ValueComparisonOperator,
+    right: &Value,
+    ctx: &ExecutionContext,
+) -> Result<bool, ExecutionError> {
+    use crate::effect::ValueComparisonOperator as Op;
+    let left = resolve_comparison_operand(game, left, ctx)?;
+    let right = resolve_comparison_operand(game, right, ctx)?;
+    Ok(match operator {
+        Op::GreaterThan => left > right,
+        Op::GreaterThanOrEqual => left >= right,
+        Op::Equal => left == right,
+        Op::LessThan => left < right,
+        Op::LessThanOrEqual => left <= right,
+        Op::NotEqual => left != right,
     })
 }
 
@@ -1930,10 +1986,7 @@ fn evaluate_value_comparison(
         ctx.set_tagged_objects(crate::tag::SOURCE_EXILED_TAG, source_exiled);
     }
     let compare = |exec: &ExecutionContext| -> Result<bool, ExecutionError> {
-        Ok(operator.evaluate(
-            resolve_value(game, left, exec)?,
-            resolve_value(game, right, exec)?,
-        ))
+        compare_resolved_values(game, left, operator, right, exec)
     };
     match compare(&ctx) {
         Ok(result) => result,
@@ -5228,10 +5281,7 @@ fn evaluate_condition_in_context(
         } => {
             if let Some(exec) = ctx.execution() {
                 let compare = |exec: &ExecutionContext| -> Result<bool, ExecutionError> {
-                    Ok(operator.evaluate(
-                        resolve_value(game, left, exec)?,
-                        resolve_value(game, right, exec)?,
-                    ))
+                    compare_resolved_values(game, left, *operator, right, exec)
                 };
                 match compare(exec) {
                     // "unless an opponent has 10 or less life": a quantified
@@ -5623,7 +5673,15 @@ Condition::TriggeringSpellSnowManaOfAnySpellColorSpentToCast => {
         Condition::PlayerGraveyardHasCardsAtLeast { player, count } => Ok(game
             .player(*player)
             .is_some_and(|p| p.graveyard.len() >= *count)),
+        Condition::YouChoseAnotherRingBearer => Ok(shared.triggering_event
+            .and_then(|event| event.downcast::<crate::events::KeywordActionEvent>())
+            .filter(|event| event.action == crate::events::KeywordActionKind::RingTemptsYou && event.player == shared.controller)
+            .and_then(|event| event.object_tags.get(ironsmith_core::tag::RING_BEARER_CHOSEN_TAG))
+            .is_some_and(|chosen| matches!(chosen.as_slice(), [object] if object.object_id != shared.source))),
         Condition::SourceIsRingBearer { player } => {
+            // The designation survives phasing, but the permanent is treated
+            // as nonexistent for this current-state predicate (CR 702.26b).
+            if game.is_phased_out(shared.source) { return Ok(false); }
             Ok(
                 matching_condition_players_simple(game, shared.controller, player)
                     .into_iter()
@@ -5738,4 +5796,68 @@ fn boast_may_be_activated_an_additional_time(
                     crate::static_abilities::StaticAbilityId::BoastTwiceEachTurn,
                 )
         })
+}
+
+#[cfg(test)]
+mod half_starting_life_boundary_tests {
+    use super::*;
+    #[test]
+    fn half_starting_life_compares_before_rounding_without_saturating_doubling() {
+        let mut game = GameState::new(vec!["Alice".into()], 41);
+        let player = game.players[0].id;
+        for (starting, life, strict, inclusive) in [
+            (41, 20, true, true),
+            (41, 21, false, false),
+            (40, 20, false, true),
+            (i32::MAX, i32::MAX, false, false),
+            (i32::MIN, i32::MIN, true, true),
+            (-3, -2, true, true),
+            (-3, -1, false, false),
+        ] {
+            game.player_mut(player).unwrap().starting_life = starting;
+            game.write_life_total(player, life);
+            assert_eq!(
+                player_life_compares_to_half_starting(&game, player, false),
+                strict
+            );
+            assert_eq!(
+                player_life_compares_to_half_starting(&game, player, true),
+                inclusive
+            );
+        }
+    }
+
+    #[test]
+    fn life_comparisons_widen_intermediates_without_clamping_the_predicate() {
+        use crate::effect::ValueComparisonOperator as Op;
+        let game = GameState::new(vec!["Alice".into()], 20);
+        let ctx = ExecutionContext::new_default(ObjectId::from_raw(999), game.players[0].id);
+        let difference = Value::absolute_difference(Value::Fixed(i32::MIN), Value::Fixed(i32::MAX));
+        assert!(
+            !compare_resolved_values(
+                &game,
+                &difference,
+                Op::LessThanOrEqual,
+                &Value::Fixed(5),
+                &ctx
+            )
+            .unwrap()
+        );
+        let upper_threshold =
+            Value::Add(Box::new(Value::Fixed(i32::MAX)), Box::new(Value::Fixed(10)));
+        assert!(
+            !compare_resolved_values(
+                &game,
+                &Value::Fixed(i32::MAX),
+                Op::GreaterThanOrEqual,
+                &upper_threshold,
+                &ctx
+            )
+            .unwrap()
+        );
+        let negative = Value::HalfRoundedDown(Box::new(Value::Fixed(-3)));
+        assert!(
+            compare_resolved_values(&game, &negative, Op::Equal, &Value::Fixed(-2), &ctx).unwrap()
+        );
+    }
 }

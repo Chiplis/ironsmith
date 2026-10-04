@@ -641,6 +641,7 @@ mod tests {
                 Some(ObjectSnapshot {
                     chosen_subtype: None,
                     secret_chosen_subtype: None,
+                    noted_life_total: None,
                     chosen_object: None,
                     object_id: ObjectId::from_raw(999),
                     stable_id: StableId::from(ObjectId::from_raw(999)),
@@ -682,6 +683,7 @@ mod tests {
                     tapped: false,
                     attacking: false,
                     goaded: Some(false),
+            ring_bearer: None,
                     flipped: false,
                     face_down: false,
                     transform_count: 0,

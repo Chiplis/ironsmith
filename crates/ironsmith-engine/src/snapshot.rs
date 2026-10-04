@@ -409,6 +409,10 @@ pub struct ObjectSnapshot {
     /// Last-known goad designation for a snapshot with calculated state.
     /// Raw snapshots leave this unset rather than recursively calculating layers.
     pub goaded: Option<bool>,
+    /// Historical designation, separate from which permanent is the bearer now.
+    /// Older/public snapshots may lack this evidence. Never assume false.
+    #[cfg_attr(feature = "serialization", serde(default))]
+    pub ring_bearer: Option<bool>,
     /// Whether the object was flipped.
     pub flipped: bool,
     /// Whether the object was face-down.
@@ -432,6 +436,10 @@ pub struct ObjectSnapshot {
     pub is_commander: bool,
     /// The zone the object was in.
     pub zone: Zone,
+    /// Last life total actually noted for this exact incarnation. This is
+    /// noncopiable information available to already-pending abilities.
+    #[cfg_attr(feature = "serialization", serde(default))]
+    pub noted_life_total: Option<i32>,
 }
 
 /// Counters encoded as `(kind, count)` pairs: a named counter kind is not a
@@ -518,6 +526,7 @@ impl ObjectSnapshot {
             tapped: false,
             attacking: false,
             goaded: None,
+            ring_bearer: None,
             flipped: false,
             face_down: false,
             transform_count: 0,
@@ -529,6 +538,7 @@ impl ObjectSnapshot {
             is_prepared: false,
             is_commander: false,
             zone,
+            noted_life_total: None,
         }
     }
 
@@ -660,6 +670,7 @@ impl ObjectSnapshot {
                 .as_ref()
                 .is_some_and(|combat| crate::combat_state::is_attacking(combat, obj.id)),
             goaded: None,
+            ring_bearer: Some(obj.zone == Zone::Battlefield && game.player(game.controller_of(obj)).is_some_and(|player| player.ring_bearer == Some(obj.id))),
             flipped: game.is_flipped(obj.id),
             face_down: game.is_face_down(obj.id),
             transform_count: game.transform_count(obj.id),
@@ -671,6 +682,7 @@ impl ObjectSnapshot {
             is_prepared: game.is_prepared(obj.id),
             is_commander: game.is_commander(obj.id),
             zone: obj.zone,
+            noted_life_total: game.noted_life_total_for_source(obj.id),
         }
     }
 
@@ -1050,6 +1062,7 @@ impl ObjectSnapshot {
             tapped: false,
             attacking: false,
             goaded: Some(false),
+            ring_bearer: Some(false),
             flipped: false,
             face_down: false,
             transform_count: 0,
@@ -1061,6 +1074,7 @@ impl ObjectSnapshot {
             is_prepared: false,
             is_commander: false,
             zone: Zone::Battlefield,
+            noted_life_total: None,
         }
     }
 
@@ -1388,6 +1402,10 @@ pub struct RetainedObjectSnapshot<A, I = CardId> {
         serde(deserialize_with = "deserialize_present_optional")
     )]
     pub goaded: Option<bool>,
+    /// Historical designation, separate from which permanent is the bearer now.
+    /// Older/public snapshots may lack this evidence. Never assume false.
+    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_optional"))]
+    pub ring_bearer: Option<bool>,
     pub flipped: bool,
     pub face_down: bool,
     pub transform_count: u64,
@@ -1403,6 +1421,10 @@ pub struct RetainedObjectSnapshot<A, I = CardId> {
     pub is_prepared: bool,
     pub is_commander: bool,
     pub zone: Zone,
+    /// Last life total actually noted for this exact incarnation. This is
+    /// noncopiable information available to already-pending abilities.
+    #[cfg_attr(feature = "serialization", serde(default))]
+    pub noted_life_total: Option<i32>,
 }
 impl From<ObjectSnapshot> for RetainedObjectSnapshot<Ability> {
     fn from(value: ObjectSnapshot) -> Self {
@@ -1450,6 +1472,7 @@ impl From<ObjectSnapshot> for RetainedObjectSnapshot<Ability> {
             tapped,
             attacking,
             goaded,
+            ring_bearer,
             flipped,
             face_down,
             transform_count,
@@ -1461,6 +1484,7 @@ impl From<ObjectSnapshot> for RetainedObjectSnapshot<Ability> {
             is_prepared,
             is_commander,
             zone,
+            noted_life_total,
         } = value;
         Self {
             chosen_subtype: chosen_subtype,
@@ -1509,6 +1533,7 @@ impl From<ObjectSnapshot> for RetainedObjectSnapshot<Ability> {
             tapped: tapped,
             attacking: attacking,
             goaded: goaded,
+            ring_bearer,
             flipped: flipped,
             face_down: face_down,
             transform_count: transform_count,
@@ -1520,6 +1545,7 @@ impl From<ObjectSnapshot> for RetainedObjectSnapshot<Ability> {
             is_prepared: is_prepared,
             is_commander: is_commander,
             zone: zone,
+            noted_life_total,
         }
     }
 }
@@ -1569,6 +1595,7 @@ impl From<RetainedObjectSnapshot<Ability>> for ObjectSnapshot {
             tapped,
             attacking,
             goaded,
+            ring_bearer,
             flipped,
             face_down,
             transform_count,
@@ -1580,6 +1607,7 @@ impl From<RetainedObjectSnapshot<Ability>> for ObjectSnapshot {
             is_prepared,
             is_commander,
             zone,
+            noted_life_total,
         } = value;
         Self {
             chosen_subtype: chosen_subtype,
@@ -1628,6 +1656,7 @@ impl From<RetainedObjectSnapshot<Ability>> for ObjectSnapshot {
             tapped: tapped,
             attacking: attacking,
             goaded: goaded,
+            ring_bearer,
             flipped: flipped,
             face_down: face_down,
             transform_count: transform_count,
@@ -1639,11 +1668,26 @@ impl From<RetainedObjectSnapshot<Ability>> for ObjectSnapshot {
             is_prepared: is_prepared,
             is_commander: is_commander,
             zone: zone,
+            noted_life_total,
         }
     }
 }
 
 impl<A, I> RetainedObjectSnapshot<A, I> {
+    /// Authoritative history cannot guess a missing public designation. A
+    /// public placeholder is useful for display, but is not a complete saved
+    /// battlefield snapshot. Validate before export and after wire decoding.
+    pub fn validate_ring_bearer_history(&self) -> Result<(), &'static str> {
+        if self.zone == Zone::Battlefield && self.ring_bearer.is_none() {
+            return Err("retained battlefield snapshot lacks Ring-bearer designation evidence");
+        }
+        if let Some(chosen) = &self.chosen_object { chosen.validate_ring_bearer_history()?; }
+        for snapshot in self.mana_sources_spent_to_cast.iter().chain(&self.attachment_snapshots) {
+            snapshot.validate_ring_bearer_history()?;
+        }
+        Ok(())
+    }
+
     pub fn try_map_payloads<B, J, Error>(
         self,
         mut ability: impl FnMut(A) -> Result<B, Error>,
@@ -1711,6 +1755,7 @@ impl<A, I> RetainedObjectSnapshot<A, I> {
             tapped: self.tapped,
             attacking: self.attacking,
             goaded: self.goaded,
+            ring_bearer: self.ring_bearer,
             flipped: self.flipped,
             face_down: self.face_down,
             transform_count: self.transform_count,
@@ -1726,6 +1771,7 @@ impl<A, I> RetainedObjectSnapshot<A, I> {
             is_prepared: self.is_prepared,
             is_commander: self.is_commander,
             zone: self.zone,
+            noted_life_total: self.noted_life_total,
         })
     }
 }
@@ -1758,6 +1804,8 @@ mod retained_historical_snapshot_schema_tests {
         );
         snapshot.card = Some(CardId::new());
         snapshot.caster_mana_spent_to_cast = Some(2);
+        snapshot.ring_bearer = Some(true);
+        snapshot.noted_life_total = Some(-7);
         snapshot.other_face = Some(CardId::new());
         snapshot.secret_chosen_subtype = Some((PlayerId::from_index(1), Subtype::Elf));
         snapshot.chosen_subtype = Some(Subtype::Human);
@@ -1818,7 +1866,7 @@ mod retained_historical_snapshot_schema_tests {
         let json = serde_json::to_value(retained).unwrap();
         let _: Wire = serde_json::from_value(json.clone()).unwrap();
         for field in json.as_object().unwrap().keys() {
-            if field == "caster_mana_spent_to_cast" { continue; }
+            if matches!(field.as_str(), "caster_mana_spent_to_cast" | "noted_life_total") { continue; }
             let mut bad = json.clone();
             bad.as_object_mut().unwrap().remove(field);
             assert!(
@@ -1826,6 +1874,29 @@ mod retained_historical_snapshot_schema_tests {
                 "missing {field}"
             );
         }
+        let mut legacy_ring = json.clone();
+        legacy_ring.as_object_mut().unwrap().remove("ring_bearer");
+        assert!(serde_json::from_value::<Wire>(legacy_ring).is_err());
+        let mut explicit_unknown_ring = json.clone();
+        explicit_unknown_ring["ring_bearer"] = serde_json::Value::Null;
+        let unknown: Wire = serde_json::from_value(explicit_unknown_ring).unwrap();
+        assert!(unknown.validate_ring_bearer_history().is_err());
+        let mut nested_unknown_ring = json.clone();
+        nested_unknown_ring["attachment_snapshots"][0]["ring_bearer"] = serde_json::Value::Null;
+        let unknown: Wire = serde_json::from_value(nested_unknown_ring).unwrap();
+        assert!(unknown.validate_ring_bearer_history().is_err());
+        assert_eq!(json["ring_bearer"], true);
+        let mut legacy_note = json.clone();
+        legacy_note
+            .as_object_mut()
+            .unwrap()
+            .remove("noted_life_total");
+        let restored: Wire = serde_json::from_value(legacy_note).unwrap();
+        assert_eq!(restored.noted_life_total, None);
+        assert_eq!(
+            restored.chosen_object.as_ref().unwrap().noted_life_total,
+            Some(-7)
+        );
         let mut legacy = json.clone();
         legacy.as_object_mut().unwrap().remove("caster_mana_spent_to_cast");
         let restored: Wire = serde_json::from_value(legacy).unwrap();

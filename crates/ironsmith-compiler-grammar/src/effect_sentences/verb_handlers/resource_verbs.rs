@@ -242,7 +242,7 @@ pub fn parse_effect_with_verb(
         ))),
         Verb::Goad => parse_goad(tokens),
         Verb::Suspect => parse_suspect(tokens),
-        Verb::Note => parse_note(tokens),
+        Verb::Note => parse_note(tokens, subject),
         Verb::End => parse_end(tokens, subject),
     }
 }
@@ -311,8 +311,13 @@ fn parse_reverse(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     )))
 }
 
-fn parse_note(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
-    if resource_grammar::parse_resource_note_life_total_shape(tokens) {
+fn parse_note(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+) -> Result<EffectAst, CardTextError> {
+    if matches!(subject, None | Some(SubjectAst::Player(PlayerAst::You)))
+        && resource_grammar::parse_resource_note_life_total_shape(tokens)
+    {
         return Ok(subject_verb_player_resource_effect(
             SubjectVerbRoleAst::Actor,
             PlayerAst::You,

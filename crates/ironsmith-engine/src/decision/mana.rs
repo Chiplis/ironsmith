@@ -526,8 +526,24 @@ pub(crate) fn calculate_effective_activation_total_cost_with_view(
                     continue;
                 }
 
+                if let Some(condition) = &increase.ability_condition
+                    && !crate::static_abilities::activated_ability_cost_condition_is_active_for_activation(
+                        game, ability_source, source_id, condition, chosen_targets, ability,
+                    ) { continue; }
+                // Determine each surcharge in its author's source/controller
+                // context before it joins the single total mana price. Keep
+                // announced target identities from this activation available.
+                let mut context = ExecutionContext::new_default(source_id, controller);
+                context.announced_targets = Some(chosen_targets.iter().map(|target| match target {
+                    Target::Object(id) => crate::effects::ResolvedTarget::Object(*id),
+                    Target::Player(id) => crate::effects::ResolvedTarget::Player(*id),
+                }).collect());
                 let mut costs = adjusted.costs().to_vec();
-                costs.extend(increase.increase.costs().iter().cloned());
+                costs.extend(increase.increase.costs().iter().map(|component| {
+                    if let Some(dynamic) = component.dynamic_mana_cost_ref()
+                        && let Ok(mana) = crate::special_actions::resolve_dynamic_mana_cost(game, dynamic, &mut context)
+                    { crate::costs::Cost::mana(mana) } else { component.clone() }
+                }));
                 adjusted = crate::cost::TotalCost::from_costs(costs);
             }
         }
@@ -745,7 +761,10 @@ pub(crate) fn calculate_effective_activation_mana_cost_with_view(
                             Target::Player(id) => crate::effects::ResolvedTarget::Player(*id),
                         })
                         .collect();
-                    let ctx = ExecutionContext::new(ability_source, activator, &mut dm)
+                    // Values authored by a cost modifier use that modifier's
+                    // source/controller; announced targets still belong to the
+                    // activation being priced. These identities can differ.
+                    let ctx = ExecutionContext::new(source_id, controller, &mut dm)
                         .with_targets(targets);
                     resolve_value(game, value, &ctx).unwrap_or(0).max(0) as u32
                 } else if let Some(per_filter) = &reduction.per_matching_objects {
@@ -1309,11 +1328,11 @@ pub(crate) fn violates_any_cant_cast_restriction_from_other_sources(
         if ignore_source.is_some() && restriction.source == ignore_source {
             return false;
         }
-        let mut ctx = crate::target::FilterContext::default()
-            .with_caster(Some(player))
-            // A restriction stored for one affected player evaluates "that
-            // player" against the caster whose proposal is being checked.
-            .with_iterated_player(Some(player))
+        let mut ctx = game.filter_context_for_combat(
+            restriction.controller.unwrap_or(player), restriction.source, None, None,
+        ).with_caster(Some(player))
+            .with_iterated_player(restriction.iterated_player.or(Some(player)))
+            .with_tagged_objects(&restriction.tagged_objects)
             .with_prospective_cast(spell.id);
         if let Some(source) = restriction.source {
             ctx = with_source_exiled_tagged_objects(game, ctx.with_source(source), source);

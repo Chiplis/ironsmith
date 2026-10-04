@@ -2613,6 +2613,9 @@ pub fn restriction_references_tag(restriction: &crate::effect::Restriction, tag:
     }
     let maybe_filter = match restriction {
         Restriction::PreventDamageFrom { sources: filter, .. }
+        | Restriction::PlayLandsMatching(_, filter)
+        | Restriction::CastSpellsMatching(_, filter)
+        | Restriction::ActivateLoyaltyAbilitiesOf(filter)
         | Restriction::Attack(filter)
         | Restriction::Block(filter)
         | Restriction::MustBeBlocked(filter)

@@ -929,6 +929,15 @@ pub fn try_build_unless(
     unless_idx: usize,
 ) -> Result<Option<EffectAst>, CardTextError> {
     let after_clause = clause.from(unless_idx + 1).trimmed();
+    // A proven state predicate is checked when the scheduled action resolves.
+    // It is not a payment option and must remain inside the delayed wrapper.
+    if let Ok(predicate) = crate::grammar::filters::parse_condition_predicate_lexed(after_clause.tokens()) {
+        return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate,
+            if_true: Vec::new(),
+            if_false: effects,
+        })));
+    }
     let after_words = after_clause.words().to_word_refs();
     let before_delayed_step = crate::word_primitives::parse_sequence_start(
         &after_words,
@@ -1913,5 +1922,20 @@ mod tests {
         assert_eq!(branches.len(), 2, "{cost:#?}");
         assert!(format!("{:#?}", branches[0]).contains("Sacrifice"));
         assert!(format!("{:#?}", branches[1]).contains("Discard"));
+    }
+}
+
+#[cfg(test)]
+mod delayed_state_predicate_tests {
+    use super::*;
+    #[test]
+    fn next_step_unless_state_predicate_is_nested_inside_delayed_action() {
+        let tokens = crate::lexer::lex_line("At the beginning of the next end step, exile that token unless this creature is your Ring-bearer.", 0).unwrap();
+        let effects = parse_sentence_delayed_next_step_unless_pays(SubjectVerbPrimitiveClause::new(&tokens)).unwrap().unwrap();
+        let [EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep { effects, .. })] = effects.as_slice() else { panic!("delayed action: {effects:?}") };
+        let [EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, if_true, if_false })] = effects.as_slice() else { panic!("delayed condition: {effects:?}") };
+        assert!(if_true.is_empty());
+        assert!(!if_false.is_empty());
+        assert!(matches!(predicate, PredicateAst::Source(crate::cards::builders::SourcePredicateAst::SourceIsRingBearer { .. })));
     }
 }

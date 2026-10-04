@@ -1,6 +1,20 @@
 use super::*;
 
 pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)> {
+    if let ["for", "each", noun @ ("opponent" | "player"), tail @ ..] = words {
+        let plural = if *noun == "opponent" {
+            "opponents"
+        } else {
+            "players"
+        };
+        let mut counted = vec!["number", "of", plural];
+        counted.extend_from_slice(tail);
+        if let Some((value, used)) =
+            crate::grammar::shared_util::value_expr::parse_life_total_quantity_words(&counted)
+        {
+            return Some((value, used));
+        }
+    }
     if let ["for", "each" | "every", number, "life", rest @ ..] = words
         && let Some(group) = crate::util::parse_number_word_u32(number)
         && group > 0

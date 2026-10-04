@@ -124,5 +124,6 @@ fn lower_chain_verb(kind: chain_grammar::ChainVerbKind) -> Verb {
         chain_grammar::ChainVerbKind::Goad => Verb::Goad,
         chain_grammar::ChainVerbKind::Suspect => Verb::Suspect,
         chain_grammar::ChainVerbKind::End => Verb::End,
+        chain_grammar::ChainVerbKind::Note => Verb::Note,
     }
 }

@@ -3373,6 +3373,9 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     if let Some(trigger) = milling_transitions::parse_milling_trigger(tokens)? {
         return Ok(trigger);
     }
+    if words == ["you", "choose", "a", "creature", "as", "your", "ring", "bearer"] {
+        return Ok(TriggerSpec::RingBearerChosen(PlayerFilter::You));
+    }
     if let Some(trigger) = control_transitions::parse_control_transition_trigger(tokens)? { return Ok(trigger); }
     if let Some(trigger) = phasing_transitions::parse_phasing_transition_trigger(tokens)? {
         return Ok(trigger);

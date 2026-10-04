@@ -3941,6 +3941,7 @@ pub fn parse_anthem_clause(
                                     | Value::DistinctNames(_)
                                     | Value::DistinctManaValues(_)
                                     | Value::DistinctPowers(_)
+                                    | Value::CountPlayersBelowHalfStartingLifeTotal(_)
                             )
                         {
                             value_scale = Some(

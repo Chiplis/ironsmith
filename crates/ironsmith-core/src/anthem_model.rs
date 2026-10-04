@@ -205,6 +205,10 @@ pub fn supports_controller_state_anthem_value(value: &Value) -> bool {
     if !crate::tag::tag_keys_of(value).is_empty() { return false; }
     match value.unhinted() {
         Value::Fixed(_) => true,
+        Value::MaximumLifeTotal(PlayerFilter::Any | PlayerFilter::Opponent | PlayerFilter::You)
+        | Value::CountPlayersBelowHalfStartingLifeTotal(
+            PlayerFilter::Any | PlayerFilter::Opponent | PlayerFilter::You,
+        ) => true,
         Value::LifeTotal(PlayerFilter::You)
         | Value::CardsInHand(PlayerFilter::You)
         | Value::CardsInLibrary(PlayerFilter::You)

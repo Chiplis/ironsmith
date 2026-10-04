@@ -2541,7 +2541,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Characteristics(
-                CharacteristicActionAst::BecomeBasicLandTypeChoice { target, duration },
+                CharacteristicActionAst::BecomeBasicLandTypeChoice { target, duration, allowed_subtypes: Vec::new(), preserve_other_types: false },
             ),
         )
     }

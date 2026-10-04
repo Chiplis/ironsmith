@@ -8861,6 +8861,8 @@ fn bind_unresolved_it_in_restriction(
         }
 
         Restriction::PreventDamageFrom { sources: filter, .. }
+        | Restriction::PlayLandsMatching(_, filter)
+        | Restriction::ActivateLoyaltyAbilitiesOf(filter)
         | Restriction::Attack(filter)
         | Restriction::Block(filter)
         | Restriction::MustBeBlocked(filter)

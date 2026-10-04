@@ -817,19 +817,13 @@ pub(super) fn rewrite_lexed_effect_entrypoint_supports_investigate_once_for_each
 }
 
 #[test]
-pub(super) fn rewrite_cost_reduction_line_rejects_unmodeled_activate_if_condition() {
-    let tokens = lex_line(
-        "this ability costs 1 less to activate if you control an artifact.",
-        0,
-    )
-    .expect("rewrite lexer should classify activated cost reduction");
-    let err = parse_cost_reduction_line(&tokens)
-        .expect_err("unmodeled activated cost reduction condition should fail");
-    let message = format!("{err:?}");
-    assert!(
-        message.contains("unsupported activated-ability cost reduction condition"),
-        "expected explicit unsupported cost reduction condition, got {message}"
-    );
+pub(super) fn rewrite_cost_reduction_line_preserves_typed_activate_if_condition() {
+    let tokens = lex_line("this ability costs 1 less to activate if you control an artifact.", 0).unwrap();
+    let ability = parse_cost_reduction_line(&tokens).unwrap().unwrap();
+    let debug = format!("{ability:?}");
+    assert!(debug.contains("Conditional") && debug.contains("ThisAbility"), "{debug}");
+    let tokens = lex_line("this ability costs 1 less to activate if elephants dance.", 0).unwrap();
+    assert!(parse_cost_reduction_line(&tokens).is_err());
 }
 
 #[test]

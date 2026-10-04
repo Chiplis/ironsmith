@@ -1,3 +1,5 @@
+#[path = "life_total_references.rs"]
+mod life_total_references;
 use super::*;
 use crate::cards::builders::ConditionalEffectAst;
 use crate::cards::builders::DelayedEffectAst;
@@ -556,6 +558,26 @@ pub(super) fn parse_triggered_ability_line_impl(
     let chosen_option = line.chosen_option.as_ref();
     let presentation_label = line.presentation.as_ref();
     let inferred_max_triggers_per_turn = line.max_triggers_per_turn;
+    if let Some(effects) = life_total_references::conditional_life_total_set(
+        line.intervening_if.as_ref(),
+        effect_parse_tokens,
+    ) {
+        let trigger = parse_trigger_clause_lexed(trigger_parse_tokens)?;
+        return apply_chosen_option_to_triggered_chunk(
+            apply_explicit_intervening_if_to_triggered_chunk(
+                LineAst::Triggered {
+                    trigger,
+                    effects,
+                    max_triggers_per_turn: inferred_max_triggers_per_turn,
+                },
+                line.intervening_if.clone(),
+            )?,
+            trigger_facts,
+            inferred_max_triggers_per_turn,
+            chosen_option,
+            presentation_label,
+        );
+    }
     if line.presentation == Some(PresentationLabel::CaseToSolve) {
         let trigger = parse_trigger_clause_lexed(trigger_parse_tokens)?;
         return apply_chosen_option_to_triggered_chunk(

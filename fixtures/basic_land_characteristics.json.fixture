@@ -1,0 +1,68 @@
+[
+  {
+    "name": "Elsewhere Flask",
+    "oracle_id": "610618f9-8186-44b6-8041-0a5b70f11cc1",
+    "mana_cost": "{2}",
+    "type_line": "Artifact",
+    "oracle_text": "When this artifact enters, draw a card.\nSacrifice this artifact: Choose a basic land type. Each land you control becomes that type until end of turn.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Terraformer",
+    "oracle_id": "683089a8-d5a9-438a-a463-77cc6148125e",
+    "mana_cost": "{2}{U}",
+    "type_line": "Creature — Human Wizard",
+    "power": "2",
+    "toughness": "2",
+    "oracle_text": "{1}: Choose a basic land type. Each land you control becomes that type until end of turn.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Navigator's Compass",
+    "oracle_id": "c994e148-1bb5-4113-a9f2-73e6dab8f72d",
+    "mana_cost": "{1}",
+    "type_line": "Artifact",
+    "oracle_text": "When this artifact enters, you gain 3 life.\n{T}: Until end of turn, target land you control becomes the basic land type of your choice in addition to its other types.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Tundra Kavu",
+    "oracle_id": "b0b7d88b-694b-4bbe-888d-05245e7d1c3e",
+    "mana_cost": "{2}{R}",
+    "type_line": "Creature — Kavu",
+    "power": "2",
+    "toughness": "2",
+    "oracle_text": "{T}: Target land becomes a Plains or an Island until end of turn.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Gaea's Liege",
+    "oracle_id": "8d134a60-e1e5-4163-8bdc-36af91567185",
+    "mana_cost": "{3}{G}{G}{G}",
+    "type_line": "Creature — Avatar",
+    "power": "*",
+    "toughness": "*",
+    "oracle_text": "As long as Gaea's Liege isn't attacking, its power and toughness are each equal to the number of Forests you control. As long as Gaea's Liege is attacking, its power and toughness are each equal to the number of Forests defending player controls.\n{T}: Target land becomes a Forest until this creature leaves the battlefield.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Graceful Antelope",
+    "oracle_id": "8dac693b-c5c5-4d80-9739-a3b95949a213",
+    "mana_cost": "{2}{W}{W}",
+    "type_line": "Creature — Antelope",
+    "power": "1",
+    "toughness": "4",
+    "oracle_text": "Plainswalk (This creature can't be blocked as long as defending player controls a Plains.)\nWhenever this creature deals combat damage to a player, you may have target land become a Plains until this creature leaves the battlefield.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Orcish Farmer",
+    "oracle_id": "c3039d19-8c98-4953-8943-9922b6ab45ef",
+    "mana_cost": "{1}{R}{R}",
+    "type_line": "Creature — Orc",
+    "power": "2",
+    "toughness": "2",
+    "oracle_text": "{T}: Target land becomes a Swamp until its controller's next untap step.",
+    "proposed_complete": false
+  }
+]

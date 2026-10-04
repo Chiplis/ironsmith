@@ -1,0 +1,94 @@
+[
+  {
+    "name": "Anya, Merciless Angel",
+    "oracle_id": "0665daf5-e12a-4b59-81fc-63fec2807571",
+    "mana_cost": "{3}{R}{W}",
+    "type_line": "Legendary Creature — Angel",
+    "power": "4",
+    "toughness": "4",
+    "oracle_text": "Flying\nAnya gets +3/+3 for each opponent whose life total is less than half their starting life total.\nAs long as an opponent's life total is less than half their starting life total, Anya has indestructible.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Arbiter of Knollridge",
+    "oracle_id": "62705a41-7c4d-4e6c-85b0-36a9d27ab5ae",
+    "mana_cost": "{6}{W}",
+    "type_line": "Creature — Giant Wizard",
+    "power": "5",
+    "toughness": "5",
+    "oracle_text": "Vigilance\nWhen this creature enters, each player's life total becomes the highest life total among all players.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Cosmos Elixir",
+    "oracle_id": "ed7300f4-831a-4ba4-b5e6-ceba8d079eaa",
+    "mana_cost": "{4}",
+    "type_line": "Artifact",
+    "oracle_text": "At the beginning of your end step, draw a card if your life total is greater than your starting life total. Otherwise, you gain 2 life.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Elenda, Saint of Dusk",
+    "oracle_id": "bfd614d5-4c7f-416b-9cb2-bb167c0893a0",
+    "mana_cost": "{2}{W}{B}",
+    "type_line": "Legendary Creature — Vampire Knight",
+    "power": "4",
+    "toughness": "4",
+    "oracle_text": "Lifelink, hexproof from instants\nAs long as your life total is greater than your starting life total, Elenda gets +1/+1 and has menace. Elenda gets an additional +5/+5 as long as your life total is at least 10 greater than your starting life total.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Game Over",
+    "oracle_id": "e326b5a1-f8ce-471b-8663-ec1ba649b24f",
+    "mana_cost": "{3}{B}{B}",
+    "type_line": "Sorcery",
+    "oracle_text": "This spell costs {2} less to cast if a player's life total is less than or equal to half their starting life total.\nDestroy all creatures.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Malignus",
+    "oracle_id": "f90174b3-effc-4c81-8cb0-856a0646516d",
+    "mana_cost": "{3}{R}{R}",
+    "type_line": "Creature — Elemental Spirit",
+    "power": "*",
+    "toughness": "*",
+    "oracle_text": "Malignus's power and toughness are each equal to half the highest life total among your opponents, rounded up.\nDamage that would be dealt by this creature can't be prevented.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Psychic Transfer",
+    "oracle_id": "5554d422-6513-4c7e-866d-9d5f0403fc80",
+    "mana_cost": "{4}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "If the difference between your life total and target player's life total is 5 or less, exchange life totals with that player.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Resolute Archangel",
+    "oracle_id": "0d6dc95d-55ce-4ef8-b065-d7203f5bf642",
+    "mana_cost": "{5}{W}{W}",
+    "type_line": "Creature — Angel",
+    "power": "4",
+    "toughness": "4",
+    "oracle_text": "Flying\nWhen this creature enters, if your life total is less than your starting life total, it becomes equal to your starting life total.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Scourge of the Skyclaves",
+    "oracle_id": "c6dfc91f-bfac-40c2-99e5-0cec981f7f1f",
+    "mana_cost": "{1}{B}",
+    "type_line": "Creature — Demon",
+    "power": "*",
+    "toughness": "*",
+    "oracle_text": "Kicker {4}{B}\nWhen you cast this spell, if it was kicked, each player loses half their life, rounded up.\nScourge of the Skyclaves's power and toughness are each equal to 20 minus the highest life total among players.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Sigarda's Splendor",
+    "oracle_id": "71a3d0ce-052b-41eb-a70f-0c716149a55f",
+    "mana_cost": "{2}{W}{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "As this enchantment enters, note your life total.\nAt the beginning of your upkeep, draw a card if your life total is greater than or equal to the last noted life total for this enchantment. Then note your life total.\nWhenever you cast a white spell, you gain 1 life.",
+    "coverage_status": "proposed_complete"
+  }
+]

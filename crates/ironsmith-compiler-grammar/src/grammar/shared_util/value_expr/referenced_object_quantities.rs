@@ -13,6 +13,39 @@ pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
     use crate::tag::CompilerReferenceTag as Tag;
     let offset = usize::from(words.first() == Some(&"the"));
     let rest = &words[offset..];
+    let bearer_len = if rest.starts_with(&["your", "ring"])
+        && rest
+            .get(2)
+            .is_some_and(|word| matches!(*word, "bearer" | "bearers" | "bearer's"))
+    {
+        Some(3)
+    } else if rest.first() == Some(&"your")
+        && rest
+            .get(1)
+            .is_some_and(|word| matches!(*word, "ring-bearer" | "ring-bearers" | "ring-bearer's"))
+    {
+        Some(2)
+    } else {
+        None
+    };
+    if let Some(length) = bearer_len {
+        let mut filter = ObjectFilter::default().ring_bearer().you_control();
+        filter.zone = Some(crate::zone::Zone::Battlefield);
+        // A player has at most one current bearer. The aggregate is the
+        // scalar characteristic when present and zero when none exists,
+        // without inventing a target or a stale choice/event reference.
+        match rest.get(length..) {
+            Some(["power", ..]) => return Some((Value::TotalPower(filter), offset + length + 1)),
+            Some(["toughness", ..]) => {
+                return Some((Value::TotalToughness(filter), offset + length + 1));
+            }
+            Some(["mana", "value", ..]) => {
+                return Some((Value::TotalManaValue(filter), offset + length + 2));
+            }
+            _ => {}
+        }
+    }
+
     // A source-relative attachment host is a live relationship, including
     // during cost determination where there is no resolution tag table.
     // Requiring this exact source to be attached avoids the generic
@@ -350,5 +383,29 @@ mod targeted_characteristic_tests {
             assert!(!filter.source);
         }
         assert!(parse(&["target", "creatures", "mystery"]).is_none());
+    }
+}
+
+#[cfg(test)]
+mod ring_quantity_tests {
+    use super::*;
+    #[test]
+    fn unique_current_bearer_characteristics_are_zero_for_an_empty_designation() {
+        for text in [
+            "your Ring-bearer's power",
+            "your Ring-bearer's toughness",
+            "your Ring-bearer's mana value",
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let (value, used) = parse_value_expr_tokens(&tokens).unwrap();
+            assert_eq!(used, tokens.len(), "{text}");
+            let filter = match value.unhinted() {
+                Value::TotalPower(filter)
+                | Value::TotalToughness(filter)
+                | Value::TotalManaValue(filter) => filter,
+                other => panic!("wrong current designation quantity: {other:?}"),
+            };
+            assert_eq!(filter, &ObjectFilter::your_ring_bearer());
+        }
     }
 }

@@ -372,3 +372,45 @@ fn source_exiled_names_are_typed_cast_restrictions_with_full_consumption() {
         assert!(parse_cast_restriction_tail_filter_words(&words).is_none());
     }
 }
+
+#[test]
+fn land_and_spell_origins_are_distinct_complete_action_facts() {
+    let facts = parse_compound_player_action_restriction_words(&["play", "lands", "or", "cast", "spells", "from", "your", "hand"]).unwrap();
+    let [PlayerActivationRestrictionTailFact::PlayLandsMatching(lands), PlayerActivationRestrictionTailFact::CastSpellsMatching(spells)] = facts.as_slice() else { panic!("separate actions"); };
+    assert_eq!(lands.zone, Some(crate::zone::Zone::Hand));
+    assert_eq!(spells.zone, Some(crate::zone::Zone::Hand));
+    assert_eq!(lands.owner, Some(crate::target::PlayerFilter::You));
+    assert_eq!(spells.owner, Some(crate::target::PlayerFilter::You));
+    assert!(lands.card_types.contains(&crate::types::CardType::Land));
+    assert!(parse_compound_player_action_restriction_words(&["play", "lands", "or", "cast", "spells", "from", "your", "hand", "unless", "you", "pay", "2"]).is_none());
+}
+
+#[test]
+fn graveyard_activation_and_casting_remain_two_restrictions() {
+    let facts = parse_compound_player_action_restriction_words(&["cast", "spells", "from", "graveyards", "or", "activate", "abilities", "of", "cards", "in", "graveyards"]).unwrap();
+    let [PlayerActivationRestrictionTailFact::CastSpellsMatching(spells), PlayerActivationRestrictionTailFact::ActivateAbilitiesOf { filter: abilities, non_mana_only: false }] = facts.as_slice() else { panic!("both actions including mana abilities"); };
+    assert_eq!(spells.zone, Some(crate::zone::Zone::Graveyard));
+    assert_eq!(abilities.zone, Some(crate::zone::Zone::Graveyard));
+    assert!(parse_compound_player_action_restriction_words(&["cast", "spells", "from", "graveyards", "or", "activate", "mystery", "abilities"]).is_none());
+}
+
+#[test]
+fn spell_color_type_and_linked_names_keep_executable_filters() {
+    let blue_creature = parse_cast_restriction_tail_filter_words(&["cast", "blue", "creature", "spells"]).unwrap();
+    assert_eq!(blue_creature.colors, Some(crate::color::ColorSet::BLUE));
+    assert_eq!(blue_creature.card_types, vec![crate::types::CardType::Creature]);
+    let chosen = parse_cast_restriction_tail_filter_words(&["cast", "spells", "of", "the", "chosen", "color"]).unwrap();
+    assert!(chosen.chosen_color);
+    let linked = parse_cast_restriction_tail_filter_words(&["cast", "spells", "with", "the", "same", "name", "as", "the", "exiled", "card"]).unwrap();
+    assert!(linked.tagged_constraints.iter().any(|tag| tag.tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()));
+    let land = parse_land_play_restriction_tail_words(&["play", "nonbasic", "lands", "with", "the", "same", "name", "as", "a", "nontoken", "permanent"]).unwrap();
+    assert!(land.excluded_supertypes.contains(&crate::types::Supertype::Basic));
+    assert!(land.characteristic_relations[0].comparison.nontoken);
+    assert_eq!(land.characteristic_relations[0].comparison.zone, Some(crate::zone::Zone::Battlefield));
+}
+
+#[test]
+fn loyalty_prohibition_does_not_become_all_activated_abilities() {
+    assert!(matches!(parse_player_activation_restriction_tail_words(&["activate", "planeswalkers", "loyalty", "abilities"]), Some(PlayerActivationRestrictionTailFact::ActivateLoyaltyAbilitiesOf(_))));
+    assert!(parse_player_activation_restriction_tail_words(&["activate", "planeswalkers", "loyalty", "abilities", "unless", "theyre", "mana", "abilities"]).is_none());
+}

@@ -121,6 +121,18 @@ fn parse_player_counter_placement_gate(clause: LexedClause<'_>) -> Option<Predic
 
 fn parse_turn_history_value_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
+    let clean = crate::util::trim_edge_punctuation_tokens(tokens);
+    if clean.len() > 6
+        && crate::lexer::parser_token_word_refs(&clean[..3]) == ["you", "attacked", "with"]
+        && crate::lexer::parser_token_word_refs(&clean[clean.len() - 2..]) == ["this", "turn"]
+        && let Ok(filter) = crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(
+            &clean[3..clean.len() - 2], false,
+        )
+    {
+        return Some(value_at_least(Value::TurnHistoryCount(TurnHistoryCount::CreaturesAttackedWith {
+            player: PlayerFilter::You, filter,
+        }), 1));
+    }
     if let Some(predicate) = parse_player_counter_placement_gate(clause) {
         return Some(predicate);
     }

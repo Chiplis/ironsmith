@@ -826,6 +826,12 @@ pub enum Value {
     /// Current base power through layers 7a/7b of this exact referenced object,
     /// excluding P/T modifiers, counters, and switching; departure LKI if gone.
     BasePowerOf(Box<ChooseSpec>),
+    /// Greatest current life total among the in-game players in this exact
+    /// scope. Empty scopes evaluate to zero; negative maxima are preserved.
+    MaximumLifeTotal(PlayerFilter),
+    /// Count players whose life is strictly below half their own starting
+    /// life. Compare the rational threshold before rounding either operand.
+    CountPlayersBelowHalfStartingLifeTotal(PlayerFilter),
 }
 
 impl Value {
@@ -1057,6 +1063,11 @@ pub enum Restriction {
     /// context; the active host is not replaced by the damage source's LKI.
     /// Appended to preserve existing serialized variant ordinals.
     PreventDamageFrom { sources: ObjectFilter, combat_only: bool },
+    /// Land plays are special actions, distinct from casting a spell. Match
+    /// the proposed land face in the zone from which it would be played.
+    PlayLandsMatching(PlayerFilter, ObjectFilter),
+    /// Only loyalty abilities of the matching objects are prohibited.
+    ActivateLoyaltyAbilitiesOf(ObjectFilter),
 }
 
 /// How mana may be spent relative to its produced type.
@@ -2071,6 +2082,9 @@ pub enum Condition {
     /// facts, not the current characteristics of surviving attackers.
     /// Appended to preserve existing serialized condition discriminants.
     AttackedWithTotalPowerAtLeastThisCombat(u32),
+    /// A historical choice in the triggering Ring action, not the current
+    /// bearer designation when this condition is checked again on resolution.
+    YouChoseAnotherRingBearer,
 }
 
 #[cfg(test)]

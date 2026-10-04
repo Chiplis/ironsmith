@@ -1684,10 +1684,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("duration", duration)
                 .finish(),
             Self::Characteristics(CharacteristicActionAst::BecomeBasicLandTypeChoice {
-                target,
-                duration,
+                target, duration, allowed_subtypes, preserve_other_types,
             }) => f
                 .debug_struct("BecomeBasicLandTypeChoice")
+                .field("allowed_subtypes", allowed_subtypes)
+                .field("preserve_other_types", preserve_other_types)
                 .field("target", target)
                 .field("duration", duration)
                 .finish(),

@@ -332,13 +332,14 @@ impl ContinuousEffectId {
 /// static, so it applies before every other ability-layer effect and keyword
 /// counter, whatever their timestamps.
 pub(crate) fn is_land_type_rules_text_ability_loss(effect: &ContinuousEffect) -> bool {
-    matches!(effect.modification, Modification::RemoveAllAbilities)
+    matches!(effect.modification, Modification::RemoveLandRulesTextAbilities)
+        || (matches!(effect.modification, Modification::RemoveAllAbilities)
         && effect
             .originating_static_ability
             .as_ref()
             .is_some_and(|ability| {
                 ability.id() == crate::static_abilities::StaticAbilityId::SetLandSubtypes
-            })
+            }))
 }
 
 /// Order class of an effect within its layer, applied before timestamps and
@@ -773,6 +774,10 @@ pub enum ContinuousModification<S, A, C, T, R, H> {
 
     /// Switch power and toughness (7e)
     SwitchPowerToughness,
+
+    /// CR305.7 rules-text/copy ability loss caused by setting basic land types.
+    /// Other continuous grants survive; appended for serialized ordinal stability.
+    RemoveLandRulesTextAbilities,
 }
 
 impl<S, A, C, T, R, H> ContinuousModification<S, A, C, T, R, H> {
@@ -901,6 +906,7 @@ impl<S, A, C, T, R, H> ContinuousModification<S, A, C, T, R, H> {
                 ContinuousModification::RemoveStaticAbilityFamily(value)
             }
             Self::RemoveAllAbilities => ContinuousModification::RemoveAllAbilities,
+            Self::RemoveLandRulesTextAbilities => ContinuousModification::RemoveLandRulesTextAbilities,
             Self::RemoveAllAbilitiesExceptMana => {
                 ContinuousModification::RemoveAllAbilitiesExceptMana
             }
@@ -1073,6 +1079,7 @@ impl Modification {
             | Modification::RemoveStaticAbilityFamily(_)
             | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
+            | Modification::RemoveLandRulesTextAbilities
             | Modification::RemoveAllAbilitiesExceptMana
             | Modification::Restriction(_) => Layer::Ability,
 
@@ -2573,6 +2580,27 @@ fn apply_copy_effect_exceptions(
     }
 }
 
+fn replace_rules_text_abilities(
+    chars: &mut CalculatedCharacteristics,
+    abilities: Vec<Ability>,
+    origin: Option<AbilityEffectOrigin>,
+    preserve_source_abilities: bool,
+) {
+    let previous = chars.abilities.clone();
+    chars.abilities = abilities.into();
+    chars.abilities.rebind_origin(origin);
+    for (index, ability) in previous.iter().enumerate() {
+        let old_origin = previous.origin(index).expect("paired ability occurrence");
+        let independent = old_origin.is_independent_early_grant();
+        let already_present = if independent {
+            chars.abilities.iter().enumerate().any(|(slot, _)| chars.abilities.origin(slot) == Some(old_origin))
+        } else { chars.abilities.contains(ability) };
+        if (independent || preserve_source_abilities) && !already_present {
+            chars.abilities.push_with_origin(ability.clone(), old_origin.clone());
+        }
+    }
+}
+
 fn copy_characteristics_from_copiable_values(
     values: &CopiableValues,
     chars: &mut CalculatedCharacteristics,
@@ -2582,8 +2610,6 @@ fn copy_characteristics_from_copiable_values(
     add_supertypes: &[Supertype],
     origin: Option<AbilityEffectOrigin>,
 ) {
-    let preserved_abilities = preserve_source_abilities.then(|| chars.abilities.clone());
-
     chars.name = values.name.clone().into();
     chars.mana_cost = values.mana_cost.clone();
     chars.linked_face_mana_value = None;
@@ -2597,21 +2623,9 @@ fn copy_characteristics_from_copiable_values(
     chars.colors = values.colors;
     chars.loyalty = values.loyalty;
     chars.defense = values.defense;
-    chars.abilities = values.abilities.as_ref().clone().into();
-    chars.abilities.rebind_origin(origin);
+    replace_rules_text_abilities(chars, values.abilities.as_ref().clone(), origin, preserve_source_abilities);
     chars.aura_attach_filter = values.aura_attach_filter.clone();
     install_enchant_metadata(chars);
-
-    if let Some(preserved_abilities) = preserved_abilities {
-        for (index, ability) in preserved_abilities.iter().enumerate() {
-            if !chars.abilities.contains(ability) {
-                chars.abilities.push_with_origin(
-                    ability.clone(),
-                    preserved_abilities.origin(index).unwrap().clone(),
-                );
-            }
-        }
-    }
 
     apply_copy_effect_exceptions(chars, name_override, name_override_surface, add_supertypes);
     chars.static_abilities = extract_static_abilities(&chars.abilities).into();
@@ -2778,11 +2792,20 @@ fn add_intrinsic_abilities(chars: &mut CalculatedCharacteristics) {
 
 // Share this operation across all layer routes: the CR 305.7 type-rule
 // loss supplies new-type mana before ordinary layer-six grants and losses.
+pub(crate) fn remove_land_rules_text_abilities(chars: &mut CalculatedCharacteristics) {
+    // Ordinary continuous grants run after this precedence class. Earlier
+    // Effect origins include layer1 copy exceptions/text boxes and are removed.
+    chars.abilities.retain_with_origin(|_, origin| origin.is_independent_early_grant());
+    chars.static_abilities = extract_static_abilities(&chars.abilities).into();
+    add_intrinsic_abilities(chars);
+}
+
 fn remove_all_abilities_for_effect(effect: &ContinuousEffect, chars: &mut CalculatedCharacteristics) {
-    chars.abilities.clear();
-    chars.static_abilities.clear();
     if is_land_type_rules_text_ability_loss(effect) {
-        add_intrinsic_abilities(chars);
+        remove_land_rules_text_abilities(chars);
+    } else {
+        chars.abilities.clear();
+        chars.static_abilities.clear();
     }
 }
 
@@ -3807,9 +3830,8 @@ fn apply_text_box_modification_to_chars(
         Modification::SetTextBox(overlay) => {
             chars.compiled_card_text = overlay.compiled_card_text.clone();
             chars.ability_labels = overlay.ability_labels.clone();
-            chars.abilities = overlay.abilities.clone().into();
-            chars.abilities.rebind(effect);
-            chars.static_abilities = extract_static_abilities(&overlay.abilities).into();
+            replace_rules_text_abilities(chars, overlay.abilities.to_vec(), Some(effect.into()), false);
+            chars.static_abilities = extract_static_abilities(&chars.abilities).into();
         }
         Modification::SetName(name) => {
             chars.name = name.clone().into();
@@ -5446,6 +5468,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.excluded_any_chosen_creature_type
         || filter.sticker.is_some()
         || filter.modified
+        || filter.ring_bearer
         || filter.attacking
         || filter.attacked_this_turn
         || filter.didnt_attack_this_turn
@@ -5863,9 +5886,8 @@ fn apply_modification_to_chars(
         Modification::SetTextBox(overlay) => {
             chars.compiled_card_text = overlay.compiled_card_text.clone();
             chars.ability_labels = overlay.ability_labels.clone();
-            chars.abilities = overlay.abilities.clone().into();
-            chars.abilities.rebind(effect);
-            chars.static_abilities = extract_static_abilities(&overlay.abilities).into();
+            replace_rules_text_abilities(chars, overlay.abilities.to_vec(), Some(effect.into()), false);
+            chars.static_abilities = extract_static_abilities(&chars.abilities).into();
         }
         Modification::SetName(name) => {
             chars.name = name.clone().into();
@@ -6172,7 +6194,7 @@ fn apply_modification_to_chars(
                 .static_abilities
                 .retain(|candidate| candidate.id() != *id);
         }
-        Modification::RemoveAllAbilities => {
+        Modification::RemoveAllAbilities | Modification::RemoveLandRulesTextAbilities => {
             remove_all_abilities_for_effect(effect, chars);
             *abilities_removed = true;
         }

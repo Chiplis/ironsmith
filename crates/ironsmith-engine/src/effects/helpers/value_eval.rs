@@ -56,6 +56,23 @@ fn canonical_maximum_operands<'a>(
     (left == first && right == second).then_some((left.as_ref(), right.as_ref()))
 }
 
+fn canonical_absolute_difference_operands(value: &Value) -> Option<(&Value, &Value)> {
+    let Value::Min(forward, reverse) = value else {
+        return None;
+    };
+    let (Value::Add(left, neg_right), Value::Add(right, neg_left)) =
+        (forward.as_ref(), reverse.as_ref())
+    else {
+        return None;
+    };
+    let (Value::Scaled(right_again, -1), Value::Scaled(left_again, -1)) =
+        (neg_right.as_ref(), neg_left.as_ref())
+    else {
+        return None;
+    };
+    (left == left_again && right == right_again).then_some((left.as_ref(), right.as_ref()))
+}
+
 pub(crate) fn resolve(
     value: &Value,
     context: &EvaluationContext<'_, '_>,
@@ -74,6 +91,17 @@ pub(crate) fn resolve(
         Value::Add(left, right) => Ok(resolve(left, context)? + resolve(right, context)?),
         Value::X => context.x(),
         Value::XTimes(multiplier) => Ok(context.x()? * *multiplier),
+        Value::Scaled(inner, -1) if canonical_absolute_difference_operands(inner).is_some() => {
+            let (left, right) =
+                canonical_absolute_difference_operands(inner).expect("guarded difference");
+            let difference =
+                (i64::from(resolve(left, context)?) - i64::from(resolve(right, context)?)).abs();
+            i32::try_from(difference).map_err(|_| {
+                ExecutionError::UnresolvableValue(
+                    "absolute difference is outside the supported integer range".into(),
+                )
+            })
+        }
         Value::Scaled(value, multiplier) => Ok(resolve(value, context)? * *multiplier),
         Value::DividedRoundedDown(value, divisor) => resolve_fraction(value, *divisor, context),
         Value::Min(left, right) => Ok(resolve(left, context)?.min(resolve(right, context)?)),
@@ -480,6 +508,26 @@ pub(crate) fn resolve(
         Value::NameStickerCharacterCountOnSource { character, .. } => {
             Ok(game.name_sticker_character_count_on_object(context.source, *character) as i32)
         }
+        Value::MaximumLifeTotal(players) => Ok(context
+            .aggregate_player_ids(value, players)?
+            .into_iter()
+            .filter_map(|id| {
+                game.player(id)
+                    .filter(|player| player.is_in_game())
+                    .map(|player| player.life)
+            })
+            .max()
+            .unwrap_or(0)),
+        Value::CountPlayersBelowHalfStartingLifeTotal(players) => Ok(context
+            .aggregate_player_ids(value, players)?
+            .into_iter()
+            .filter(|id| {
+                game.player(*id).is_some_and(|player| {
+                    player.is_in_game()
+                        && 2 * i64::from(player.life) < i64::from(player.starting_life)
+                })
+            })
+            .count() as i32),
         Value::LifeTotal(player_spec) => {
             let player = context.single_player(value, player_spec)?;
             Ok(player.life)
@@ -952,6 +1000,24 @@ pub(crate) fn resolve(
             .unwrap_or(i32::MAX)),
         Value::LastNotedLifeTotal => game
             .noted_life_total_for_source(context.source)
+            .or_else(|| {
+                // Live and explicitly re-noted values above are authoritative.
+                // An absent source uses its exact departure receipt, never the
+                // new incarnation of the same stable card. Pending stack LKI
+                // also preserves the receipt across turn-history cleanup.
+                if game.object(context.source).is_some() {
+                    return None;
+                }
+                let ctx = context.execution()?;
+                latest_zone_change_snapshot_for_object(game, context.source)
+                    .or_else(|| {
+                        ctx.source_snapshot
+                            .as_ref()
+                            .filter(|snapshot| snapshot.object_id == context.source)
+                            .cloned()
+                    })
+                    .and_then(|snapshot| snapshot.noted_life_total)
+            })
             .map(Ok)
             .unwrap_or_else(|| {
                 context.unavailable(

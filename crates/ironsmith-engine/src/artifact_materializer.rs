@@ -3225,7 +3225,9 @@ impl StaticAbilityOccurrenceEncoder {
         self.transaction(|table| {
             let table = std::cell::RefCell::new(table);
             let card = std::cell::RefCell::new(card);
-            let result = crate::snapshot::RetainedObjectSnapshot::from(value).try_map_payloads(
+            let retained = crate::snapshot::RetainedObjectSnapshot::from(value);
+            retained.validate_ring_bearer_history().map_err(|detail| OccurrenceBindingError::InvalidModel { detail: detail.into() })?;
+            let result = retained.try_map_payloads(
                 |ability| {
                     let encoded = table.borrow_mut().encode_ability(ability)?;
                     table
@@ -3251,6 +3253,7 @@ impl StaticAbilityOccurrenceDecoder {
         value: RetainedOccurrenceObjectSnapshot<I>,
         card: impl FnMut(I) -> Result<crate::ids::CardId, OccurrenceBindingError>,
     ) -> Result<crate::snapshot::ObjectSnapshot, OccurrenceBindingError> {
+        value.validate_ring_bearer_history().map_err(|detail| OccurrenceBindingError::InvalidModel { detail: detail.into() })?;
         Ok(value
             .try_map_payloads(|ability| self.restore_ability(ability), card)?
             .into())

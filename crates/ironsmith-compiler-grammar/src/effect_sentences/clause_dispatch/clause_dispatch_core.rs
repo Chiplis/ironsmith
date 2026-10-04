@@ -166,6 +166,7 @@ pub(super) fn parse_effect_clause_unstacked(
             "detain",
             "goad",
             "suspect",
+            "note",
             "end",
         ];
         CardTextError::ParseError(format!(

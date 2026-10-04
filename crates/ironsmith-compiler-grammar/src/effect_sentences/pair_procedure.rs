@@ -120,10 +120,11 @@ fn is_each_copy_targets_different(sentence: &SentenceInput) -> bool {
     effect_grammar::each_copy_targets_different_shape(sentence.lowered())
 }
 
-fn choose_creature_type_sentence(sentence: &SentenceInput) -> bool {
+fn choose_subtype_sentence(sentence: &SentenceInput) -> bool {
     let words = crate::lexer::token_word_refs(sentence.lowered());
     words.first() == Some(&"choose")
-        && crate::word_primitives::sequence_occurs(&words, &["creature", "type"])
+        && (crate::word_primitives::sequence_occurs(&words, &["creature", "type"])
+            || crate::word_primitives::sequence_occurs(&words, &["basic", "land", "type"]))
 }
 
 /// Open a procedure at a sentence the next sentence completes.
@@ -1103,4 +1104,17 @@ fn parse_top_zone_choice_complement(
             None,
         ),
     ]))
+}
+
+#[cfg(test)]
+mod chosen_basic_land_type_program_tests {
+    #[test]
+    fn basic_land_choice_and_following_set_share_one_choice_owner() {
+        let tokens=crate::lexer::lex_line("Choose a basic land type. Each land you control becomes that type until end of turn.",0).unwrap();
+        let effects=crate::effect_sentences::parse_effect_sentences_lexed(&tokens).unwrap();
+        let text=format!("{effects:?}");
+        assert_eq!(text.matches("BecomeBasicLandTypeChoice").count(),1,"{text}");
+        assert!(!text.contains("ChooseLandType"),"the paired instruction asks once, not once per land or twice overall: {text}");
+        assert!(text.contains("Land")&&text.contains("You")&&text.contains("EndOfTurn"),"{text}");
+    }
 }

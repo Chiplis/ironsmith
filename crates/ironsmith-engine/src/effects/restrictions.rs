@@ -405,6 +405,22 @@ impl EffectExecutor for CantEffect {
             self.duration.clone()
         };
         let restriction = normalize_restriction_for_resolution(&self.restriction, ctx, game);
+        // A resolved player prohibition must retain its announced player after
+        // this context and target slots disappear. The land set remains a rule
+        // about future plays, not the currently visible lands.
+        let restriction = if let Restriction::PlayLandsMatching(player, filter) = restriction {
+            let player = match player {
+                crate::target::PlayerFilter::Target(_)
+                | crate::target::PlayerFilter::AliasedTarget(_)
+                | crate::target::PlayerFilter::TargetPlayerOrControllerOfTarget
+                | crate::target::PlayerFilter::IteratedPlayer
+                | crate::target::PlayerFilter::TaggedPlayer(_)
+                | crate::target::PlayerFilter::ChosenPlayer => crate::target::PlayerFilter::Specific(
+                    crate::effects::helpers::resolve_player_filter(game, &player, ctx)?),
+                player => player,
+            };
+            Restriction::PlayLandsMatching(player, filter)
+        } else { restriction };
         if self.start == RestrictionStart::LastAddedCombatPhase {
             // A missing phase cannot turn a phase-bound restriction into an
             // immediate restriction on an unrelated combat.

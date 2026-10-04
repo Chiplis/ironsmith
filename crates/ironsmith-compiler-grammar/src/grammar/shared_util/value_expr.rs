@@ -592,3 +592,7 @@ pub fn parse_power_toughness_value_pair_words(words: &[&str]) -> Option<(Value, 
     (used == toughness_words.len())
         .then_some((canonical_source(power), canonical_source(toughness)))
 }
+
+#[path = "value_expr/life_totals.rs"]
+mod life_totals;
+pub use life_totals::parse_life_total_quantity_words;

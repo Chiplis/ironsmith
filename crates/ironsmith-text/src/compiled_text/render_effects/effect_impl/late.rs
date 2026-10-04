@@ -1572,6 +1572,19 @@
         };
         let plural_subject = target.starts_with("all ") || target.starts_with("those ");
         let target = capitalize_first(&target);
+        if become_basic.preserve_other_types || !become_basic.allowed_subtypes.is_empty() {
+            let land_type = if become_basic.allowed_subtypes.is_empty() {
+                "the basic land type of your choice".to_string()
+            } else {
+                become_basic.allowed_subtypes.iter().map(|subtype| {
+                    format!("{} {}", if *subtype == crate::types::Subtype::Island { "an" } else { "a" }, subtype)
+                }).collect::<Vec<_>>().join(" or ")
+            };
+            let retention = if become_basic.preserve_other_types { " in addition to its other types" } else { "" };
+            let duration = if become_basic.duration == Until::Forever { String::new() }
+                else { format!(" {}", describe_until(&become_basic.duration)) };
+            return format!("{target} {} {land_type}{retention}{duration}", if plural_subject { "become" } else { "becomes" });
+        }
         if let Some(subtype) = become_basic.fixed_subtype {
             let subtype_text = if plural_subject {
                 pluralize_noun_phrase(&subtype.to_string())

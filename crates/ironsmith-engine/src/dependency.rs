@@ -227,6 +227,7 @@ fn filter_supports_chars_class_dedup(filter: &ObjectFilter) -> bool {
         && !filter.shares_creature_type_with_source
         && filter.no_shared_creature_types_with.is_empty()
         && filter.characteristic_relations.is_empty()
+        && !filter.ring_bearer
         && !filter.is_commander
         && !filter.noncommander
         && !filter.has_tap_activated_ability
@@ -1329,15 +1330,7 @@ pub(crate) fn apply_continuous_effect_to_chars_for_dependency(
                 && !types.is_empty()
                 && types.iter().all(|subtype| subtype.is_basic_land_type())
             {
-                chars.abilities.clear();
-                chars.static_abilities.clear();
-                for subtype in types {
-                    if let Some(ability) = Ability::basic_land_mana(*subtype)
-                        && !chars.abilities.contains(&ability)
-                    {
-                        chars.abilities.push(ability);
-                    }
-                }
+                crate::continuous::remove_land_rules_text_abilities(chars);
             }
         }
         Modification::AddSupertypes(types) => {
@@ -1464,9 +1457,13 @@ pub(crate) fn apply_continuous_effect_to_chars_for_dependency(
             }
         }
         Modification::RemoveAllAbilities => {
-            chars.abilities.clear();
-            chars.static_abilities.clear();
+            if crate::continuous::is_land_type_rules_text_ability_loss(effect) {
+                crate::continuous::remove_land_rules_text_abilities(chars);
+            } else {
+                chars.abilities.clear(); chars.static_abilities.clear();
+            }
         }
+        Modification::RemoveLandRulesTextAbilities => crate::continuous::remove_land_rules_text_abilities(chars),
         Modification::RemoveAllAbilitiesExceptMana => {
             chars
                 .abilities
@@ -1642,6 +1639,8 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::ManaSymbolsInManaCostOf { .. }
         | Value::NameStickerCharacterCountOnSource { .. }
         | Value::LifeTotal(_)
+        | Value::MaximumLifeTotal(_)
+        | Value::CountPlayersBelowHalfStartingLifeTotal(_)
         | Value::LifeTotalAsTurnBegan(_)
         | Value::LifeTotalDifference(_)
         | Value::LastNotedLifeTotal
@@ -2098,6 +2097,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::PlayerHasCitysBlessing { .. }
         | C::PlayerHasEnduringStory { .. }
         | C::SourceIsRingBearer { .. }
+        | C::YouChoseAnotherRingBearer
         | C::PlayerRingTemptedThisGameOrMore { .. }
         | C::PlayerCommittedCrimeThisTurn { .. }
         | C::PlayerRolledResultThisTurn { .. }
@@ -2284,6 +2284,8 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::PlayerVoteCount(_)
         | Value::ObjectVoteCount(_)
         | Value::LifeTotal(_)
+        | Value::MaximumLifeTotal(_)
+        | Value::CountPlayersBelowHalfStartingLifeTotal(_)
         | Value::LifeTotalAsTurnBegan(_)
         | Value::LifeTotalDifference(_)
         | Value::LastNotedLifeTotal
@@ -2459,6 +2461,7 @@ fn modification_can_remove_static_ability_presence(modification: &Modification) 
             | Modification::RemoveStaticAbilityFamily(_)
             | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
+            | Modification::RemoveLandRulesTextAbilities
             | Modification::RemoveAllAbilitiesExceptMana
     )
 }
@@ -2551,6 +2554,7 @@ fn modification_can_change_abilities_or_matching_characteristics(
             | Modification::RemoveStaticAbilityFamily(_)
             | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
+            | Modification::RemoveLandRulesTextAbilities
             | Modification::RemoveAllAbilitiesExceptMana
     )
 }
@@ -2647,6 +2651,7 @@ fn modification_can_affect_filter(modification: &Modification, filter: &ObjectFi
             | Modification::RemoveStaticAbilityFamily(_)
             | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
+            | Modification::RemoveLandRulesTextAbilities
             | Modification::RemoveAllAbilitiesExceptMana => {
                 filter_uses_ability_characteristics(filter)
             }

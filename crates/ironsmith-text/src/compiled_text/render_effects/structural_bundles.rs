@@ -6004,6 +6004,8 @@ pub(super) fn value_references_target_player(value: &Value) -> bool {
         | Value::CountPlayersWithPoisonCountersAtLeast(player, _)
         | Value::PartySize(player)
         | Value::LifeTotal(player)
+        | Value::MaximumLifeTotal(player)
+        | Value::CountPlayersBelowHalfStartingLifeTotal(player)
         | Value::LifeTotalAsTurnBegan(player)
         | Value::LifeTotalDifference(player)
         | Value::UnspentMana(player)
