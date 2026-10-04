@@ -154,6 +154,8 @@ export function randomGameDefaults() {
     // Cards the local player's battlefield always starts with, whatever the
     // filters say. Omniscience makes a generated table immediately playable.
     alwaysOnMyBattlefield: ["Omniscience"],
+    // A known card makes it easy to verify that the opening hand loaded.
+    alwaysInMyHand: ["Sphinx of Foresight"],
     singleFacedOnly: true,
     allowDuplicates: false,
     allowDuplicateLegends: false,
@@ -182,7 +184,7 @@ const nameKey = (name) => String(name || "").trim().toLocaleLowerCase("en-US");
  * when it could not legally sit on a battlefield — the promise is a playable
  * table, so a spell named here is reported rather than placed.
  */
-export function resolveGuaranteedBattlefield(names, cards = []) {
+function resolveGuaranteedZone(names, cards, zone) {
   const byName = new Map(cards.filter(Boolean).map((card) => [nameKey(card.name), card]));
   const accepted = [];
   const rejected = [];
@@ -190,10 +192,18 @@ export function resolveGuaranteedBattlefield(names, cards = []) {
     const trimmed = String(name || "").trim();
     if (!trimmed) continue;
     const card = byName.get(nameKey(trimmed));
-    if (card && zoneAcceptsCard("battlefield", card)) accepted.push(card);
+    if (card && zoneAcceptsCard(zone, card)) accepted.push(card);
     else rejected.push(trimmed);
   }
   return { accepted, rejected };
+}
+
+export function resolveGuaranteedBattlefield(names, cards = []) {
+  return resolveGuaranteedZone(names, cards, "battlefield");
+}
+
+export function resolveGuaranteedHand(names, cards = []) {
+  return resolveGuaranteedZone(names, cards, "hand");
 }
 
 function drawCard(pool, taken, config, zone, used) {
@@ -228,13 +238,20 @@ function shuffled(items, rng) {
  * Basic lands are drawn from the chosen colours rather than the catalogue, so a
  * table can always produce mana even when the filters are narrow.
  */
-export function generateRandomGamePayload({ config, cards = [], guaranteedCards = [], rng = Math.random } = {}) {
+export function generateRandomGamePayload({
+  config,
+  cards = [],
+  guaranteedCards = [],
+  guaranteedHandCards = [],
+  rng = Math.random,
+} = {}) {
   const settings = { ...randomGameDefaults(), ...(config || {}) };
   const eligible = cards.filter((card) => cardMatchesFilters(card, settings));
   const basics = basicLandCycle(settings);
   // The local player is always the first: a loaded table is viewed from
   // perspective 0.
   const guaranteed = resolveGuaranteedBattlefield(settings.alwaysOnMyBattlefield, [...guaranteedCards, ...cards]);
+  const guaranteedHand = resolveGuaranteedHand(settings.alwaysInMyHand, [...guaranteedHandCards, ...cards]);
   const playerCount = Math.max(1, Math.min(8, Math.trunc(Number(settings.playerCount)) || 1));
   const life = Math.trunc(Number(settings.startingLife));
   const shortfalls = new Set();
@@ -243,11 +260,15 @@ export function generateRandomGamePayload({ config, cards = [], guaranteedCards 
     const used = new Map();
     const zones = {};
     for (const zone of RANDOM_GAME_ZONES) {
-      // Cards promised to the local battlefield are placed before anything
-      // else and take slots from the random draw, never from each other.
-      const promised = zone === "battlefield" && playerIndex === 0
-        ? guaranteed.accepted.map((card) => card.name)
-        : [];
+      // Promised cards are placed before random draws and take requested zone
+      // slots. Only the local player's battlefield and hand use promises.
+      const promised = playerIndex !== 0
+        ? []
+        : zone === "battlefield"
+          ? guaranteed.accepted.map((card) => card.name)
+          : zone === "hand"
+            ? guaranteedHand.accepted.map((card) => card.name)
+            : [];
       const requested = Math.max(promised.length, normalizeZoneCount(settings.zones?.[zone]?.count));
       if (requested === 0) {
         zones[zone] = [];
@@ -284,5 +305,6 @@ export function generateRandomGamePayload({ config, cards = [], guaranteedCards 
     shortfalls: [...shortfalls],
     eligibleCount: eligible.length,
     unavailableGuaranteed: guaranteed.rejected,
+    unavailableGuaranteedHand: guaranteedHand.rejected,
   };
 }

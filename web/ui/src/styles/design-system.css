@@ -7,6 +7,7 @@
  */
 
 :root {
+  --game-arena-image: url("/theme/gothic-floating-arena-v2.png");
   --ui-surface-canvas: #0d0e0f;
   --ui-surface-table: #171614;
   --ui-surface-raised: #211f1c;
@@ -128,6 +129,11 @@
      sibling anchored to the battlefield shell, so this offset only moves the
      local piles and their hover/expanded hit area. */
   bottom: 54px;
+}
+.battlefield-panel--opponents .player-zone-piles[data-opponent-zone-piles="true"] {
+  /* Opponent graveyard/exile should sit higher in the battlefield lane,
+     away from the bottom edge and hand/decision HUD. */
+  bottom: clamp(52px, 8vh, 76px);
 }
 .player-zone-piles > .zone-pile-slot,
 .player-look-pile { pointer-events: auto; }
@@ -1288,7 +1294,48 @@ textarea,
 
 body {
   color: var(--ui-text-primary);
-  background: var(--ui-surface-canvas);
+  background:
+    linear-gradient(rgba(4, 7, 16, 0.32), rgba(4, 7, 16, 0.62)),
+    var(--game-arena-image) center / cover no-repeat,
+    var(--ui-surface-canvas);
+}
+
+.battlefield-count-item {
+  align-items: center !important;
+  gap: 3px !important;
+}
+
+.battlefield-count-icon {
+  display: block;
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+  color: #bdcce0;
+  stroke-width: 1.8;
+}
+
+.player-zone-count,
+.topbar-opponent-chip-zone {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.player-zone-count-icon,
+.topbar-opponent-chip-zone svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  color: #bdcce0;
+  stroke-width: 1.8;
+}
+
+.topbar-opponent-chip-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
 }
 
 .toolbar-brand,
@@ -2937,7 +2984,9 @@ button:disabled,
 
 .setup-screen {
   color: var(--ui-text-primary);
-  background: radial-gradient(ellipse at 20% 0, rgba(212, 164, 74, 0.07), transparent 55%), var(--ui-surface-table) !important;
+  background:
+    radial-gradient(ellipse at 20% 0, rgba(212, 164, 74, 0.07), transparent 55%),
+    rgba(5, 8, 17, 0.72) !important;
   padding: clamp(12px, 2vw, 28px);
 }
 
@@ -3028,7 +3077,7 @@ button:disabled,
    the gradient is the opposite of the flat black this screen is going for. */
 .deck-loading-screen.deck-loading-screen {
   padding: 12px !important;
-  background: #08090a !important;
+  background: rgba(8, 9, 13, 0.78) !important;
 }
 
 /* The lobby's deck picker is the same flat catalog inside a sheet whose own
@@ -3392,7 +3441,6 @@ button:disabled,
   .topbar-phase-perspective { font-size: 10px; }
   select.stone-select.topbar-phase-perspective-select { font-size: 10px !important; }
   .topbar-minor-controls .stone-pill { min-width: 32px; min-height: 32px; }
-  .table-tools-toggle { width: 32px; min-height: 32px; flex-basis: 32px; }
   .player-header-zone-visibility [data-zone-viewer] label,
   .player-header-zone-visibility .zone-viewer-core-count { font-size: 11px !important; }
 }
@@ -3865,7 +3913,7 @@ button:disabled,
   .battlefield-panel-header, .table-shared-player-header,
   .battlefield-name, .battlefield-life, .player-identity-box,
   .opponent-battlefield-mana-row, .mana-pool-chip,
-  .battlefield-count-item, .table-tools-toggle,
+  .battlefield-count-item,
   .topbar-phase-perspective-select
 ) {
   border: 0 !important;
@@ -3899,10 +3947,23 @@ button:disabled,
   box-shadow: none !important;
 }
 
-/* One continuous table surface behind the fields and shared controls. */
+/* The illustration is one continuous surface; gradients and player accents stay above it. */
+.app-shell.app-shell {
+  background:
+    radial-gradient(900px 280px at 50% 0%, rgba(255, 221, 145, 0.07), transparent 65%),
+    linear-gradient(180deg, rgba(4, 7, 18, 0.28), rgba(4, 7, 18, 0.42) 55%, rgba(4, 7, 18, 0.64)),
+    var(--game-arena-image) center / cover no-repeat,
+    var(--ui-surface-canvas) !important;
+}
+
+/* The battlefield shares the artwork instead of painting an opaque rectangle over it. */
 .table-shell {
-  background: #090c0e !important;
+  background: radial-gradient(ellipse at 50% 50%, rgba(3, 6, 16, 0.05), rgba(3, 6, 16, 0.44)) !important;
   clip-path: none !important;
+}
+
+.table-shell.mobile-mtga-scene {
+  background: radial-gradient(ellipse at 50% 50%, rgba(3, 6, 16, 0.05), rgba(3, 6, 16, 0.44)) !important;
 }
 .table-shell :is(
   .board-zone-bg, .battlefield-panel, .battlefield-subpanel,
@@ -4412,9 +4473,6 @@ button:disabled,
   padding: 2px 12px;
   background: #090c0e;
 }
-.table-persistent-utility-strip .table-tools-toggle { margin-left: auto; flex-shrink: 0; }
-.table-header-tools-toggle { display: inline-flex; align-items: center; justify-content: center; width: 26px; min-height: 26px; padding: 0; }
-.table-header-tools-toggle svg { width: 14px; height: 14px; }
 .table-inline-utility-actions {
   flex: 1 1 0;
   min-width: 0;
@@ -4566,52 +4624,26 @@ button:disabled,
   flex: 1 1 auto;
 }
 
-.table-inline-header-tools {
+.table-menu-tools-content {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(64px, 100%), 1fr));
-  align-items: stretch;
-  gap: 3px;
   min-width: 0;
-  flex: 1 1 auto;
-  container-type: inline-size;
+  gap: 10px;
 }
 
-.table-inline-header-tools[data-expanded="false"] {
-  visibility: hidden;
-  pointer-events: none;
+.table-menu-tools-content .table-zone-action-controls {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
 }
 
-.table-inline-header-tools .table-zone-action-controls {
-  display: contents;
+.table-menu-tools-content .table-zone-action-button {
+  min-height: 38px;
+  padding: 6px 8px !important;
+  font-size: 11px !important;
+  line-height: 1.2;
+  letter-spacing: 0.04em !important;
 }
 
-.table-inline-header-tools .table-zone-action-button {
-  width: 100%;
-  min-width: 0;
-  min-height: 26px;
-  padding: 3px 4px !important;
-  gap: 3px;
-  font-size: clamp(8px, 1.5cqw, 11px) !important;
-  line-height: 1.15;
-  letter-spacing: 0 !important;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-
-.table-inline-header-tools .table-zone-action-button svg {
-  width: 11px;
-  height: 11px;
-  flex-shrink: 0;
-}
-
-/* Reserve the same tool-row space in both states to avoid moving the board. */
-.table-shell .table-shared-player-header:has(.table-inline-header-tools) {
-  height: auto !important;
-  padding-block: 3px !important;
-}
-
-.table-inline-header-tools .audit-replay-rail {
-  min-width: 0;
+.table-menu-tools-content .audit-replay-rail {
   grid-column: 1 / -1;
 }
 
@@ -4839,4 +4871,2482 @@ html[data-hand-pointer-suspended="true"] * {
     0 0 16px rgba(105, 184, 255, 0.3),
     inset 0 1px 0 rgba(255, 255, 255, 0.52),
     inset 0 -2px 0 rgba(14, 80, 116, 0.22) !important;
+}
+
+/* Desktop battlefield HUD: leave the center lane for cards and game effects. */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] {
+    /* Opponent rows use fixed-size cards and rarely fill their half, so the
+       local battlefield takes the slack and starts higher. */
+    grid-template-rows: minmax(0, 0.86fr) minmax(0, 1.14fr) !important;
+    /* Reserve a visible lane between the opponent and local battlefields.
+       Raised/scaled cards then stay inside their own side instead of grazing
+       the opposing field at the shared seam. */
+    row-gap: clamp(12px, 1.5vh, 18px) !important;
+  }
+
+  .table-shell[data-focused-hud="true"] > .battlefield-panel--opponents {
+    grid-row: 1;
+  }
+
+  .table-shell[data-focused-hud="true"] > [data-my-zone] {
+    grid-row: 2;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-zone-entry[data-zone-id="battlefield"] .battlefield-row {
+    gap: calc(20px + var(--bf-row-scale-gap, 0px)) 20px !important;
+  }
+
+  .table-shell[data-focused-hud="true"] > .table-shared-control-band {
+    position: absolute !important;
+    inset: 0;
+    z-index: 150;
+    min-height: 0;
+    height: 0;
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  .table-shell[data-focused-hud="true"] .topbar-shell--middle-docked {
+    position: absolute !important;
+    inset: 0 auto auto 0;
+    display: block !important;
+    width: 100%;
+    height: 0 !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    overflow: visible;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    pointer-events: none;
+  }
+
+  .table-shell[data-focused-hud="true"] .topbar-side-cluster--left,
+  .table-shell[data-focused-hud="true"] .topbar-side-cluster--right {
+    position: static !important;
+    display: contents;
+  }
+
+  .table-shell[data-focused-hud="true"] .topbar-main-decision-host {
+    display: none !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .topbar-phase-shell {
+    position: fixed !important;
+    left: 50%;
+    bottom: max(78px, calc(env(safe-area-inset-bottom) + 72px));
+    z-index: 160;
+    display: flex;
+    width: max-content;
+    max-width: min(46vw, 520px);
+    padding: 6px 12px;
+    border: 1px solid rgba(124, 150, 199, 0.4);
+    background: rgba(7, 10, 18, 0.78);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.24);
+    transform: translateX(-50%);
+    pointer-events: none;
+    backdrop-filter: blur(8px);
+  }
+
+  .table-shell[data-focused-hud="true"] .topbar-phase-status {
+    display: none !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .topbar-brand-stack {
+    position: fixed;
+    top: 10px;
+    right: 52px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    width: max-content;
+    z-index: 180;
+    pointer-events: auto;
+  }
+
+  .table-shell[data-focused-hud="true"] .table-shared-player-header {
+    position: fixed !important;
+    left: 12px;
+    bottom: 14px;
+    z-index: 170;
+    width: max-content;
+    max-width: min(42vw, 500px);
+    height: auto !important;
+    min-height: 42px;
+    padding: 6px 10px;
+    border: 1px solid rgba(147, 157, 183, 0.48);
+    background: rgba(7, 10, 18, 0.86);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.32);
+    backdrop-filter: blur(8px);
+    pointer-events: auto;
+  }
+
+  .table-shell[data-focused-hud="true"] .table-shared-player-header [data-my-zone-header-content] {
+    width: auto;
+    min-width: 0;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+  }
+
+  .table-shell[data-focused-hud="true"] .player-header-utility-controls {
+    position: fixed;
+    top: 5px;
+    right: 12px;
+    z-index: 180;
+    pointer-events: auto;
+  }
+
+  /* Keep the chat tab beside the local life total. The panel grows rightward
+     from the left rail instead of disappearing below the battlefield. */
+  .table-shell[data-focused-hud="true"] .player-zone-chat-dock {
+    position: fixed !important;
+    left: 21px;
+    right: auto;
+    bottom: 60px;
+    width: min(320px, calc(100vw - 24px));
+    display: flex;
+    justify-content: flex-start;
+    align-items: flex-end;
+    z-index: 20;
+    pointer-events: none;
+  }
+
+  .table-shell[data-focused-hud="true"] .player-zone-chat-dock .lobby-chat {
+    width: min(320px, calc(100vw - 24px));
+    height: 160px;
+    flex-direction: row;
+    align-items: stretch;
+    overflow: hidden;
+    border-radius: 5px;
+    box-shadow: 0 0 18px rgba(139, 92, 246, 0.16);
+    transition:
+      width 350ms cubic-bezier(.22, 1, .36, 1),
+      height 350ms cubic-bezier(.22, 1, .36, 1);
+    pointer-events: auto;
+  }
+
+  .table-shell[data-focused-hud="true"] .player-zone-chat-dock .lobby-chat[data-collapsed="true"] {
+    width: 86px;
+    height: 30px;
+    border-bottom: 1px solid var(--ui-border-strong);
+    border-radius: 5px;
+  }
+
+  .table-shell[data-focused-hud="true"] .player-zone-chat-dock .lobby-chat-header {
+    order: 0;
+    width: 86px;
+    min-width: 86px;
+    height: 100%;
+    min-height: 0;
+    justify-content: center;
+    gap: 4px;
+    padding: 4px 5px;
+    border-right: 1px solid var(--ui-border-strong);
+    border-bottom: 0;
+    white-space: nowrap;
+    font-size: 8px;
+    letter-spacing: .04em;
+  }
+
+  .table-shell[data-focused-hud="true"] .player-zone-chat-dock .lobby-chat-body {
+    order: 1;
+    flex: 0 0 0;
+    width: 0;
+    height: 100%;
+    min-width: 0;
+    transition: flex-basis 350ms cubic-bezier(.22, 1, .36, 1);
+  }
+
+  .table-shell[data-focused-hud="true"] .player-zone-chat-dock .lobby-chat[data-collapsed="false"] .lobby-chat-body {
+    flex-basis: calc(min(320px, 100vw - 24px) - 86px);
+  }
+
+  .table-shell[data-focused-hud="true"] .player-zone-chat-dock .lobby-chat-body-inner {
+    width: calc(min(320px, 100vw - 24px) - 86px);
+    height: 100%;
+  }
+
+  .table-shell[data-focused-hud="true"] .player-zone-chat-dock .lobby-chat[data-collapsed="true"] .lobby-chat-body {
+    height: 100%;
+  }
+
+  .table-shell[data-focused-hud="true"] .player-zone-chat-dock .lobby-chat-header-actions > span:last-child {
+    transform: rotate(90deg);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .table-shell[data-focused-hud="true"] .player-zone-chat-dock .lobby-chat,
+    .table-shell[data-focused-hud="true"] .player-zone-chat-dock .lobby-chat-body {
+      transition: none;
+    }
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock {
+    position: fixed;
+    right: clamp(96px, 10vw, 144px);
+    bottom: max(136px, calc(env(safe-area-inset-bottom) + 128px));
+    z-index: 190;
+    display: flex;
+    width: min(360px, calc(100vw - 320px));
+    min-width: 260px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    pointer-events: none;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-dock,
+  .table-shell[data-focused-hud="true"] .battlefield-human-quick-controls {
+    pointer-events: auto;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel {
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    max-height: min(34vh, 300px);
+    overflow: auto;
+    border: 1px solid rgba(147, 157, 183, 0.56);
+    background: rgba(7, 10, 18, 0.94);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
+    backdrop-filter: blur(10px);
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel .priority-inline-panel {
+    max-height: inherit;
+    min-height: 0;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-quick-controls {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-quick-controls .player-priority-hold,
+  .table-shell[data-focused-hud="true"] .battlefield-auto-pass-toggle {
+    display: inline-flex;
+    min-height: 34px;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 6px 10px;
+    border: 1px solid rgba(147, 157, 183, 0.52);
+    border-radius: 4px;
+    background: rgba(8, 12, 22, 0.92);
+    color: #e7e9f0;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.24);
+    cursor: pointer;
+    transition: border-color 120ms ease, background-color 120ms ease;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-quick-controls .player-priority-hold:hover,
+  .table-shell[data-focused-hud="true"] .battlefield-auto-pass-toggle:hover {
+    border-color: rgba(182, 211, 255, 0.8);
+    background: rgba(27, 38, 62, 0.96);
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-auto-pass-toggle[data-enabled="true"] {
+    border-color: rgba(89, 215, 206, 0.68);
+    color: #b7fff3;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-auto-pass-indicator {
+    width: 7px;
+    height: 7px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: #778091;
+    box-shadow: 0 0 0 2px rgba(119, 128, 145, 0.14);
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-auto-pass-toggle[data-enabled="true"] .battlefield-auto-pass-indicator {
+    background: #5ce4d0;
+    box-shadow: 0 0 9px rgba(92, 228, 208, 0.58);
+  }
+
+  .table-shell[data-focused-hud="true"] [data-my-zone] .my-zone-board-shell > .my-zone-stack-rail {
+    top: var(--stack-area-top, 12px);
+    bottom: auto;
+    left: calc(var(--zone-pile-width, 56px) + 10px);
+    width: clamp(148px, 14vw, 208px);
+    height: min(36vh, 240px);
+    max-height: min(36vh, 240px);
+    overflow: hidden;
+  }
+
+  .table-shell[data-focused-hud="true"] [data-my-zone] .my-zone-board-shell > .my-zone-stack-controls {
+    position: absolute;
+    top: var(--stack-area-top, 12px);
+    left: calc(var(--zone-pile-width, 56px) + 10px);
+    z-index: 190;
+    width: max-content;
+    transform: translateY(calc(-100% - 7px));
+    pointer-events: auto;
+  }
+
+  .table-shell[data-focused-hud="true"] .my-zone-stack-controls .battlefield-human-quick-controls {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+
+  .table-shell[data-focused-hud="true"] .my-zone-stack-controls .player-priority-hold,
+  .table-shell[data-focused-hud="true"] .my-zone-stack-controls .battlefield-auto-pass-toggle {
+    position: relative;
+    display: inline-grid;
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    min-height: 32px;
+    flex: 0 0 32px;
+    place-items: center;
+    padding: 0;
+    border: 1px solid rgba(194, 157, 241, 0.38);
+    border-radius: 7px;
+    background: rgba(7, 9, 17, 0.7);
+    color: rgba(235, 223, 255, 0.88);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+    cursor: pointer;
+    transition: color 120ms ease, border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+  }
+
+  .table-shell[data-focused-hud="true"] .my-zone-stack-controls .player-priority-hold svg,
+  .table-shell[data-focused-hud="true"] .my-zone-stack-controls .battlefield-auto-pass-toggle svg {
+    width: 17px;
+    height: 17px;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .table-shell[data-focused-hud="true"] .my-zone-stack-controls .player-priority-hold:hover,
+  .table-shell[data-focused-hud="true"] .my-zone-stack-controls .player-priority-hold:focus-visible,
+  .table-shell[data-focused-hud="true"] .my-zone-stack-controls .battlefield-auto-pass-toggle:hover,
+  .table-shell[data-focused-hud="true"] .my-zone-stack-controls .battlefield-auto-pass-toggle:focus-visible {
+    border-color: rgba(204, 165, 255, 0.74);
+    background: rgba(49, 31, 72, 0.84);
+    color: #f0dcff;
+    box-shadow: 0 0 10px rgba(177, 115, 255, 0.2);
+  }
+
+  .table-shell[data-focused-hud="true"] .my-zone-stack-controls .player-priority-hold[aria-pressed="true"],
+  .table-shell[data-focused-hud="true"] .my-zone-stack-controls .battlefield-auto-pass-toggle[data-enabled="true"] {
+    border-color: rgba(196, 148, 255, 0.68);
+    background: rgba(67, 39, 96, 0.72);
+    color: #e6c9ff;
+    box-shadow: 0 0 9px rgba(178, 113, 255, 0.2);
+  }
+
+  .table-shell[data-focused-hud="true"] .my-zone-stack-controls [data-tooltip]::after {
+    position: absolute;
+    top: 50%;
+    left: calc(100% + 8px);
+    z-index: 220;
+    width: max-content;
+    max-width: min(190px, 40vw);
+    padding: 4px 7px;
+    border: 1px solid rgba(194, 157, 241, 0.38);
+    border-radius: 4px;
+    background: rgba(7, 9, 17, 0.96);
+    color: #eee5fa;
+    content: attr(data-tooltip);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.035em;
+    line-height: 1.2;
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-3px, -50%);
+    transition: opacity 120ms ease, transform 120ms ease;
+    white-space: normal;
+  }
+
+  .table-shell[data-focused-hud="true"] .my-zone-stack-controls [data-tooltip]:hover::after,
+  .table-shell[data-focused-hud="true"] .my-zone-stack-controls [data-tooltip]:focus-visible::after {
+    opacity: 1;
+    transform: translate(0, -50%);
+  }
+}
+
+@media (min-width: 1024px) and (max-width: 1250px) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock {
+    right: clamp(96px, 10vw, 126px);
+    width: min(332px, calc(100vw - 288px));
+  }
+}
+
+/* Keep the turn sequence, current step, and its action controls in one clear HUD. */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] .topbar-phase-shell {
+    position: fixed !important;
+    left: 50%;
+    bottom: max(100px, calc(env(safe-area-inset-bottom) + 92px));
+    z-index: 160;
+    display: block;
+    width: min(560px, 56vw, calc(100vw - 360px));
+    max-width: none;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
+
+  .table-shell[data-focused-hud="true"] .phase-track.phase-track--sequence {
+    display: block;
+    width: 100%;
+    height: auto !important;
+    min-height: 27px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none;
+  }
+
+  .phase-track-steps {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    align-items: start;
+    gap: 2px;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .phase-track-cell {
+    position: relative;
+    display: flex;
+    min-width: 0;
+    min-height: 27px !important;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 0 2px 1px;
+    border: 1px solid transparent !important;
+    color: rgba(221, 211, 241, 0.68) !important;
+    font-size: clamp(7px, 0.56vw, 9px) !important;
+    font-weight: 650;
+    letter-spacing: 0.06em !important;
+    line-height: 1.1;
+    text-shadow: none !important;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .table-shell[data-focused-hud="true"] .topbar-phase-shell .phase-track-cell {
+    min-height: 27px !important;
+    padding-top: 0 !important;
+    font-size: clamp(7px, 0.56vw, 9px) !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .topbar-phase-shell .phase-track-step-label {
+    font-size: inherit !important;
+  }
+
+  .phase-track-cell:not(:last-child)::after {
+    position: absolute;
+    top: 4px;
+    left: calc(50% + 5px);
+    width: calc(50% + 2px);
+    height: 1px;
+    content: "" !important;
+    background: linear-gradient(90deg, rgba(170, 137, 222, 0.34), rgba(170, 137, 222, 0.12));
+  }
+
+  .phase-track-step-marker {
+    display: grid;
+    position: relative;
+    z-index: 1;
+    width: 7px;
+    height: 7px;
+    flex: 0 0 7px;
+    place-items: center;
+    border: 1px solid rgba(201, 180, 230, 0.58);
+    border-radius: 50%;
+    background: rgba(9, 7, 16, 0.9);
+    color: transparent;
+    font-size: 0;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+
+  .phase-track-step-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .phase-track-cell[data-phase-complete="true"] .phase-track-step-marker {
+    border-color: rgba(184, 145, 242, 0.72);
+    background: rgba(139, 91, 206, 0.56);
+    color: transparent;
+  }
+
+  .phase-track-cell[data-phase-active="true"] {
+    border-color: transparent !important;
+    background: transparent !important;
+    color: #eadcff !important;
+    text-shadow: 0 0 8px rgba(188, 137, 255, 0.56) !important;
+    box-shadow: none !important;
+  }
+
+  .phase-track-cell[data-phase-active="true"] .phase-track-step-marker {
+    width: 8px;
+    height: 8px;
+    flex-basis: 8px;
+    border-color: #dfc4ff;
+    background: #bd8aff;
+    box-shadow: 0 0 6px rgba(184, 129, 255, 0.72), 0 0 12px rgba(159, 93, 255, 0.35);
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock {
+    right: clamp(18px, 2.4vw, 36px);
+    bottom: max(136px, calc(env(safe-area-inset-bottom) + 128px));
+    width: min(360px, calc(100vw - 300px));
+    min-width: 0;
+    gap: 4px;
+  }
+
+  /* Keep the main advance action in a deliberate, separate right-hand
+     target area instead of letting its intrinsic width pin it to the dock's
+     left edge. */
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel:has(.action-strip-advance-button) {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel:has(.action-strip-advance-button) .priority-inline-panel--main-only {
+    width: 100% !important;
+    align-self: stretch !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel:has(.action-strip-advance-button) .action-strip-layout {
+    width: 100% !important;
+    justify-content: flex-end !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel .action-strip-advance-button:not(:disabled):not([aria-disabled="true"]) {
+    min-height: 40px;
+    border-radius: 4px !important;
+    cursor: pointer;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel .action-strip-advance-button:focus-visible {
+    outline: 2px solid rgba(220, 196, 255, 0.92);
+    outline-offset: 3px;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-step-submit-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 4px;
+    pointer-events: auto;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-step-submit-row .table-decision-submit-slot {
+    display: flex;
+    min-height: 30px;
+    align-items: stretch;
+    justify-content: flex-start;
+    padding: 0 !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-step-submit-row .action-strip-submit-row {
+    width: min(138px, 100%);
+    min-height: 30px;
+    padding: 0;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-step-chip {
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 3px 5px;
+    border: 0;
+    background: transparent;
+    color: #dfcbff;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    line-height: 1.1;
+    text-align: center;
+    text-transform: uppercase;
+    white-space: nowrap;
+    text-shadow: 0 0 7px rgba(183, 133, 255, 0.38);
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-step-marker {
+    width: 6px;
+    height: 6px;
+    flex: 0 0 6px;
+    border-radius: 50%;
+    background: #bd8aff;
+    box-shadow: 0 0 6px rgba(189, 138, 255, 0.58);
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel {
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    max-height: min(34vh, 300px);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-quick-controls {
+    gap: 4px;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-quick-controls .player-priority-hold,
+  .table-shell[data-focused-hud="true"] .battlefield-auto-pass-toggle {
+    min-height: 28px;
+    gap: 5px;
+    padding: 3px 7px;
+    border: 1px solid rgba(194, 157, 241, 0.28);
+    border-radius: 3px;
+    background: transparent;
+    color: rgba(238, 229, 250, 0.9);
+    font-size: 9px;
+    letter-spacing: 0.045em;
+    box-shadow: none;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-quick-controls .player-priority-hold:hover,
+  .table-shell[data-focused-hud="true"] .battlefield-auto-pass-toggle:hover {
+    border-color: rgba(199, 158, 255, 0.62);
+    background: rgba(148, 91, 210, 0.08);
+    box-shadow: 0 0 9px rgba(176, 116, 255, 0.14);
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-auto-pass-toggle[data-enabled="true"] {
+    border-color: rgba(198, 153, 255, 0.6);
+    color: #dfc5ff;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-auto-pass-indicator {
+    width: 6px;
+    height: 6px;
+    background: rgba(188, 180, 203, 0.62);
+    box-shadow: none;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-auto-pass-toggle[data-enabled="true"] .battlefield-auto-pass-indicator {
+    background: #bd8aff;
+    box-shadow: 0 0 6px rgba(189, 138, 255, 0.58);
+  }
+
+  .table-shell[data-focused-hud="true"] .table-shared-player-header {
+    min-height: 36px;
+    padding: 2px 4px;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+}
+
+/* Opponent mana stays legible in a slim, left-side icon/value rail. */
+@media (min-width: 1024px) {
+  .table-shell .battlefield-panel--opponents .battlefield-subpanel {
+    grid-template-columns: 38px minmax(0, 1fr) !important;
+    grid-template-rows: auto minmax(0, 1fr) !important;
+  }
+
+  .table-shell .battlefield-panel--opponents .opponent-battlefield-heading {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    min-width: 0;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-opponents-grid > [data-opponent-zone]:last-child .opponent-battlefield-heading {
+    padding-right: clamp(112px, 10vw, 152px);
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-opponents-grid > [data-opponent-zone]:last-child .battlefield-name {
+    min-width: 0 !important;
+    max-width: clamp(64px, 7vw, 92px) !important;
+    font-size: 14px !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-opponents-grid > [data-opponent-zone]:last-child .battlefield-life {
+    font-size: 20px !important;
+  }
+
+  .table-shell .battlefield-panel--opponents .battlefield-zones-shell {
+    grid-column: 2;
+    grid-row: 2;
+    min-width: 0;
+  }
+
+  .table-shell .battlefield-panel--opponents .player-identity-box > .battlefield-counts {
+    flex: 0 1 auto !important;
+    flex-wrap: nowrap;
+    justify-content: flex-start !important;
+    max-width: min(38vw, 340px);
+    margin-left: 2px;
+    overflow: hidden;
+    gap: 2px 5px !important;
+  }
+
+  .table-shell .battlefield-panel--opponents .player-identity-box > .battlefield-counts .battlefield-count-icon {
+    width: 12px;
+    height: 12px;
+    flex-basis: 12px;
+  }
+
+  .table-shell .battlefield-panel--opponents .player-identity-box > .battlefield-counts .battlefield-count-item {
+    gap: 2px;
+    font-size: 10px;
+  }
+
+  .table-shell .battlefield-panel--opponents .opponent-battlefield-mana-rail {
+    grid-column: 1;
+    grid-row: 2;
+    display: flex;
+    width: 38px;
+    min-width: 38px;
+    min-height: 0;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 2px;
+    border-right: 1px solid rgba(180, 194, 220, 0.16);
+  }
+
+  .table-shell .battlefield-panel--opponents .opponent-battlefield-mana.mana-pool-inline {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 2px;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+  }
+
+  .table-shell .battlefield-panel--opponents .opponent-battlefield-mana .mana-pool-chip {
+    display: inline-flex;
+    min-width: 0;
+    min-height: 18px;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 1px 2px !important;
+    font-size: 10px;
+    line-height: 1;
+  }
+
+  .table-shell .battlefield-panel--opponents .opponent-battlefield-mana .mana-pool-chip > span:first-child,
+  .table-shell .battlefield-panel--opponents .opponent-battlefield-mana .mana-pool-chip svg {
+    display: inline-flex;
+    width: 12px;
+    height: 12px;
+    flex: 0 0 12px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .table-shell .battlefield-panel--opponents .opponent-battlefield-mana .mana-pool-chip > span:last-child {
+    min-width: 7px;
+    font-size: 10px;
+  }
+}
+
+@media (min-width: 1024px) and (max-width: 1250px) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock {
+    right: 14px;
+    width: min(340px, calc(100vw - 260px));
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-step-chip {
+    min-width: 0;
+    padding-inline: 4px;
+    font-size: 9px;
+  }
+
+  .phase-track-step-marker {
+    display: grid;
+  }
+}
+
+/* An empty portal host is only a reservation for a future Submit button. It
+   must not intercept clicks on the decision control that sits behind it. */
+.table-decision-submit-slot:empty {
+  pointer-events: none !important;
+}
+
+/* Make the opening-hand choice match the restrained violet table HUD rather
+   than the default gold call-to-action. The same selectors cover English and
+   Spanish labels without coupling this treatment to engine action names. */
+:is(.topbar-main-decision-host, .priority-inline-panel)
+.action-strip-command-region:has(.action-strip-advance-button:is([aria-label*="hand" i], [aria-label*="mano" i])) {
+  --decision-main-accent: #bd91ff;
+  --decision-main-rgb: 189, 145, 255;
+  border: 1px solid rgba(189, 145, 255, 0.56) !important;
+  background: linear-gradient(180deg, rgba(31, 23, 47, 0.94), rgba(13, 12, 20, 0.96)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 0 10px rgba(151, 100, 230, 0.16) !important;
+}
+
+.action-strip-advance-button:is([aria-label*="hand" i], [aria-label*="mano" i]):not(:disabled):not([aria-disabled="true"]) {
+  border-color: rgba(189, 145, 255, 0.76) !important;
+  color: #eadcff !important;
+  -webkit-text-fill-color: #eadcff !important;
+  background: linear-gradient(180deg, rgba(85, 55, 127, 0.72), rgba(22, 17, 34, 0.96)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.13),
+    inset 0 -1px 0 rgba(5, 4, 9, 0.68),
+    0 0 0 1px rgba(189, 145, 255, 0.16),
+    0 0 11px rgba(162, 112, 238, 0.2) !important;
+  text-shadow: 0 1px 2px rgba(10, 7, 17, 0.88) !important;
+  animation: none !important;
+  transform: none !important;
+}
+
+.action-strip-advance-button:is([aria-label*="hand" i], [aria-label*="mano" i]):not(:disabled):not([aria-disabled="true"]):hover {
+  border-color: rgba(222, 200, 255, 0.96) !important;
+  color: #fff !important;
+  -webkit-text-fill-color: #fff !important;
+  background: linear-gradient(180deg, rgba(113, 75, 163, 0.84), rgba(31, 22, 48, 0.98)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 0 0 1px rgba(189, 145, 255, 0.24),
+    0 0 14px rgba(162, 112, 238, 0.3) !important;
+}
+
+:is(.topbar-main-decision-host, .priority-inline-panel)
+.action-strip-command-region:has(.action-strip-advance-button:is([aria-label*="hand" i], [aria-label*="mano" i]))
+.action-strip-main-title-text {
+  color: #eadcff !important;
+  -webkit-text-fill-color: #eadcff !important;
+  text-shadow: 0 1px 2px rgba(10, 7, 17, 0.88), 0 0 8px rgba(189, 145, 255, 0.28) !important;
+}
+
+:is(.topbar-main-decision-host, .priority-inline-panel)
+.action-strip-command-region:has(.action-strip-advance-button:is([aria-label*="hand" i], [aria-label*="mano" i]):hover)
+.action-strip-main-title-text {
+  color: #fff !important;
+  -webkit-text-fill-color: #fff !important;
+  text-shadow: 0 0 8px rgba(205, 175, 255, 0.48) !important;
+}
+
+.table-shell[data-focused-hud="true"] .priority-inline-panel:has(.action-strip-advance-button[aria-label*="hand" i]) .action-strip-main-title-text,
+.table-shell[data-focused-hud="true"] .priority-inline-panel:has(.action-strip-advance-button[aria-label*="mano" i]) .action-strip-main-title-text {
+  color: #eadcff !important;
+  -webkit-text-fill-color: #eadcff !important;
+  text-shadow: 0 1px 2px rgba(10, 7, 17, 0.88), 0 0 8px rgba(189, 145, 255, 0.28) !important;
+}
+
+.action-strip-command-region:not(.action-strip-command-region--danger):not(.action-strip-command-region--pregame)
+.action-strip-main-region:has(.action-strip-advance-button:is([aria-label*="hand" i], [aria-label*="mano" i]):not(:disabled):not([aria-disabled="true"]))
+.action-strip-main-title-text {
+  color: #eadcff !important;
+  -webkit-text-fill-color: #eadcff !important;
+  -webkit-text-stroke: 0 !important;
+  text-shadow: 0 1px 2px rgba(10, 7, 17, 0.88), 0 0 8px rgba(189, 145, 255, 0.28) !important;
+}
+
+.action-strip-advance-button:is([aria-label*="hand" i], [aria-label*="mano" i]):not(:disabled):not([aria-disabled="true"]):active,
+.action-strip-mulligan-button:not(:disabled):not([aria-disabled="true"]):active,
+.action-strip-pregame-button:not(:disabled):not([aria-disabled="true"]):active {
+  filter: brightness(1.08) !important;
+  transform: translateY(1px) scale(0.975) !important;
+  box-shadow:
+    inset 0 2px 5px rgba(5, 4, 9, 0.62),
+    0 0 0 1px rgba(var(--decision-main-rgb, 189, 145, 255), 0.28) !important;
+  transition-duration: 70ms !important;
+}
+
+.action-strip-mulligan-button:focus-visible,
+.action-strip-advance-button:is([aria-label*="hand" i], [aria-label*="mano" i]):focus-visible {
+  outline: 2px solid rgba(220, 196, 255, 0.9) !important;
+  outline-offset: 2px;
+}
+
+/* The line between phase dots now ends in a tiny arrowhead. It reinforces
+   sequence without turning the calm violet tracker into another button row. */
+.phase-track--sequence .phase-track-cell:not(:last-child)::after {
+  height: 4px !important;
+  background: linear-gradient(90deg, rgba(177, 143, 226, 0.36), rgba(177, 143, 226, 0.18)) !important;
+  clip-path: polygon(0 38%, 91% 38%, 91% 0, 100% 50%, 91% 100%, 91% 62%, 0 62%);
+}
+
+.phase-track--sequence .phase-track-cell[data-phase-complete="true"]:not(:last-child)::after {
+  background: linear-gradient(90deg, rgba(190, 145, 255, 0.62), rgba(177, 143, 226, 0.22)) !important;
+}
+
+/* Active decisions get a readable floating sheet above the hand. Keep the
+   title/instruction visible at all times and let players fold the choices. */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock:has(.action-strip-decision-stack[data-details-expanded="true"]) {
+    width: min(var(--decision-panel-content-width, 420px), calc(100vw - 28px)) !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock:has(.action-strip-decision-stack[data-details-expanded="false"]) {
+    width: min(var(--decision-panel-compact-width, 320px), calc(100vw - 28px)) !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel:has(.action-strip-decision-stack[data-details-expanded="true"]) {
+    position: relative !important;
+    inset: auto !important;
+    z-index: 190;
+    width: 100% !important;
+    min-height: 0 !important;
+    max-height: min(42vh, 300px) !important;
+    overflow: hidden !important;
+    padding: 8px 10px 9px !important;
+    border: 1px solid rgba(183, 146, 235, 0.42) !important;
+    border-radius: 10px !important;
+    background: rgba(9, 9, 17, 0.95) !important;
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.48), 0 0 20px rgba(162, 115, 232, 0.12) !important;
+    backdrop-filter: blur(12px);
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel:has(.action-strip-decision-stack[data-details-expanded="false"]) {
+    position: relative !important;
+    inset: auto !important;
+    z-index: 190;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: hidden !important;
+    padding: 7px 9px !important;
+    border: 1px solid rgba(183, 146, 235, 0.42) !important;
+    border-radius: 10px !important;
+    background: rgba(9, 9, 17, 0.95) !important;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42), 0 0 16px rgba(162, 115, 232, 0.1) !important;
+    backdrop-filter: blur(12px);
+  }
+
+  .battlefield-human-decision-panel .priority-inline-panel {
+    height: 100% !important;
+    max-height: 100% !important;
+  }
+
+  .battlefield-human-decision-panel:has(.action-strip-decision-stack[data-details-expanded="false"]) .priority-inline-panel,
+  .battlefield-human-decision-panel:has(.action-strip-decision-stack[data-details-expanded="false"]) .action-strip-decision-stack {
+    height: auto !important;
+    max-height: none !important;
+    min-height: 46px !important;
+  }
+
+  .battlefield-human-decision-panel:has(.action-strip-decision-stack[data-details-expanded="false"]) .action-strip-decision-toolbar {
+    display: grid !important;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: start !important;
+    gap: 0 8px !important;
+    min-height: 0 !important;
+  }
+
+  .battlefield-human-decision-panel:has(.action-strip-decision-stack[data-details-expanded="false"]) .action-strip-decision-toolbar > div:first-child {
+    display: contents !important;
+  }
+
+  .battlefield-human-decision-panel:has(.action-strip-decision-stack[data-details-expanded="false"]) .decision-primary-controls {
+    grid-column: 1;
+    grid-row: 1;
+    max-width: none !important;
+    align-self: start;
+  }
+
+  .battlefield-human-decision-panel:has(.action-strip-decision-stack[data-details-expanded="false"]) .decision-primary-controls:has(> .decision-cancel-button:disabled) {
+    display: none !important;
+  }
+
+  .battlefield-human-decision-panel:has(.action-strip-decision-stack[data-details-expanded="false"]):has(.decision-cancel-button:disabled) .action-strip-decision-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .battlefield-human-decision-panel:has(.action-strip-decision-stack[data-details-expanded="false"]):has(.decision-cancel-button:disabled) .action-strip-decision-meta {
+    grid-column: 1;
+  }
+
+  .battlefield-human-decision-panel:has(.action-strip-decision-stack[data-details-expanded="false"]):has(.decision-cancel-button:disabled) .battlefield-decision-disclosure-toggle {
+    grid-column: 2;
+  }
+
+  .battlefield-human-decision-panel:has(.action-strip-decision-stack[data-details-expanded="false"]) .action-strip-decision-meta {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0 !important;
+    padding-inline: 0 !important;
+    align-items: flex-start !important;
+  }
+
+  .battlefield-human-decision-panel:has(.action-strip-decision-stack[data-details-expanded="false"]) .action-strip-decision-meta > div:first-child {
+    display: flex !important;
+    min-width: 0;
+    flex-wrap: wrap !important;
+    align-items: baseline !important;
+    gap: 2px 6px !important;
+  }
+
+  .battlefield-human-decision-panel:has(.action-strip-decision-stack[data-details-expanded="false"]) .action-strip-decision-inline-summary {
+    flex: 0 0 100% !important;
+    min-width: 0;
+    margin-top: 2px;
+    font-size: 10px !important;
+    line-height: 1.25 !important;
+  }
+
+  .battlefield-human-decision-panel:has(.action-strip-decision-stack[data-details-expanded="false"]) .action-strip-decision-toolbar-search {
+    display: none !important;
+  }
+
+  .battlefield-human-decision-panel:has(.action-strip-decision-stack[data-details-expanded="false"]) .battlefield-decision-disclosure-toggle {
+    grid-column: 3;
+    grid-row: 1;
+    margin: 0 !important;
+    align-self: start;
+  }
+
+  .battlefield-human-decision-panel .action-strip-decision-stack {
+    height: 100%;
+    max-height: 100%;
+    overflow: hidden;
+  }
+
+  .battlefield-human-decision-panel .action-strip-decision-toolbar {
+    flex: 0 0 auto;
+    align-items: flex-start !important;
+  }
+
+  .battlefield-human-decision-panel .action-strip-decision-meta {
+    overflow: visible;
+  }
+
+  .battlefield-human-decision-panel .action-strip-decision-meta > div:first-child {
+    flex-wrap: wrap;
+    align-items: baseline;
+    row-gap: 3px;
+  }
+
+  .battlefield-human-decision-panel .action-strip-decision-inline-summary {
+    display: block !important;
+    flex: 1 0 100%;
+    overflow: visible !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+    text-overflow: clip !important;
+    line-height: 1.35;
+    color: rgba(238, 231, 249, 0.88);
+  }
+
+  .battlefield-human-decision-panel .action-strip-decision-content {
+    min-height: 0;
+    overflow: auto !important;
+    overscroll-behavior: contain;
+  }
+
+  .battlefield-human-decision-panel .decision-strip-options-row {
+    flex-direction: row !important;
+    justify-content: flex-start !important;
+  }
+
+  .battlefield-human-decision-panel .decision-option-row--strip {
+    width: min(290px, calc(100vw - 360px));
+    min-width: 190px !important;
+    max-width: 310px !important;
+    min-height: 64px !important;
+    height: auto !important;
+    align-items: flex-start !important;
+    padding-block: 8px !important;
+    white-space: normal !important;
+  }
+
+  .battlefield-human-decision-panel .decision-option-row--strip .decision-option-label,
+  .battlefield-human-decision-panel .decision-option-row--strip .decision-option-label > span {
+    display: block;
+    overflow: visible !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+    text-overflow: clip !important;
+    line-height: 1.35;
+  }
+
+  .action-strip-decision-stack[data-details-expanded="false"] .action-strip-decision-content {
+    display: none !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-dock:has(.action-strip-decision-stack[data-details-expanded="false"])
+    .battlefield-human-step-submit-row .table-decision-submit-slot {
+    display: none !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-dock:has(.action-strip-decision-stack[data-details-expanded="false"])
+    .battlefield-human-step-submit-row {
+    display: none !important;
+  }
+
+  /* DecisionPopupLayer's inline root is normally an absolute overlay. In the
+     floating desktop popup it must take part in layout, otherwise the panel
+     collapses to its border while the toolbar and Submit spill outside it. */
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel:has(.action-strip-decision-stack) {
+    display: flex !important;
+    height: auto !important;
+    box-sizing: border-box !important;
+    flex-direction: column !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel > .pointer-events-none.absolute.inset-0 {
+    position: relative !important;
+    inset: auto !important;
+    display: flex !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    flex: 0 0 auto !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel .priority-inline-panel,
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel .action-strip-decision-stack {
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel .action-strip-decision-toolbar {
+    flex: 0 0 auto !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel .action-strip-decision-content {
+    max-height: min(212px, max(64px, calc(46vh - 140px))) !important;
+    flex: 0 1 auto !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel .battlefield-human-step-submit-row {
+    display: flex !important;
+    width: 100%;
+    min-height: 40px;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: flex-end;
+    margin-top: 7px;
+    padding-top: 7px;
+    border-top: 1px solid rgba(183, 146, 235, 0.18);
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel
+    .battlefield-human-step-submit-row:has(> .table-decision-submit-slot:empty) {
+    display: none !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel .table-decision-submit-slot {
+    width: min(164px, 100%);
+    min-width: 132px;
+    flex: 0 0 auto;
+    justify-content: flex-end;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel .table-decision-submit-slot .action-strip-submit-row {
+    width: 100%;
+    padding: 0;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel .table-decision-submit-slot .action-strip-submit-button {
+    height: 34px !important;
+    min-height: 34px !important;
+    max-height: 34px !important;
+    border-radius: 6px !important;
+    font-size: 11px !important;
+    letter-spacing: 0.045em;
+  }
+
+}
+
+/* Pregame choices are one compact action group, not two unrelated blocks.
+   Sphinx of Foresight is the longest common label, so the optional action gets
+   the flexible column while the generic advance action stays concise. */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock:has(.action-strip-layout--pregame-choice) {
+    width: min(350px, calc(100vw - 28px)) !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel:has(.action-strip-layout--pregame-choice) {
+    width: 100% !important;
+    padding: 5px !important;
+    border: 1px solid rgba(184, 145, 236, 0.3) !important;
+    border-radius: 10px !important;
+    background: rgba(8, 9, 16, 0.88) !important;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42), 0 0 18px rgba(151, 99, 224, 0.1) !important;
+    backdrop-filter: blur(12px);
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel .action-strip-layout--pregame-choice {
+    display: grid !important;
+    grid-template-columns: minmax(96px, 0.7fr) minmax(190px, 1.3fr);
+    width: 100% !important;
+    min-height: 38px !important;
+    gap: 6px !important;
+    align-items: stretch !important;
+    justify-content: stretch !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .action-strip-layout--pregame-choice > .action-strip-command-region {
+    width: auto !important;
+    min-width: 0 !important;
+    height: 38px !important;
+    min-height: 38px !important;
+    border: 0 !important;
+    border-radius: 7px !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    transform: none !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .action-strip-layout--pregame-choice .action-strip-main-region {
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 38px !important;
+    min-height: 38px !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .action-strip-layout--pregame-choice .decision-main-button {
+    min-height: 38px !important;
+    border-radius: 7px !important;
+    font-size: 11px !important;
+    line-height: 1.15 !important;
+    letter-spacing: 0.055em !important;
+    cursor: pointer;
+  }
+
+  .table-shell[data-focused-hud="true"] .action-strip-layout--pregame-choice .action-strip-main-title-text {
+    width: 100%;
+    overflow: hidden;
+    font-size: 11px !important;
+    line-height: 1.15 !important;
+    letter-spacing: 0.055em !important;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: none !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .action-strip-layout--pregame-choice .action-strip-advance-button:not(:disabled):not([aria-disabled="true"]) {
+    border: 1px solid rgba(218, 186, 116, 0.58) !important;
+    color: #f4dfad !important;
+    -webkit-text-fill-color: #f4dfad !important;
+    background: linear-gradient(180deg, rgba(53, 42, 26, 0.9), rgba(18, 15, 12, 0.96)) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 244, 213, 0.08), 0 0 10px rgba(218, 186, 116, 0.1) !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .priority-inline-panel .action-strip-layout--pregame-choice
+    .action-strip-command-region:not(.action-strip-command-region--pregame) .action-strip-main-region .action-strip-main-title-text {
+    color: #f4dfad !important;
+    -webkit-text-fill-color: #f4dfad !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9) !important;
+    transition: none !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .action-strip-layout--pregame-choice .action-strip-pregame-button:not(:disabled):not([aria-disabled="true"]) {
+    border: 1px solid rgba(190, 151, 244, 0.66) !important;
+    color: #eadcff !important;
+    -webkit-text-fill-color: #eadcff !important;
+    background: linear-gradient(180deg, rgba(63, 42, 92, 0.88), rgba(20, 16, 30, 0.97)) !important;
+    box-shadow: inset 0 1px 0 rgba(245, 235, 255, 0.1), 0 0 12px rgba(158, 101, 228, 0.17) !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .priority-inline-panel .action-strip-layout--pregame-choice
+    .action-strip-command-region--pregame .action-strip-main-region .action-strip-main-title-text {
+    color: #eadcff !important;
+    -webkit-text-fill-color: #eadcff !important;
+    text-shadow: 0 1px 2px rgba(4, 3, 8, 0.9) !important;
+    transition: none !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .action-strip-layout--pregame-choice .decision-main-button:not(:disabled):not([aria-disabled="true"]):hover {
+    border-color: rgba(228, 205, 255, 0.92) !important;
+    color: #fff !important;
+    -webkit-text-fill-color: #fff !important;
+    background: linear-gradient(180deg, rgba(100, 70, 142, 0.94), rgba(34, 24, 49, 0.98)) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 0 16px rgba(176, 121, 241, 0.3) !important;
+    transform: translateY(-1px) !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .priority-inline-panel .action-strip-layout--pregame-choice
+    .action-strip-main-region:has(.decision-main-button:hover) .action-strip-main-title-text {
+    color: #fff !important;
+    -webkit-text-fill-color: #fff !important;
+  }
+}
+
+.battlefield-decision-disclosure-toggle {
+  display: inline-flex;
+  min-height: 28px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  margin-left: 8px;
+  padding: 4px 8px;
+  border: 1px solid rgba(196, 163, 241, 0.42);
+  border-radius: 6px;
+  background: rgba(141, 87, 202, 0.12);
+  color: #e6d2ff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.battlefield-decision-disclosure-toggle:hover {
+  border-color: rgba(214, 186, 255, 0.72);
+  background: rgba(141, 87, 202, 0.22);
+}
+
+/* Ordering choices use a compact, wrapping layout instead of a one-line
+   carousel. The list grows naturally for a few options and scrolls vertically
+   only when its contents exceed the available viewport height. */
+.decision-ordering-layout {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.decision-ordering-options-scroll {
+  min-width: 0;
+  max-height: min(52vh, 420px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+  scrollbar-width: auto;
+  scrollbar-color: rgba(196, 163, 241, 0.38) transparent;
+}
+
+.decision-ordering-options-scroll:focus-visible {
+  outline: 1px solid rgba(196, 163, 241, 0.62);
+  outline-offset: 2px;
+}
+
+.decision-ordering-options-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.decision-ordering-options-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.decision-ordering-options-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: rgba(196, 163, 241, 0.42);
+  background-clip: padding-box;
+}
+
+.decision-ordering-options-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  align-items: stretch;
+  gap: 6px;
+  padding: 2px 1px 5px;
+}
+
+.decision-ordering-option {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  min-height: 42px !important;
+  height: auto !important;
+  align-self: stretch;
+  padding: 6px 8px !important;
+  white-space: normal !important;
+}
+
+.decision-ordering-option > span:nth-child(2) {
+  overflow-wrap: anywhere;
+  line-height: 1.3;
+}
+
+.decision-ordering-description {
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .decision-ordering-options-scroll {
+    max-height: min(46vh, 340px);
+  }
+
+  .decision-ordering-options-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Combat instructions belong beside the action, but must wrap instead of
+   becoming a horizontally scrollable sentence. Keep the action and stage on
+   the first line, then give the full helper copy its own readable line. */
+.priority-inline-panel.combat-decision-panel .combat-decision-toolbar {
+  height: auto !important;
+  min-height: 54px !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  gap: 6px 10px !important;
+  overflow-x: visible !important;
+  overflow-y: visible !important;
+}
+
+.priority-inline-panel.combat-decision-panel .combat-decision-meta {
+  min-width: 0;
+  flex: 1 1 220px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  white-space: normal;
+}
+
+.priority-inline-panel.combat-decision-panel .combat-decision-meta .action-strip-decision-title {
+  min-width: 0;
+  flex: 0 1 auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.priority-inline-panel.combat-decision-panel .combat-decision-meta .action-strip-decision-inline-summary {
+  display: block;
+  min-width: 0;
+  flex: 1 0 100%;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+  line-height: 1.3;
+}
+
+.priority-inline-panel.combat-decision-panel .combat-decision-toolbar {
+  display: flex !important;
+  height: auto !important;
+  min-height: 0 !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 7px !important;
+  overflow: visible !important;
+}
+
+.priority-inline-panel.combat-decision-panel .combat-decision-meta {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex: 0 1 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  white-space: normal;
+}
+
+.priority-inline-panel.combat-decision-panel .combat-decision-meta .action-strip-decision-title,
+.priority-inline-panel.combat-decision-panel .combat-decision-meta .action-strip-decision-inline-summary {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  flex: none;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.priority-inline-panel.combat-decision-panel .combat-decision-actions {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+/* The combat popup is absolutely mounted inside this dock, so its toolbar
+   cannot increase the parent's intrinsic height. Reserve enough room for the
+   wrapped instructions and the full action button instead of clipping the
+   bottom of the button. */
+.table-action-bar:has(.combat-decision-panel) {
+  height: auto !important;
+  min-height: 200px !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.table-action-bar:has(.combat-decision-panel) .priority-inline-panel.combat-decision-panel {
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+/* In short/tablet viewports the combat strip is mounted independently of the
+   desktop action dock. Lift that whole strip there too, so its copy and button
+   stay above the hand and viewport edge as one unit. */
+@media (max-height: 700px) {
+  .table-shell:not([data-focused-hud="true"]) .priority-inline-panel.combat-decision-panel.fixed {
+    bottom: max(204px, calc(env(safe-area-inset-bottom) + 190px)) !important;
+  }
+
+  .table-shell:not([data-focused-hud="true"]) .priority-inline-panel.combat-decision-panel.absolute {
+    transform: translateY(-64px);
+  }
+}
+
+/* The HUD already shows the full dotted phase track on desktop. Avoid
+   repeating its current phase as a separate lone dot + label beside Submit. */
+.table-shell[data-focused-hud="true"]:has(.topbar-phase-shell .phase-track--sequence)
+  .battlefield-human-step-chip {
+  display: none !important;
+}
+
+.table-shell[data-focused-hud="true"]:has(.topbar-phase-shell .phase-track--sequence)
+  .battlefield-human-step-submit-row {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+/* Keep the local identity and its quick priority controls together at the
+   lower-left HUD, including while a decision replaces the shared toolbar. */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] .table-shared-player-header {
+    bottom: 28px !important;
+    width: max-content !important;
+    max-width: min(76vw, 460px) !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .table-shared-player-header [data-my-zone-header-content] {
+    width: max-content !important;
+    min-width: max-content !important;
+    max-width: none !important;
+    flex: 0 0 auto !important;
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .table-shared-player-header .player-identity-box,
+  .table-shell[data-focused-hud="true"] .table-shared-player-header .battlefield-name {
+    flex-shrink: 0 !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-phase-priority-controls {
+    position: fixed;
+    left: calc(50% - min(280px, 28vw, calc(50vw - 180px)) - 40px);
+    bottom: max(100px, calc(env(safe-area-inset-bottom) + 92px));
+    z-index: 180;
+    width: 56px;
+    pointer-events: auto;
+  }
+
+  .table-shell[data-focused-hud="true"] :is(.table-shared-player-header, .battlefield-phase-priority-controls) .battlefield-human-quick-controls {
+    display: inline-flex !important;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 4px;
+    margin-inline: 2px 4px;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-phase-priority-controls .battlefield-human-quick-controls {
+    width: 56px !important;
+    min-width: 56px !important;
+    justify-content: flex-start;
+    margin: 0 !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-phase-priority-controls .player-priority-hold {
+    display: inline-grid !important;
+    width: 26px !important;
+    min-width: 26px !important;
+    height: 26px !important;
+    min-height: 26px !important;
+    flex: 0 0 26px !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-phase-priority-controls .player-priority-hold svg {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  .table-shell[data-focused-hud="true"] :is(.table-shared-player-header, .battlefield-phase-priority-controls) .battlefield-human-quick-controls button {
+    position: relative;
+    display: inline-grid !important;
+    width: 26px !important;
+    min-width: 26px !important;
+    height: 26px !important;
+    min-height: 26px !important;
+    flex: 0 0 26px;
+    place-items: center;
+    padding: 0 !important;
+    border: 1px solid rgba(194, 157, 241, 0.3) !important;
+    border-radius: 4px !important;
+    background: rgba(7, 9, 17, 0.46) !important;
+    color: rgba(238, 229, 250, 0.9) !important;
+    box-shadow: none !important;
+    cursor: pointer;
+    transition: color 120ms ease, border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+  }
+
+  .table-shell[data-focused-hud="true"] :is(.table-shared-player-header, .battlefield-phase-priority-controls) .battlefield-human-quick-controls button svg {
+    width: 15px !important;
+    height: 15px !important;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .table-shell[data-focused-hud="true"] :is(.table-shared-player-header, .battlefield-phase-priority-controls) .battlefield-human-quick-controls button:hover,
+  .table-shell[data-focused-hud="true"] :is(.table-shared-player-header, .battlefield-phase-priority-controls) .battlefield-human-quick-controls button:focus-visible {
+    border-color: rgba(204, 165, 255, 0.72) !important;
+    background: rgba(49, 31, 72, 0.72) !important;
+    color: #f0dcff !important;
+    box-shadow: 0 0 9px rgba(177, 115, 255, 0.16) !important;
+  }
+
+  .table-shell[data-focused-hud="true"] :is(.table-shared-player-header, .battlefield-phase-priority-controls) .player-priority-hold[aria-pressed="true"],
+  .table-shell[data-focused-hud="true"] :is(.table-shared-player-header, .battlefield-phase-priority-controls) .battlefield-auto-pass-toggle[data-enabled="true"] {
+    border-color: rgba(196, 148, 255, 0.66) !important;
+    background: rgba(67, 39, 96, 0.58) !important;
+    color: #e6c9ff !important;
+  }
+
+  .table-shell[data-focused-hud="true"] :is(.table-shared-player-header, .battlefield-phase-priority-controls) [data-tooltip]::after {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    z-index: 220;
+    width: max-content;
+    max-width: min(190px, 40vw);
+    padding: 4px 7px;
+    border: 1px solid rgba(194, 157, 241, 0.38);
+    border-radius: 4px;
+    background: rgba(7, 9, 17, 0.96);
+    color: #eee5fa;
+    content: attr(data-tooltip);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.2;
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, 3px);
+    transition: opacity 120ms ease, transform 120ms ease;
+    white-space: normal;
+  }
+
+  .table-shell[data-focused-hud="true"] :is(.table-shared-player-header, .battlefield-phase-priority-controls) [data-tooltip]:hover::after,
+  .table-shell[data-focused-hud="true"] :is(.table-shared-player-header, .battlefield-phase-priority-controls) [data-tooltip]:focus-visible::after {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+
+  /* Give the bottom player's top row room for its full frame and hover lift. */
+  .table-shell[data-focused-hud="true"] [data-my-zone] .battlefield-row[data-bf-side="bottom"] {
+    padding-top: calc(var(--bf-top-safe-inset, 16px) + 6px) !important;
+  }
+
+}
+
+/* Keep the local player's full mana pool readable. Compact headers used to
+   clamp this row to a few pixels and hide each zero count, leaving glyphs cut
+   in half or with no visible quantity beside them. */
+.table-shell :is(.table-shared-player-header, [data-my-zone] .battlefield-panel-header)
+  .player-name-mana.mana-pool-inline {
+  width: max-content !important;
+  min-width: max-content !important;
+  max-width: none !important;
+  flex: 0 0 auto !important;
+  flex-wrap: nowrap !important;
+  gap: 4px !important;
+  overflow: visible !important;
+  scrollbar-width: auto;
+}
+
+.table-shell :is(.table-shared-player-header, [data-my-zone] .battlefield-panel-header)
+  .player-name-mana .mana-pool-chip--compact {
+  display: inline-flex !important;
+  min-width: max-content !important;
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  gap: 3px !important;
+  overflow: visible !important;
+}
+
+.table-shell :is(.table-shared-player-header, [data-my-zone] .battlefield-panel-header)
+  .player-name-mana .mana-pool-chip--compact > span:last-child,
+.table-shell :is(.table-shared-player-header, [data-my-zone] .battlefield-panel-header)
+  .player-name-mana .mana-pool-chip--empty > span:last-child {
+  display: inline-flex !important;
+  min-width: 8px !important;
+  flex: 0 0 auto !important;
+  color: #f3ead8 !important;
+  font-size: 10px !important;
+  line-height: 1 !important;
+  text-shadow: none !important;
+}
+
+.priority-inline-panel.combat-decision-panel .combat-decision-heading {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.priority-inline-panel.combat-decision-panel .combat-decision-heading .combat-decision-meta {
+  width: auto;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.combat-decision-minimize {
+  display: inline-grid;
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  place-items: center;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(235, 229, 255, 0.2);
+  border-radius: 4px;
+  background: rgba(9, 11, 20, 0.46);
+  color: rgba(255, 255, 255, 0.92);
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease;
+}
+
+.combat-decision-minimize:hover,
+.combat-decision-minimize:focus-visible {
+  border-color: rgba(206, 178, 255, 0.66);
+  background: rgba(71, 47, 105, 0.48);
+  color: #fff;
+}
+
+.combat-decision-minimize svg {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.combat-decision-body {
+  min-width: 0;
+}
+
+.combat-decision-panel[data-minimized="true"] .combat-decision-body {
+  display: none !important;
+}
+
+.combat-decision-panel[data-minimized="true"] .combat-decision-meta .action-strip-decision-inline-summary {
+  display: none !important;
+}
+
+.combat-decision-panel[data-minimized="true"] .combat-decision-toolbar {
+  gap: 6px !important;
+}
+
+.table-action-bar:has(.combat-decision-panel[data-minimized="true"]) {
+  min-height: 96px !important;
+}
+
+/* Multi-select decisions in the battlefield popup are a compact vertical list. */
+.battlefield-human-decision-panel .decision-strip-scroll--vertical-options,
+.battlefield-human-decision-panel .decision-strip-scroll--vertical-object-options {
+  max-height: min(200px, max(56px, calc(46vh - 152px))) !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(190, 164, 226, 0.55) rgba(14, 12, 19, 0.35);
+}
+
+.battlefield-human-decision-panel .decision-strip-options-row--vertical,
+.battlefield-human-decision-panel .decision-strip-options-row--vertical-objects {
+  display: flex !important;
+  width: 100% !important;
+  min-width: 100% !important;
+  flex-direction: column !important;
+  flex-wrap: nowrap !important;
+  align-items: stretch !important;
+  justify-content: flex-start !important;
+  gap: 4px !important;
+}
+
+.battlefield-human-decision-panel .decision-option-row--vertical-select,
+.battlefield-human-decision-panel .decision-option-row--vertical-object-select {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  min-height: 36px !important;
+  height: auto !important;
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  padding: 6px 10px !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+}
+
+/* Focused HUD action buttons share one size, type scale and hover language:
+   Keep hand, Mulligan, Resolve, Resolve all, pregame choices, Submit and
+   Cancel. Hover feedback stays inside the button box (border colour plus an
+   inset glow, no outer shadow or lift), so clipping ancestors can never cut
+   it off. Each button also fills its region exactly instead of overflowing
+   a shorter, overflow-hidden wrapper. */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock {
+    --hud-action-h: 36px;
+    --hud-action-radius: 7px;
+    --hud-action-font: 11px;
+    --hud-action-tracking: 0.06em;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    :is(.action-strip-command-region, .action-strip-main-region) {
+    height: var(--hud-action-h) !important;
+    min-height: var(--hud-action-h) !important;
+    max-height: var(--hud-action-h) !important;
+    align-self: center !important;
+    border-radius: var(--hud-action-radius) !important;
+    transform: none !important;
+  }
+
+  /* Equal breathing room on every side: the panel's padding matches the gap
+     between buttons, and the inner layout adds no padding of its own. */
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .battlefield-human-decision-panel .action-strip-layout {
+    min-height: var(--hud-action-h) !important;
+    padding: 0 !important;
+    gap: 6px !important;
+    align-items: center !important;
+  }
+
+  /* Button-only panels (Keep hand, pregame, Resolve...) share one box so the
+     buttons stay on the same line when the panel switches between them. */
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .battlefield-human-decision-panel:not(:has(.action-strip-decision-stack)) {
+    min-height: 0 !important;
+    padding: 6px !important;
+  }
+
+  /* The button is the only visible surface; a bordered wrapper around it
+     doubled the outline and pushed the button 1px past the panel edge. */
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-command-region {
+    box-sizing: border-box !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .action-strip-command-region::before,
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .action-strip-command-region::after {
+    display: none !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .action-strip-command-region > .action-strip-main-region {
+    width: 100% !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    :is(.decision-main-button, .action-strip-submit-button, .decision-cancel-button:not(.w-8)) {
+    display: inline-flex !important;
+    height: var(--hud-action-h) !important;
+    min-height: var(--hud-action-h) !important;
+    max-height: var(--hud-action-h) !important;
+    margin: 0 !important;
+    padding: 0 14px !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: var(--hud-action-radius) !important;
+    font-size: var(--hud-action-font) !important;
+    font-weight: 700 !important;
+    line-height: 1 !important;
+    letter-spacing: var(--hud-action-tracking) !important;
+    text-align: center !important;
+    text-transform: uppercase !important;
+    white-space: nowrap !important;
+    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    :is(.decision-main-button, .action-strip-submit-button, .decision-cancel-button):not(:disabled):not([aria-disabled="true"]):hover {
+    transform: none !important;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      inset 0 0 0 1px rgba(222, 200, 255, 0.22),
+      inset 0 0 14px rgba(176, 121, 241, 0.3) !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    :is(.decision-main-button, .action-strip-submit-button):not(:disabled):not([aria-disabled="true"]):active {
+    transform: scale(0.98) !important;
+    box-shadow: inset 0 2px 5px rgba(5, 4, 9, 0.62) !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    :is(.decision-main-button, .action-strip-submit-button, .decision-cancel-button):focus-visible {
+    outline: 2px solid rgba(220, 196, 255, 0.9) !important;
+    outline-offset: -3px !important;
+  }
+
+  /* The main action's label is an overlay on top of its button. Center it in
+     the button like every other action label. */
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .action-strip-main-region .action-strip-main-text-stack {
+    inset: 0 !important;
+    display: flex !important;
+    width: auto !important;
+    max-width: none !important;
+    padding: 0 14px !important;
+    transform: none !important;
+    align-items: center !important;
+    justify-content: center !important;
+    pointer-events: none;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .action-strip-main-region .action-strip-main-title-row {
+    justify-content: center !important;
+    min-width: 0;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .action-strip-main-region .action-strip-main-title-text {
+    overflow: hidden;
+    font-size: var(--hud-action-font) !important;
+    font-weight: 700 !important;
+    line-height: 1 !important;
+    letter-spacing: var(--hud-action-tracking) !important;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .action-strip-main-region .action-strip-main-controls {
+    display: none !important;
+  }
+}
+
+/* Calm, consistent action colours for the focused HUD dock. One muted violet
+   for the primary action, a neutral surface for secondary choices and a soft
+   red for cancel; labels drawn as overlays follow their button's colour. */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock {
+    --hud-primary-border: rgba(184, 152, 232, 0.5);
+    --hud-primary-bg: linear-gradient(180deg, rgba(60, 46, 86, 0.94), rgba(24, 20, 34, 0.97));
+    --hud-primary-fg: #e8ddfa;
+    --hud-primary-border-hover: rgba(214, 192, 250, 0.82);
+    --hud-primary-bg-hover: linear-gradient(180deg, rgba(76, 58, 108, 0.96), rgba(30, 24, 43, 0.98));
+    --hud-secondary-border: rgba(214, 206, 230, 0.2);
+    --hud-secondary-bg: linear-gradient(180deg, rgba(36, 34, 44, 0.92), rgba(18, 17, 23, 0.96));
+    --hud-secondary-fg: #d8d1e6;
+    --hud-secondary-border-hover: rgba(214, 206, 230, 0.42);
+    --hud-secondary-bg-hover: linear-gradient(180deg, rgba(48, 45, 58, 0.94), rgba(22, 21, 28, 0.97));
+    --hud-danger-border: rgba(222, 128, 128, 0.42);
+    --hud-danger-bg: linear-gradient(180deg, rgba(64, 30, 34, 0.9), rgba(26, 15, 17, 0.96));
+    --hud-danger-fg: #f0cfcf;
+  }
+
+  /* Button-only panels hug the dock's right edge like every other state. */
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .battlefield-human-decision-panel:not(:has(.action-strip-decision-stack)) {
+    margin-left: auto !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    :is(.decision-main-button, .action-strip-submit-button):not(:disabled):not([aria-disabled="true"]) {
+    --hud-action-fg: var(--hud-primary-fg);
+    border: 1px solid var(--hud-primary-border) !important;
+    background: var(--hud-primary-bg) !important;
+    color: var(--hud-primary-fg) !important;
+    -webkit-text-fill-color: var(--hud-primary-fg) !important;
+    text-shadow: none !important;
+    animation: none !important;
+    filter: none !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07) !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    :is(.action-strip-mulligan-button, .action-strip-layout--pregame-choice .action-strip-advance-button, .action-strip-resolve-all-button):not(:disabled):not([aria-disabled="true"]) {
+    border-color: var(--hud-secondary-border) !important;
+    background: var(--hud-secondary-bg) !important;
+    color: var(--hud-secondary-fg) !important;
+    -webkit-text-fill-color: var(--hud-secondary-fg) !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    :is(.decision-main-button, .action-strip-submit-button):not(:disabled):not([aria-disabled="true"]):hover {
+    border-color: var(--hud-primary-border-hover) !important;
+    background: var(--hud-primary-bg-hover) !important;
+    color: #fff !important;
+    -webkit-text-fill-color: #fff !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    :is(.action-strip-mulligan-button, .action-strip-layout--pregame-choice .action-strip-advance-button, .action-strip-resolve-all-button):not(:disabled):not([aria-disabled="true"]):hover {
+    border-color: var(--hud-secondary-border-hover) !important;
+    background: var(--hud-secondary-bg-hover) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .decision-cancel-button:not(:disabled):not([aria-disabled="true"]) {
+    border: 1px solid var(--hud-danger-border) !important;
+    background: var(--hud-danger-bg) !important;
+    color: var(--hud-danger-fg) !important;
+    -webkit-text-fill-color: var(--hud-danger-fg) !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    :is(.decision-main-button, .action-strip-submit-button, .decision-cancel-button)::before,
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    :is(.decision-main-button, .action-strip-submit-button, .decision-cancel-button)::after {
+    display: none !important;
+  }
+
+  /* Overlay labels (Keep hand, Resolve, pregame) take their button's colour.
+     Selectors are deliberately as specific as the legacy gold-button rules
+     (dark #080a0b text), which otherwise win and make labels unreadable. */
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .action-strip-command-region .action-strip-main-region .action-strip-main-title-text,
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .action-strip-command-region
+    .action-strip-main-region:has(.decision-main-button:not(:disabled):not([aria-disabled="true"]))
+    .action-strip-main-title-text {
+    color: var(--hud-primary-fg) !important;
+    -webkit-text-fill-color: var(--hud-primary-fg) !important;
+    -webkit-text-stroke: 0 !important;
+    text-shadow: none !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .action-strip-command-region:not(.action-strip-command-region--pregame)
+    .action-strip-main-region:has(.action-strip-layout--pregame-choice .action-strip-advance-button) .action-strip-main-title-text,
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .action-strip-layout--pregame-choice > .action-strip-command-region:not(.action-strip-command-region--pregame)
+    .action-strip-main-region:has(.decision-main-button:not(:disabled):not([aria-disabled="true"]))
+    .action-strip-main-title-text {
+    color: var(--hud-secondary-fg) !important;
+    -webkit-text-fill-color: var(--hud-secondary-fg) !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .action-strip-command-region
+    .action-strip-main-region:has(.decision-main-button:not(:disabled):not([aria-disabled="true"]):hover)
+    .action-strip-main-title-text {
+    color: #fff !important;
+    -webkit-text-fill-color: #fff !important;
+  }
+}
+
+/* The docked stack hugs its entries instead of reserving a fixed 240px box,
+   and scrolls inside once it reaches that cap. */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] [data-my-zone] .my-zone-board-shell > .my-zone-stack-rail {
+    --stack-rail-max: min(36vh, 240px);
+    height: auto;
+    max-height: var(--stack-rail-max);
+  }
+
+  .table-shell[data-focused-hud="true"] [data-my-zone] .my-zone-stack-rail
+    :is(.stack-flow-reveal, .stack-inline-flow-rail, .stack-panel, .stack-timeline-body) {
+    height: auto !important;
+    max-height: var(--stack-rail-max) !important;
+  }
+
+  .table-shell[data-focused-hud="true"] [data-my-zone] .my-zone-stack-rail .stack-timeline-scroll {
+    max-height: calc(var(--stack-rail-max) - 28px) !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(190, 164, 226, 0.5) transparent;
+  }
+
+  .table-shell[data-focused-hud="true"] [data-my-zone] .my-zone-stack-rail .stack-card-sub {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .table-shell[data-focused-hud="true"] [data-my-zone] .my-zone-stack-rail .stack-card-effect {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* A cancel that can't be used is noise in the dock; hide it. */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .decision-cancel-button:is(:disabled, [aria-disabled="true"]) {
+    display: none !important;
+  }
+}
+
+/* Decision popups had four nested wrappers each adding padding (~35px per
+   side). Keep a single, even inset on the panel itself. */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .battlefield-human-decision-panel:has(.action-strip-decision-stack) {
+    padding: 10px 12px !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .battlefield-human-decision-panel:has(.action-strip-decision-stack)
+    :is(.pointer-events-none.absolute.inset-0, .priority-inline-panel, .action-strip-decision-stack) {
+    padding: 0 !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .battlefield-human-decision-panel .action-strip-decision-toolbar {
+    padding: 0 0 8px !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .battlefield-human-decision-panel:has(.action-strip-decision-stack[data-details-expanded="false"])
+    .action-strip-decision-toolbar {
+    padding-bottom: 0 !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .battlefield-decision-disclosure-toggle {
+    margin-left: auto !important;
+    flex-shrink: 0;
+  }
+}
+
+/* Ordering list: full-width, compact rows with clear up/down controls. */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-decision-content {
+    padding-inline: 0 !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-ordering-layout {
+    padding: 0 !important;
+    gap: 6px !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-ordering-options-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 6px !important;
+    padding: 0 !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-order-row {
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 40px !important;
+    height: auto !important;
+    box-sizing: border-box;
+    align-items: center !important;
+    gap: 8px !important;
+    padding: 6px 6px 6px 10px !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-order-row > button {
+    width: 28px !important;
+    min-width: 28px !important;
+    height: 28px !important;
+    padding: 0 !important;
+    justify-content: center !important;
+    border: 1px solid rgba(190, 164, 226, 0.3) !important;
+    border-radius: 6px !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+    color: #dccff2 !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-order-row > button svg {
+    width: 16px !important;
+    height: 16px !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .decision-order-row > button:not(:disabled):hover {
+    border-color: rgba(214, 192, 250, 0.7) !important;
+    background: rgba(141, 98, 210, 0.22) !important;
+    color: #fff !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .decision-order-row > button:disabled {
+    opacity: 0.3 !important;
+  }
+}
+
+/* Combat prompts read as the same card as other decision popups, with their
+   actions on the right like every other dock state. */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .battlefield-human-decision-panel:has(.combat-decision-panel) {
+    padding: 10px 12px !important;
+    border: 1px solid rgba(184, 145, 236, 0.3) !important;
+    border-radius: 10px !important;
+    background: rgba(8, 9, 16, 0.9) !important;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42) !important;
+    backdrop-filter: blur(12px);
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .combat-decision-heading {
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .combat-decision-actions {
+    display: flex !important;
+    flex-wrap: wrap;
+    justify-content: flex-end !important;
+    gap: 6px !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .combat-decision-actions > button {
+    min-width: 132px !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .combat-decision-minimize {
+    width: 28px !important;
+    height: 28px !important;
+    flex: 0 0 auto;
+    border-radius: 6px !important;
+  }
+}
+
+/* Expanded decision popups: give the list more room, and when it still does
+   not fit, the option list shrinks and scrolls while the Submit row always
+   stays visible inside the panel. */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .battlefield-human-decision-panel:has(.action-strip-decision-stack[data-details-expanded="true"]) {
+    max-height: min(60vh, 420px) !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .battlefield-human-decision-panel:has(.action-strip-decision-stack)
+    > .pointer-events-none.absolute.inset-0 {
+    flex: 0 1 auto !important;
+    min-height: 0 !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .battlefield-human-decision-panel:has(.action-strip-decision-stack)
+    :is(.priority-inline-panel, .action-strip-decision-stack) {
+    flex: 0 1 auto !important;
+    min-height: 0 !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .battlefield-human-decision-panel .action-strip-decision-content {
+    min-height: 64px !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .battlefield-human-decision-panel .battlefield-human-step-submit-row {
+    flex: 0 0 auto !important;
+  }
+}
+
+/* Local player's mana: the same vertical rail (icon, then count) the
+   opponents use, on the left edge of the local battlefield. */
+.my-zone-mana-rail {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] .battlefield-header-mana {
+    display: none !important;
+  }
+
+  .table-shell[data-focused-hud="true"] [data-my-zone] .player-zone-piles > .my-zone-mana-rail {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -3px;
+    display: flex;
+    width: 38px;
+    min-width: 38px;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 2px;
+    pointer-events: auto;
+  }
+
+  .table-shell[data-focused-hud="true"] .my-zone-mana-rail .opponent-battlefield-mana.mana-pool-inline {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 2px;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+  }
+
+  .table-shell[data-focused-hud="true"] .my-zone-mana-rail .opponent-battlefield-mana .mana-pool-chip {
+    display: inline-flex;
+    min-width: 0;
+    min-height: 18px;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 1px 2px !important;
+    font-size: 10px;
+    line-height: 1;
+  }
+
+  .table-shell[data-focused-hud="true"] .my-zone-mana-rail .opponent-battlefield-mana .mana-pool-chip > span:first-child,
+  .table-shell[data-focused-hud="true"] .my-zone-mana-rail .opponent-battlefield-mana .mana-pool-chip svg {
+    display: inline-flex;
+    width: 12px;
+    height: 12px;
+    flex: 0 0 12px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .table-shell[data-focused-hud="true"] .my-zone-mana-rail .opponent-battlefield-mana .mana-pool-chip > span:last-child {
+    min-width: 7px;
+    font-size: 10px;
+  }
+}
+
+/* Focused desktop HUD: the lobby chat tab lives in the local player's header
+   row, right after the name and before the hand. The expanded panel is
+   anchored to the tab's bottom-left and grows up and to the right, so the
+   header row never changes height. The zone-pile copy is hidden here. */
+@media (min-width: 1024px) {
+  /* Only when the header copy is actually rendered; otherwise the original
+     dock stays as the fallback. */
+  .table-shell[data-focused-hud="true"]:has(.player-header-chat-dock) .player-zone-chat-dock {
+    display: none !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .player-header-chat-dock {
+    position: relative;
+    z-index: 40;
+    width: 86px;
+    min-width: 86px;
+    height: 30px;
+    flex: 0 0 auto;
+    margin-left: 10px;
+    pointer-events: auto;
+  }
+
+  .table-shell[data-focused-hud="true"] .player-header-chat-dock:has(.lobby-chat[data-collapsed="false"]) {
+    z-index: 32000;
+  }
+
+  .table-shell[data-focused-hud="true"] .player-header-chat-dock .lobby-chat {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    display: flex;
+    width: min(320px, calc(100vw - 24px));
+    height: 160px;
+    flex-direction: column-reverse;
+    overflow: hidden;
+    border: 1px solid var(--ui-border-strong);
+    border-radius: 7px;
+    background: rgba(9, 9, 17, 0.95);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
+    transition:
+      width 300ms cubic-bezier(.22, 1, .36, 1),
+      height 300ms cubic-bezier(.22, 1, .36, 1);
+  }
+
+  .table-shell[data-focused-hud="true"] .player-header-chat-dock .lobby-chat[data-collapsed="true"] {
+    width: 86px;
+    height: 30px;
+  }
+
+  .table-shell[data-focused-hud="true"] .player-header-chat-dock .lobby-chat-header {
+    display: flex;
+    width: 100%;
+    height: 30px;
+    min-height: 30px;
+    flex: 0 0 30px;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 0 8px;
+    border: 0;
+    border-top: 1px solid transparent;
+    background: transparent;
+    color: #dccff2;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .table-shell[data-focused-hud="true"] .player-header-chat-dock .lobby-chat[data-collapsed="false"] .lobby-chat-header {
+    justify-content: space-between;
+    border-top-color: var(--ui-border-strong);
+  }
+
+  .table-shell[data-focused-hud="true"] .player-header-chat-dock .lobby-chat-header:hover {
+    color: #fff;
+    background: rgba(141, 98, 210, 0.16);
+  }
+
+  .table-shell[data-focused-hud="true"] .player-header-chat-dock .lobby-chat-body {
+    min-height: 0;
+    flex: 1 1 auto;
+  }
+
+  .table-shell[data-focused-hud="true"] .player-header-chat-dock .lobby-chat[data-collapsed="true"] .lobby-chat-body {
+    display: none;
+  }
+
+  .table-shell[data-focused-hud="true"] .player-header-chat-dock .lobby-chat-body-inner {
+    display: flex;
+    height: 100%;
+    flex-direction: column;
+  }
+
+  .table-shell[data-focused-hud="true"] .player-header-chat-dock .lobby-chat-messages {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-y: auto;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .table-shell[data-focused-hud="true"] .player-header-chat-dock .lobby-chat {
+      transition: none;
+    }
+  }
+}
+
+@media (min-width: 1024px) {
+  /* The open chat must cover the phase/priority controls (z-index 180). */
+  .table-shell[data-focused-hud="true"] > .table-shared-control-band:has(.player-header-chat-dock .lobby-chat[data-collapsed="false"]) {
+    z-index: 200 !important;
+  }
 }

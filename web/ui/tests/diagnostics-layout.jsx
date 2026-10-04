@@ -12,7 +12,7 @@ import "../src/index.css";
 const names = ["Ornithopter", "Myr Moonvessel", "Omniscience", "Mountain", "Forest", "Island", "Plains", "Swamp"];
 const players = ["Alice", "Bob", "Charlie", "Diana"].map((name,id)=>({id,index:id,name,life:20,mana_pool:{},
   battlefield:names.map((name,i)=>({id:100*id+i+1,stable_id:100*id+i+1,name,controller:id,owner:id,lane:i<3?"creatures":"lands",type_line:i<3?"Artifact Creature":"Land",power:1,toughness:1,oracle_text:"",semantic_score:1})),
-  hand_cards:[],graveyard_size:3,graveyard_cards:[{id:1000+id,name:"Plains"},{id:1100+id,name:"Mountain"},{id:1200+id,name:"Island"}],exile_cards:[{id:2000+id,name:"Swamp"}],command_cards:[],library_size:40,
+  hand_cards:[],graveyard_size:3,graveyard_cards:[{id:1000+id,name:"Plains",...(id===1?{counters:[{kind:"+1/+1",amount:2}]}:{})},{id:1100+id,name:"Mountain"},{id:1200+id,name:"Island"}],exile_cards:[{id:2000+id,name:"Swamp"}],command_cards:[],library_size:40,
 }));
 function Fixture(){
  const [result,setResult]=useState('none');
@@ -21,7 +21,8 @@ function Fixture(){
  const kind = new URLSearchParams(location.search).get('kind') || 'targets';
  const decisions = {
  targets: {kind:'targets',player:0,requirements:[{description:'Target card',min_targets:1,max_targets:1,legal_targets:[{kind:'object',object:1000}]}]},
- select_options: {kind:'select_options',player:0,description:'Choose a mode',min:1,max:1,options:Array.from({length:20},(_,index)=>({index,description:'Draw cards and return a creature from your graveyard to your hand. Option '+index,legal:true}))},
+ select_objects: {kind:'select_objects',player:0,description:'Scry 20 — select cards to put on bottom of library',min:0,max:3,candidates:Array.from({length:20},(_,index)=>({id:3000+index,name:'Long candidate card name '+index,object_controller:0,legal:true}))},
+ select_options: {kind:'select_options',player:0,description:'Choose cards',min:0,max:3,options:Array.from({length:20},(_,index)=>({index,description:'Draw cards and return a creature from your graveyard to your hand. Option '+index,legal:true}))},
  mana_payment: {kind:'mana_payment',player:0,description:'Pay {1}{G}'},
  attackers: {kind:'attackers',player:0,attacker_options:[{creature:1,name:'Ornithopter',valid_targets:[{kind:'player',player:1}]}]},
  };

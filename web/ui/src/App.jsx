@@ -6,6 +6,10 @@ import { CombatArrowProvider } from "@/context/CombatArrowContext";
 import { I18nProvider } from "@/i18n/I18nContext";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Shell from "@/components/layout/Shell";
+import VisualIndicatorsPreview from "@/components/layout/VisualIndicatorsPreview";
+
+const visualIndicatorsPreview = typeof window !== "undefined"
+  && new URLSearchParams(window.location.search).get("test") === "visual-indicators";
 
 export default function App() {
   return (
@@ -16,7 +20,7 @@ export default function App() {
             <DragProvider>
               <CombatArrowProvider>
                 <TooltipProvider>
-                  <Shell />
+                  {visualIndicatorsPreview ? <VisualIndicatorsPreview /> : <Shell />}
                 </TooltipProvider>
               </CombatArrowProvider>
             </DragProvider>

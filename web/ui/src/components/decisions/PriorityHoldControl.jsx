@@ -3,21 +3,25 @@ import { useRef } from "react";
 import { Hand, FastForward } from "lucide-react";
 import { useGame } from "@/context/GameContext";
 
-export default function PriorityHoldControl() {
+export default function PriorityHoldControl({ compact = false }) {
   const ui = useUiText();
   const { holdRule, setHoldRule, autoResolveEnabled, setAutoResolveEnabled } = useGame();
   const previousRule = useRef("never");
   const holding = holdRule === "always";
+  const holdLabel = ui(holding ? "Holding priority" : "Hold priority");
+  const autoResolveLabel = ui("Auto-pass");
 
   return (
     <>
       <button
         type="button"
-        className="player-priority-hold"
+        className={`player-priority-hold${compact ? " player-priority-hold--compact" : ""}`}
         aria-pressed={holding}
-        title={ui(holding
+        aria-label={holdLabel}
+        title={compact ? undefined : ui(holding
           ? "Automatic priority passing is paused. Click to restore your previous hold setting."
           : "Hold priority until turned off, including after casting your own spells. Enable before casting.")}
+        data-tooltip={compact ? holdLabel : undefined}
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => {
           event.stopPropagation();
@@ -30,14 +34,15 @@ export default function PriorityHoldControl() {
         }}
       >
         <Hand size={13} aria-hidden="true" />
-        <span>{holding ? ui("Holding priority") : ui("Hold priority")}</span>
+        <span className={compact ? "sr-only" : undefined}>{holdLabel}</span>
       </button>
       <button
         type="button"
-        className="player-priority-hold"
-        aria-label={ui("Auto-pass")}
+        className={`player-priority-hold${compact ? " player-priority-hold--compact" : ""}`}
+        aria-label={autoResolveLabel}
         aria-pressed={!!autoResolveEnabled}
         title={ui("Automatically resolve whenever you have priority and the stack is not empty.")}
+        data-tooltip={compact ? autoResolveLabel : undefined}
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => {
           event.stopPropagation();
@@ -45,7 +50,7 @@ export default function PriorityHoldControl() {
         }}
       >
         <FastForward size={13} aria-hidden="true" />
-        <span>{ui("Auto-pass")}</span>
+        <span className={compact ? "sr-only" : undefined}>{autoResolveLabel}</span>
       </button>
     </>
   );

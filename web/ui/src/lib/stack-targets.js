@@ -1,4 +1,5 @@
 import { getPlayerAccent } from "./player-colors.js";
+import { samePlayerId } from "./player-display.js";
 
 const PILE_ZONES = ["graveyard", "exile"];
 
@@ -190,6 +191,10 @@ export function hoveredObjectZoneViews(state, hoveredObjectId, zoneViews = []) {
   const resolved = buildRenderableObjectIndex(state).get(String(hoveredObjectId));
   // The library is never browsable and the stack has its own presentation.
   if (!resolved || resolved.zone === "stack" || resolved.zone === "library") return [];
+  // Zone views are shared by every player panel, so automatically adding the
+  // "hand" zone for one hovered card would expand every opponent's hand too.
+  // Hands are opened only through their explicit per-zone control.
+  if (resolved.zone === "hand") return [];
   // Graveyard and exile are piles, not inline zone bodies (shouldShowZoneBody
   // refuses them), so a zone view cannot reveal them -- and changing the view
   // remounts the pile, throwing away the open state it is opening itself with.
@@ -197,6 +202,19 @@ export function hoveredObjectZoneViews(state, hoveredObjectId, zoneViews = []) {
   if (PILE_ZONES.includes(resolved.zone)) return [];
   const activeZones = new Set(normalizeZoneViews(zoneViews));
   return activeZones.has(resolved.zone) ? [] : [resolved.zone];
+}
+
+function canViewHandForPlayer(state, playerId) {
+  const player = (state?.players || []).find((entry) =>
+    samePlayerId(entry?.id ?? entry?.index, playerId)
+  );
+  return Boolean(
+    player
+    && (
+      player.can_view_hand === true
+      || samePlayerId(player.id ?? player.index, state?.perspective)
+    )
+  );
 }
 
 export function buildStackTargetPresentation(state, zoneViews = [], selectedObjectId = null) {
@@ -231,10 +249,21 @@ export function buildStackTargetPresentation(state, zoneViews = [], selectedObje
     if (target?.kind !== "object" || target.object == null) continue;
     const resolvedTarget = renderableObjectIndex.get(String(target.object));
     if (!resolvedTarget || !Number.isFinite(resolvedTarget.renderedId)) continue;
+    // A hand target is only rendered when the hand has been opened explicitly
+    // and this perspective can see it. Never turn a hover into a global hand
+    // expansion: zoneViews is shared across all player panels.
+    if (
+      resolvedTarget.zone === "hand"
+      && (
+        !canViewHandForPlayer(state, resolvedTarget.playerId)
+        || !activeZones.has("hand")
+      )
+    ) continue;
 
     if (
       resolvedTarget.zone !== "stack"
       && resolvedTarget.zone !== "library"
+      && resolvedTarget.zone !== "hand"
       && !activeZones.has(resolvedTarget.zone)
     ) {
       temporaryZones.add(resolvedTarget.zone);

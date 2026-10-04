@@ -2534,6 +2534,12 @@ function PriorityBar({
     decision?.context_text || "",
     decision?.consequence_text || "",
   ].join("|");
+  const [decisionDetailsState, setDecisionDetailsState] = useState({
+    identity: "",
+    expanded: true,
+  });
+  const decisionDetailsExpanded = decisionDetailsState.identity !== decisionIdentity
+    || decisionDetailsState.expanded;
   const rawViewedCards = state?.viewed_cards || null;
   const viewedCards = isInspectorOnlyViewedCards(rawViewedCards) ? null : rawViewedCards;
   const viewedCardsLabel = viewedCards?.visibility === "public" ? "Revealed" : "Look";
@@ -3009,7 +3015,10 @@ function PriorityBar({
               </div>
             ) : (
               <div
-                className="action-strip-layout action-strip-layout--segmented flex min-h-[46px] items-stretch gap-2"
+                className={cn(
+                  "action-strip-layout action-strip-layout--segmented flex min-h-[46px] items-stretch gap-2",
+                  pregameActions.length > 0 && "action-strip-layout--pregame-choice"
+                )}
                 style={decisionButtonStyle}
               >
                 <div className="action-strip-command-region shrink-0 self-stretch" style={decisionButtonStyle}>
@@ -3146,7 +3155,10 @@ function PriorityBar({
               </div>
             )
           ) : (
-            <div className="action-strip-decision-stack flex min-h-0 min-w-0 flex-1 flex-col gap-1.5 py-1">
+            <div
+              className="action-strip-decision-stack flex min-h-0 min-w-0 flex-1 flex-col gap-1.5 py-1"
+              data-details-expanded={decisionDetailsExpanded ? "true" : "false"}
+            >
               <div className="action-strip-decision-toolbar flex min-w-0 items-stretch gap-2">
                 <div className="flex min-w-0 flex-1 items-stretch gap-2">
                   <div className={cn(
@@ -3215,10 +3227,27 @@ function PriorityBar({
                     ref={setDecisionToolbarSearchTarget}
                     className="action-strip-decision-toolbar-search min-w-0"
                   />
-
                 </div>
+                {!isPriorityDecision && (
+                  <button
+                    type="button"
+                    className="battlefield-decision-disclosure-toggle"
+                    aria-expanded={decisionDetailsExpanded}
+                    aria-controls="battlefield-decision-options"
+                    onClick={() => setDecisionDetailsState({
+                      identity: decisionIdentity,
+                      expanded: !decisionDetailsExpanded,
+                    })}
+                  >
+                    {t(decisionDetailsExpanded ? "decision.collapseDetails" : "decision.expandDetails")}
+                  </button>
+                )}
               </div>
-              <div className="action-strip-decision-content min-w-0 flex-1 overflow-hidden">
+              <div
+                id="battlefield-decision-options"
+                className="action-strip-decision-content min-w-0 flex-1 overflow-hidden"
+                hidden={!decisionDetailsExpanded}
+              >
                 {showPeerWaitOpeningPreviews ? (
                   <ViewedCardsStrip
                     label={ui("Opening")}
@@ -3694,6 +3723,8 @@ function CombatBar({ anchor = null, inline = false, replaceMiddleControls = fals
     decision?.consequence_text || "",
   ].join("|");
   const [combatActionState, setCombatActionState] = useState({ key: "", action: null });
+  const [combatPanelState, setCombatPanelState] = useState({ key: "", minimized: false });
+  const combatPanelMinimized = combatPanelState.key === decisionIdentity && combatPanelState.minimized;
   const attackButtonTransition = useDeclareAttackersButtonTransition(decision);
   const rawPeerWait = multiplayer?.peerWait || null;
   const peerWait = useDeferredPeerWait(rawPeerWait);
@@ -3744,22 +3775,41 @@ function CombatBar({ anchor = null, inline = false, replaceMiddleControls = fals
         : "pointer-events-none fixed left-2 bottom-[148px] z-[120] w-[min(96vw,740px)]"}>
         <div className="priority-inline-panel combat-decision-panel pointer-events-auto"
           data-replaces-middle-controls={replaceMiddleControls ? "true" : "false"}
+          data-minimized={combatPanelMinimized ? "true" : "false"}
           style={anchoredStyle || undefined}>
           <div className="action-strip-decision-toolbar combat-decision-toolbar">
-            {!topbarHost ? primaryControl : null}
-            <div className="combat-decision-meta">
-              <span className="decision-stage-chip">{decision.kind === "attackers" ? ui("Attack") : ui("Block")}</span>
-              <span className="action-strip-decision-title">{t(decision.kind === "attackers" ? "decision.chooseAttackers" : "decision.chooseBlockers")}</span>
-              <span className="action-strip-decision-inline-summary">{!canAct ? t("decision.waitingForOpponent") : t(decision.kind === "attackers"
-                ? "decision.attackersHint"
-                : "decision.blockersHint")}</span>
+            <div className="combat-decision-heading">
+              <div className="combat-decision-meta">
+                <span className="decision-stage-chip">{decision.kind === "attackers" ? ui("Attack") : ui("Block")}</span>
+                <span className="action-strip-decision-title">{t(decision.kind === "attackers" ? "decision.chooseAttackers" : "decision.chooseBlockers")}</span>
+                <span className="action-strip-decision-inline-summary">{!canAct ? t("decision.waitingForOpponent") : t(decision.kind === "attackers"
+                  ? "decision.attackersHint"
+                  : "decision.blockersHint")}</span>
+              </div>
+              <button
+                type="button"
+                className="combat-decision-minimize"
+                aria-label={t(combatPanelMinimized ? "action.expandCombatPanel" : "action.collapseCombatPanel")}
+                title={t(combatPanelMinimized ? "action.expandCombatPanel" : "action.collapseCombatPanel")}
+                aria-expanded={!combatPanelMinimized}
+                onClick={() => setCombatPanelState({ key: decisionIdentity, minimized: !combatPanelMinimized })}
+              >
+                <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <path d={combatPanelMinimized ? "m5.5 12.5 4.5-5 4.5 5" : "m5.5 7.5 4.5 5 4.5-5"} />
+                </svg>
+              </button>
             </div>
-            {canCancelDecision ? <Button type="button" variant="ghost" size="sm"
-              className="decision-neon-button decision-neon-button--danger decision-cancel-button h-10 shrink-0 rounded-none px-3 font-bold uppercase"
-              onClick={() => cancelDecision()}>{t("decision.cancel")}</Button> : null}
+            <div className="combat-decision-actions">
+              {!topbarHost ? primaryControl : null}
+              {canCancelDecision ? <Button type="button" variant="ghost" size="sm"
+                className="decision-neon-button decision-neon-button--danger decision-cancel-button h-10 shrink-0 rounded-none px-3 font-bold uppercase"
+                onClick={() => cancelDecision()}>{t("decision.cancel")}</Button> : null}
+            </div>
           </div>
-          <DecisionRouter decision={decision} canAct={canAct} combatInline
-            onCombatActionChange={handleCombatActionChange} />
+          <div className="combat-decision-body" aria-hidden={combatPanelMinimized}>
+            <DecisionRouter decision={decision} canAct={canAct} combatInline
+              onCombatActionChange={handleCombatActionChange} />
+          </div>
         </div>
       </div>
     </>

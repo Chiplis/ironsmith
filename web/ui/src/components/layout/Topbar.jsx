@@ -4,10 +4,12 @@ import { useCombatArrows } from "@/context/useCombatArrows";
 import useViewportLayout from "@/hooks/useViewportLayout";
 import { formatPhase, formatStep } from "@/lib/constants";
 import PhaseTrack from "@/components/board/PhaseTrack";
+import ZoneCountIcon from "@/components/board/ZoneCountIcon";
 import DecisionPopupLayer from "@/components/overlays/DecisionPopupLayer";
 import { ChevronLeft, ChevronRight, Clock3, WifiOff } from "lucide-react";
 import TopbarMenuSheet from "./TopbarMenuSheet";
 import { DEFAULT_PLAYER_ACCENT, getPlayerAccent } from "@/lib/player-colors";
+import { isOpeningHandDecision } from "@/lib/opening-hand-actions";
 import { playerDisplayName, samePlayerId } from "@/lib/player-display";
 import { useI18n } from "@/i18n/I18nContext";
 
@@ -58,7 +60,6 @@ export default function Topbar({
   middleDocked = false,
   onChangePerspective,
   utilityControls,
-  tableToolsToggle,
   statusOnly = false,
 }) {
   const ui = useUiText();
@@ -72,6 +73,9 @@ export default function Topbar({
   const { nonDesktopViewport, tabletCompactViewport, smallDesktopViewport, largeDesktopViewport } = useViewportLayout();
 
   const players = state?.players || [];
+  const priorityActions = state?.decision?.kind === "priority" ? (state.decision.actions || []) : [];
+  const passPriorityAction = priorityActions.find((action) => action.kind === "pass_priority");
+  const openingHandDecision = isOpeningHandDecision(priorityActions, passPriorityAction);
   const activePlayer = players.find((player) => samePlayerId(player.id, state?.active_player)) || null;
   const priorityPlayer = players.find((player) => samePlayerId(player.id, state?.priority_player)) || null;
   const decisionPlayer = state?.decision?.player != null
@@ -215,7 +219,7 @@ export default function Topbar({
           deckLoadingMode={deckLoadingMode}
           puzzleSetupMode={puzzleSetupMode}
           onAddCardNotice={onAddCardNotice}
-          triggerIcon="settings"
+          triggerIcon="menu"
           showQuickActions
         />
       </header>
@@ -321,6 +325,7 @@ export default function Topbar({
     >
       <div className="topbar-side-cluster topbar-side-cluster--left min-w-0">
         {showCenterLane ? (
+          middleDocked ? null : (
           <div
             className="topbar-main-decision-host relative shrink-0 overflow-visible"
             data-topbar-main-decision-host="true"
@@ -329,12 +334,13 @@ export default function Topbar({
               "--topbar-decision-rgb": perspectiveAccent.rgb,
             }}
           >
-            {state?.decision?.kind === "priority" || state?.game_over ? (
+            {(state?.decision?.kind === "priority" && !openingHandDecision) || state?.game_over ? (
               <div className="table-action-bar relative h-full w-full rounded-none border">
                 <DecisionPopupLayer priorityInline />
               </div>
             ) : null}
           </div>
+          )
         ) : (
           <h1 className="toolbar-brand topbar-brand m-0 whitespace-nowrap font-bold">
             Ironsmith
@@ -405,7 +411,16 @@ export default function Topbar({
                     {playerDisplayName(players, activeMobileOpponent)}
                   </span>
                   <span className="topbar-opponent-chip-life">{activeMobileOpponent.life}</span>
-                  <span className="topbar-opponent-chip-meta">{ui("H") + " "}{activeMobileOpponent.hand_size ?? 0}{" " + ui("G") + " "}{activeMobileOpponent.graveyard_size ?? 0}{" " + ui("D") + " "}{activeMobileOpponent.library_size ?? 0}
+                  <span className="topbar-opponent-chip-meta">
+                    {[
+                      ["hand", activeMobileOpponent.hand_size ?? 0],
+                      ["graveyard", activeMobileOpponent.graveyard_size ?? 0],
+                      ["library", activeMobileOpponent.library_size ?? 0],
+                    ].map(([zone, count]) => (
+                      <span className="topbar-opponent-chip-zone" key={zone} title={ui(zone === "graveyard" ? "Graveyard" : zone === "library" ? "Library" : "Hand")}>
+                        <ZoneCountIcon zone={zone} />{count}
+                      </span>
+                    ))}
                   </span>
                 </button>
                 {opponents.length > 1 ? (
@@ -430,7 +445,6 @@ export default function Topbar({
         {showCenterLane ? (
           <div className="topbar-brand-stack">
             <h1 className="toolbar-brand topbar-brand m-0 whitespace-nowrap font-bold">Ironsmith</h1>
-            {tableToolsToggle}
           </div>
         ) : utilityControls}
       </div>

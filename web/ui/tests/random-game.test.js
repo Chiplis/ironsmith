@@ -36,6 +36,11 @@ const bears = classifyCard(asset({ name: "Grizzly Bears", types: ["Creature"], p
 const bolt = classifyCard(asset({ name: "Lightning Bolt", types: ["Instant"], pips: [["Red"]] }));
 const ritual = classifyCard(asset({ name: "Dark Ritual", types: ["Sorcery"], pips: [["Black"]] }));
 const solRing = classifyCard(asset({ name: "Sol Ring", types: ["Artifact"], pips: [[{ Generic: 1 }]] }));
+const sphinx = classifyCard(asset({
+  name: "Sphinx of Foresight",
+  types: ["Creature"],
+  pips: [[{ Generic: 1 }], ["Blue"], ["Blue"], ["Blue"]],
+}));
 const jace = classifyCard(asset({
   name: "Jace, the Mind Sculptor",
   types: ["Planeswalker"],
@@ -260,6 +265,7 @@ const soloConfig = (overrides = {}) => ({
     exile: { count: 0, basics: 0 },
     command: { count: 0, basics: 0 },
   },
+  alwaysInMyHand: [],
   ...overrides,
 });
 
@@ -282,6 +288,27 @@ test("the promised cards always start on the local player's battlefield", () => 
   assert.ok(![bears, solRing, bolt].some((card) => card.name === "Omniscience"));
   // And it is not drawn a second time into another of my zones.
   assert.ok(!me.zones.hand.includes("Omniscience"));
+});
+
+test("Sphinx of Foresight always starts in the local hand and uses one hand slot", () => {
+  const config = soloConfig({
+    alwaysInMyHand: ["Sphinx of Foresight"],
+    zones: { ...soloConfig().zones, hand: { count: 2, basics: 0 } },
+  });
+  const { payload, unavailableGuaranteedHand } = generateRandomGamePayload({
+    config,
+    // The promised card is absent from the filtered pool, as it can be in a
+    // one-colour table; its separately resolved asset still fulfils the promise.
+    cards: [bears, bolt],
+    guaranteedHandCards: [sphinx],
+    rng: createSeededRng("promised-hand"),
+  });
+  const [me, opponent] = payload.players;
+  assert.deepEqual(unavailableGuaranteedHand, []);
+  assert.equal(me.zones.hand.length, 2);
+  assert.equal(me.zones.hand.filter((name) => name === "Sphinx of Foresight").length, 1);
+  assert.ok(!me.zones.battlefield.includes("Sphinx of Foresight"));
+  assert.ok(!opponent.zones.hand.includes("Sphinx of Foresight"));
 });
 
 test("a promised card is placed even when the battlefield asked for nothing", () => {
@@ -345,4 +372,5 @@ test("the promise can be turned off", () => {
 
 test("Omniscience is what a table promises unless told otherwise", () => {
   assert.deepEqual(randomGameDefaults().alwaysOnMyBattlefield, ["Omniscience"]);
+  assert.deepEqual(randomGameDefaults().alwaysInMyHand, ["Sphinx of Foresight"]);
 });

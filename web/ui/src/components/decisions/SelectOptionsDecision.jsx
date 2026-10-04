@@ -1022,16 +1022,6 @@ function MultiSelectDecision({
     useHoverSuppressedWhileScrolling({
       onScrollStart: clearHover,
     });
-  const stripLayout = layout === "strip";
-  const mobileOverlayLayout = layout === "mobile-overlay";
-  const attachHorizontalWheelRef = useHorizontalWheelScroll(stripLayout);
-  const attachStripScrollRef = useCallback(
-    (node) => {
-      attachScrollableRef(node);
-      attachHorizontalWheelRef(node);
-    },
-    [attachScrollableRef, attachHorizontalWheelRef],
-  );
   const objectNameById = useMemo(() => buildObjectNameById(state), [state]);
   const objectControllerById = useMemo(
     () => buildObjectControllerById(state),
@@ -1045,6 +1035,19 @@ function MultiSelectDecision({
   const colorChoiceDecision = useMemo(
     () => isColorChoiceDecision(decision),
     [decision],
+  );
+  const stripLayout = layout === "strip";
+  const verticalStripOptions = stripLayout && !colorChoiceDecision;
+  const mobileOverlayLayout = layout === "mobile-overlay";
+  const attachHorizontalWheelRef = useHorizontalWheelScroll(
+    stripLayout && !verticalStripOptions,
+  );
+  const attachStripScrollRef = useCallback(
+    (node) => {
+      attachScrollableRef(node);
+      attachHorizontalWheelRef(node);
+    },
+    [attachScrollableRef, attachHorizontalWheelRef],
   );
   const showDescription =
     !hideDescription && !(stripLayout && colorChoiceDecision);
@@ -1176,7 +1179,9 @@ function MultiSelectDecision({
           className={cn(
             "w-full min-w-0 max-w-full transition-[max-height] duration-300 ease-out",
             stripLayout
-              ? "decision-strip-scroll overflow-x-auto overflow-y-hidden pb-1"
+              ? verticalStripOptions
+                ? "decision-strip-scroll decision-strip-scroll--vertical-options overflow-x-hidden overflow-y-auto pb-1"
+                : "decision-strip-scroll overflow-x-auto overflow-y-hidden pb-1"
               : mobileOverlayLayout
                 ? "flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
                 : "overflow-y-auto overflow-x-hidden",
@@ -1188,7 +1193,9 @@ function MultiSelectDecision({
           <div
             className={cn(
               stripLayout
-                ? "decision-strip-options-row flex w-max min-w-full flex-nowrap items-center gap-1.5 py-0.5 pr-1"
+                ? verticalStripOptions
+                  ? "decision-strip-options-row decision-strip-options-row--vertical flex w-full min-w-full flex-col items-stretch gap-1 py-0.5 pr-1"
+                  : "decision-strip-options-row flex w-max min-w-full flex-nowrap items-center gap-1.5 py-0.5 pr-1"
                 : "w-full divide-y divide-[rgba(128,107,78,0.28)]",
             )}
           >
@@ -1212,7 +1219,7 @@ function MultiSelectDecision({
                   isHighlighted={isHighlighted}
                   isSelected={isSelected}
                   horizontal={stripLayout}
-                  className={mobileOverlayLayout ? "decision-option-row--mobile-overlay" : ""}
+                  className={verticalStripOptions ? "decision-option-row--vertical-select" : mobileOverlayLayout ? "decision-option-row--mobile-overlay" : ""}
                   accent={optionAccent(
                     state,
                     objectControllerById,
@@ -1370,7 +1377,7 @@ function OrderingDecision({
     <div
       className={cn(
         stripLayout
-          ? "flex items-stretch gap-1.5 px-1 py-1"
+          ? "decision-ordering-options-grid"
           : "flex flex-col gap-0.5",
       )}
     >
@@ -1387,7 +1394,7 @@ function OrderingDecision({
             className={cn(
               "decision-order-row flex items-center gap-1.5 px-2 py-1 text-[13px] transition-all",
               stripLayout
-                ? "decision-option-row decision-option-row--strip min-w-[220px] max-w-[360px] self-stretch"
+                ? "decision-option-row decision-option-row--strip decision-ordering-option"
                 : "decision-option-row decision-option-row--panel",
             )}
             style={decisionOptionAccentVars(optionAccent(
@@ -1454,26 +1461,34 @@ function OrderingDecision({
   return (
     <div
       className={cn(
-        "flex h-full min-h-0 flex-col gap-1",
-        stripLayout && "min-w-0",
+        stripLayout
+          ? "decision-ordering-layout"
+          : "flex h-full min-h-0 flex-col gap-1",
       )}
     >
       {stripLayout ? (
-        <div className="decision-strip-scroll min-w-0 overflow-x-auto overflow-y-hidden">
-          <div className="decision-strip-options-row flex w-max min-w-full items-center gap-1.5">
-            {!hideDescription && (
-              <div className="shrink-0 px-1">
-                <Description
-                  decision={decision}
-                  hideDescription={hideDescription}
-                  layout={layout}
-                />
-              </div>
-            )}
-            <SectionHeader text={ui(replacementOrdering ? "Replacement order" : effectOrdering ? "Stack Order" : "Order")} />
-            {effectOrdering ? effectOrderingHint : standardRows}
-          </div>
-        </div>
+        <>
+          {!hideDescription && (
+            <div className="decision-ordering-description">
+              <Description
+                decision={decision}
+                hideDescription={hideDescription}
+                layout={layout}
+              />
+            </div>
+          )}
+          <SectionHeader text={ui(replacementOrdering ? "Replacement order" : effectOrdering ? "Stack Order" : "Order")} />
+          {effectOrdering ? effectOrderingHint : (
+            <div
+              className="decision-ordering-options-scroll"
+              role="region"
+              aria-label="Ordering options"
+              tabIndex={0}
+            >
+              {standardRows}
+            </div>
+          )}
+        </>
       ) : (
         <ScrollArea className="flex-1 min-h-0">
           <div className="flex flex-col gap-1 pr-1">

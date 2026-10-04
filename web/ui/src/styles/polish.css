@@ -2362,34 +2362,6 @@
   }
 }
 
-/* Player-row context and collapsible table utilities. */
-.table-tools-toggle {
-  display: inline-flex;
-  width: 24px;
-  height: 28px;
-  flex: 0 0 24px;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  color: #cdb98f;
-  background: transparent;
-  transition: color 140ms ease, background-color 140ms ease;
-}
-
-.table-tools-toggle:hover,
-.table-tools-toggle:focus-visible,
-.table-tools-toggle[aria-expanded="true"] {
-  color: #fff0c8;
-  background: rgba(var(--player-accent-rgb, 216, 191, 106), 0.12);
-  outline: none;
-}
-
-.table-tools-toggle svg {
-  width: 17px;
-  height: 17px;
-  stroke-width: 2.25;
-}
-
 .my-zone-action-rail {
   z-index: 130 !important;
   padding: 6px 8px 10px 12px !important;

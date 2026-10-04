@@ -142,12 +142,22 @@ function zonePreviewLayout(anchorRect, size, source = null) {
   // Moving above the strips changes placement, not the inspector's size cap.
   const battlefieldAvailableHeight = Math.max(0, window.innerHeight - margin - phaseToolbarTop(margin));
   const availableHeight = Math.max(0, Math.min(maximumBottom - minimumTop, battlefieldAvailableHeight));
-  const height = Math.min(size.height, availableHeight, (window.innerWidth - margin * 2) * 88 / 63);
-  const width = Math.min(size.width, height * (63 / 88), window.innerWidth - (margin * 2));
-  const top = Math.max(
-    minimumTop,
-    Math.min(maximumBottom - height, anchorRect.top + (anchorRect.height / 2) - (height / 2))
+  const aboveSpace = Math.max(0, anchorRect.top - gap - minimumTop);
+  const belowSpace = Math.max(0, maximumBottom - anchorRect.bottom - gap);
+  const sideAvailableHeight = Math.max(aboveSpace, belowSpace);
+  const height = Math.min(
+    size.height,
+    availableHeight,
+    sideAvailableHeight,
+    (window.innerWidth - margin * 2) * 88 / 63
   );
+  const width = Math.min(size.width, height * (63 / 88), window.innerWidth - (margin * 2));
+  // Keep the preview clear of the hovered zone card. Prefer above; when the
+  // toolbar or viewport leaves too little room, flip it below automatically.
+  const placeAbove = aboveSpace >= height;
+  const top = placeAbove
+    ? anchorRect.top - gap - height
+    : anchorRect.bottom + gap;
   const minimumLeft = previewLeftInset({ top, height, minimumLeft: margin });
   const maximumLeft = Math.max(minimumLeft, window.innerWidth - width - margin);
   let side = "right";
@@ -176,7 +186,7 @@ function zonePreviewLayout(anchorRect, size, source = null) {
     left: Math.round(left),
     top: Math.round(top),
     right: "auto",
-    maxHeight: `${Math.max(0, Math.floor(Math.min(availableHeight, (window.innerWidth - margin * 2) * 88 / 63)))}px`,
+    maxHeight: `${Math.max(0, Math.floor(height))}px`,
   };
 }
 

@@ -47,6 +47,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       https,
+      watch: { ignored: ['**/public/cards/**'] },
       fs: {
         allow: ['..', '../..'],
       },

@@ -2,8 +2,9 @@ import useUiText from "@/i18n/useUiText";
 import DiagnosticsSheet from "@/components/layout/DiagnosticsSheet";
 import PriorityHoldControl from "@/components/decisions/PriorityHoldControl";
 import { useCastPlayerHovered } from "@/context/DragContext";
-import { cloneElement, useCallback, useEffect, useRef, useState } from "react";
+import { cloneElement, useCallback, useLayoutEffect, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
+import { normalizePhaseStep } from "@/lib/constants";
 import useDecisionControlMotion from "@/hooks/useDecisionControlMotion";
 import useViewportLayout from "@/hooks/useViewportLayout";
 import OpponentZone from "./OpponentZone";
@@ -15,13 +16,40 @@ import DecisionPopupLayer from "@/components/overlays/DecisionPopupLayer";
 import MobileBattleScene from "./MobileBattleScene";
 import PlanarZone from "./PlanarZone";
 import ManaPool from "@/components/left-rail/ManaPool";
+import LobbyChat from "@/components/right-rail/LobbyChat";
 import StackTimelineRail from "@/components/right-rail/StackTimelineRail";
 import { DEFAULT_PLAYER_ACCENT, getPlayerAccent } from "@/lib/player-colors";
 import { cn } from "@/lib/utils";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 import { playerDisplayName, samePlayerId } from "@/lib/player-display";
 import { useI18n } from "@/i18n/I18nContext";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { findFloatingDockPosition } from "@/lib/floating-dock-position";
+
+const FLOATING_DOCK_OBSTACLES = [
+  ".game-card",
+  ".deck-zone-pile",
+  ".zone-pile-slot",
+  ".zone-pile",
+  ".battlefield-panel-header",
+  ".table-shared-player-header",
+  ".topbar-phase-shell",
+  ".topbar-brand-stack",
+  ".player-header-utility-controls",
+  ".my-zone-stack-rail",
+  ".stack-timeline-rail",
+  ".player-zone-chat-dock",
+  ".zone-pile-menu",
+].join(",");
+
+function visibleRect(element) {
+  if (!element || !element.isConnected) return null;
+  const style = window.getComputedStyle(element);
+  if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) return null;
+  const rect = element.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  if (rect.right <= 0 || rect.bottom <= 0 || rect.left >= window.innerWidth || rect.top >= window.innerHeight) return null;
+  return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
+}
 
 function playerAccentStyle(accent) {
   const resolvedAccent = accent || DEFAULT_PLAYER_ACCENT;
@@ -35,6 +63,37 @@ function playerAccentStyle(accent) {
 function sanitizeDeckCards(cards) {
   if (!Array.isArray(cards)) return [];
   return cards.map((card) => String(card || "").trim()).filter(Boolean);
+}
+
+function decisionContentPreferredWidth(decision) {
+  if (!decision) return "420px";
+  const optionLabels = [
+    ...(Array.isArray(decision.candidates) ? decision.candidates : []),
+    ...(Array.isArray(decision.options) ? decision.options : []),
+  ].flatMap((option) => [option?.name, option?.label, option?.description]);
+  const longestText = [
+    decision.description,
+    decision.context_text,
+    decision.consequence_text,
+    decision.reason,
+    ...optionLabels,
+  ].reduce((longest, value) => Math.max(longest, String(value || "").trim().length), 0);
+  const preferredWidth = Math.max(
+    420,
+    Math.min(480, 420 + Math.max(0, longestText - 48) * 1.2),
+  );
+  return `${Math.round(preferredWidth)}px`;
+}
+
+function decisionCompactPreferredWidth(decision) {
+  if (!decision) return "320px";
+  const summaryLength = [
+    decision.description,
+    decision.context_text,
+    decision.consequence_text,
+    decision.reason,
+  ].reduce((longest, value) => Math.max(longest, String(value || "").trim().length), 0);
+  return `${Math.round(Math.max(320, Math.min(390, 320 + Math.max(0, summaryLength - 44) * 1.2)))}px`;
 }
 
 export default function TableCore({
@@ -65,25 +124,19 @@ export default function TableCore({
   middleInspectorDock = null,
 }) {
   const ui = useUiText();
-  const { state, playerAccentOverrides, multiplayer } = useGame();
+  const {
+    state,
+    playerAccentOverrides,
+    multiplayer,
+    autoPassEnabled,
+    setAutoPassEnabled,
+  } = useGame();
   const { t } = useI18n();
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const tableRef = useRef(null);
+  const humanActionDockRef = useRef(null);
   const [openDecklist, setOpenDecklist] = useState(null);
-  const [tableToolsExpanded, setTableToolsExpanded] = useState(() => {
-    try {
-      return localStorage.getItem("ironsmith.tableToolsExpanded") !== "false";
-    } catch {
-      return true;
-    }
-  });
-  useEffect(() => {
-    try {
-      localStorage.setItem("ironsmith.tableToolsExpanded", String(tableToolsExpanded));
-    } catch {
-      // Keep the control usable when browser storage is unavailable.
-    }
-  }, [tableToolsExpanded]);
+  const [humanActionDockPosition, setHumanActionDockPosition] = useState(null);
   const {
     portraitCompactViewport,
     landscapeMobileViewport,
@@ -92,6 +145,7 @@ export default function TableCore({
     smallDesktopViewport,
     largeDesktopViewport,
   } = useViewportLayout();
+  const focusedHudDesktop = !nonDesktopViewport && !tabletCompactViewport;
   const players = state?.players || [];
   const perspective = state?.perspective;
 
@@ -101,7 +155,6 @@ export default function TableCore({
   const opponents = me ? ordered.filter((p) => p.id !== me.id) : [];
   const playerAccent = me ? getPlayerAccent(players, me?.id, perspective, playerAccentOverrides) : null;
   const decision = state?.decision || null;
-  const activeZoneActionControls = tableToolsExpanded ? zoneActionControls : null;
   const expandedActionBar = Boolean(
     state?.game_over
     || (decision && decision.kind !== "priority")
@@ -110,14 +163,7 @@ export default function TableCore({
   const compactPriorityBarHeight = portraitCompactViewport
     ? 188
     : (landscapeMobileViewport ? 44 : 58);
-  const compactDecisionBarHeight = portraitCompactViewport
-    ? 236
-    : (landscapeMobileViewport ? 92 : 112);
-  const desktopPriorityBarHeight = largeDesktopViewport ? 60 : (smallDesktopViewport ? 54 : 56);
   const desktopDecisionBarHeight = largeDesktopViewport ? 138 : (smallDesktopViewport ? 112 : 128);
-  const actionBarHeight = expandedActionBar
-    ? (portraitCompactViewport || landscapeMobileViewport || tabletCompactViewport ? compactDecisionBarHeight : desktopDecisionBarHeight)
-    : (portraitCompactViewport || landscapeMobileViewport || tabletCompactViewport ? compactPriorityBarHeight : desktopPriorityBarHeight);
   // Keep a small breathing room below the shared controls on desktop. The
   // player's battlefield spans this track, so using the full toolbar height
   // here also becomes top padding on its card grid and leaves an oversized
@@ -127,9 +173,14 @@ export default function TableCore({
     : (expandedActionBar ? desktopDecisionBarHeight : 18);
   const mergeActionBarIntoMyZone = nonDesktopViewport || tabletCompactViewport;
   const dockStackRailInBoard = !mergeActionBarIntoMyZone && Boolean(zoneActionControls);
-  const sharedMiddleControls = !mergeActionBarIntoMyZone && Boolean(middleTopbar || middleAddCardBar);
+  const sharedMiddleControls = !mergeActionBarIntoMyZone
+    && (focusedHudDesktop || Boolean(middleTopbar || middleAddCardBar));
   const isActivePlayer = Number(state?.active_player) === Number(me?.id);
   const isPriorityPlayer = Number(state?.priority_player) === Number(me?.id);
+  const activePhaseStep = state ? normalizePhaseStep(state.phase, state.step) : null;
+  const activePhaseLabel = activePhaseStep
+    ? t(`game.track.${activePhaseStep}`, null, activePhaseStep)
+    : "";
   const castPlayerHovered = useCastPlayerHovered(me?.id);
   const isPlayerLegalTarget =
     legalTargetPlayerIds.has(Number(me?.id)) || legalTargetPlayerIds.has(Number(me?.index));
@@ -185,6 +236,87 @@ export default function TableCore({
     });
   }, [multiplayer?.players, state?.players]);
 
+  useLayoutEffect(() => {
+    const dock = humanActionDockRef.current;
+    const table = tableRef.current;
+    if (!focusedHudDesktop || !dock || !table) return undefined;
+
+    let frame = 0;
+    const observedElements = new Set();
+    const resizeObserver = typeof ResizeObserver === "function"
+      ? new ResizeObserver(schedule)
+      : null;
+    const observe = (element) => {
+      if (!resizeObserver || !element || observedElements.has(element)) return;
+      observedElements.add(element);
+      resizeObserver.observe(element);
+    };
+    const update = () => {
+      frame = 0;
+      if (!dock.isConnected) return;
+      const dockRect = dock.getBoundingClientRect();
+      const dockWidth = dockRect.width || dock.offsetWidth;
+      const dockHeight = dockRect.height || dock.offsetHeight;
+      if (!dockWidth || !dockHeight) return;
+
+      const obstacleElements = [...document.querySelectorAll(FLOATING_DOCK_OBSTACLES)]
+        .filter((element) => element !== dock && !dock.contains(element));
+      obstacleElements.forEach(observe);
+      observe(dock);
+      observe(table);
+      const obstacles = obstacleElements.map((element) => {
+        const rect = visibleRect(element);
+        return rect ? {
+          ...rect,
+          protected: Boolean(element.closest(".zone-pile-slot, .deck-zone-pile, .zone-pile, .zone-pile-menu")),
+        } : null;
+      }).filter(Boolean);
+      const handTop = [...table.querySelectorAll(".hand-card")]
+        .map(visibleRect)
+        .filter(Boolean)
+        .reduce((top, rect) => Math.min(top, rect.top), Number.POSITIVE_INFINITY);
+      const preferredTop = Number.isFinite(handTop)
+        ? handTop - dockHeight - 18
+        : window.innerHeight - dockHeight - 132;
+      const position = findFloatingDockPosition({
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        dockWidth,
+        dockHeight,
+        obstacles,
+        preferredLeft: window.innerWidth - dockWidth - 18,
+        preferredTop,
+      });
+      if (!position) return;
+      setHumanActionDockPosition((previous) => (
+        previous?.left === position.left
+          && previous?.top === position.top
+          && previous?.overlaps === position.overlaps
+          ? previous
+          : position
+      ));
+    };
+    function schedule() {
+      if (frame) return;
+      frame = window.requestAnimationFrame(update);
+    }
+
+    schedule();
+    const mutationObserver = new MutationObserver((records) => {
+      if (records.some((record) => !dock.contains(record.target))) schedule();
+    });
+    mutationObserver.observe(table, { childList: true, subtree: true });
+    window.addEventListener("resize", schedule);
+    window.addEventListener("scroll", schedule, true);
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      resizeObserver?.disconnect();
+      mutationObserver.disconnect();
+      window.removeEventListener("resize", schedule);
+      window.removeEventListener("scroll", schedule, true);
+    };
+  }, [focusedHudDesktop, deckLoadingMode, puzzleSetupMode, state?.players, state?.decision, state?.phase, state?.step]);
+
   if (!players.length) {
     return <main className="table-gradient table-shell rounded-none min-h-0" />;
   }
@@ -208,24 +340,33 @@ export default function TableCore({
       />
     </div>
   );
-  const middleToolbarElement = middleTopbar || middleAddCardBar ? (
+  const humanQuickControlsElement = focusedHudDesktop ? (
+    <div className="battlefield-phase-priority-controls">
+      <div className="battlefield-human-quick-controls">
+        <PriorityHoldControl compact />
+        <button
+          type="button"
+          className="battlefield-auto-pass-toggle"
+          data-enabled={autoPassEnabled ? "true" : "false"}
+          aria-pressed={Boolean(autoPassEnabled)}
+          aria-label={t("action.autoPass")}
+          data-tooltip={t("action.autoPass")}
+          onClick={() => setAutoPassEnabled((enabled) => !enabled)}
+        >
+          <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
+            <path d="m3.25 4.5 5.5 5.5-5.5 5.5" />
+            <path d="m10.25 4.5 5.5 5.5-5.5 5.5" />
+          </svg>
+          <span className="sr-only">{t("action.autoPass")}</span>
+        </button>
+      </div>
+    </div>
+  ) : null;
+  const middleTopbarElement = middleTopbar;
+  const middleToolbarElement = middleTopbarElement || middleAddCardBar ? (
     <div className="table-middle-toolbars relative z-20 grid gap-2 min-h-0 overflow-visible">
       <div className="table-middle-toolbar-stack grid gap-2 min-h-0">
-        {middleTopbar ? cloneElement(middleTopbar, {
-          tableToolsToggle: zoneActionControls ? (
-            <button
-              type="button"
-              className="table-tools-toggle table-header-tools-toggle"
-              aria-expanded={tableToolsExpanded}
-              aria-controls="table-inline-header-tools"
-              aria-label={t(tableToolsExpanded ? "action.hideTableTools" : "action.showTableTools")}
-              title={t(tableToolsExpanded ? "action.hideTableTools" : "action.showTableTools")}
-              onClick={() => setTableToolsExpanded((expanded) => !expanded)}
-            >
-              {tableToolsExpanded ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
-            </button>
-          ) : null,
-        }) : null}
+        {middleTopbarElement}
         {middleAddCardBar}
       </div>
     </div>
@@ -236,7 +377,7 @@ export default function TableCore({
       data-turn-priority={isPriorityPlayer ? "true" : "false"}
     >
       <div className="flex min-w-0 items-center gap-2" data-my-zone-header-content>
-        <span
+        <div
           className={cn("player-identity-box inline-flex min-w-0 items-center gap-2", isPlayerLegalTarget && "player-target-box")}
           data-cast-hovered={isPlayerLegalTarget && castPlayerHovered ? "true" : undefined}
           style={playerAccentStyle(playerAccent)}
@@ -282,23 +423,30 @@ export default function TableCore({
               {playerDisplayName(state?.players || [], me)}
             </span>
           </span>
-        </span>
-        <PriorityHoldControl />
+        </div>
+        {!focusedHudDesktop ? <PriorityHoldControl /> : null}
         <ManaPool
           pool={me.mana_pool}
           alwaysVisible
           compact
           className="player-name-mana battlefield-header-mana"
         />
+        {focusedHudDesktop ? (
+          // Chat tab sits right after the player's name, between it and the
+          // hand; the panel opens upward from there.
+          <div className="player-header-chat-dock">
+            <LobbyChat showOffline />
+          </div>
+        ) : null}
         {middleUtilityControls ? (
           <div className="player-header-utility-controls">
             {cloneElement(middleUtilityControls, {
-              children: (
-                <div id="table-inline-header-tools" className="table-inline-header-tools" data-expanded={tableToolsExpanded || expandedActionBar ? "true" : "false"} aria-hidden={!tableToolsExpanded && !expandedActionBar} inert={!tableToolsExpanded && !expandedActionBar}>
+              children: zoneActionControls ? (
+                <>
                   <DiagnosticsSheet />
                   {zoneActionControls}
-                </div>
-              ),
+                </>
+              ) : null,
             })}
           </div>
         ) : null}
@@ -325,7 +473,7 @@ export default function TableCore({
         "--middle-inspector-width": "clamp(460px, calc(100vw - 600px), 840px)",
       }}
     >
-      {expandedActionBar && middleTopbar ? (
+      {expandedActionBar && middleTopbar && !focusedHudDesktop ? (
         <div className="table-decision-turn-status">
           {cloneElement(middleTopbar, { statusOnly: true })}
         </div>
@@ -343,15 +491,14 @@ export default function TableCore({
             </div>
           </div>
         ) : null}
-        {expandedActionBar ? (
+        {expandedActionBar && !focusedHudDesktop ? (
           <div
             className="table-shared-action-slot table-decision-overlay-slot absolute inset-0 z-[115] overflow-visible"
-            data-tools-expanded={activeZoneActionControls ? "true" : "false"}
           >
             {actionBarElement}
           </div>
         ) : null}
-        {expandedActionBar ? (
+        {expandedActionBar && !focusedHudDesktop ? (
           <div
             className="table-decision-submit-slot"
             data-decision-submit-portal-host="true"
@@ -386,6 +533,50 @@ export default function TableCore({
       onInspect={onInspect}
     />
   );
+  const humanActionDockElement = focusedHudDesktop ? (
+    <div
+      ref={humanActionDockRef}
+      className="battlefield-human-action-dock"
+      data-human-action-dock
+      data-placement-overlap={humanActionDockPosition?.overlaps ? "true" : undefined}
+      style={{
+        "--decision-panel-content-width": decisionContentPreferredWidth(decision),
+        "--decision-panel-compact-width": decisionCompactPreferredWidth(decision),
+        ...(humanActionDockPosition
+          ? {
+            left: `${humanActionDockPosition.left}px`,
+            top: `${humanActionDockPosition.top}px`,
+            right: "auto",
+            bottom: "auto",
+            visibility: "visible",
+          }
+          : { visibility: "hidden" }),
+      }}
+    >
+      <div className="battlefield-human-decision-dock">
+        <div className="table-action-bar battlefield-human-decision-panel">
+          <DecisionPopupLayer
+            priorityInline
+            selectedObjectId={selectedObjectId}
+          />
+          <div className="battlefield-human-step-submit-row">
+            <span
+              className="battlefield-human-step-chip"
+              data-phase-name={activePhaseStep || "none"}
+              aria-label={activePhaseLabel || undefined}
+            >
+              <span className="battlefield-human-step-marker" aria-hidden="true" />
+              <span>{activePhaseLabel || ui("Waiting")}</span>
+            </span>
+            <div
+              className="table-decision-submit-slot"
+              data-decision-submit-portal-host="true"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  ) : null;
   if (landscapeMobileViewport) {
     return (
       <div className="relative h-full min-h-0">
@@ -417,8 +608,12 @@ export default function TableCore({
       data-drop-zone
       data-tablet-compact={tabletCompactViewport ? "true" : "false"}
       data-decision-strip-removed={sharedMiddleElement ? "true" : "false"}
+      data-focused-hud={focusedHudDesktop ? "true" : "false"}
       style={{
-        gridTemplateRows: mergeActionBarIntoMyZone
+        // Keep in sync with the focused HUD split in design-system.css.
+        gridTemplateRows: focusedHudDesktop
+          ? "minmax(0,0.86fr) minmax(0,1.14fr)"
+          : mergeActionBarIntoMyZone
           ? (tabletCompactViewport
             ? "minmax(0,0.9fr) minmax(0,1.1fr)"
             : "minmax(0,1fr) minmax(0,1fr)")
@@ -443,6 +638,7 @@ export default function TableCore({
       {planarZoneElement}
       {!mergeActionBarIntoMyZone && sharedMiddleElement}
       {!mergeActionBarIntoMyZone && !sharedMiddleElement && middleToolbarElement}
+      {humanQuickControlsElement}
       <MyZone
         player={me}
         selectedObjectId={selectedObjectId}
@@ -453,18 +649,21 @@ export default function TableCore({
         legalTargetPlayerIds={legalTargetPlayerIds}
         legalTargetObjectIds={legalTargetObjectIds}
         headerControls={myZoneHeaderControls}
+        stackAdjacentControls={null}
+        hidePriorityHold={focusedHudDesktop}
         headerInspectorDock={!mergeActionBarIntoMyZone && !sharedMiddleElement ? middleInspectorDock : null}
         headerActionBar={!mergeActionBarIntoMyZone && !sharedMiddleElement ? actionBarElement : null}
         embeddedActionBar={mergeActionBarIntoMyZone ? actionBarElement : null}
         zoneActionControls={!mergeActionBarIntoMyZone && !sharedMiddleElement ? zoneActionControls : null}
-        zoneActionControlsOpen={tableToolsExpanded}
-        zoneActionRailOffset={!mergeActionBarIntoMyZone && !sharedMiddleElement && activeZoneActionControls ? actionBarHeight : 0}
         dockStackRail={dockStackRailInBoard}
         hideHeader={Boolean(sharedMiddleElement)}
         hideMobileHandRail={tabletCompactViewport}
-        tableGridRow={sharedMiddleElement ? "3 / span 2" : null}
-        battlefieldTopInset={sharedMiddleElement ? sharedMiddleBattlefieldInset : 0}
+        tableGridRow={sharedMiddleElement && !focusedHudDesktop ? "3 / span 2" : null}
+        battlefieldTopInset={focusedHudDesktop
+          ? 16
+          : (sharedMiddleElement ? sharedMiddleBattlefieldInset : 0)}
       />
+      {humanActionDockElement}
       <OpenDecklistModal
         decklist={openDecklist}
         onClose={() => setOpenDecklist(null)}

@@ -684,7 +684,7 @@ export default function Shell() {
       }}
       deckLoadingMode={deckLoadingMode}
       onAddCardNotice={pushNotice}
-      showInlineControls={!nonDesktopViewport && !tabletCompactViewport}
+      showInlineControls={!dockToolbarsInTable && !nonDesktopViewport && !tabletCompactViewport}
     />
   );
   const topbarElement = (
@@ -733,7 +733,7 @@ export default function Shell() {
   );
   const zoneActionControlsElement = (
     <TableActionControls
-      compact={smallDesktopViewport}
+      compact={false}
       onAddCardNotice={pushNotice}
       onEnterDeckLoading={() => {
         setPuzzleSetupMode(false);
