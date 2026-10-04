@@ -4940,3 +4940,21 @@ pub struct ReflexiveTriggerEffect<E> {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Default, TagKeyWalk)]
 pub struct RevealChosenSubtypeEffect;
+
+/// The next occurrences of a scheduled turn unit, with no current-turn expiry.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum ScheduledSkipKind {
+    UntapStep,
+    CombatPhase,
+    Turn,
+    DrawStep,
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct SkipScheduledEffect {
+    pub player: PlayerFilter,
+    pub kind: ScheduledSkipKind,
+    pub count: u32,
+}

@@ -905,6 +905,10 @@ pub struct TurnStore {
     /// Players who will skip their next combat phase this turn.
     /// Checked and cleared when entering combat phase.
     pub skip_next_combat_phases: HashSet<PlayerId>,
+    /// Independently consumable next-combat skips without current-turn expiry.
+    pub pending_combat_phase_skips: PendingTurnSkips,
+    /// Actual turn boundary already used for continuous-control eligibility.
+    pub continuous_control_turn_started: Option<u32>,
     /// Players who will skip all combat phases of their next turn. Moved into
     /// `skip_current_turn_combat_phases` when that player's next turn begins,
     /// so additional combat phases of that turn are skipped too (CR 500.11).
@@ -1806,6 +1810,8 @@ pub struct CantEffectTracker {
     pub damage_cant_be_prevented: bool,
     /// Whether prevention is disabled specifically for combat damage.
     pub combat_damage_cant_be_prevented: bool,
+    /// Dynamic source-scoped prohibitions supplied by active statics or rules.
+    pub source_damage_cant_be_prevented: Vec<SourceDamagePreventionProhibition>,
 
     /// Players whose life total can't change.
     /// Example: Platinum Emperion
@@ -1874,6 +1880,16 @@ pub struct CantEffectTracker {
     /// A `None` entry retains the whole pool; `Some(color)` retains that color.
     /// Example: Upwelling, Kruphix (all mana); Omnath, Locus of Mana (green)
     pub dont_lose_unspent_mana: HashMap<PlayerId, HashSet<Option<crate::color::Color>>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SourceDamagePreventionProhibition {
+    pub sources: crate::target::ObjectFilter,
+    pub combat_only: bool,
+    pub host: Option<ObjectId>,
+    pub controller: PlayerId,
+    pub iterated_player: Option<PlayerId>,
+    pub tagged_objects: HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2429,6 +2445,7 @@ impl CantEffectTracker {
             .extend(other.cant_have_counter_types_placed);
         self.damage_cant_be_prevented |= other.damage_cant_be_prevented;
         self.combat_damage_cant_be_prevented |= other.combat_damage_cant_be_prevented;
+        self.source_damage_cant_be_prevented.extend(other.source_damage_cant_be_prevented);
         self.life_total_cant_change
             .extend(other.life_total_cant_change);
         self.cant_lose_life.extend(other.cant_lose_life);
@@ -2498,6 +2515,7 @@ impl CantEffectTracker {
         self.cant_have_counter_types_placed.clear();
         self.damage_cant_be_prevented = false;
         self.combat_damage_cant_be_prevented = false;
+        self.source_damage_cant_be_prevented.clear();
         self.life_total_cant_change.clear();
         self.cant_lose_life.clear();
         self.damage_cant_cause_life_loss.clear();
@@ -7339,6 +7357,35 @@ impl GameState {
             .can_prevent_damage_of_kind(is_combat)
     }
 
+    /// Damage-source-sensitive prevention legality. Hosts have already been
+    /// selected by restriction refresh; damage-source LKI only supplies the
+    /// proposed event's characteristics and cannot resurrect a departed host.
+    pub fn can_prevent_damage_from(
+        &self,
+        source: ObjectId,
+        is_combat: bool,
+        source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+    ) -> bool {
+        if !self.can_prevent_damage_of_kind(is_combat) { return false; }
+        self.effect_store.cant_effects.source_damage_cant_be_prevented.iter().all(|rule| {
+            if rule.combat_only && !is_combat { return true; }
+            let mut context = self.filter_context_for(rule.controller, rule.host)
+                .with_iterated_player(rule.iterated_player)
+                .with_tagged_objects(&rule.tagged_objects);
+            let matches = if let Some(object) = self.object(source).filter(|_| !self.is_phased_out(source)) {
+                // A resolving spell may already be popped from the stack's
+                // entry list while its card remains in the stack zone.
+                context.caster = Some(self.controller_of(object));
+                rule.sources.matches(object, &context, self)
+            } else {
+                source_snapshot.is_some_and(|snapshot| {
+                    snapshot.object_id == source && rule.sources.matches_snapshot(snapshot, &context, self)
+                })
+            };
+            !matches
+        })
+    }
+
     /// Can the permanent be destroyed?
     pub fn can_be_destroyed(&self, permanent: ObjectId) -> bool {
         self.effect_store.cant_effects.can_be_destroyed(permanent)
@@ -8146,9 +8193,11 @@ pub struct PendingTurnSkips {
     counts: std::collections::BTreeMap<PlayerId, u32>,
 }
 impl PendingTurnSkips {
-    pub fn insert(&mut self, player: PlayerId) {
+    pub fn insert(&mut self, player: PlayerId) { self.add(player, 1); }
+    pub fn add(&mut self, player: PlayerId, amount: u32) {
+        if amount == 0 { return; }
         let count = self.counts.entry(player).or_default();
-        *count = count.saturating_add(1);
+        *count = count.saturating_add(amount);
     }
     pub fn remove(&mut self, player: &PlayerId) -> bool {
         let Some(count) = self.counts.get_mut(player) else {
@@ -8197,5 +8246,16 @@ impl EntryCommitResult {
         assert!(!self.pending, "fixture expected a completed entry, not a continuation");
         assert!(self.programs.is_empty(), "fixture must finish its added replacement programs");
         self.original.into_result()
+    }
+}
+
+impl TurnStore {
+    /// Future replacements belong to the shared game, not the lane that
+    /// created them. Current-turn restrictions and control guards remain local.
+    pub(crate) fn copy_global_scheduled_skips_from(&mut self, other: &Self) {
+        self.skip_next_turn = other.skip_next_turn.clone();
+        self.skipped_steps = other.skipped_steps.clone();
+        self.pending_combat_phase_skips = other.pending_combat_phase_skips.clone();
+        self.skip_all_combat_phases_next_turn = other.skip_all_combat_phases_next_turn.clone();
     }
 }

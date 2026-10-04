@@ -1035,6 +1035,99 @@ struct SyncRulesState {
     /// Effect permissions to cast cards face down (public).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     face_down_cast_permissions: Vec<SyncFaceDownCastPermission>,
+    /// Future schedule replacements and the actual-turn control boundary.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    scheduled_skips: Option<SyncScheduledSkips>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncScheduledSkips {
+    turns: Vec<(u8, u32)>,
+    steps: Vec<(u8, String, u32)>,
+    combat_phases: Vec<(u8, u32)>,
+    next_combat_this_turn: Vec<u8>,
+    all_combats_next_turn: Vec<u8>,
+    all_combats_this_turn: Vec<u8>,
+    all_mains_this_turn: Vec<u8>,
+    continuous_control_turn_started: Option<u32>,
+}
+impl SyncScheduledSkips {
+    fn from_game(game: &GameState) -> Self { Self::from_store(&game.turn_store) }
+    fn from_store(store: &ironsmith::game_state::TurnStore) -> Self {
+        let sorted_seats = |set: &std::collections::HashSet<PlayerId>| {
+            let mut seats: Vec<_> = set.iter().map(|p| p.0).collect(); seats.sort_unstable(); seats
+        };
+        let mut steps: Vec<_> = store.skipped_steps.iter()
+            .map(|((player, step), count)| (player.0, sync_step_name(*step).to_string(), *count)).collect();
+        steps.sort();
+        Self {
+            turns: store.skip_next_turn.iter().map(|p| (p.0, store.skip_next_turn.pending(*p))).collect(),
+            steps,
+            combat_phases: store.pending_combat_phase_skips.iter().map(|p| (p.0, store.pending_combat_phase_skips.pending(*p))).collect(),
+            next_combat_this_turn: sorted_seats(&store.skip_next_combat_phases),
+            all_combats_next_turn: sorted_seats(&store.skip_all_combat_phases_next_turn),
+            all_combats_this_turn: sorted_seats(&store.skip_current_turn_combat_phases),
+            all_mains_this_turn: sorted_seats(&store.skip_current_turn_main_phases),
+            continuous_control_turn_started: store.continuous_control_turn_started,
+        }
+    }
+    fn same_global_replacements(&self, other: &Self) -> bool {
+        // Order is presentational on input; restore separately rejects
+        // duplicates and malformed counts before applying either collection.
+        let counts = |rows: &[(u8, u32)]| rows.iter().copied().collect::<std::collections::BTreeMap<_, _>>();
+        let steps = |rows: &[(u8, String, u32)]| rows.iter().map(|(p, s, n)| ((*p, s.clone()), *n)).collect::<std::collections::BTreeMap<_, _>>();
+        counts(&self.turns) == counts(&other.turns)
+            && counts(&self.combat_phases) == counts(&other.combat_phases)
+            && steps(&self.steps) == steps(&other.steps)
+            && self.all_combats_next_turn.iter().collect::<std::collections::BTreeSet<_>>() == other.all_combats_next_turn.iter().collect::<std::collections::BTreeSet<_>>()
+    }
+    fn restore(&self, game: &mut GameState) -> Result<(), String> {
+        let seats: Vec<_> = game.players.iter().map(|p| p.id).collect();
+        self.restore_store(&mut game.turn_store, &seats, game.turn.turn_number)
+    }
+    fn restore_store(&self, store: &mut ironsmith::game_state::TurnStore, seats: &[PlayerId], turn_number: u32) -> Result<(), String> {
+        let counts = |rows: &[(u8, u32)]| -> Result<ironsmith::game_state::PendingTurnSkips, String> {
+            let mut result = ironsmith::game_state::PendingTurnSkips::default();
+            for &(seat, count) in rows {
+                let player = PlayerId::from_index(seat);
+                if count == 0 || !seats.contains(&player) || result.contains(&player) { return Err("invalid or duplicate scheduled skip count".into()); }
+                result.add(player, count);
+            }
+            Ok(result)
+        };
+        let turns = counts(&self.turns)?; let combat = counts(&self.combat_phases)?;
+        let selected_seats = |rows: &[u8]| -> Result<std::collections::HashSet<PlayerId>, String> {
+            let mut result = std::collections::HashSet::new();
+            for &seat in rows {
+                let player = PlayerId::from_index(seat);
+                if !seats.contains(&player) || !result.insert(player) { return Err("invalid or duplicate scheduled skip seat".into()); }
+            }
+            Ok(result)
+        };
+        let next = selected_seats(&self.next_combat_this_turn)?;
+        let future_all = selected_seats(&self.all_combats_next_turn)?;
+        let current_all = selected_seats(&self.all_combats_this_turn)?;
+        let mains = selected_seats(&self.all_mains_this_turn)?;
+        let mut steps = std::collections::HashMap::new();
+        for (seat, step, count) in &self.steps {
+            let player = PlayerId::from_index(*seat);
+            let step = sync_step_from_name(step)?;
+            if *count == 0 || !seats.contains(&player) || steps.insert((player, step), *count).is_some() { return Err("invalid or duplicate scheduled step skip".into()); }
+        }
+        if self.continuous_control_turn_started.is_some_and(|turn| turn > turn_number) {
+            return Err("continuous-control boundary cannot be in the future".into());
+        }
+        store.skip_next_turn = turns;
+        store.pending_combat_phase_skips = combat;
+        store.skipped_steps = steps;
+        store.skip_next_combat_phases = next;
+        store.skip_all_combat_phases_next_turn = future_all;
+        store.skip_current_turn_combat_phases = current_all;
+        store.skip_current_turn_main_phases = mains;
+        store.continuous_control_turn_started = self.continuous_control_turn_started;
+        Ok(())
+    }
 }
 
 /// A face-down cast claim `(object, kind)` of a hidden hand card.
@@ -1590,6 +1683,8 @@ struct SyncGrandMeleeMarker {
     normal_turn_pending: bool,
     #[serde(default)]
     retained_extra_turn_waiting: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    scheduled_skips: Option<SyncScheduledSkips>,
     turn: SyncTurn,
     #[serde(default)]
     extra_turns: Vec<u8>,
@@ -2315,6 +2410,7 @@ fn sync_grand_melee_state(host: &WasmGame) -> Option<SyncGrandMelee> {
                     removal_designations: marker.removal_designations,
                     normal_turn_pending: marker.normal_turn_pending,
                     retained_extra_turn_waiting: marker.retained_extra_turn_waiting,
+                    scheduled_skips: Some(SyncScheduledSkips::from_store(&marker.turn_store)),
                     turn: sync_turn_state(&marker.turn),
                     extra_turns: marker
                         .turn_store
@@ -2402,6 +2498,12 @@ fn grand_melee_restore_from_sync(
                     .copied()
                     .map(PlayerId::from_index)
                     .collect();
+                if let Some(schedule) = &marker.scheduled_skips {
+                    let seats = turn_store.turn_order.clone();
+                    schedule.restore_store(&mut turn_store, &seats, marker.turn.turn_number)?;
+                } else {
+                    turn_store.continuous_control_turn_started = Some(marker.turn.turn_number);
+                }
                 Ok(ironsmith::GrandMeleeMarkerRestore {
                     number: marker.number,
                     holder: PlayerId::from_index(marker.holder),
@@ -3364,6 +3466,7 @@ impl WasmGame {
             .collect::<Result<Vec<_>, String>>()?;
         let (regeneration_shields, regenerated_this_turn) = self.game.regeneration_state();
         Ok(SyncRulesState {
+            scheduled_skips: Some(SyncScheduledSkips::from_game(&self.game)),
             regeneration_shields: regeneration_shields.into_iter().map(|(id, count)| (id.0, count)).collect(),
             regenerated_this_turn: regenerated_this_turn.into_iter().map(|(id, count)| (id.0, count)).collect(),
             combat: if grand_melee {
@@ -3677,7 +3780,14 @@ impl WasmGame {
         })
     }
 
-    fn restore_sync_rules_state(&mut self, rules: &SyncRulesState, grand_melee: bool) {
+    fn restore_sync_rules_state(&mut self, rules: &SyncRulesState, grand_melee: bool) -> Result<(), String> {
+        if let Some(schedule) = &rules.scheduled_skips { schedule.restore(&mut self.game)?; }
+        else {
+            // Older checkpoints omit schedule facts, but their per-object
+            // sickness flags remain authoritative. Never recure a restored
+            // midturn board just because the new boundary guard is absent.
+            self.game.turn_store.continuous_control_turn_started = Some(self.game.turn.turn_number);
+        }
         if !grand_melee {
             self.game.combat = rules.combat.as_ref().map(grand_melee_combat_from_sync);
             self.game.turn_store.extra_turns = rules
@@ -3788,6 +3898,7 @@ impl WasmGame {
                 })
                 .unwrap_or_default();
         }
+        Ok(())
     }
 
     fn public_audit_exile_ids(&self) -> Vec<ObjectId> {
@@ -4453,6 +4564,14 @@ impl WasmGame {
     }
 
     fn apply_sync_checkpoint_in_branch(&mut self, checkpoint: SyncCheckpoint) -> Result<(), String> {
+        if let Some(melee) = &checkpoint.grand_melee {
+            let mut schedules = melee.markers.iter().filter_map(|marker| marker.scheduled_skips.as_ref());
+            if let Some(first) = schedules.next() {
+                if schedules.any(|other| !first.same_global_replacements(other))
+                    || checkpoint.rules.scheduled_skips.as_ref().is_some_and(|global| !first.same_global_replacements(global))
+                { return Err("inconsistent shared schedule replacements across Grand Melee lanes".into()); }
+            }
+        }
         if checkpoint.version != SYNC_CHECKPOINT_VERSION {
             return Err(format!(
                 "unsupported checkpoint version: {}",
@@ -4867,7 +4986,7 @@ impl WasmGame {
                 self.game.set_chosen_subtype(id, subtype);
             }
         }
-        self.restore_sync_rules_state(&checkpoint.rules, checkpoint.grand_melee.is_some());
+        self.restore_sync_rules_state(&checkpoint.rules, checkpoint.grand_melee.is_some())?;
         self.game.restore_regeneration_state(
             checkpoint.rules.regeneration_shields.iter().map(|&(id, count)| (ObjectId::from_raw(id), count)).collect(),
             checkpoint.rules.regenerated_this_turn.iter().map(|&(id, count)| (ObjectId::from_raw(id), count)).collect(),
@@ -7203,6 +7322,9 @@ mod sync_checkpoint_tests {
             attacking_bands: vec![vec![ObjectId::from_raw(701), ObjectId::from_raw(702)]],
             ..Default::default()
         });
+        host.game.turn_store.pending_combat_phase_skips.add(PlayerId::from_index(6), 2);
+        host.game.skip_next_step(PlayerId::from_index(6), Step::Untap);
+        host.game.turn_store.continuous_control_turn_started = Some(host.game.turn.turn_number);
         let expected_views = host.game.grand_melee_marker_views();
         let expected_focus = host.game.grand_melee().unwrap().focused_marker();
 
@@ -7216,6 +7338,10 @@ mod sync_checkpoint_tests {
             .find(|marker| marker.number == expected_focus)
             .unwrap();
         assert_eq!(encoded_focus.extra_turns, vec![3]);
+        for marker in &encoded.markers {
+            assert_eq!(marker.scheduled_skips.as_ref().unwrap().combat_phases, vec![(6, 2)]);
+        }
+        assert_eq!(encoded_focus.scheduled_skips.as_ref().unwrap().continuous_control_turn_started, Some(host.game.turn.turn_number));
         assert!(encoded_focus.combat.is_some());
         assert!(!encoded_focus.range_turn_snapshot.is_empty());
 
@@ -7231,6 +7357,9 @@ mod sync_checkpoint_tests {
         );
         assert_eq!(guest.game.grand_melee_marker_views(), expected_views);
         let restored = guest.game.grand_melee_restore_snapshot().unwrap();
+        for marker in &restored.markers {
+            assert_eq!(marker.turn_store.pending_combat_phase_skips.pending(PlayerId::from_index(6)), 2);
+        }
         let restored_focus = restored
             .markers
             .iter()
@@ -9851,5 +9980,44 @@ mod restricted_mana_controller_wire_tests {
         assert_eq!(legacy.source_controller, None);
         assert_eq!(legacy.source, unit.source);
         assert_eq!(legacy.symbol, unit.symbol);
+    }
+}
+
+#[cfg(test)]
+mod scheduled_skip_transport_tests {
+    use super::*;
+    #[test]
+    fn schedule_wire_preserves_counts_and_midturn_control_guard() {
+        let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+        let a = PlayerId::from_index(0); let b = PlayerId::from_index(1);
+        game.turn_store.skip_next_turn.add(a, 2);
+        game.skip_next_step(b, Step::Untap); game.skip_next_step(b, Step::Untap);
+        game.turn_store.pending_combat_phase_skips.add(b, 3);
+        game.turn_store.skip_next_combat_phases.insert(a);
+        game.turn_store.skip_all_combat_phases_next_turn.insert(b);
+        game.turn_store.continuous_control_turn_started = Some(game.turn.turn_number);
+        let saved = SyncScheduledSkips::from_game(&game);
+        let restored: SyncScheduledSkips = serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
+        let mut peer = GameState::new(vec!["A".into(), "B".into()], 20);
+        restored.restore(&mut peer).unwrap();
+        assert_eq!(SyncScheduledSkips::from_game(&peer), saved);
+        assert_eq!(peer.pending_step_skips(b, Step::Untap), 2);
+        assert_eq!(peer.turn_store.pending_combat_phase_skips.pending(b), 3);
+        let card = ironsmith::CardBuilder::new(CardId::new(), "new control").card_types(vec![CardType::Creature]).build();
+        let late = peer.create_object_from_card(&card, a, Zone::Battlefield);
+        peer.establish_turn_start_continuous_control();
+        assert!(peer.is_summoning_sick(late));
+    }
+    #[test]
+    fn malformed_schedule_is_rejected_before_mutating_game() {
+        let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+        let mut saved = SyncScheduledSkips::from_game(&game);
+        saved.steps.push((0, "not_a_step".into(), 1));
+        assert!(saved.restore(&mut game).is_err());
+        assert!(game.turn_store.skipped_steps.is_empty());
+        saved.steps.clear(); saved.turns = vec![(0, 1), (0, 2)];
+        assert!(saved.restore(&mut game).is_err()); assert!(game.turn_store.skip_next_turn.is_empty());
+        let old: SyncRulesState = serde_json::from_str("{}").unwrap();
+        assert!(old.scheduled_skips.is_none());
     }
 }

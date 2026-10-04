@@ -293,7 +293,8 @@ fn legacy_enter_phase(game: &mut GameState, phase: Phase) -> Result<(), TurnErro
             .turn_store
             .skip_current_turn_combat_phases
             .contains(&active)
-            || game.turn_store.skip_next_combat_phases.remove(&active));
+            || game.turn_store.skip_next_combat_phases.remove(&active)
+            || game.turn_store.pending_combat_phase_skips.remove(&active));
     game.clear_forecast_revealed_hand_cards();
     game.turn.phase = phase;
     game.turn.step = first_step_of_phase(phase);
@@ -606,6 +607,7 @@ fn execute_untap_step_inner(
     // characteristics check entirely.
     game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     game.update_cant_effects();
+    game.establish_turn_start_continuous_control();
 
     // CR 702.26a performs one simultaneous phasing exchange before untapping:
     // visible permanents with phasing phase out, while permanents that phased
@@ -751,10 +753,7 @@ fn execute_untap_step_inner(
         return Ok(());
     }
 
-    // Second pass: untap eligible permanents. Only the active player's
-    // permanents have been under their controller continuously since that
-    // player's most recent turn began; off-turn Seedborn-style untaps do not
-    // cure summoning sickness (CR 302.6).
+    // Untapping itself never changes continuous-control eligibility.
     let before = crate::events::other::before_tap_state_snapshots(game);
     let mut untap_events = Vec::new();
     for id in permanents {
@@ -773,12 +772,6 @@ fn execute_untap_step_inner(
                 return Ok(());
             }
             untap_events.extend(outcome.events);
-        }
-        if game
-            .current_controller(id)
-            .is_some_and(|controller| active_players.contains(&controller))
-        {
-            game.remove_summoning_sickness(id);
         }
     }
 

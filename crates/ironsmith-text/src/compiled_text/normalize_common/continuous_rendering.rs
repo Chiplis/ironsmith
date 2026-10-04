@@ -5114,6 +5114,13 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 describe_player_set_filter(filter)
             )
         }
+        crate::effect::Restriction::PreventDamageFrom { sources, combat_only } => {
+            let kind = if *combat_only { "combat damage" } else { "damage" };
+            let source = if let Some(surface) = sources.source_surface.as_ref() {
+                describe_source_reference_surface_text(surface)
+            } else { sources.description() };
+            format!("{kind} that would be dealt by {source} can't be prevented")
+        }
         crate::effect::Restriction::PreventDamage => "damage can't be prevented".to_string(),
         crate::effect::Restriction::PreventCombatDamage => {
             "combat damage can't be prevented".to_string()

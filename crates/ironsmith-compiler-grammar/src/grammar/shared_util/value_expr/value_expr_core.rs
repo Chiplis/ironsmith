@@ -760,6 +760,20 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
             used,
         ));
     }
+    // Numeric aggregates compose with arithmetic and maximum alternatives.
+    // Reuse the full reader so historical/prior-action scopes do not turn
+    // into ordinary live object filters merely because they are nested.
+    if value_helper_shapes::parse_aggregate_prefix(words).is_some() {
+        let end = value_boundary(words);
+        let tokens = crate::lexer::synthetic_word_tokens(&words[..end]);
+        if let Some(value) =
+            crate::grammar::shared_util::value_semantics::parse_equal_to_aggregate_filter_value(
+                &tokens,
+            )
+        {
+            return Some((value.without_surface_hint(ValueSurfaceHint::EqualTo), end));
+        }
+    }
     if let Some(value) = value_helper_shapes::parse_aggregate_scope_value_words(words) {
         return Some((value, words.len()));
     }

@@ -310,6 +310,7 @@ fn restriction_references_identity(
         | Restriction::AttackOrBlockAlone(filter) => {
             object_filter_references_identity(filter, identity)
         }
+        Restriction::PreventDamageFrom { sources, .. } => object_filter_references_identity(sources, identity),
         Restriction::PreventDamage
         | Restriction::PreventCombatDamage
         | Restriction::AttackYouUnlessControllerPaysPerAttacker(..) => false,

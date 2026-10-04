@@ -517,6 +517,28 @@ impl WasmGame {
                 {
                     identities.insert((discard.player, discard.card));
                 }
+                if let Some(moved) = record.event.downcast::<ironsmith::events::zones::ZoneChangeEvent>()
+                    && moved.from == Zone::Hand
+                    && moved.to.is_public()
+                    && moved.cause.cause_type == ironsmith::events::cause::CauseType::Cost
+                {
+                    // Self-exile payments publish their source through the
+                    // activation command, without an intermediate discard or
+                    // reveal choice. Face-down public-zone objects do not
+                    // establish a disclosed identity by movement alone.
+                    for (index, original) in moved.objects.iter().enumerate() {
+                        let destination = moved.result_objects.get(index).copied().unwrap_or(*original);
+                        if game.object(destination).is_some_and(|object|
+                            object.zone.is_public() && !game.is_face_down(destination))
+                        {
+                            if let Some(snapshot) = moved.snapshots.iter()
+                                .chain(moved.snapshot.iter()).find(|snapshot| snapshot.object_id == *original)
+                            {
+                                identities.insert((snapshot.owner, *original));
+                            }
+                        }
+                    }
+                }
                 if let Some(reveal) = record
                     .event
                     .downcast::<ironsmith::events::CardRevealedEvent>()

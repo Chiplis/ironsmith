@@ -1,3 +1,7 @@
+#[path = "activation_restrictions/filtered_unpreventability.rs"]
+mod filtered_unpreventability;
+pub use filtered_unpreventability::*;
+
 use winnow::combinator::{alt, eof};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;

@@ -1452,6 +1452,12 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::PreventDamageFrom { sources, combat_only } => {
+                tracker.source_damage_cant_be_prevented.push(crate::game_state::SourceDamagePreventionProhibition {
+                    sources: sources.clone(), combat_only: *combat_only, host: source, controller,
+                    iterated_player, tagged_objects: tagged_objects.clone(),
+                });
+            }
             Restriction::PreventDamage => {
                 tracker.damage_cant_be_prevented = true;
             }

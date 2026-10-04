@@ -726,6 +726,7 @@ fn replace_modal_header_x_in_effect_ast(
                 TurnStructureActionAst::SkipCombatPhasesThisTurn,
             )
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipDrawStep)
+            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipScheduled { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PlayFromGraveyardUntilEot)
             | SubjectVerbActionAst::Control(ControlActionAst::ControlPlayer { .. })
             | SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn { .. })

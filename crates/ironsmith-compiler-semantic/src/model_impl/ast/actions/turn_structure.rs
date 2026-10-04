@@ -14,6 +14,7 @@ pub enum TurnStructureActionAst {
     SkipMainPhasesThisTurn,
     SkipCombatPhasesThisTurn,
     SkipDrawStep,
+    SkipScheduled { kind: ironsmith_core::ScheduledSkipKind, count: u32 },
     AdditionalPhases {
         phases: Vec<crate::effects::AdditionalPhase>,
         after_main_phase: bool,

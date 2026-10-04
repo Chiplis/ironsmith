@@ -377,3 +377,43 @@ fn target_spell_controller_damage_materializes_the_spell_target_first() {
         ));
     }
 }
+
+#[test]
+fn aggregate_damage_sentences_keep_complete_count_domains_without_lossy_suffix_probes() {
+    for (text, expected) in [
+        (
+            "This creature deals damage equal to the number of equipped creatures you control to defending player.",
+            "Equipment",
+        ),
+        (
+            "This spell deals damage to target creature equal to the total number of instant and sorcery cards you own in exile and in your graveyard.",
+            "Graveyard",
+        ),
+        (
+            "This creature deals damage equal to the number of Wolves and Werewolves you control to target opponent.",
+            "Werewolf",
+        ),
+        (
+            "This creature deals damage equal to the number of noncreature, nonland cards in your graveyard to target creature an opponent controls.",
+            "Land",
+        ),
+        (
+            "This spell deals damage to target creature equal to 2 or the greatest power among Dinosaurs you control, whichever is greater.",
+            "GreatestPower",
+        ),
+        (
+            "This spell deals damage to any target equal to three times the number of creatures tapped this way.",
+            "Tapped",
+        ),
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let (result, loss) = crate::parse_loss::capture(|| {
+            crate::effect_sentences::parse_effect_sentence_lexed(&tokens)
+        });
+        let effects = result.unwrap_or_else(|error| panic!("{text}: {error}"));
+        assert!(!loss.is_lossy(), "{text}: {}", loss.reasons_text());
+        let debug = format!("{effects:?}");
+        assert!(debug.contains(expected), "{text}: {debug}");
+        assert_eq!(debug.matches("DealDamage").count(), 1, "{text}: {debug}");
+    }
+}

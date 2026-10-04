@@ -295,6 +295,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "SkipCombatPhasesEffect" => Some(EffectFamily::Player),
         "SkipCombatPhasesThisTurnEffect" => Some(EffectFamily::Player),
         "SkipDrawStepEffect" => Some(EffectFamily::Player),
+        "SkipScheduledEffect" => Some(EffectFamily::Player),
         "SkipMainPhasesThisTurnEffect" => Some(EffectFamily::Player),
         "SkipNextCombatPhaseThisTurnEffect" => Some(EffectFamily::Player),
         "SkipTurnEffect" => Some(EffectFamily::Player),

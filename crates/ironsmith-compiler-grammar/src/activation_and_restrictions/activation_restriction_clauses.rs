@@ -1021,6 +1021,14 @@ pub fn parse_negated_object_restriction_clause(
 ) -> Result<Option<ParsedCantRestriction>, CardTextError> {
     use crate::effect::Restriction;
 
+    if let Some(shape) = restriction_grammar::parse_filtered_unpreventability(tokens) {
+        let sources = parse_object_filter_lexed(shape.sources, false)?;
+        return Ok(Some(ParsedCantRestriction {
+            restriction: Restriction::PreventDamageFrom { sources, combat_only: shape.combat_only },
+            target: None,
+        }));
+    }
+
     let words = crate::lexer::token_word_refs(tokens);
     if restriction_grammar::parse_mana_retention_negated_clause_words(&words).is_some() {
         return Ok(None);
