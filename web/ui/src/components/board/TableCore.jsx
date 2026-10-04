@@ -119,8 +119,8 @@ export default function TableCore({
     state,
     playerAccentOverrides,
     multiplayer,
-    autoPassEnabled,
-    setAutoPassEnabled,
+    autoResolveEnabled,
+    setAutoResolveEnabled,
   } = useGame();
   const { t } = useI18n();
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
@@ -331,11 +331,12 @@ export default function TableCore({
       <button
         type="button"
         className="battlefield-auto-pass-toggle"
-        data-enabled={autoPassEnabled ? "true" : "false"}
-        aria-pressed={Boolean(autoPassEnabled)}
-        aria-label={t("action.autoPass")}
-        data-tooltip={t("action.autoPass")}
-        onClick={() => setAutoPassEnabled((enabled) => !enabled)}
+        data-enabled={autoResolveEnabled ? "true" : "false"}
+        aria-pressed={Boolean(autoResolveEnabled)}
+        aria-label={ui("Auto-pass")}
+        data-tooltip={ui("Auto-pass")}
+        title={ui("Automatically resolve whenever you have priority and the stack is not empty.")}
+        onClick={() => setAutoResolveEnabled((enabled) => !enabled)}
       >
         <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
           <path d="m3.25 4.5 5.5 5.5-5.5 5.5" />

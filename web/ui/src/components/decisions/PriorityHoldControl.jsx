@@ -36,22 +36,25 @@ export default function PriorityHoldControl({ compact = false }) {
         <Hand size={13} aria-hidden="true" />
         <span className={compact ? "sr-only" : undefined}>{holdLabel}</span>
       </button>
-      <button
-        type="button"
-        className={`player-priority-hold${compact ? " player-priority-hold--compact" : ""}`}
-        aria-label={autoResolveLabel}
-        aria-pressed={!!autoResolveEnabled}
-        title={ui("Automatically resolve whenever you have priority and the stack is not empty.")}
-        data-tooltip={compact ? autoResolveLabel : undefined}
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={(event) => {
-          event.stopPropagation();
-          setAutoResolveEnabled((enabled) => !enabled);
-        }}
-      >
-        <FastForward size={13} aria-hidden="true" />
-        <span className={compact ? "sr-only" : undefined}>{autoResolveLabel}</span>
-      </button>
+      {/* The focused desktop HUD draws its own auto-pass toggle beside this
+          control, so the compact variant only renders the hold button. */}
+      {!compact ? (
+        <button
+          type="button"
+          className="player-priority-hold"
+          aria-label={autoResolveLabel}
+          aria-pressed={!!autoResolveEnabled}
+          title={ui("Automatically resolve whenever you have priority and the stack is not empty.")}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            setAutoResolveEnabled((enabled) => !enabled);
+          }}
+        >
+          <FastForward size={13} aria-hidden="true" />
+          <span>{autoResolveLabel}</span>
+        </button>
+      ) : null}
     </>
   );
 }
