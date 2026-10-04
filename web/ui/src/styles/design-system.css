@@ -7630,13 +7630,20 @@ html[data-hand-pointer-suspended="true"] * {
   }
 }
 
-/* Focused desktop HUD header row: [life name] [Lobby chat / Playing as] [hold] [auto-pass].
-   Playing as hangs under the chat tab with the same look; the whole pill
-   opens a player list upward, styled like the chat panel. */
+/* Focused desktop HUD header row: [life name] [Lobby chat] [hold] [auto-pass].
+   Playing as hangs under the player's name with the chat tab's look; the
+   whole pill opens a player list upward, styled like the chat panel. */
+.player-header-name-stack {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+}
+
 @media (min-width: 1024px) {
   .table-shell[data-focused-hud="true"] .player-header-perspective {
     position: absolute;
-    top: calc(100% + 3px);
+    top: calc(100% + 5px);
     left: 0;
     z-index: 2;
     pointer-events: auto;

@@ -391,21 +391,37 @@ export default function TableCore({
           >
             {me.life}
           </span>
-          <span
-            className={cn(
-              "battlefield-name min-w-0 text-[16px] uppercase tracking-wider font-bold"
-            )}
-            data-player-target={me.id}
-            data-player-target-name={me.id}
-            onPointerDown={handlePlayerTargetPointerDown}
-            onClick={handlePlayerTargetClick}
-            style={{
-              cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined,
-            }}
-          >
-            <span className={cn(isActivePlayer && "battlefield-name-text--active")}>
-              {playerDisplayName(state?.players || [], me)}
+          {/* The seat menu hangs under the name; it is a sibling of the name
+              (not inside it) so its clicks never target the player. */}
+          <span className="player-header-name-stack">
+            <span
+              className={cn(
+                "battlefield-name min-w-0 text-[16px] uppercase tracking-wider font-bold"
+              )}
+              data-player-target={me.id}
+              data-player-target-name={me.id}
+              onPointerDown={handlePlayerTargetPointerDown}
+              onClick={handlePlayerTargetClick}
+              style={{
+                cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined,
+              }}
+            >
+              <span className={cn(isActivePlayer && "battlefield-name-text--active")}>
+                {playerDisplayName(state?.players || [], me)}
+              </span>
             </span>
+                {canChoosePerspective ? (
+                  <PlayerPerspectiveMenu
+                    label={t("action.playingAs")}
+                    currentId={state?.perspective ?? me?.id ?? 0}
+                    onSelect={onChangePerspective}
+                    players={players.map((player) => ({
+                      id: player.id,
+                      name: playerDisplayName(players, player),
+                      accent: getPlayerAccent(players, player.id, state?.perspective, playerAccentOverrides)?.hex,
+                    }))}
+                  />
+                ) : null}
           </span>
         </div>
         {!focusedHudDesktop ? <PriorityHoldControl /> : null}
@@ -420,18 +436,6 @@ export default function TableCore({
           // hand; the panel opens upward from there.
           <div className="player-header-chat-dock">
             <LobbyChat showOffline />
-            {canChoosePerspective ? (
-              <PlayerPerspectiveMenu
-                label={t("action.playingAs")}
-                currentId={state?.perspective ?? me?.id ?? 0}
-                onSelect={onChangePerspective}
-                players={players.map((player) => ({
-                  id: player.id,
-                  name: playerDisplayName(players, player),
-                  accent: getPlayerAccent(players, player.id, state?.perspective, playerAccentOverrides)?.hex,
-                }))}
-              />
-            ) : null}
           </div>
         ) : null}
         {humanQuickControlsElement}
